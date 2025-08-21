@@ -1,0 +1,669 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AuditLog {
+  id        String      @id
+  action    AuditAction
+  entity    String?
+  details   Json?
+  createdAt DateTime    @default(now())
+  entityId  String?
+  ipAddress String?
+  userAgent String?
+  userId    String?
+  user      User?       @relation(fields: [userId], references: [id])
+
+  @@index([action])
+  @@index([createdAt])
+  @@index([entity, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+model PhoneVerification {
+  id          String              @id
+  code        String
+  purpose     VerificationPurpose
+  attempts    Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  expiresAt   DateTime
+  isUsed      Boolean             @default(false)
+  maxAttempts Int                 @default(3)
+  phoneNumber String
+  userId      String?
+  user        User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([phoneNumber, purpose])
+  @@map("phone_verifications")
+}
+
+model RefreshToken {
+  id         String   @id
+  token      String   @unique
+  createdAt  DateTime @default(now())
+  deviceId   String?
+  expiresAt  DateTime
+  ipAddress  String?
+  isRevoked  Boolean  @default(false)
+  lastUsedAt DateTime @default(now())
+  userAgent  String?
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([isRevoked])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model User {
+  id                  String              @id
+  avatar              String?
+  timezone            String?             @default("Europe/Istanbul")
+  language            String?             @default("tr")
+  createdAt           DateTime            @default(now())
+  deletedAt           DateTime?
+  failedLoginAttempts Int                 @default(0)
+  firstName           String?
+  isActive            Boolean             @default(true)
+  isVerified          Boolean             @default(false)
+  lastLoginAt         DateTime?
+  lastName            String?
+  lockedUntil         DateTime?
+  phoneNumber         String              @unique
+  updatedAt           DateTime
+  appointments        Appointment[]
+  auditLogs           AuditLog[]
+  staffPositions      BusinessStaff[]
+  ownedBusinesses     Business[]
+  phoneVerifications  PhoneVerification[]
+  refreshTokens       RefreshToken[]
+  grantedRoles        UserRole[]          @relation("UserRoleGrantedBy")
+  userRoles           UserRole[]
+  behavior            UserBehavior?
+
+  @@index([createdAt])
+  @@index([isActive])
+  @@index([phoneNumber])
+  @@map("users")
+}
+
+model Role {
+  id              String           @id
+  name            String           @unique
+  displayName     String
+  description     String?
+  level           Int              @default(0)
+  isSystem        Boolean          @default(false)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@index([name])
+  @@index([level])
+  @@index([isActive])
+  @@map("roles")
+}
+
+model Permission {
+  id              String           @id
+  name            String           @unique
+  displayName     String
+  description     String?
+  resource        String
+  action          String
+  conditions      Json?
+  isSystem        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  rolePermissions RolePermission[]
+
+  @@unique([resource, action])
+  @@index([resource])
+  @@index([action])
+  @@map("permissions")
+}
+
+model UserRole {
+  id            String    @id
+  userId        String
+  roleId        String
+  grantedBy     String?
+  grantedAt     DateTime  @default(now())
+  expiresAt     DateTime?
+  isActive      Boolean   @default(true)
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  grantedByUser User?     @relation("UserRoleGrantedBy", fields: [grantedBy], references: [id])
+  role          Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@index([expiresAt])
+  @@index([isActive])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String     @id
+  roleId       String
+  permissionId String
+  conditions   Json?
+  grantedBy    String?
+  grantedAt    DateTime   @default(now())
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@index([isActive])
+  @@map("role_permissions")
+}
+
+model BusinessType {
+  id          String     @id
+  name        String     @unique
+  displayName String
+  description String?
+  icon        String?
+  category    String
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  businesses  Business[]
+
+  @@index([category])
+  @@index([isActive])
+  @@map("business_types")
+}
+
+model SubscriptionPlan {
+  id                    String          @id
+  name                  String          @unique
+  displayName           String
+  description           String?
+  price                 Decimal         @db.Decimal(10, 2)
+  currency              String          @default("TRY")
+  billingInterval       String
+  maxBusinesses         Int             @default(1)
+  maxStaffPerBusiness   Int             @default(5)
+  maxAppointmentsPerDay Int             @default(50)
+  features              Json
+  isActive              Boolean         @default(true)
+  isPopular             Boolean         @default(false)
+  sortOrder             Int             @default(0)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  businessSubscriptions BusinessSubscription[]
+
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("subscription_plans")
+}
+
+model BusinessSubscription {
+  id                String           @id
+  businessId        String           @unique
+  planId            String
+  status            SubscriptionStatus
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean          @default(false)
+  canceledAt         DateTime?
+  trialStart         DateTime?
+  trialEnd           DateTime?
+  metadata           Json?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  
+  // Relations
+  business           Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan               SubscriptionPlan @relation(fields: [planId], references: [id])
+  payments           Payment[]
+
+  @@map("business_subscriptions")
+  @@index([businessId])
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+model Business {
+  id             String          @id
+  ownerId        String
+  businessTypeId String
+  name           String
+  slug           String          @unique
+  description    String?
+  email          String?
+  phone          String?
+  website        String?
+  address        String?
+  city           String?
+  state          String?
+  country        String?
+  postalCode     String?
+  latitude       Float?
+  longitude      Float?
+  businessHours  Json?
+  timezone       String          @default("UTC")
+  logoUrl        String?
+  coverImageUrl  String?
+  primaryColor   String?
+  theme          Json?
+  settings       Json?
+  isActive       Boolean         @default(true)
+  isVerified     Boolean         @default(false)
+  verifiedAt     DateTime?
+  isClosed       Boolean         @default(false)
+  closedUntil    DateTime?
+  closureReason  String?
+  tags           String[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+  appointments   Appointment[]
+  businessImages BusinessImage[]
+  staff          BusinessStaff[]
+  businessType   BusinessType    @relation(fields: [businessTypeId], references: [id])
+  owner          User            @relation(fields: [ownerId], references: [id])
+  subscription   BusinessSubscription?
+  services       Service[]
+  workingHours   WorkingHours[]
+  closures       BusinessClosure[]
+
+  @@index([ownerId])
+  @@index([businessTypeId])
+  @@index([slug])
+  @@index([city, state])
+  @@index([isActive, isVerified])
+  @@map("businesses")
+}
+
+model BusinessStaff {
+  id           String            @id
+  businessId   String
+  userId       String
+  role         BusinessStaffRole
+  permissions  Json?
+  isActive     Boolean           @default(true)
+  joinedAt     DateTime          @default(now())
+  leftAt       DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  appointments Appointment[]
+  business     Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id])
+  services     ServiceStaff[]
+  workingHours WorkingHours[]
+
+  @@unique([businessId, userId])
+  @@index([businessId])
+  @@index([userId])
+  @@index([role])
+  @@index([isActive])
+  @@map("business_staff")
+}
+
+model Service {
+  id                String         @id
+  businessId        String
+  name              String
+  description       String?
+  duration          Int
+  price             Decimal        @db.Decimal(8, 2)
+  currency          String         @default("TRY")
+  category          String?
+  image             String?
+  isActive          Boolean        @default(true)
+  sortOrder         Int            @default(0)
+  pricing           Json?
+  bufferTime        Int            @default(0)
+  maxAdvanceBooking Int            @default(30)
+  minAdvanceBooking Int            @default(0)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  appointments      Appointment[]
+  staff             ServiceStaff[]
+  business          Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([isActive])
+  @@index([category])
+  @@index([sortOrder])
+  @@map("services")
+}
+
+model ServiceStaff {
+  id        String        @id
+  serviceId String
+  staffId   String
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  service   Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  staff     BusinessStaff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, staffId])
+  @@index([serviceId])
+  @@index([staffId])
+  @@map("service_staff")
+}
+
+model Appointment {
+  id                   String                 @id
+  businessId           String
+  serviceId            String
+  staffId              String?
+  customerId           String
+  date                 DateTime
+  startTime            DateTime
+  endTime              DateTime
+  duration             Int
+  status               AppointmentStatus
+  price                Decimal                @db.Decimal(8, 2)
+  currency             String                 @default("TRY")
+  customerNotes        String?
+  internalNotes        String?
+  bookedAt             DateTime               @default(now())
+  confirmedAt          DateTime?
+  completedAt          DateTime?
+  canceledAt           DateTime?
+  cancelReason         String?
+  reminderSent         Boolean                @default(false)
+  reminderSentAt       DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  appointment_payments appointment_payments[]
+  business             Business               @relation(fields: [businessId], references: [id])
+  customer             User                   @relation(fields: [customerId], references: [id])
+  service              Service                @relation(fields: [serviceId], references: [id])
+  staff                BusinessStaff?         @relation(fields: [staffId], references: [id])
+
+  @@index([businessId])
+  @@index([serviceId])
+  @@index([staffId])
+  @@index([customerId])
+  @@index([date])
+  @@index([status])
+  @@index([startTime, endTime])
+  @@map("appointments")
+}
+
+model WorkingHours {
+  id         String         @id
+  businessId String
+  staffId    String?
+  dayOfWeek  Int
+  startTime  String
+  endTime    String
+  isActive   Boolean        @default(true)
+  breaks     Json?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  business   Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staff      BusinessStaff? @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, staffId, dayOfWeek])
+  @@index([businessId])
+  @@index([staffId])
+  @@index([dayOfWeek])
+  @@map("working_hours")
+}
+
+model BusinessImage {
+  id         String   @id
+  businessId String
+  url        String
+  alt        String?
+  type       String
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([type])
+  @@index([sortOrder])
+  @@map("business_images")
+}
+
+model Payment {
+  id                     String               @id
+  businessSubscriptionId String?
+  amount                 Decimal              @db.Decimal(10, 2)
+  currency               String               @default("TRY")
+  status                 PaymentStatus
+  paymentMethod          String               // "card", "bank_transfer", "paypal", etc.
+  paymentProvider        String               // "stripe", "paypal", etc.
+  providerPaymentId      String?              // External payment ID
+  metadata               Json?
+  paidAt                 DateTime?
+  failedAt               DateTime?
+  refundedAt             DateTime?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  
+  // Relations
+  businessSubscription   BusinessSubscription? @relation(fields: [businessSubscriptionId], references: [id])
+
+  @@index([businessSubscriptionId])
+  @@index([status])
+  @@index([paidAt])
+  @@map("payments")
+}
+
+model appointment_payments {
+  id            String        @id
+  appointmentId String
+  amount        Decimal       @db.Decimal(8, 2)
+  currency      String        @default("TRY")
+  status        PaymentStatus
+  paymentMethod String
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  appointments  Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId])
+  @@index([status])
+}
+
+
+
+enum AuditAction {
+  USER_REGISTER
+  USER_LOGIN
+  USER_LOGOUT
+  USER_UPDATE
+  USER_DELETE
+  USER_LOCK
+  USER_UNLOCK
+  PHONE_VERIFY
+  TOKEN_REFRESH
+  PASSWORD_RESET
+
+  @@map("audit_action")
+}
+
+enum VerificationPurpose {
+  REGISTRATION
+  LOGIN
+  PHONE_CHANGE
+  ACCOUNT_RECOVERY
+
+  @@map("verification_purpose")
+}
+
+enum SystemRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  SUPPORT
+  USER
+  GUEST
+
+  @@map("system_role")
+}
+
+enum PermissionAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  ADMIN
+  MODERATE
+  APPROVE
+  REJECT
+  ASSIGN
+  REVOKE
+
+  @@map("permission_action")
+}
+
+enum ResourceType {
+  USER
+  ROLE
+  PERMISSION
+  BOOKING
+  PAYMENT
+  CONTENT
+  SYSTEM
+  AUDIT
+  NOTIFICATION
+  SUPPORT
+
+  @@map("resource_type")
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+
+  @@map("subscription_status")
+}
+
+enum BusinessStaffRole {
+  OWNER
+  MANAGER
+  STAFF
+  RECEPTIONIST
+
+  @@map("business_staff_role")
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+  NO_SHOW
+
+  @@map("appointment_status")
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUNDED
+
+  @@map("payment_status")
+}
+
+enum ClosureType {
+  VACATION          // Planned vacation
+  MAINTENANCE       // Business maintenance
+  EMERGENCY         // Emergency closure
+  HOLIDAY          // Holiday closure
+  STAFF_SHORTAGE   // Not enough staff
+  OTHER            // Other reason
+
+  @@map("closure_type")
+}
+
+model UserBehavior {
+  id                   String   @id
+  userId               String
+  totalAppointments    Int      @default(0)
+  canceledAppointments Int      @default(0)
+  noShowAppointments   Int      @default(0)
+  completedAppointments Int     @default(0)
+  
+  // Cancellation tracking
+  lastCancelDate       DateTime?
+  cancelationsThisMonth Int     @default(0)
+  cancelationsThisWeek  Int     @default(0)
+  
+  // No-show tracking
+  lastNoShowDate       DateTime?
+  noShowsThisMonth     Int      @default(0)
+  noShowsThisWeek      Int      @default(0)
+  
+  // Ban management
+  isBanned             Boolean  @default(false)
+  bannedUntil          DateTime?
+  banReason            String?
+  banCount             Int      @default(0)
+  
+  // Strike system (3 strikes = temporary ban)
+  currentStrikes       Int      @default(0)
+  lastStrikeDate       DateTime?
+  strikeResetDate      DateTime? // When strikes reset
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  
+  // Relations
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_behavior")
+  @@unique([userId])
+  @@index([isBanned])
+  @@index([currentStrikes])
+  @@index([bannedUntil])
+}
+
+model BusinessClosure {
+  id            String          @id
+  businessId    String
+  startDate     DateTime
+  endDate       DateTime?       // null = indefinite closure
+  reason        String
+  type          ClosureType
+  isActive      Boolean         @default(true)
+  createdBy     String          // Staff member who created closure
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  // Relations
+  business      Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("business_closures")
+  @@index([businessId])
+  @@index([startDate, endDate])
+  @@index([isActive])
+}

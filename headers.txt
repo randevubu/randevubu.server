@@ -1,0 +1,28 @@
+HTTP/1.1 200 OK
+Content-Security-Policy: default-src 'self';style-src 'self' 'unsafe-inline';script-src 'self' 'unsafe-inline' 'unsafe-eval';img-src 'self' data: https:;font-src 'self' https: data:;base-uri 'self';form-action 'self';frame-ancestors 'self';object-src 'none';script-src-attr 'none';upgrade-insecure-requests
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Origin-Agent-Cluster: ?1
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+X-Content-Type-Options: nosniff
+X-DNS-Prefetch-Control: off
+X-Download-Options: noopen
+X-Frame-Options: SAMEORIGIN
+X-Permitted-Cross-Domain-Policies: none
+X-XSS-Protection: 0
+Vary: Origin, Accept-Encoding
+Access-Control-Allow-Credentials: true
+RateLimit-Policy: 100;w=900
+RateLimit-Limit: 100
+RateLimit-Remaining: 99
+RateLimit-Reset: 900
+Set-Cookie: refreshToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI3NmQxNDk2Yy0yNmQxLTQzMTktYTE2YS0wODk1NzE0ZjgyNGUiLCJwaG9uZU51bWJlciI6Iis5MDU0NjY2MDQzMzYiLCJ0eXBlIjoicmVmcmVzaCIsInRva2VuVmFsdWUiOiIzYWE0Mjg4MzNiODZmY2JiNmUyNGU2Zjg4NWQ5NGM2ZGVkODNlNmNmOGFkYWQwYTBjMWI5YWQwNDlmODZjOWM2MjUzOTgxMjM4ODc0M2RjMDAwZDI0ZGNkNTA1YjEyNDY0NDg0NTQ4OGIzNjZmN2IxM2QzZjUzNTJjZTkxNzBiYiIsImlhdCI6MTc1NTcwMTUxOSwiZXhwIjoxNzU4MjkzNTE5LCJhdWQiOiJyYW5kZXZ1YnUtY2xpZW50IiwiaXNzIjoicmFuZGV2dWJ1LXNlcnZlciJ9.o0R9OOXXJxyGYxCpoOiMQGqHVrb9CBy9z7MOGlEjj5Y; Max-Age=604800; Path=/api/v1/auth/refresh; Expires=Wed, 27 Aug 2025 14:51:59 GMT; HttpOnly; SameSite=Strict
+Set-Cookie: hasAuth=1; Max-Age=604800; Path=/; Expires=Wed, 27 Aug 2025 14:51:59 GMT; SameSite=Strict
+Content-Type: application/json; charset=utf-8
+Content-Length: 1228
+ETag: W/"4cc-o4v8ZwkZ94fElx3Lronl+k8eWrM"
+Date: Wed, 20 Aug 2025 14:51:59 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
