@@ -1,12 +1,155 @@
 import { Router } from 'express';
 import { BusinessController } from '../../controllers/businessController';
-import { authenticateToken, requirePermission, requireRole, requireAny } from '../../middleware/authUtils';
+import { requireAuth, requirePermission, requireRole, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
+import { 
+  attachBusinessContext, 
+  requireBusinessAccess, 
+  allowEmptyBusinessContext,
+  requireSpecificBusinessAccess 
+} from '../../middleware/attachBusinessContext';
 
 export function createBusinessRoutes(businessController: BusinessController): Router {
   const router = Router();
 
   // Public routes (no authentication required)
+  /**
+   * @swagger
+   * /api/v1/businesses:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get all businesses with minimal details
+   *     description: Public endpoint that returns all active businesses with minimal public information (no authentication required)
+   *     parameters:
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           minimum: 1
+   *           default: 1
+   *         description: Page number for pagination
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           minimum: 1
+   *           maximum: 100
+   *           default: 20
+   *         description: Number of businesses per page
+   *     responses:
+   *       200:
+   *         description: List of businesses with minimal details
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id:
+   *                         type: string
+   *                         example: "biz_123456789"
+   *                       name:
+   *                         type: string
+   *                         example: "Hair & Beauty Salon"
+   *                       slug:
+   *                         type: string
+   *                         example: "hair-beauty-salon"
+   *                       description:
+   *                         type: string
+   *                         nullable: true
+   *                         example: "Professional hair and beauty services"
+   *                       city:
+   *                         type: string
+   *                         nullable: true
+   *                         example: "Istanbul"
+   *                       state:
+   *                         type: string
+   *                         nullable: true
+   *                         example: "Istanbul"
+   *                       country:
+   *                         type: string
+   *                         nullable: true
+   *                         example: "Turkey"
+   *                       logoUrl:
+   *                         type: string
+   *                         nullable: true
+   *                         example: "https://example.com/logo.png"
+   *                       coverImageUrl:
+   *                         type: string
+   *                         nullable: true
+   *                         example: "https://example.com/cover.jpg"
+   *                       primaryColor:
+   *                         type: string
+   *                         nullable: true
+   *                         example: "#FF6B6B"
+   *                       isVerified:
+   *                         type: boolean
+   *                         example: true
+   *                       isClosed:
+   *                         type: boolean
+   *                         example: false
+   *                       tags:
+   *                         type: array
+   *                         items:
+   *                           type: string
+   *                         example: ["hair", "beauty", "salon"]
+   *                       businessType:
+   *                         type: object
+   *                         properties:
+   *                           id:
+   *                             type: string
+   *                             example: "beauty_salon"
+   *                           name:
+   *                             type: string
+   *                             example: "beauty_salon"
+   *                           displayName:
+   *                             type: string
+   *                             example: "Beauty Salon"
+   *                           icon:
+   *                             type: string
+   *                             nullable: true
+   *                             example: "💇‍♀️"
+   *                           category:
+   *                             type: string
+   *                             example: "Beauty & Wellness"
+   *                 meta:
+   *                   type: object
+   *                   properties:
+   *                     total:
+   *                       type: integer
+   *                       example: 150
+   *                     page:
+   *                       type: integer
+   *                       example: 1
+   *                     totalPages:
+   *                       type: integer
+   *                       example: 8
+   *                     limit:
+   *                       type: integer
+   *                       example: 20
+   *       500:
+   *         description: Internal server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Failed to retrieve businesses"
+   */
+  router.get('/', businessController.getAllBusinessesMinimalDetails.bind(businessController));
+  
   /**
    * @swagger
    * /api/v1/businesses/search:
@@ -83,8 +226,144 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
    */
   router.get('/slug-availability/:slug', businessController.checkSlugAvailability.bind(businessController));
 
-  // Protected routes (authentication required)
-  router.use(authenticateToken);
+  // Protected routes (authentication required) - MUST come before catch-all route
+  router.use(requireAuth);
+  router.use(attachBusinessContext);
+
+  // User's business access
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get user's business(es) based on role
+   *     description: Returns businesses the user owns or works at. Only OWNER and STAFF roles can access this endpoint.
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Business data retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Business data retrieved successfully"
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     businesses:
+   *                       type: array
+   *                       items:
+   *                         $ref: '#/components/schemas/BusinessData'
+   *       403:
+   *         description: Access denied - business role required
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: object
+   *                   properties:
+   *                     message:
+   *                       type: string
+   *                       example: "Access denied. Business role required."
+   *                     code:
+   *                       type: string
+   *                       example: "BUSINESS_ACCESS_DENIED"
+   */
+  router.get('/my-business', requireBusinessAccess, businessController.getMyBusiness.bind(businessController));
+
+  // User's services access
+  /**
+   * @swagger
+   * /api/v1/businesses/my-services:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get user's services from their businesses
+   *     description: Returns services from businesses the user owns or works at. Only OWNER and STAFF roles can access this endpoint.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: businessId
+   *         schema:
+   *           type: string
+   *         description: Filter by specific business
+   *       - in: query
+   *         name: active
+   *         schema:
+   *           type: boolean
+   *         description: Filter by service status
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           default: 1
+   *         description: Page number for pagination
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           default: 50
+   *         description: Number of services per page
+   *     responses:
+   *       200:
+   *         description: Services retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Services retrieved successfully"
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     services:
+   *                       type: array
+   *                       items:
+   *                         $ref: '#/components/schemas/ServiceData'
+   *                     total:
+   *                       type: integer
+   *                     page:
+   *                       type: integer
+   *                     totalPages:
+   *                       type: integer
+   *       403:
+   *         description: Access denied - business role required
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: object
+   *                   properties:
+   *                     message:
+   *                       type: string
+   *                       example: "Access denied. Business role required."
+   *                     code:
+   *                       type: string
+   *                       example: "BUSINESS_ACCESS_DENIED"
+   */
+  router.get('/my-services', requireBusinessAccess, businessController.getMyServices.bind(businessController));
 
   // Business CRUD operations
   /**
@@ -92,26 +371,109 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
    * /api/v1/businesses:
    *   post:
    *     tags: [Businesses]
-   *     summary: Create a business
+   *     summary: Create a new business
+   *     description: Create a new business for the authenticated user. Both CUSTOMER and OWNER roles can create businesses. CUSTOMER role users will be automatically upgraded to OWNER role for their business.
    *     security:
    *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/CreateBusinessRequest'
    *     responses:
-   *       200:
-   *         description: Business created
+   *       201:
+   *         description: Business created successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/CreateBusinessResponse'
+   *       400:
+   *         description: Bad request - validation error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Business name must be at least 2 characters"
+   *                   description: Validation error message
    *       401:
-   *         description: Unauthorized
+   *         description: Unauthorized - authentication required
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Authentication required"
    *       403:
-   *         description: Forbidden
+   *         description: Forbidden - insufficient permissions
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Only customers and business owners can create businesses"
+   *       429:
+   *         description: Too many requests - rate limit exceeded
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: object
+   *                   properties:
+   *                     message:
+   *                       type: string
+   *                       example: "Too many requests"
+   *                     retryAfter:
+   *                       type: integer
+   *                       example: 60
+   *                       description: Seconds to wait before retrying
+   *       500:
+   *         description: Internal server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Failed to create business"
+   *                   description: Internal server error message
    */
   router.post(
     '/',
-    requirePermission(PermissionName.CREATE_BUSINESS),
+    // Allow both CUSTOMER and OWNER roles to create businesses
+    // The service layer will handle role validation and upgrade
+    allowEmptyBusinessContext,
     businessController.createBusiness.bind(businessController)
   );
 
   /**
    * @swagger
-   * /api/v1/businesses/{id}:
+   * /api/v1/businesses/id/{id}:
    *   get:
    *     tags: [Businesses]
    *     summary: Get business by ID
@@ -134,14 +496,15 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
    *         description: Not found
    */
   router.get(
-    '/:id',
+    '/id/:id',
     requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
     businessController.getBusinessById.bind(businessController)
   );
 
+
   /**
    * @swagger
-   * /api/v1/businesses/{id}:
+   * /api/v1/businesses/id/{id}:
    *   put:
    *     tags: [Businesses]
    *     summary: Update a business
@@ -164,14 +527,15 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
    *         description: Not found
    */
   router.put(
-    '/:id',
+    '/id/:id',
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
+    requireSpecificBusinessAccess(),
     businessController.updateBusiness.bind(businessController)
   );
 
   /**
    * @swagger
-   * /api/v1/businesses/{id}:
+   * /api/v1/businesses/id/{id}:
    *   delete:
    *     tags: [Businesses]
    *     summary: Delete a business
@@ -194,8 +558,9 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
    *         description: Not found
    */
   router.delete(
-    '/:id',
+    '/id/:id',
     requireAny([PermissionName.DELETE_ALL_BUSINESSES, PermissionName.DELETE_OWN_BUSINESS]),
+    requireSpecificBusinessAccess(),
     businessController.deleteBusiness.bind(businessController)
   );
 
@@ -281,6 +646,7 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
   router.post(
     '/:id/close',
     requireAny([PermissionName.CLOSE_ALL_BUSINESSES, PermissionName.CLOSE_OWN_BUSINESS]),
+    requireSpecificBusinessAccess(),
     businessController.closeBusiness.bind(businessController)
   );
 
@@ -309,6 +675,7 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
   router.post(
     '/:id/reopen',
     requireAny([PermissionName.CLOSE_ALL_BUSINESSES, PermissionName.CLOSE_OWN_BUSINESS]),
+    requireSpecificBusinessAccess(),
     businessController.reopenBusiness.bind(businessController)
   );
 
@@ -338,6 +705,7 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
   router.put(
     '/:id/hours',
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
+    requireSpecificBusinessAccess(),
     businessController.updateBusinessHours.bind(businessController)
   );
 
@@ -366,6 +734,54 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
   router.get(
     '/:id/stats',
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
+    requireSpecificBusinessAccess(),
+    businessController.getBusinessStats.bind(businessController)
+  );
+
+  // Context-based stats route for user's businesses
+  /**
+   * @swagger
+   * /api/v1/businesses/my/stats:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get stats for all my businesses
+   *     description: Get statistics for all businesses the user owns or works at
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Business statistics
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   additionalProperties:
+   *                     type: object
+   *                     properties:
+   *                       totalAppointments:
+   *                         type: integer
+   *                         example: 125
+   *                       activeServices:
+   *                         type: integer
+   *                         example: 8
+   *                       totalStaff:
+   *                         type: integer
+   *                         example: 3
+   *                       isSubscribed:
+   *                         type: boolean
+   *                         example: true
+   *       403:
+   *         description: Access denied - business role required
+   */
+  router.get(
+    '/my/stats',
+    requireBusinessAccess,
     businessController.getBusinessStats.bind(businessController)
   );
 
@@ -477,6 +893,37 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
     '/admin/batch-close',
     requirePermission(PermissionName.CLOSE_ALL_BUSINESSES),
     businessController.batchCloseBusinesses.bind(businessController)
+  );
+
+  // Add a catch-all route that tries slug first, then ID if slug doesn't work
+  // MUST be last to avoid conflicting with specific routes
+  router.get(
+    '/:slugOrId',
+    async (req, res, next) => {
+      try {
+        // First try as a slug (public access) - includes services
+        const business = await businessController['businessService'].getBusinessBySlugWithServices(req.params.slugOrId);
+        if (business) {
+          return res.json({
+            success: true,
+            data: business
+          });
+        }
+        
+        // If slug doesn't work and user is authenticated, try as ID
+        if ((req as any).user) {
+          return withAuth((authReq, authRes) => businessController.getBusinessById(authReq, authRes))(req, res);
+        }
+        
+        // Not found
+        res.status(404).json({
+          success: false,
+          error: 'Business not found'
+        });
+      } catch (error) {
+        next(error);
+      }
+    }
   );
 
   return router;

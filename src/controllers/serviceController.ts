@@ -4,16 +4,16 @@ import {
   createServiceSchema, 
   updateServiceSchema 
 } from '../schemas/business.schemas';
-import { AuthenticatedRequest } from '../types/auth';
+import { AuthenticatedRequest, GuaranteedAuthRequest } from '../types/auth';
 
 export class ServiceController {
   constructor(private serviceService: ServiceService) {}
 
-  async createService(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async createService(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const validatedData = createServiceSchema.parse(req.body);
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const service = await this.serviceService.createService(userId, businessId, validatedData);
 
@@ -187,29 +187,6 @@ export class ServiceController {
     }
   }
 
-  async getServicesByCategory(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { businessId, category } = req.params;
-      const userId = req.user!.id;
-
-      const services = await this.serviceService.getServicesByCategory(userId, businessId, category);
-
-      res.json({
-        success: true,
-        data: services,
-        meta: {
-          total: services.length,
-          businessId,
-          category
-        }
-      });
-    } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
-    }
-  }
 
   async getServiceStats(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
@@ -453,39 +430,4 @@ export class ServiceController {
     }
   }
 
-  async batchUpdateCategory(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
-      const { serviceIds, category } = req.body;
-      const userId = req.user!.id;
-
-      if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
-        res.status(400).json({
-          success: false,
-          error: 'serviceIds array is required'
-        });
-        return;
-      }
-
-      if (!category || typeof category !== 'string' || category.trim().length === 0) {
-        res.status(400).json({
-          success: false,
-          error: 'category is required'
-        });
-        return;
-      }
-
-      await this.serviceService.batchUpdateCategory(userId, businessId, serviceIds, category.trim());
-
-      res.json({
-        success: true,
-        message: `${serviceIds.length} services updated to category "${category}"`
-      });
-    } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update service categories'
-      });
-    }
-  }
 }

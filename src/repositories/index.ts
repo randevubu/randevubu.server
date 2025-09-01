@@ -4,12 +4,15 @@ import { PrismaPhoneVerificationRepository } from './phoneVerificationRepository
 import { PrismaRefreshTokenRepository } from './refreshTokenRepository';
 import { PrismaAuditLogRepository } from './auditLogRepository';
 import { BusinessRepository } from './businessRepository';
+import { BusinessTypeRepository } from './businessTypeRepository';
 import { ServiceRepository } from './serviceRepository';
 import { AppointmentRepository } from './appointmentRepository';
 import { UserBehaviorRepository } from './userBehaviorRepository';
 import { BusinessClosureRepository } from './businessClosureRepository';
 import { SubscriptionRepository } from './subscriptionRepository';
 import { RoleRepository } from './roleRepository';
+import { DiscountCodeRepository } from './discountCodeRepository';
+import { UsageRepository } from './usageRepository';
 
 // Repository container for dependency injection
 export class RepositoryContainer {
@@ -18,12 +21,15 @@ export class RepositoryContainer {
   public readonly refreshTokenRepository: PrismaRefreshTokenRepository;
   public readonly auditLogRepository: PrismaAuditLogRepository;
   public readonly businessRepository: BusinessRepository;
+  public readonly businessTypeRepository: BusinessTypeRepository;
   public readonly serviceRepository: ServiceRepository;
   public readonly appointmentRepository: AppointmentRepository;
   public readonly userBehaviorRepository: UserBehaviorRepository;
   public readonly businessClosureRepository: BusinessClosureRepository;
   public readonly subscriptionRepository: SubscriptionRepository;
   public readonly roleRepository: RoleRepository;
+  public readonly discountCodeRepository: DiscountCodeRepository;
+  public readonly usageRepository: UsageRepository;
 
   constructor(private prisma: PrismaClient) {
     this.userRepository = new PrismaUserRepository(prisma);
@@ -31,12 +37,19 @@ export class RepositoryContainer {
     this.refreshTokenRepository = new PrismaRefreshTokenRepository(prisma);
     this.auditLogRepository = new PrismaAuditLogRepository(prisma);
     this.businessRepository = new BusinessRepository(prisma);
+    this.businessTypeRepository = new BusinessTypeRepository(prisma);
     this.serviceRepository = new ServiceRepository(prisma);
     this.appointmentRepository = new AppointmentRepository(prisma);
     this.userBehaviorRepository = new UserBehaviorRepository(prisma);
     this.businessClosureRepository = new BusinessClosureRepository(prisma);
     this.subscriptionRepository = new SubscriptionRepository(prisma);
     this.roleRepository = new RoleRepository(prisma);
+    this.discountCodeRepository = new DiscountCodeRepository(prisma);
+    this.usageRepository = new UsageRepository(prisma);
+  }
+
+  get prismaClient(): PrismaClient {
+    return this.prisma;
   }
 }
 
@@ -47,12 +60,15 @@ export {
   PrismaRefreshTokenRepository,
   PrismaAuditLogRepository,
   BusinessRepository,
+  BusinessTypeRepository,
   ServiceRepository,
   AppointmentRepository,
   UserBehaviorRepository,
   BusinessClosureRepository,
   SubscriptionRepository,
-  RoleRepository
+  RoleRepository,
+  DiscountCodeRepository,
+  UsageRepository
 };
 
 // Export interfaces for testing/mocking

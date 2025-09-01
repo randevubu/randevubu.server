@@ -1,0 +1,207 @@
+# User Strikes System Documentation
+
+## Overview
+
+The strikes system is a behavioral penalty mechanism designed to track and manage problematic user behavior in the RandevuBu appointment booking system. It primarily targets customers who frequently cancel appointments or fail to show up, helping businesses maintain service quality and reduce booking disruptions.
+
+## How Strikes Work
+
+### Strike Accumulation
+
+Users automatically receive strikes for the following behaviors:
+
+#### Automatic Strike Triggers
+- **No-shows**: When a customer fails to attend a confirmed appointment
+  - Location: `src/services/appointmentService.ts:393-396`
+- **Late cancellations**: Canceling too close to the appointment time
+  - Location: `src/services/appointmentService.ts:596-600`
+
+#### System-Based Strike Assignment (via cron jobs)
+- **Excessive weekly cancellations**: ≥3 cancellations per week
+- **Multiple weekly no-shows**: ≥2 no-shows per week  
+- **Excessive monthly cancellations**: ≥8 cancellations per month
+
+### Strike Consequences
+
+The system implements a **3-strike rule** with automatic banning:
+
+```typescript
+// Ban logic: 3 strikes = automatic ban
+if (newStrikes >= 3) {
+  isBanned = true;
+  banCount += 1;
+  
+  // Progressive ban duration
+  if (banCount === 1) {
+    bannedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 1 week
+  } else if (banCount === 2) {
+    bannedUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 1 month
+  } else {
+    bannedUntil = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 3 months
+  }
+}
+```
+
+#### Progressive Ban Duration
+- **1st offense**: 1 week ban
+- **2nd offense**: 1 month ban
+- **3rd+ offense**: 3 months ban
+
+### Strike Reset Mechanism
+
+- **Automatic reset**: Strikes automatically expire after **30 days**
+- **Manual removal**: Administrators can manually remove strikes via API
+- **Complete reset**: Occurs when user is unbanned
+
+## Database Schema
+
+The strikes system uses the following fields in the `user_behavior` table:
+
+```sql
+currentStrikes      INTEGER NOT NULL DEFAULT 0,
+lastStrikeDate      TIMESTAMP(3),
+strikeResetDate     TIMESTAMP(3), -- When strikes will reset (30 days from last strike)
+```
+
+### Key Indexes
+```sql
+CREATE INDEX "user_behavior_currentStrikes_idx" ON "public"."user_behavior"("currentStrikes");
+```
+
+## API Endpoints
+
+### Manual Strike Management
+
+#### Add Strike to Customer
+```http
+POST /api/v1/users/customers/{customerId}/strike
+```
+- **Permissions**: `MANAGE_STRIKES` or `MANAGE_USER_BEHAVIOR`
+- **Body**: `{ "reason": "string" }` (minimum 5 characters)
+
+#### Remove Strike (Admin Only)
+```http
+DELETE /api/v1/user-behavior/{userId}/strikes
+```
+- **Permissions**: `MANAGE_STRIKES`
+
+#### Batch Strike Actions
+```http
+POST /api/v1/users/customers/batch-action
+```
+- **Body**: 
+```json
+{
+  "action": "strike",
+  "userIds": ["userId1", "userId2"],
+  "reason": "Reason for strike"
+}
+```
+
+### System Processing Endpoints
+
+#### Process Automatic Strikes (System/Cron)
+```http
+POST /api/v1/user-behavior/process-automatic-strikes
+```
+- Analyzes user behavior patterns and adds strikes automatically
+- Returns: `{ processed: number, banned: number }`
+
+#### Reset Expired Strikes (System/Cron)
+```http
+POST /api/v1/user-behavior/reset-expired-strikes
+```
+- Removes strikes that have passed their 30-day expiration
+- Returns count of users whose strikes were reset
+
+## Permission System
+
+### Required Permissions
+- **MANAGE_STRIKES** (`user_behavior:manage_strikes`): Add/remove strikes
+- **MANAGE_USER_BEHAVIOR** (`user_behavior:manage`): General behavior management
+
+### Role Assignments
+- **Business Owners/Managers**: Can add strikes to their customers
+- **System Admins**: Can add/remove strikes and manage the entire system
+- **Staff**: Limited strike management based on role permissions
+
+## Integration Points
+
+### Appointment Service Integration
+Strikes are automatically added during appointment lifecycle events:
+
+```typescript
+// No-show strike
+await this.userBehaviorRepository.addStrike(
+  appointment.customerId,
+  'No-show for appointment'
+);
+
+// Late cancellation strike
+if (hoursUntilAppointment < 24) {
+  await this.userBehaviorRepository.addStrike(
+    customerId,
+    'Late cancellation (less than 24 hours notice)'
+  );
+}
+```
+
+### User Reliability Scoring
+Strikes directly impact user reliability scores:
+
+```typescript
+reliabilityScore -= behavior.currentStrikes * 10; // Strikes penalty
+
+// Risk assessment
+if (behavior.currentStrikes >= 2) {
+  riskLevel = 'HIGH';
+} else if (behavior.currentStrikes >= 1) {
+  riskLevel = 'MEDIUM';
+}
+```
+
+## Monitoring and Analytics
+
+### Key Metrics Tracked
+- Total strikes issued
+- Strike reset count
+- Ban rate due to strikes
+- User behavior patterns leading to strikes
+
+### Reporting Endpoints
+- User behavior summaries include current strike count
+- Business analytics show customer reliability metrics
+- System reports track strike effectiveness
+
+## Best Practices
+
+### For Businesses
+1. **Clear Communication**: Inform customers about the strike system in booking confirmations
+2. **Reasonable Policies**: Set appropriate cancellation windows to avoid excessive strikes
+3. **Manual Review**: Regularly review automatically assigned strikes for fairness
+
+### For System Administrators
+1. **Monitor Patterns**: Watch for unusual spike in strikes that might indicate system issues
+2. **Regular Cleanup**: Run expired strike cleanup regularly via cron jobs
+3. **Fair Appeals**: Provide mechanisms for users to appeal unfair strikes
+
+## Troubleshooting
+
+### Common Issues
+- **Strikes not resetting**: Check if `resetExpiredStrikes()` cron job is running
+- **Excessive strikes**: Review automatic strike criteria and adjust thresholds
+- **Permission errors**: Verify user roles have appropriate `MANAGE_STRIKES` permissions
+
+### Debugging Queries
+```sql
+-- Users with current strikes
+SELECT * FROM user_behavior WHERE "currentStrikes" > 0;
+
+-- Users with expired strikes
+SELECT * FROM user_behavior 
+WHERE "strikeResetDate" <= NOW() AND "currentStrikes" > 0;
+
+-- Recent strike activity
+SELECT * FROM user_behavior 
+WHERE "lastStrikeDate" >= NOW() - INTERVAL '7 days';
+```

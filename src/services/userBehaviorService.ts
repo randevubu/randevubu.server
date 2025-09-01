@@ -85,7 +85,7 @@ export class UserBehaviorService {
     requestingUserId: string,
     targetUserId: string,
     reason: string,
-    durationDays: number
+    durationDays?: number
   ): Promise<UserBehaviorData> {
     // Only admins can manually ban users
     await this.rbacService.requirePermission(requestingUserId, PermissionName.BAN_USERS);
@@ -94,7 +94,8 @@ export class UserBehaviorService {
       throw new Error('Ban reason must be at least 10 characters long');
     }
 
-    if (durationDays <= 0 || durationDays > 365) {
+    // Validate duration only if provided (for temporary bans)
+    if (durationDays !== undefined && (durationDays <= 0 || durationDays > 365)) {
       throw new Error('Ban duration must be between 1 and 365 days');
     }
 

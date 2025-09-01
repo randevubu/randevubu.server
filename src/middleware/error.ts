@@ -6,7 +6,8 @@ import {
   isOperationalError,
   InternalServerError,
   ErrorContext,
-  ErrorCode
+  ErrorCode,
+  createSecureErrorResponse
 } from '../types/errors';
 
 class RouteNotFoundError extends BaseError {
@@ -81,20 +82,8 @@ export const errorHandler = (
 
   logger[logLevel](`[${logData.requestId}] ${error.message}`, logData);
 
-  // Prepare response
-  const response: any = {
-    success: false,
-    error: {
-      message: error.message,
-      code: error.code,
-      requestId: error.context?.requestId || context.requestId,
-      ...(error.details && { details: error.details }),
-      ...(config.NODE_ENV === 'development' && { 
-        stack: err.stack,
-        context: error.context 
-      }),
-    },
-  };
+  // Create secure response using utility function
+  const response = createSecureErrorResponse(error);
 
   res.status(error.statusCode).json(response);
 };

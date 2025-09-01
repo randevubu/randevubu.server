@@ -12,12 +12,13 @@ import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec, swaggerUiOptions } from './config/swagger';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { logger } from './utils/logger';
-import { gracefulShutdown } from './utils/gracefulShutdown';
+import { gracefulShutdown, setServicesForShutdown } from './utils/gracefulShutdown';
 import { createRoutes } from './routes';
 import { ControllerContainer } from './controllers';
 import prisma from './lib/prisma';
 import { RepositoryContainer } from './repositories';
 import { ServiceContainer } from './services';
+import { initializeBusinessContextMiddleware } from './middleware/attachBusinessContext';
 
 const app: Express = express();
 const PORT = config.PORT;
@@ -163,8 +164,14 @@ app.get('/api-docs.json', (req: Request, res: Response) => {
 
 // Initialize dependencies
 const repositories = new RepositoryContainer(prisma);
-const services = new ServiceContainer(repositories);
+const services = new ServiceContainer(repositories, prisma);
 const controllers = new ControllerContainer(repositories, services);
+
+// Initialize business context middleware
+initializeBusinessContextMiddleware(repositories);
+
+// Set services for graceful shutdown
+setServicesForShutdown(services);
 
 // Mount API routes
 app.use('/api', createRoutes(controllers));
@@ -179,6 +186,18 @@ const server = app.listen(PORT, () => {
   logger.info(`📋 API Spec JSON: http://localhost:${PORT}/api-docs.json`);
   logger.info(`🌐 Environment: ${config.NODE_ENV}`);
   logger.info(`📊 API Version: ${config.API_VERSION}`);
+  
+  // Start subscription scheduler
+  if (config.NODE_ENV === 'production' || config.NODE_ENV === 'staging') {
+    services.subscriptionSchedulerService.start();
+    logger.info(`📅 Subscription scheduler started in ${config.NODE_ENV} mode`);
+  } else if (config.NODE_ENV === 'development') {
+    // Enable scheduler in development with accelerated testing schedules
+    services.subscriptionSchedulerService.start();
+    logger.info(`📅 Subscription scheduler started in DEVELOPMENT mode with accelerated schedules`);
+  } else {
+    logger.info(`📅 Subscription scheduler disabled in ${config.NODE_ENV} mode`);
+  }
 });
 
 process.on('SIGTERM', () => gracefulShutdown(server));

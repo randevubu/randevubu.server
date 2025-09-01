@@ -1,23 +1,22 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { RepositoryContainer } from '../../repositories';
 import { ServiceContainer } from '../../services';
 import { AuthController } from '../../controllers/authController';
 import { AuthMiddleware, rateLimitByUser } from '../../middleware/auth';
+import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { validateBody } from '../../middleware/validation';
 import { 
   sendVerificationSchema,
   verifyLoginSchema,
   refreshTokenSchema,
-  logoutSchema,
-  updateProfileSchema,
-  changePhoneSchema
+  logoutSchema
 } from '../../schemas/auth.schemas';
 import prisma from '../../lib/prisma';
 
 // Initialize dependencies
 const repositories = new RepositoryContainer(prisma);
-const services = new ServiceContainer(repositories);
+const services = new ServiceContainer(repositories, prisma);
 const authController = new AuthController(
   services.authService,
   services.phoneVerificationService,
@@ -243,189 +242,17 @@ router.post(
  */
 router.post(
   '/logout',
-  authMiddleware.authenticate,
+  requireAuth,
   validateBody(logoutSchema),
-  authController.logout
+  withAuth((req, res, next) => {
+    return authController.logout(req, res).catch(next);
+  })
 );
 
-/**
- * @swagger
- * /api/v1/auth/profile:
- *   get:
- *     tags: [User Management]
- *     summary: Get user profile
- *     description: Retrieve the authenticated user's profile information
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Profile retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ProfileResponse'
- *       401:
- *         description: Unauthorized - invalid or missing token
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.get(
-  '/profile',
-  authMiddleware.authenticate,
-  authController.getProfile
-);
 
-/**
- * @swagger
- * /api/v1/auth/profile:
- *   patch:
- *     tags: [User Management]
- *     summary: Update user profile
- *     description: Update the authenticated user's profile information
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/UpdateProfileRequest'
- *           example:
- *             firstName: "John"
- *             lastName: "Doe"
- *             timezone: "America/New_York"
- *             language: "en"
- *     responses:
- *       200:
- *         description: Profile updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ProfileResponse'
- *       400:
- *         description: Validation error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ValidationError'
- *       401:
- *         description: Unauthorized
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.patch(
-  '/profile',
-  authMiddleware.authenticate,
-  rateLimitByUser(20, 15 * 60 * 1000),
-  validateBody(updateProfileSchema),
-  authController.updateProfile
-);
 
-/**
- * @swagger
- * /api/v1/auth/change-phone:
- *   post:
- *     tags: [User Management]
- *     summary: Change user's phone number
- *     description: Change the authenticated user's phone number using a verification code
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/ChangePhoneRequest'
- *     responses:
- *       200:
- *         description: Phone changed successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       400:
- *         description: Validation error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ValidationError'
- *       401:
- *         description: Unauthorized
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.post(
-  '/change-phone',
-  authMiddleware.authenticate,
-  authRateLimit,
-  validateBody(changePhoneSchema),
-  authController.changePhone
-);
 
-/**
- * @swagger
- * /api/v1/auth/account:
- *   delete:
- *     tags: [User Management]
- *     summary: Delete user account
- *     description: Permanently delete the authenticated user's account
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Account deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       401:
- *         description: Unauthorized
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.delete(
-  '/account',
-  authMiddleware.authenticate,
-  authRateLimit,
-  authController.deleteAccount
-);
 
-/**
- * @swagger
- * /api/v1/auth/stats:
- *   get:
- *     tags: [User Management]
- *     summary: Get authentication stats
- *     description: Retrieve rate-limited stats for the authenticated user
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Stats retrieved
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       401:
- *         description: Unauthorized
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.get(
-  '/stats',
-  authMiddleware.authenticate,
-  rateLimitByUser(5, 60 * 1000),
-  authController.getStats
-);
+
 
 export default router;

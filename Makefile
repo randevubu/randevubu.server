@@ -45,6 +45,8 @@ help: ## Show available commands
 	@echo "  db-migrate   - Run database migrations"
 	@echo "  db-generate  - Generate Prisma client"
 	@echo "  db-seed-rbac - Setup RBAC system (roles & permissions)"
+	@echo "  db-seed-business - Seed business data (types, plans, businesses)"
+	@echo "  db-seed-customers - Seed customers and appointments"
 	@echo "  db-shell     - Access PostgreSQL shell"
 	@echo "  db-studio    - Open Prisma Studio (database GUI)"
 	@echo ""
@@ -122,6 +124,14 @@ db-seed-rbac: ## Seed RBAC system (roles, permissions)
 db-seed-business: ## Seed business data (types, subscription plans)
 	@docker compose exec app npm run db:seed-business
 	@echo "✅ Business data seeded"
+
+db-seed-customers: ## Seed customers and appointments data
+	@docker compose exec app npm run db:seed-customers
+	@echo "✅ Customers and appointments seeded"
+
+db-seed-discounts: ## Seed discount codes
+	@docker compose exec app ts-node prisma/seed-discount-codes.ts
+	@echo "✅ Discount codes seeded"
 
 db-reset: ## Reset database and reseed
 	@docker compose exec app npx prisma migrate reset --force

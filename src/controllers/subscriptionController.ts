@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { SubscriptionService } from '../services/subscriptionService';
 import { subscribeBusinessSchema } from '../schemas/business.schemas';
-import { AuthenticatedRequest } from '../types/auth';
+import { GuaranteedAuthRequest } from '../types/auth';
 import { SubscriptionStatus } from '../types/business';
 
 export class SubscriptionController {
@@ -84,11 +84,11 @@ export class SubscriptionController {
   }
 
   // Business subscription management
-  async subscribeBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async subscribeBusiness(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const validatedData = subscribeBusinessSchema.parse(req.body);
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const subscription = await this.subscriptionService.subscribeBusiness(
         userId,
@@ -109,10 +109,10 @@ export class SubscriptionController {
     }
   }
 
-  async getBusinessSubscription(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getBusinessSubscription(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const subscription = await this.subscriptionService.getBusinessSubscription(userId, businessId);
 
@@ -136,10 +136,10 @@ export class SubscriptionController {
     }
   }
 
-  async getSubscriptionHistory(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getSubscriptionHistory(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const subscriptions = await this.subscriptionService.getSubscriptionHistory(userId, businessId);
 
@@ -159,11 +159,11 @@ export class SubscriptionController {
     }
   }
 
-  async upgradePlan(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async upgradePlan(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const { newPlanId } = req.body;
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       if (!newPlanId || typeof newPlanId !== 'string') {
         res.status(400).json({
@@ -192,11 +192,11 @@ export class SubscriptionController {
     }
   }
 
-  async downgradePlan(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async downgradePlan(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const { newPlanId } = req.body;
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       if (!newPlanId || typeof newPlanId !== 'string') {
         res.status(400).json({
@@ -225,11 +225,11 @@ export class SubscriptionController {
     }
   }
 
-  async cancelSubscription(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async cancelSubscription(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const { cancelAtPeriodEnd = true } = req.body;
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const subscription = await this.subscriptionService.cancelSubscription(
         userId,
@@ -254,10 +254,10 @@ export class SubscriptionController {
     }
   }
 
-  async reactivateSubscription(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async reactivateSubscription(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const subscription = await this.subscriptionService.reactivateSubscription(
         userId,
@@ -277,11 +277,11 @@ export class SubscriptionController {
     }
   }
 
-  async convertTrialToActive(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async convertTrialToActive(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const { paymentMethodId } = req.body;
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const subscription = await this.subscriptionService.convertTrialToActive(
         userId,
@@ -302,10 +302,10 @@ export class SubscriptionController {
     }
   }
 
-  async checkSubscriptionLimits(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async checkSubscriptionLimits(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const limits = await this.subscriptionService.checkSubscriptionLimits(userId, businessId);
 
@@ -321,7 +321,7 @@ export class SubscriptionController {
     }
   }
 
-  async calculateUpgradeProration(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async calculateUpgradeProration(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { currentPlanId, newPlanId, currentPeriodEnd } = req.query;
 
@@ -360,7 +360,7 @@ export class SubscriptionController {
     }
   }
 
-  async validatePlanLimits(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async validatePlanLimits(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId, planId } = req.params;
 
@@ -379,9 +379,9 @@ export class SubscriptionController {
   }
 
   // Admin endpoints
-  async getAllSubscriptions(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getAllSubscriptions(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user!.id;
+      const userId = req.user.id;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
 
@@ -405,9 +405,9 @@ export class SubscriptionController {
     }
   }
 
-  async getSubscriptionStats(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getSubscriptionStats(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const stats = await this.subscriptionService.getSubscriptionStats(userId);
 
@@ -423,9 +423,9 @@ export class SubscriptionController {
     }
   }
 
-  async getTrialsEndingSoon(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getTrialsEndingSoon(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user!.id;
+      const userId = req.user.id;
       const days = parseInt(req.query.days as string) || 3;
 
       if (days < 1 || days > 30) {
@@ -454,9 +454,9 @@ export class SubscriptionController {
     }
   }
 
-  async getExpiredSubscriptions(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getExpiredSubscriptions(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const expired = await this.subscriptionService.getExpiredSubscriptions(userId);
 
@@ -475,11 +475,11 @@ export class SubscriptionController {
     }
   }
 
-  async forceUpdateSubscriptionStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async forceUpdateSubscriptionStatus(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { subscriptionId } = req.params;
       const { status, reason } = req.body;
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       if (!Object.values(SubscriptionStatus).includes(status)) {
         res.status(400).json({
@@ -510,7 +510,7 @@ export class SubscriptionController {
   }
 
   // System endpoints
-  async processExpiredSubscriptions(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async processExpiredSubscriptions(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       // This would typically be restricted to system calls
       const result = await this.subscriptionService.processExpiredSubscriptions();
@@ -528,7 +528,7 @@ export class SubscriptionController {
     }
   }
 
-  async processSubscriptionRenewals(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async processSubscriptionRenewals(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       // System endpoint for processing renewals
       const result = await this.subscriptionService.processSubscriptionRenewals();
@@ -546,7 +546,7 @@ export class SubscriptionController {
     }
   }
 
-  async sendTrialEndingNotifications(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async sendTrialEndingNotifications(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       // System endpoint
       const count = await this.subscriptionService.sendTrialEndingNotifications();
@@ -565,10 +565,10 @@ export class SubscriptionController {
   }
 
   // Utility endpoints
-  async getSubscriptionsByStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getSubscriptionsByStatus(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { status } = req.params;
-      const userId = req.user!.id;
+      const userId = req.user.id;
       
       if (!Object.values(SubscriptionStatus).includes(status as SubscriptionStatus)) {
         res.status(400).json({
@@ -591,10 +591,10 @@ export class SubscriptionController {
     }
   }
 
-  async getSubscriptionsByPlan(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getSubscriptionsByPlan(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { planId } = req.params;
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       // This would need to be implemented in the service
       res.status(501).json({
@@ -609,9 +609,9 @@ export class SubscriptionController {
     }
   }
 
-  async getBusinessesWithoutSubscription(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getBusinessesWithoutSubscription(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       // This would need to be implemented in the service
       res.status(501).json({
@@ -626,9 +626,9 @@ export class SubscriptionController {
     }
   }
 
-  async getRevenueAnalytics(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getRevenueAnalytics(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user!.id;
+      const userId = req.user.id;
       const { startDate, endDate } = req.query;
 
       // This would need to be implemented in the service

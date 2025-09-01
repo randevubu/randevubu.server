@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { ServiceController } from '../../controllers/serviceController';
-import { authenticateToken, requirePermission, requireAny } from '../../middleware/authUtils';
+import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
 
 export function createServiceRoutes(serviceController: ServiceController): Router {
@@ -43,7 +43,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
   router.get('/:id/availability', serviceController.checkServiceAvailability.bind(serviceController));
 
   // Protected routes
-  router.use(authenticateToken);
+  router.use(requireAuth);
 
   // Service CRUD operations
   /**
@@ -52,6 +52,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *   post:
    *     tags: [Services]
    *     summary: Create a service for a business
+   *     description: Create a new service for a specific business. Requires MANAGE_ALL_SERVICES or MANAGE_OWN_SERVICES permission.
    *     security:
    *       - bearerAuth: []
    *     parameters:
@@ -60,18 +61,70 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *         required: true
    *         schema:
    *           type: string
+   *           description: The ID of the business to create the service for
+   *           example: 'clh7j2k3l0000qwerty123456'
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/CreateServiceRequest'
+   *           examples:
+   *             basic_service:
+   *               summary: Basic Service
+   *               value:
+   *                 name: 'Saç Kesim ve Şekillendirme'
+   *                 description: 'Profesyonel saç kesim ve şekillendirme hizmeti'
+   *                 duration: 60
+   *                 price: 150.00
+   *                 currency: 'TRY'
+   *             detailed_service:
+   *               summary: Detailed Service with All Fields
+   *               value:
+   *                 name: 'Tam Vücut Masajı'
+   *                 description: 'Rahatlatıcı tam vücut masaj terapisi'
+   *                 duration: 90
+   *                 price: 350.00
+   *                 currency: 'TRY'
+   *                 bufferTime: 15
+   *                 maxAdvanceBooking: 30
+   *                 minAdvanceBooking: 2
    *     responses:
-   *       200:
-   *         description: Service created
+   *       201:
+   *         description: Service created successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/CreateServiceResponse'
+   *       400:
+   *         description: Bad request - validation error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ValidationError'
    *       401:
-   *         description: Unauthorized
+   *         description: Unauthorized - invalid or missing token
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
    *       403:
-   *         description: Forbidden
+   *         description: Forbidden - insufficient permissions
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *       404:
+   *         description: Business not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
    */
   router.post(
     '/business/:businessId',
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    serviceController.createService.bind(serviceController)
+    withAuth(serviceController.createService.bind(serviceController))
   );
 
   /**
@@ -110,6 +163,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *   put:
    *     tags: [Services]
    *     summary: Update a service
+   *     description: Update an existing service. Requires MANAGE_ALL_SERVICES or MANAGE_OWN_SERVICES permission. Only business owners or staff can update services for their business.
    *     security:
    *       - bearerAuth: []
    *     parameters:
@@ -118,15 +172,159 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *         required: true
    *         schema:
    *           type: string
+   *           description: The unique identifier of the service to update
+   *           example: 'svc_1703251200000_abc123'
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               name:
+   *                 type: string
+   *                 minLength: 2
+   *                 maxLength: 100
+   *                 description: Service name (2-100 characters)
+   *                 example: 'Saç Kesim ve Şekillendirme'
+   *               description:
+   *                 type: string
+   *                 maxLength: 500
+   *                 description: Service description (optional, max 500 characters)
+   *                 example: 'Profesyonel saç kesim ve şekillendirme hizmeti'
+   *               duration:
+   *                 type: integer
+   *                 minimum: 15
+   *                 maximum: 480
+   *                 description: Service duration in minutes (15-480 minutes)
+   *                 example: 60
+   *               price:
+   *                 type: number
+   *                 format: float
+   *                 minimum: 0
+   *                 maximum: 10000
+   *                 description: Service price (0-10,000)
+   *                 example: 150.00
+   *               currency:
+   *                 type: string
+   *                 minLength: 3
+   *                 maxLength: 3
+   *                 description: Currency code (3 characters)
+   *                 example: 'TRY'
+   *               isActive:
+   *                 type: boolean
+   *                 description: Whether the service is active/available
+   *                 example: true
+   *               sortOrder:
+   *                 type: integer
+   *                 minimum: 0
+   *                 description: Display order for sorting services
+   *                 example: 1
+   *               bufferTime:
+   *                 type: integer
+   *                 minimum: 0
+   *                 maximum: 120
+   *                 description: Buffer time in minutes after service (0-120 minutes)
+   *                 example: 15
+   *               maxAdvanceBooking:
+   *                 type: integer
+   *                 minimum: 0
+   *                 maximum: 365
+   *                 description: Maximum days in advance for booking (0-365 days)
+   *                 example: 30
+   *               minAdvanceBooking:
+   *                 type: integer
+   *                 minimum: 0
+   *                 maximum: 30
+   *                 description: Minimum days in advance required for booking (0-30 days)
+   *                 example: 0
+   *           examples:
+   *             update_basic:
+   *               summary: Update Basic Service Info
+   *               value:
+   *                 name: 'Kadın Saç Kesimi'
+   *                 description: 'Güncellenmiş profesyonel kadın saç kesimi'
+   *                 price: 175.00
+   *             update_comprehensive:
+   *               summary: Update All Service Details
+   *               value:
+   *                 name: 'Premium Saç Kesimi'
+   *                 description: 'Premium saç kesim ve şekillendirme paketi'
+   *                 duration: 75
+   *                 price: 200.00
+   *                 currency: 'TRY'
+   *                 isActive: true
+   *                 sortOrder: 1
+   *                 bufferTime: 20
+   *                 maxAdvanceBooking: 45
+   *                 minAdvanceBooking: 1
    *     responses:
    *       200:
-   *         description: Service updated
+   *         description: Service updated successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: 'Service updated successfully'
+   *                 data:
+   *                   $ref: '#/components/schemas/ServiceData'
+   *       400:
+   *         description: Bad request - validation error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: 'Validation failed: name is required'
    *       401:
-   *         description: Unauthorized
+   *         description: Unauthorized - invalid or missing token
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
    *       403:
-   *         description: Forbidden
+   *         description: Forbidden - insufficient permissions or not your business
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: object
+   *                   properties:
+   *                     message:
+   *                       type: string
+   *                       example: 'Access denied'
+   *                     code:
+   *                       type: string
+   *                       example: 'FORBIDDEN'
    *       404:
-   *         description: Not found
+   *         description: Service not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: 'Service not found'
    */
   router.put(
     '/:id',
@@ -140,6 +338,15 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *   delete:
    *     tags: [Services]
    *     summary: Delete a service
+   *     description: |
+   *       Delete a service from your business. This performs a soft delete by setting isActive to false.
+   *       Requires MANAGE_ALL_SERVICES or MANAGE_OWN_SERVICES permission. Only business owners or staff can delete services for their business.
+   *       
+   *       **Important Notes:**
+   *       - This is a soft delete - the service becomes inactive but data is preserved
+   *       - Existing appointments with this service are not affected
+   *       - Service can be reactivated later if needed
+   *       - Cannot delete services with future appointments (implement business logic check)
    *     security:
    *       - bearerAuth: []
    *     parameters:
@@ -148,15 +355,113 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *         required: true
    *         schema:
    *           type: string
+   *           description: The unique identifier of the service to delete
+   *           example: 'svc_1703251200000_abc123'
    *     responses:
    *       200:
-   *         description: Service deleted
+   *         description: Service deleted successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: 'Service deleted successfully'
+   *             examples:
+   *               success:
+   *                 summary: Successful deletion
+   *                 value:
+   *                   success: true
+   *                   message: 'Service deleted successfully'
+   *       400:
+   *         description: Bad request - cannot delete service
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   examples:
+   *                     - 'Cannot delete service with future appointments'
+   *                     - 'Service is required by active business operations'
+   *             examples:
+   *               has_appointments:
+   *                 summary: Service has future appointments
+   *                 value:
+   *                   success: false
+   *                   error: 'Cannot delete service with 3 future appointments. Please reschedule or cancel them first.'
    *       401:
-   *         description: Unauthorized
+   *         description: Unauthorized - invalid or missing token
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
    *       403:
-   *         description: Forbidden
+   *         description: Forbidden - insufficient permissions or not your business
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: object
+   *                   properties:
+   *                     message:
+   *                       type: string
+   *                       example: 'Access denied'
+   *                     code:
+   *                       type: string
+   *                       example: 'FORBIDDEN'
+   *                     requestId:
+   *                       type: string
+   *                       example: 'req_abc123'
+   *             examples:
+   *               not_owner:
+   *                 summary: User doesn't own this business
+   *                 value:
+   *                   success: false
+   *                   error:
+   *                     message: 'Access denied. You can only manage services for your own business.'
+   *                     code: 'FORBIDDEN'
+   *                     requestId: 'req_xyz789'
+   *               no_permission:
+   *                 summary: User lacks required permissions
+   *                 value:
+   *                   success: false
+   *                   error:
+   *                     message: 'Access denied'
+   *                     code: 'FORBIDDEN'
+   *                     requestId: 'req_def456'
    *       404:
-   *         description: Not found
+   *         description: Service not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: 'Service not found'
+   *             examples:
+   *               not_found:
+   *                 summary: Service doesn't exist
+   *                 value:
+   *                   success: false
+   *                   error: 'Service not found or has been deleted'
    */
   router.delete(
     '/:id',
@@ -221,38 +526,6 @@ export function createServiceRoutes(serviceController: ServiceController): Route
     serviceController.reorderServices.bind(serviceController)
   );
 
-  /**
-   * @swagger
-   * /api/v1/services/business/{businessId}/category/{category}:
-   *   get:
-   *     tags: [Services]
-   *     summary: Get services by category for a business
-   *     security:
-   *       - bearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: businessId
-   *         required: true
-   *         schema:
-   *           type: string
-   *       - in: path
-   *         name: category
-   *         required: true
-   *         schema:
-   *           type: string
-   *     responses:
-   *       200:
-   *         description: List of services
-   *       401:
-   *         description: Unauthorized
-   *       403:
-   *         description: Forbidden
-   */
-  router.get(
-    '/business/:businessId/category/:category',
-    requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),
-    serviceController.getServicesByCategory.bind(serviceController)
-  );
 
   /**
    * @swagger
@@ -452,33 +725,6 @@ export function createServiceRoutes(serviceController: ServiceController): Route
     serviceController.batchDeleteServices.bind(serviceController)
   );
 
-  /**
-   * @swagger
-   * /api/v1/services/business/{businessId}/batch-update-category:
-   *   post:
-   *     tags: [Services]
-   *     summary: Batch update service categories
-   *     security:
-   *       - bearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: businessId
-   *         required: true
-   *         schema:
-   *           type: string
-   *     responses:
-   *       200:
-   *         description: Categories updated
-   *       401:
-   *         description: Unauthorized
-   *       403:
-   *         description: Forbidden
-   */
-  router.post(
-    '/business/:businessId/batch-update-category',
-    requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    serviceController.batchUpdateCategory.bind(serviceController)
-  );
 
   return router;
 }

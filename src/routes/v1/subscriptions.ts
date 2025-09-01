@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { SubscriptionController } from '../../controllers/subscriptionController';
-import { authenticateToken, requirePermission, requireAny } from '../../middleware/authUtils';
+import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
 
 export function createSubscriptionRoutes(subscriptionController: SubscriptionController): Router {
@@ -57,7 +57,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get('/plans/billing/:interval', subscriptionController.getPlansByBillingInterval.bind(subscriptionController));
 
   // Protected routes
-  router.use(authenticateToken);
+  router.use(requireAuth);
 
   // Business subscription management
   /**
@@ -85,7 +85,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/subscribe',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    subscriptionController.subscribeBusiness.bind(subscriptionController)
+    withAuth(subscriptionController.subscribeBusiness.bind(subscriptionController))
   );
 
   /**
@@ -113,7 +113,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/business/:businessId',
     requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
-    subscriptionController.getBusinessSubscription.bind(subscriptionController)
+    withAuth(subscriptionController.getBusinessSubscription.bind(subscriptionController))
   );
 
   /**
@@ -141,7 +141,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/business/:businessId/history',
     requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
-    subscriptionController.getSubscriptionHistory.bind(subscriptionController)
+    withAuth(subscriptionController.getSubscriptionHistory.bind(subscriptionController))
   );
 
   /**
@@ -169,7 +169,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/business/:businessId/limits',
     requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
-    subscriptionController.checkSubscriptionLimits.bind(subscriptionController)
+    withAuth(subscriptionController.checkSubscriptionLimits.bind(subscriptionController))
   );
 
   // Plan changes
@@ -198,7 +198,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/upgrade',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    subscriptionController.upgradePlan.bind(subscriptionController)
+    withAuth(subscriptionController.upgradePlan.bind(subscriptionController))
   );
 
   /**
@@ -226,7 +226,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/downgrade',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    subscriptionController.downgradePlan.bind(subscriptionController)
+    withAuth(subscriptionController.downgradePlan.bind(subscriptionController))
   );
 
   // Subscription lifecycle
@@ -236,6 +236,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    *   post:
    *     tags: [Subscriptions]
    *     summary: Cancel business subscription
+   *     description: Cancel a business subscription either immediately or at the end of the current billing period
    *     security:
    *       - bearerAuth: []
    *     parameters:
@@ -244,18 +245,119 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    *         required: true
    *         schema:
    *           type: string
+   *         description: ID of the business to cancel subscription for
+   *     requestBody:
+   *       required: false
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               cancelAtPeriodEnd:
+   *                 type: boolean
+   *                 default: true
+   *                 description: If true, cancellation takes effect at the end of current billing period. If false, cancels immediately.
+   *             example:
+   *               cancelAtPeriodEnd: true
    *     responses:
    *       200:
-   *         description: Subscription canceled
+   *         description: Subscription canceled successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     id:
+   *                       type: string
+   *                       description: Subscription ID
+   *                     businessId:
+   *                       type: string
+   *                       description: Business ID
+   *                     planId:
+   *                       type: string
+   *                       description: Plan ID
+   *                     status:
+   *                       type: string
+   *                       enum: [active, cancelled, expired, trial]
+   *                       description: Updated subscription status
+   *                     currentPeriodEnd:
+   *                       type: string
+   *                       format: date-time
+   *                       description: End date of current billing period
+   *                     cancelAtPeriodEnd:
+   *                       type: boolean
+   *                       description: Whether cancellation is scheduled for period end
+   *                     cancelledAt:
+   *                       type: string
+   *                       format: date-time
+   *                       nullable: true
+   *                       description: When the subscription was cancelled
+   *                 message:
+   *                   type: string
+   *                   example: "Subscription will be cancelled at period end"
+   *       400:
+   *         description: Bad request
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Failed to cancel subscription"
    *       401:
-   *         description: Unauthorized
+   *         description: Unauthorized - Authentication required
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Unauthorized"
    *       403:
-   *         description: Forbidden
+   *         description: Forbidden - Insufficient permissions
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Access denied"
+   *       404:
+   *         description: Subscription not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "No active subscription found"
    */
   router.post(
     '/business/:businessId/cancel',
-    requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    subscriptionController.cancelSubscription.bind(subscriptionController)
+    requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.CANCEL_OWN_SUBSCRIPTION]),
+    withAuth(subscriptionController.cancelSubscription.bind(subscriptionController))
   );
 
   /**
@@ -283,7 +385,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/reactivate',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    subscriptionController.reactivateSubscription.bind(subscriptionController)
+    withAuth(subscriptionController.reactivateSubscription.bind(subscriptionController))
   );
 
   /**
@@ -311,7 +413,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/convert-trial',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    subscriptionController.convertTrialToActive.bind(subscriptionController)
+    withAuth(subscriptionController.convertTrialToActive.bind(subscriptionController))
   );
 
   // Utility endpoints
@@ -327,7 +429,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    */
   router.get(
     '/calculate-proration',
-    subscriptionController.calculateUpgradeProration.bind(subscriptionController)
+    withAuth(subscriptionController.calculateUpgradeProration.bind(subscriptionController))
   );
 
   /**
@@ -360,7 +462,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/business/:businessId/validate-plan/:planId',
     requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
-    subscriptionController.validatePlanLimits.bind(subscriptionController)
+    withAuth(subscriptionController.validatePlanLimits.bind(subscriptionController))
   );
 
   // Admin routes
@@ -383,7 +485,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/all',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    subscriptionController.getAllSubscriptions.bind(subscriptionController)
+    withAuth(subscriptionController.getAllSubscriptions.bind(subscriptionController))
   );
 
   /**
@@ -405,7 +507,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/stats',
     requirePermission(PermissionName.VIEW_ALL_ANALYTICS),
-    subscriptionController.getSubscriptionStats.bind(subscriptionController)
+    withAuth(subscriptionController.getSubscriptionStats.bind(subscriptionController))
   );
 
   /**
@@ -427,7 +529,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/trials-ending',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    subscriptionController.getTrialsEndingSoon.bind(subscriptionController)
+    withAuth(subscriptionController.getTrialsEndingSoon.bind(subscriptionController))
   );
 
   /**
@@ -449,7 +551,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/expired',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    subscriptionController.getExpiredSubscriptions.bind(subscriptionController)
+    withAuth(subscriptionController.getExpiredSubscriptions.bind(subscriptionController))
   );
 
   /**
@@ -477,7 +579,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/status/:status',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    subscriptionController.getSubscriptionsByStatus.bind(subscriptionController)
+    withAuth(subscriptionController.getSubscriptionsByStatus.bind(subscriptionController))
   );
 
   /**
@@ -505,7 +607,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/plan/:planId',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    subscriptionController.getSubscriptionsByPlan.bind(subscriptionController)
+    withAuth(subscriptionController.getSubscriptionsByPlan.bind(subscriptionController))
   );
 
   /**
@@ -527,7 +629,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/businesses-without-subscription',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    subscriptionController.getBusinessesWithoutSubscription.bind(subscriptionController)
+    withAuth(subscriptionController.getBusinessesWithoutSubscription.bind(subscriptionController))
   );
 
   /**
@@ -549,7 +651,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/revenue-analytics',
     requirePermission(PermissionName.VIEW_ALL_ANALYTICS),
-    subscriptionController.getRevenueAnalytics.bind(subscriptionController)
+    withAuth(subscriptionController.getRevenueAnalytics.bind(subscriptionController))
   );
 
   // Admin subscription management
@@ -580,7 +682,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.put(
     '/admin/:subscriptionId/status',
     requirePermission(PermissionName.MANAGE_ALL_SUBSCRIPTIONS),
-    subscriptionController.forceUpdateSubscriptionStatus.bind(subscriptionController)
+    withAuth(subscriptionController.forceUpdateSubscriptionStatus.bind(subscriptionController))
   );
 
   // System maintenance endpoints
@@ -603,7 +705,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/admin/process-expired',
     requirePermission(PermissionName.MANAGE_ALL_SUBSCRIPTIONS),
-    subscriptionController.processExpiredSubscriptions.bind(subscriptionController)
+    withAuth(subscriptionController.processExpiredSubscriptions.bind(subscriptionController))
   );
 
   /**
@@ -625,7 +727,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/admin/process-renewals',
     requirePermission(PermissionName.MANAGE_ALL_SUBSCRIPTIONS),
-    subscriptionController.processSubscriptionRenewals.bind(subscriptionController)
+    withAuth(subscriptionController.processSubscriptionRenewals.bind(subscriptionController))
   );
 
   /**
@@ -647,7 +749,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/admin/send-trial-notifications',
     requirePermission(PermissionName.MANAGE_ALL_SUBSCRIPTIONS),
-    subscriptionController.sendTrialEndingNotifications.bind(subscriptionController)
+    withAuth(subscriptionController.sendTrialEndingNotifications.bind(subscriptionController))
   );
 
   return router;

@@ -16,6 +16,20 @@ export class BusinessClosureService {
     private rbacService: RBACService
   ) {}
 
+  private parseDate(dateString: string): Date {
+    // Check if it's a date-only string (YYYY-MM-DD)
+    const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
+    
+    if (dateOnlyRegex.test(dateString)) {
+      // For date-only strings, create a date in local timezone at start of day
+      const [year, month, day] = dateString.split('-').map(Number);
+      return new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+    }
+    
+    // For datetime strings, use normal parsing
+    return new Date(dateString);
+  }
+
   async createClosure(
     userId: string,
     businessId: string,
@@ -32,17 +46,21 @@ export class BusinessClosureService {
       );
     }
 
-    // Validate dates
-    const startDate = new Date(data.startDate);
-    const endDate = data.endDate ? new Date(data.endDate) : undefined;
+    // Validate dates - handle date-only strings properly
+    const startDate = this.parseDate(data.startDate);
+    const endDate = data.endDate ? this.parseDate(data.endDate) : undefined;
     const now = new Date();
+    
+    // Allow a small buffer (5 minutes) to account for time differences and request processing
+    const bufferMs = 5 * 60 * 1000; // 5 minutes in milliseconds
+    const minimumAllowedTime = new Date(now.getTime() - bufferMs);
 
-    if (startDate <= now) {
-      throw new Error('Closure start date must be in the future');
+    if (startDate < minimumAllowedTime) {
+      throw new Error('Closure start date cannot be in the past');
     }
 
-    if (endDate && endDate <= startDate) {
-      throw new Error('Closure end date must be after start date');
+    if (endDate && endDate < startDate) {
+      throw new Error('Closure end date must be at or after start date');
     }
 
     // Check for conflicting closures
@@ -436,15 +454,19 @@ export class BusinessClosureService {
     startDate: Date,
     endDate?: Date
   ): Promise<any[]> {
-    const searchFilters = {
+    // Use the actual end date or set to end of the start date if not provided
+    const closureEndDate = endDate || new Date(startDate.getTime() + 24 * 60 * 60 * 1000 - 1); // End of day
+    
+    // Find appointments that overlap with the closure period
+    const appointments = await this.appointmentRepository.findByBusinessAndDateRange(
       businessId,
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate?.toISOString().split('T')[0] || startDate.toISOString().split('T')[0]
-    };
+      startDate,
+      closureEndDate
+    );
 
-    const result = await this.appointmentRepository.search(searchFilters, 1, 1000);
-    return result.appointments.filter(apt => 
-      ['PENDING', 'CONFIRMED'].includes(apt.status)
+    // Filter to only include active appointments
+    return appointments.filter((apt: any) => 
+      apt.status === 'CONFIRMED'
     );
   }
 

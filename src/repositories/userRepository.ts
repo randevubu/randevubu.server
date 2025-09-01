@@ -199,6 +199,153 @@ export class PrismaUserRepository implements UserRepository {
     });
   }
 
+  async findCustomersByUserBusinesses(userId: string, filters?: {
+    search?: string;
+    page?: number;
+    limit?: number;
+    status?: string;
+    sortBy?: string;
+    sortOrder?: string;
+  }): Promise<{
+    customers: UserProfile[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 50;
+    const skip = (page - 1) * limit;
+    
+    // Build sort order
+    const sortBy = filters?.sortBy || 'createdAt';
+    const sortOrder = filters?.sortOrder || 'desc';
+    const orderBy: any = {};
+    orderBy[sortBy] = sortOrder;
+
+    // Build where clause for customers with appointments at user's businesses
+    const whereClause: any = {
+      appointments: {
+        some: {
+          business: {
+            OR: [
+              // Businesses owned by user
+              { ownerId: userId },
+              // Businesses where user is active staff
+              { 
+                staff: { 
+                  some: { 
+                    userId, 
+                    isActive: true, 
+                    leftAt: null 
+                  } 
+                } 
+              }
+            ]
+          }
+        }
+      },
+      isActive: true
+    };
+
+    // Build additional filters array
+    const additionalFilters = [];
+
+    // Apply search filter
+    if (filters?.search) {
+      additionalFilters.push({
+        OR: [
+          { firstName: { contains: filters.search, mode: 'insensitive' } },
+          { lastName: { contains: filters.search, mode: 'insensitive' } },
+          { phoneNumber: { contains: filters.search } }
+        ]
+      });
+    }
+
+    // Apply status filter
+    if (filters?.status && filters.status !== 'all') {
+      const now = new Date();
+      switch (filters.status) {
+        case 'banned':
+          additionalFilters.push({
+            behavior: {
+              isBanned: true,
+              OR: [
+                { bannedUntil: null }, // Permanent ban
+                { bannedUntil: { gt: now } } // Temporary ban still active
+              ]
+            }
+          });
+          break;
+        case 'flagged':
+          // Add flagged logic if you have a flag system
+          break;
+        case 'active':
+          additionalFilters.push({
+            OR: [
+              { behavior: null }, // No behavior record
+              { behavior: { isBanned: false } }, // Not banned
+              { behavior: { isBanned: true, bannedUntil: { lte: now } } } // Ban expired
+            ]
+          });
+          break;
+      }
+    }
+
+    // Combine all filters with AND
+    if (additionalFilters.length > 0) {
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        ...additionalFilters
+      ];
+    }
+
+    const [customers, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          phoneNumber: true,
+          firstName: true,
+          lastName: true,
+          avatar: true,
+          timezone: true,
+          language: true,
+          isVerified: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+          lastLoginAt: true,
+          behavior: {
+            select: {
+              isBanned: true,
+              bannedUntil: true,
+              banReason: true,
+              currentStrikes: true
+            }
+          }
+        },
+        orderBy,
+        skip,
+        take: limit,
+        distinct: ['id'] // Remove duplicates if customer has multiple appointments
+      }),
+      this.prisma.user.count({ where: whereClause })
+    ]);
+
+    return {
+      customers: customers.map(customer => ({
+        ...customer,
+        isBanned: customer.behavior?.isBanned ?? false,
+        bannedUntil: customer.behavior?.bannedUntil ?? null,
+        banReason: customer.behavior?.banReason ?? null,
+        currentStrikes: customer.behavior?.currentStrikes ?? 0
+      })),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit)
+    };
+  }
+
   async getUserStats(): Promise<UserStats> {
     const [totalUsers, activeUsers, verifiedUsers, newUsersToday] = await Promise.all([
       this.prisma.user.count(),

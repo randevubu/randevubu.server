@@ -1,14 +1,14 @@
 import { Request, Response } from 'express';
 import { UserBehaviorService } from '../services/userBehaviorService';
-import { AuthenticatedRequest } from '../types/auth';
+import { GuaranteedAuthRequest } from '../types/auth';
 
 export class UserBehaviorController {
   constructor(private userBehaviorService: UserBehaviorService) {}
 
-  async getUserBehavior(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getUserBehavior(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
       const targetUserId = userId || requestingUserId;
 
       const behavior = await this.userBehaviorService.getUserBehavior(requestingUserId, targetUserId);
@@ -33,10 +33,10 @@ export class UserBehaviorController {
     }
   }
 
-  async getUserSummary(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getUserSummary(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
       const targetUserId = userId || requestingUserId;
 
       const summary = await this.userBehaviorService.getUserSummary(requestingUserId, targetUserId);
@@ -53,9 +53,9 @@ export class UserBehaviorController {
     }
   }
 
-  async getMyBehavior(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getMyBehavior(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user!.id;
+      const userId = req.user.id;
 
       const [behavior, summary] = await Promise.all([
         this.userBehaviorService.getUserBehavior(userId, userId),
@@ -77,10 +77,10 @@ export class UserBehaviorController {
     }
   }
 
-  async checkUserStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async checkUserStatus(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
       const targetUserId = userId || requestingUserId;
 
       // Allow users to check their own status, require permissions for others
@@ -103,11 +103,11 @@ export class UserBehaviorController {
     }
   }
 
-  async addStrike(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async addStrike(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
       const { reason } = req.body;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
 
       if (!reason || typeof reason !== 'string' || reason.trim().length < 5) {
         res.status(400).json({
@@ -136,10 +136,10 @@ export class UserBehaviorController {
     }
   }
 
-  async removeStrike(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async removeStrike(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
 
       const behavior = await this.userBehaviorService.removeStrike(requestingUserId, userId);
 
@@ -156,11 +156,11 @@ export class UserBehaviorController {
     }
   }
 
-  async banUser(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async banUser(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const { userId } = req.params;
-      const { reason, durationDays } = req.body;
-      const requestingUserId = req.user!.id;
+      const { customerId } = req.params;
+      const { reason, durationDays, isTemporary } = req.body;
+      const requestingUserId = req.user.id;
 
       if (!reason || typeof reason !== 'string' || reason.trim().length < 10) {
         res.status(400).json({
@@ -170,17 +170,18 @@ export class UserBehaviorController {
         return;
       }
 
-      if (!durationDays || typeof durationDays !== 'number' || durationDays <= 0 || durationDays > 365) {
+      // Only validate durationDays if it's a temporary ban
+      if (isTemporary !== false && (!durationDays || typeof durationDays !== 'number' || durationDays <= 0 || durationDays > 365)) {
         res.status(400).json({
           success: false,
-          error: 'Duration must be between 1 and 365 days'
+          error: 'Duration must be between 1 and 365 days for temporary bans'
         });
         return;
       }
 
       const behavior = await this.userBehaviorService.banUser(
         requestingUserId,
-        userId,
+        customerId,
         reason.trim(),
         durationDays
       );
@@ -198,12 +199,12 @@ export class UserBehaviorController {
     }
   }
 
-  async unbanUser(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async unbanUser(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const { userId } = req.params;
-      const requestingUserId = req.user!.id;
+      const { customerId } = req.params;
+      const requestingUserId = req.user.id;
 
-      const behavior = await this.userBehaviorService.unbanUser(requestingUserId, userId);
+      const behavior = await this.userBehaviorService.unbanUser(requestingUserId, customerId);
 
       res.json({
         success: true,
@@ -218,9 +219,9 @@ export class UserBehaviorController {
     }
   }
 
-  async getProblematicUsers(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getProblematicUsers(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
       const limit = parseInt(req.query.limit as string) || 50;
 
       if (limit > 100) {
@@ -249,10 +250,10 @@ export class UserBehaviorController {
     }
   }
 
-  async getUserRiskAssessment(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getUserRiskAssessment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
       const targetUserId = userId || requestingUserId;
 
       const assessment = await this.userBehaviorService.getUserRiskAssessment(targetUserId);
@@ -269,10 +270,10 @@ export class UserBehaviorController {
     }
   }
 
-  async calculateReliabilityScore(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async calculateReliabilityScore(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
       const targetUserId = userId || requestingUserId;
 
       const score = await this.userBehaviorService.calculateUserReliabilityScore(targetUserId);
@@ -292,10 +293,10 @@ export class UserBehaviorController {
     }
   }
 
-  async getCustomerBehaviorForBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getCustomerBehaviorForBusiness(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId, customerId } = req.params;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
 
       const result = await this.userBehaviorService.getCustomerBehaviorForBusiness(
         requestingUserId,
@@ -315,11 +316,11 @@ export class UserBehaviorController {
     }
   }
 
-  async flagUserForReview(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async flagUserForReview(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
       const { reason } = req.body;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
 
       if (!reason || typeof reason !== 'string' || reason.trim().length < 10) {
         res.status(400).json({
@@ -348,9 +349,9 @@ export class UserBehaviorController {
   }
 
   // System and admin endpoints
-  async getUserBehaviorStats(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getUserBehaviorStats(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
 
       const stats = await this.userBehaviorService.getUserBehaviorStats(requestingUserId);
 
@@ -366,7 +367,7 @@ export class UserBehaviorController {
     }
   }
 
-  async processAutomaticStrikes(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async processAutomaticStrikes(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       // This endpoint would typically be protected to admin-only or system calls
       const result = await this.userBehaviorService.processAutomaticStrikes();
@@ -384,7 +385,7 @@ export class UserBehaviorController {
     }
   }
 
-  async resetExpiredStrikes(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async resetExpiredStrikes(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       // System endpoint
       const count = await this.userBehaviorService.resetExpiredStrikes();
@@ -402,7 +403,7 @@ export class UserBehaviorController {
     }
   }
 
-  async unbanExpiredBans(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async unbanExpiredBans(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       // System endpoint
       const count = await this.userBehaviorService.unbanExpiredBans();
@@ -421,10 +422,10 @@ export class UserBehaviorController {
   }
 
   // Batch operations
-  async batchAddStrikes(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async batchAddStrikes(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userIds, reason } = req.body;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
 
       if (!Array.isArray(userIds) || userIds.length === 0) {
         res.status(400).json({
@@ -475,10 +476,10 @@ export class UserBehaviorController {
     }
   }
 
-  async batchBanUsers(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async batchBanUsers(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userIds, reason, durationDays } = req.body;
-      const requestingUserId = req.user!.id;
+      const requestingUserId = req.user.id;
 
       if (!Array.isArray(userIds) || userIds.length === 0) {
         res.status(400).json({

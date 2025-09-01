@@ -439,11 +439,92 @@ const DEFAULT_PERMISSIONS = [
   },
   {
     id: generateId('perm'),
+    name: 'appointment:view_all',
+    displayName: 'View All Appointments',
+    description: 'View all appointments across all businesses',
+    resource: 'appointment',
+    action: 'view_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'appointment:view_own',
+    displayName: 'View Own Business Appointments',
+    description: 'View appointments for own business',
+    resource: 'appointment',
+    action: 'view_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
     name: 'appointment:update',
     displayName: 'Update Appointments',
     description: 'Modify appointment details and status',
     resource: 'appointment',
     action: 'update',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'appointment:edit_all',
+    displayName: 'Edit All Appointments',
+    description: 'Edit appointments across all businesses',
+    resource: 'appointment',
+    action: 'edit_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'appointment:edit_own',
+    displayName: 'Edit Own Business Appointments',
+    description: 'Edit appointments for own business',
+    resource: 'appointment',
+    action: 'edit_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'appointment:cancel_all',
+    displayName: 'Cancel All Appointments',
+    description: 'Cancel appointments across all businesses',
+    resource: 'appointment',
+    action: 'cancel_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'appointment:cancel_own',
+    displayName: 'Cancel Own Business Appointments',
+    description: 'Cancel appointments for own business',
+    resource: 'appointment',
+    action: 'cancel_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'appointment:confirm',
+    displayName: 'Confirm Appointments',
+    description: 'Confirm appointment bookings',
+    resource: 'appointment',
+    action: 'confirm',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'appointment:complete',
+    displayName: 'Complete Appointments',
+    description: 'Mark appointments as completed',
+    resource: 'appointment',
+    action: 'complete',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'appointment:mark_no_show',
+    displayName: 'Mark No Show',
+    description: 'Mark appointments as no-show',
+    resource: 'appointment',
+    action: 'mark_no_show',
     isSystem: true
   },
   {
@@ -500,6 +581,44 @@ const DEFAULT_PERMISSIONS = [
     description: 'Remove services from business',
     resource: 'service',
     action: 'delete',
+    isSystem: true
+  },
+
+  // Enhanced Service Permissions (Required by routes)
+  {
+    id: generateId('perm'),
+    name: 'service:manage_all',
+    displayName: 'Manage All Services',
+    description: 'Full management of services across all businesses',
+    resource: 'service',
+    action: 'manage_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'service:manage_own',
+    displayName: 'Manage Own Services',
+    description: 'Manage services for own business only',
+    resource: 'service',
+    action: 'manage_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'service:view_all',
+    displayName: 'View All Services',
+    description: 'View services across all businesses',
+    resource: 'service',
+    action: 'view_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'service:view_own',
+    displayName: 'View Own Services',
+    description: 'View services for own business only',
+    resource: 'service',
+    action: 'view_own',
     isSystem: true
   },
 
@@ -570,7 +689,7 @@ const DEFAULT_PERMISSIONS = [
     isSystem: true
   },
 
-  // Business Closure Permissions
+  // Business Closure Permissions (Legacy)
   {
     id: generateId('perm'),
     name: 'business_closure:create',
@@ -608,6 +727,44 @@ const DEFAULT_PERMISSIONS = [
     isSystem: true
   },
 
+  // Enhanced Closure Permissions (Required by routes)
+  {
+    id: generateId('perm'),
+    name: 'closure:manage_all',
+    displayName: 'Manage All Business Closures',
+    description: 'Full management of closures across all businesses',
+    resource: 'closure',
+    action: 'manage_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'closure:manage_own',
+    displayName: 'Manage Own Business Closures',
+    description: 'Manage closures for own business only',
+    resource: 'closure',
+    action: 'manage_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'closure:view_all',
+    displayName: 'View All Business Closures',
+    description: 'View closures across all businesses',
+    resource: 'closure',
+    action: 'view_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'closure:view_own',
+    displayName: 'View Own Business Closures',
+    description: 'View closures for own business only',
+    resource: 'closure',
+    action: 'view_own',
+    isSystem: true
+  },
+
   // Analytics Permissions
   {
     id: generateId('perm'),
@@ -620,11 +777,208 @@ const DEFAULT_PERMISSIONS = [
   },
   {
     id: generateId('perm'),
+    name: 'analytics:view_own',
+    displayName: 'View Own Analytics',
+    description: 'Access own business usage analytics and reports',
+    resource: 'analytics',
+    action: 'view_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'analytics:view_all',
+    displayName: 'View All Analytics',
+    description: 'Access all business analytics and reports',
+    resource: 'analytics',
+    action: 'view_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
     name: 'analytics:admin',
     displayName: 'Administer Analytics',
     description: 'Full control over analytics system',
     resource: 'analytics',
     action: 'admin',
+    isSystem: true
+  },
+
+  // Customer Management Permissions
+  {
+    id: generateId('perm'),
+    name: 'customer:view_own',
+    displayName: 'View Own Customers',
+    description: 'View customers who have appointments at owned businesses',
+    resource: 'customer',
+    action: 'view_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'customer:view_all',
+    displayName: 'View All Customers',
+    description: 'View all customers across all businesses (admin only)',
+    resource: 'customer',
+    action: 'view_all',
+    isSystem: true
+  },
+
+  // User Behavior Management (Enhanced)
+  {
+    id: generateId('perm'),
+    name: 'user_behavior:view',
+    displayName: 'View User Behavior',
+    description: 'View user behavior analytics and reliability scores',
+    resource: 'user_behavior',
+    action: 'view',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'user_behavior:manage',
+    displayName: 'Manage User Behavior',
+    description: 'Manage user behavior settings and analytics',
+    resource: 'user_behavior',
+    action: 'manage',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'user_behavior:manage_strikes',
+    displayName: 'Manage User Strikes',
+    description: 'Add and remove strikes from user accounts',
+    resource: 'user_behavior',
+    action: 'manage_strikes',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'user_behavior:ban',
+    displayName: 'Ban Users',
+    description: 'Ban and unban users from the platform',
+    resource: 'user_behavior',
+    action: 'ban',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'user_behavior:flag',
+    displayName: 'Flag Users',
+    description: 'Flag users for review and investigation',
+    resource: 'user_behavior',
+    action: 'flag',
+    isSystem: true
+  },
+
+  // Payment Management Permissions
+  {
+    id: generateId('perm'),
+    name: 'payment:create',
+    displayName: 'Create Payments',
+    description: 'Process subscription and service payments',
+    resource: 'payment',
+    action: 'create',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'payment:read',
+    displayName: 'View Payments',
+    description: 'View payment history and details',
+    resource: 'payment',
+    action: 'read',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'payment:view_all',
+    displayName: 'View All Payments',
+    description: 'View all payments across all businesses',
+    resource: 'payment',
+    action: 'view_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'payment:view_own',
+    displayName: 'View Own Payments',
+    description: 'View payments for own business subscriptions',
+    resource: 'payment',
+    action: 'view_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'payment:refund',
+    displayName: 'Refund Payments',
+    description: 'Process payment refunds',
+    resource: 'payment',
+    action: 'refund',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'payment:cancel',
+    displayName: 'Cancel Payments',
+    description: 'Cancel payment transactions',
+    resource: 'payment',
+    action: 'cancel',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'payment:admin',
+    displayName: 'Administer Payments',
+    description: 'Full control over payment system',
+    resource: 'payment',
+    action: 'admin',
+    isSystem: true
+  },
+
+  // Subscription Management (Enhanced Business-Level)
+  {
+    id: generateId('perm'),
+    name: 'subscription:purchase',
+    displayName: 'Purchase Subscription',
+    description: 'Purchase subscription plans for business',
+    resource: 'subscription',
+    action: 'purchase',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'subscription:view_plans',
+    displayName: 'View Subscription Plans',
+    description: 'View available subscription plans',
+    resource: 'subscription',
+    action: 'view_plans',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'subscription:manage_own',
+    displayName: 'Manage Own Subscription',
+    description: 'Manage subscription for own business',
+    resource: 'subscription',
+    action: 'manage_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'subscription:view_own',
+    displayName: 'View Own Subscription',
+    description: 'View subscription details for own business',
+    resource: 'subscription',
+    action: 'view_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'subscription:cancel_own',
+    displayName: 'Cancel Own Subscription',
+    description: 'Cancel subscription for own business',
+    resource: 'subscription',
+    action: 'cancel_own',
     isSystem: true
   }
 ];
@@ -637,35 +991,71 @@ const ROLE_PERMISSION_MAPPINGS = {
     'permission:create', 'permission:read', 'permission:update', 'permission:delete',
     'system:admin', 'system:read', 'audit:admin', 'audit:read', 'support:admin',
     // Business platform administration
-    'business:admin', 'subscription:admin', 'appointment:admin', 'service:create', 'service:read', 'service:update', 'service:delete',
-    'staff:create', 'staff:read', 'staff:update', 'staff:delete', 'analytics:admin',
+    'business:admin', 'subscription:admin', 'subscription:create', 'subscription:read', 'subscription:update',
+    'appointment:admin', 'appointment:view_all', 'appointment:view_own',
+    'appointment:create', 'appointment:read', 'appointment:update', 'appointment:delete',
+    'appointment:edit_all', 'appointment:edit_own', 'appointment:cancel_all', 'appointment:cancel_own',
+    'appointment:confirm', 'appointment:complete', 'appointment:mark_no_show',
+    'service:create', 'service:read', 'service:update', 'service:delete', 'service:manage_all', 'service:view_all',
+    'staff:create', 'staff:read', 'staff:update', 'staff:delete', 'analytics:admin', 'analytics:view_all',
+    // Payment system administration
+    'payment:admin', 'payment:create', 'payment:read', 'payment:view_all', 'payment:view_own',
+    'payment:refund', 'payment:cancel',
+    // Subscription management (admin level)
+    'subscription:purchase', 'subscription:view_plans', 'subscription:manage_own', 'subscription:view_own',
+    'subscription:cancel_own',
+    // Customer management (full access)
+    'customer:view_own', 'customer:view_all',
     // User behavior and business closure management
-    'user_behavior:read', 'user_behavior:update', 'user_behavior:moderate',
-    'business_closure:create', 'business_closure:read', 'business_closure:update', 'business_closure:delete'
+    'user_behavior:read', 'user_behavior:update', 'user_behavior:moderate', 'user_behavior:view', 'user_behavior:manage', 'user_behavior:manage_strikes', 'user_behavior:ban', 'user_behavior:flag',
+    'business_closure:create', 'business_closure:read', 'business_closure:update', 'business_closure:delete',
+    // Enhanced closure management
+    'closure:manage_all', 'closure:view_all'
   ],
   'OWNER': [
     // Business owner capabilities - manage own business
-    'business:create', 'business:read', 'business:update', 'subscription:read', 'subscription:update',
-    'service:create', 'service:read', 'service:update', 'service:delete',
+    'business:create', 'business:read', 'business:update',
+    'service:create', 'service:read', 'service:update', 'service:delete', 'service:manage_own', 'service:view_own',
     'staff:create', 'staff:read', 'staff:update', 'staff:delete',
-    'appointment:create', 'appointment:read', 'appointment:update', 'appointment:delete', 'appointment:admin',
-    'analytics:read', 'support:create',
+    'appointment:create', 'appointment:read', 'appointment:update', 'appointment:delete', 'appointment:admin', 'appointment:view_own',
+    'appointment:edit_all', 'appointment:edit_own', 'appointment:cancel_all', 'appointment:cancel_own',
+    'appointment:confirm', 'appointment:complete', 'appointment:mark_no_show',
+    'analytics:read', 'analytics:view_own', 'support:create',
+    // Payment and subscription management for own business
+    'payment:create', 'payment:read', 'payment:view_own', 'payment:refund', 'payment:cancel',
+    'subscription:purchase', 'subscription:view_plans', 'subscription:manage_own', 'subscription:view_own',
+    'subscription:cancel_own', 'subscription:read', 'subscription:update',
+    // Customer management for own business
+    'customer:view_own',
     // Business closure management for own business
     'business_closure:create', 'business_closure:read', 'business_closure:update', 'business_closure:delete',
+    // Enhanced closure management
+    'closure:manage_own', 'closure:view_own',
     // User behavior for own customers
-    'user_behavior:read'
+    'user_behavior:read', 'user_behavior:view', 'user_behavior:manage_strikes', 'user_behavior:ban', 'user_behavior:flag'
   ],
   'STAFF': [
     // Staff capabilities - manage appointments and services for assigned business
-    'service:read', 'appointment:create', 'appointment:read', 'appointment:update', 'appointment:delete',
+    'service:read', 'service:view_own', 'appointment:create', 'appointment:read', 'appointment:update', 'appointment:delete', 'appointment:view_own',
+    'appointment:edit_own', 'appointment:cancel_own', 'appointment:confirm', 'appointment:complete', 'appointment:mark_no_show',
     'support:create', 'business:read',
+    // Basic subscription viewing (to understand business plan limits)
+    'subscription:view_plans', 'subscription:view_own',
+    // Customer management for assigned business
+    'customer:view_own',
     // Basic analytics for assigned business
-    'analytics:read', 'business_closure:read'
+    'analytics:read', 'analytics:view_own', 'business_closure:read',
+    // Limited user behavior for assigned business customers
+    'user_behavior:read', 'user_behavior:view'
   ],
   'CUSTOMER': [
     // Customer capabilities - book appointments and manage own profile
-    'appointment:create', 'appointment:read', 'appointment:update',
+    'appointment:create', 'appointment:read', 'appointment:update', 'appointment:cancel_own',
     'business:read', 'service:read', 'support:create',
+    // Business creation - customers can create businesses and become owners
+    'business:create',
+    // View subscription plans (for business discovery and understanding service limits)
+    'subscription:view_plans',
     // Basic user profile management
     'user:read', 'user:update'
   ]

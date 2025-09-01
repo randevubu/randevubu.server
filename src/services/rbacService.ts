@@ -249,14 +249,19 @@ export class RBACService {
 
   async assignRole(
     userId: string,
-    roleId: string,
+    roleNameOrId: string,
     grantedBy: string,
     expiresAt?: Date,
     metadata?: any
   ): Promise<void> {
     try {
-      // Check if role exists and is active
-      const role = await this.repositories.roleRepository.getRoleById(roleId);
+      // First try to get role by name, then by ID
+      let role = await this.repositories.roleRepository.getRoleByName(roleNameOrId);
+      
+      if (!role) {
+        // If not found by name, try by ID
+        role = await this.repositories.roleRepository.getRoleById(roleNameOrId);
+      }
 
       if (!role || !role.isActive) {
         throw new UserNotFoundError('Role not found or inactive');
@@ -264,16 +269,16 @@ export class RBACService {
 
       // Check if user already has this role by getting current user roles
       const userRoles = await this.repositories.roleRepository.getUserRoles(userId);
-      const hasRole = userRoles.some(ur => ur.id === roleId);
+      const hasRole = userRoles.some(ur => ur.id === role.id);
 
       if (hasRole) {
         throw new ValidationError('User already has this role');
       }
 
-      // Assign role to user through repository
+      // Assign role to user through repository using the role ID
       await this.repositories.roleRepository.assignRoleToUser(
         userId,
-        roleId,
+        role.id,
         grantedBy,
         expiresAt,
         metadata
@@ -284,7 +289,7 @@ export class RBACService {
 
       logger.info('Role assigned', {
         userId,
-        roleId,
+        roleId: role.id,
         roleName: role.name,
         grantedBy,
         expiresAt
@@ -292,7 +297,7 @@ export class RBACService {
     } catch (error) {
       logger.error('Failed to assign role', {
         userId,
-        roleId,
+        roleNameOrId: roleNameOrId,
         grantedBy,
         error: error instanceof Error ? error.message : String(error)
       });

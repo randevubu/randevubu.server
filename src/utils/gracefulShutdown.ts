@@ -1,8 +1,20 @@
 import { Server } from 'http';
 import { logger } from './logger';
 
+let services: any = null;
+
+export const setServicesForShutdown = (serviceContainer: any) => {
+  services = serviceContainer;
+};
+
 export const gracefulShutdown = (server: Server): void => {
   logger.info('Received shutdown signal, shutting down gracefully...');
+  
+  // Stop subscription scheduler if running
+  if (services?.subscriptionSchedulerService) {
+    services.subscriptionSchedulerService.stop();
+    logger.info('📅 Subscription scheduler stopped');
+  }
   
   server.close((err) => {
     if (err) {

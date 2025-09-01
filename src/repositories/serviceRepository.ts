@@ -23,8 +23,7 @@ export class ServiceRepository {
         description: data.description,
         duration: data.duration,
         price: data.price as any,
-        currency: data.currency || 'USD',
-        category: data.category,
+        currency: data.currency || 'TRY',
         isActive: true,
         sortOrder: (maxSortOrder._max.sortOrder || 0) + 1,
         bufferTime: data.bufferTime || 0,
@@ -90,17 +89,6 @@ export class ServiceRepository {
     );
   }
 
-  async findByCategory(businessId: string, category: string): Promise<ServiceData[]> {
-    const result = await this.prisma.service.findMany({
-      where: {
-        businessId,
-        category,
-        isActive: true
-      },
-      orderBy: { sortOrder: 'asc' }
-    });
-    return convertBusinessDataArray<ServiceData>(result);
-  }
 
   async getServiceStats(serviceId: string): Promise<{
     totalAppointments: number;
@@ -186,7 +174,7 @@ export class ServiceRepository {
       where: {
         serviceId,
         date,
-        status: { in: ['CONFIRMED', 'IN_PROGRESS'] },
+        status: { in: ['CONFIRMED'] },
         OR: [
           {
             AND: [

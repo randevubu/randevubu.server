@@ -200,6 +200,521 @@ const options: swaggerJsdoc.Options = {
             },
           },
         },
+
+        // Service Schemas
+        Service: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              example: 'clh7j2k3l0000qwerty123456',
+            },
+            name: {
+              type: 'string',
+              example: 'Haircut & Styling',
+            },
+            description: {
+              type: 'string',
+              nullable: true,
+              example: 'Professional haircut and styling service',
+            },
+            duration: {
+              type: 'integer',
+              example: 60,
+              description: 'Duration in minutes',
+            },
+            price: {
+              type: 'number',
+              example: 45.00,
+            },
+            currency: {
+              type: 'string',
+              example: 'TRY',
+            },
+            bufferTime: {
+              type: 'integer',
+              nullable: true,
+              example: 15,
+              description: 'Buffer time in minutes',
+            },
+            maxAdvanceBooking: {
+              type: 'integer',
+              nullable: true,
+              example: 30,
+              description: 'Maximum advance booking in days',
+            },
+            minAdvanceBooking: {
+              type: 'integer',
+              nullable: true,
+              example: 2,
+              description: 'Minimum advance booking in hours',
+            },
+            isActive: {
+              type: 'boolean',
+              example: true,
+            },
+            sortOrder: {
+              type: 'integer',
+              example: 1,
+            },
+            businessId: {
+              type: 'string',
+              example: 'clh7j2k3l0000qwerty123456',
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time',
+              example: '2024-01-01T00:00:00.000Z',
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time',
+              example: '2024-01-01T00:00:00.000Z',
+            },
+          },
+        },
+
+        CreateServiceRequest: {
+          type: 'object',
+          required: ['name', 'duration', 'price'],
+          properties: {
+            name: {
+              type: 'string',
+              minLength: 2,
+              maxLength: 100,
+              example: 'Haircut & Styling',
+              description: 'Service name (2-100 characters)',
+            },
+            description: {
+              type: 'string',
+              maxLength: 500,
+              example: 'Professional haircut and styling service',
+              description: 'Service description (optional, max 500 characters)',
+            },
+            duration: {
+              type: 'integer',
+              minimum: 15,
+              maximum: 480,
+              example: 60,
+              description: 'Duration in minutes (15-480 minutes)',
+            },
+            price: {
+              type: 'number',
+              minimum: 0,
+              maximum: 10000,
+              example: 45.00,
+              description: 'Service price (0-10,000)',
+            },
+            currency: {
+              type: 'string',
+              minLength: 3,
+              maxLength: 3,
+              example: 'TRY',
+              description: 'Currency code (3 characters)',
+            },
+            bufferTime: {
+              type: 'integer',
+              minimum: 0,
+              maximum: 120,
+              example: 15,
+              description: 'Buffer time in minutes (0-120 minutes)',
+            },
+            maxAdvanceBooking: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 365,
+              example: 30,
+              description: 'Maximum advance booking in days (1-365 days)',
+            },
+            minAdvanceBooking: {
+              type: 'integer',
+              minimum: 0,
+              maximum: 72,
+              example: 2,
+              description: 'Minimum advance booking in hours (0-72 hours)',
+            },
+          },
+        },
+
+        CreateServiceResponse: {
+          allOf: [
+            { $ref: '#/components/schemas/SuccessResponse' },
+            {
+              type: 'object',
+              properties: {
+                data: {
+                  $ref: '#/components/schemas/Service',
+                },
+                message: {
+                  type: 'string',
+                  example: 'Service created successfully',
+                },
+              },
+            },
+          ],
+        },
+
+        // Business Schemas
+        Business: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              example: 'biz_123456789abcdef',
+              description: 'Unique business identifier',
+            },
+            ownerId: {
+              type: 'string',
+              example: 'user_987654321fedcba',
+              description: 'ID of the business owner',
+            },
+            businessTypeId: {
+              type: 'string',
+              example: 'beauty_salon',
+              description: 'ID of the business type category',
+            },
+            name: {
+              type: 'string',
+              example: 'Hair & Beauty Salon',
+              description: 'Business name',
+            },
+            slug: {
+              type: 'string',
+              example: 'hair-beauty-salon',
+              description: 'URL-friendly business identifier',
+            },
+            description: {
+              type: 'string',
+              nullable: true,
+              example: 'Professional hair and beauty services including haircuts, styling, coloring, and beauty treatments',
+              description: 'Business description',
+            },
+            email: {
+              type: 'string',
+              nullable: true,
+              example: 'info@hairbeautysalon.com',
+              description: 'Business email address',
+            },
+            phone: {
+              type: 'string',
+              nullable: true,
+              example: '+905551234567',
+              description: 'Business phone number',
+            },
+            website: {
+              type: 'string',
+              nullable: true,
+              example: 'https://hairbeautysalon.com',
+              description: 'Business website URL',
+            },
+            address: {
+              type: 'string',
+              nullable: true,
+              example: '123 Main Street, Kadıköy',
+              description: 'Business address',
+            },
+            city: {
+              type: 'string',
+              nullable: true,
+              example: 'Istanbul',
+              description: 'City name',
+            },
+            state: {
+              type: 'string',
+              nullable: true,
+              example: 'Istanbul',
+              description: 'State/province name',
+            },
+            country: {
+              type: 'string',
+              nullable: true,
+              example: 'Turkey',
+              description: 'Country name',
+            },
+            postalCode: {
+              type: 'string',
+              nullable: true,
+              example: '34710',
+              description: 'Postal/ZIP code',
+            },
+            latitude: {
+              type: 'number',
+              nullable: true,
+              description: 'Geographic latitude coordinate',
+            },
+            longitude: {
+              type: 'number',
+              nullable: true,
+              description: 'Geographic longitude coordinate',
+            },
+            businessHours: {
+              type: 'object',
+              nullable: true,
+              description: 'Business operating hours',
+            },
+            timezone: {
+              type: 'string',
+              example: 'Europe/Istanbul',
+              description: 'Business timezone',
+            },
+            logoUrl: {
+              type: 'string',
+              nullable: true,
+              description: 'Business logo image URL',
+            },
+            coverImageUrl: {
+              type: 'string',
+              nullable: true,
+              description: 'Business cover image URL',
+            },
+            primaryColor: {
+              type: 'string',
+              nullable: true,
+              example: '#FF6B6B',
+              description: 'Primary brand color',
+            },
+            theme: {
+              type: 'object',
+              nullable: true,
+              description: 'Business theme configuration',
+            },
+            settings: {
+              type: 'object',
+              nullable: true,
+              description: 'Business settings configuration',
+            },
+            isActive: {
+              type: 'boolean',
+              example: true,
+              description: 'Whether the business is currently active',
+            },
+            isVerified: {
+              type: 'boolean',
+              example: false,
+              description: 'Whether the business has been verified by administrators',
+            },
+            verifiedAt: {
+              type: 'string',
+              nullable: true,
+              format: 'date-time',
+              description: 'Date when the business was verified',
+            },
+            isClosed: {
+              type: 'boolean',
+              example: false,
+              description: 'Whether the business is currently closed',
+            },
+            closedUntil: {
+              type: 'string',
+              nullable: true,
+              format: 'date-time',
+              description: 'Date until which the business is closed',
+            },
+            closureReason: {
+              type: 'string',
+              nullable: true,
+              description: 'Reason for business closure',
+            },
+            tags: {
+              type: 'array',
+              items: {
+                type: 'string',
+              },
+              example: ['hair', 'beauty', 'salon', 'styling'],
+              description: 'Business tags',
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time',
+              example: '2024-01-15T10:30:00.000Z',
+              description: 'Date when the business was created',
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time',
+              example: '2024-01-15T10:30:00.000Z',
+              description: 'Date when the business was last updated',
+            },
+            deletedAt: {
+              type: 'string',
+              nullable: true,
+              format: 'date-time',
+              description: 'Date when the business was deleted (if applicable)',
+            },
+          },
+        },
+
+        BusinessData: {
+          $ref: '#/components/schemas/Business',
+        },
+
+        BusinessType: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              example: 'beauty_salon',
+              description: 'Unique business type identifier',
+            },
+            name: {
+              type: 'string',
+              example: 'beauty_salon',
+              description: 'Business type name',
+            },
+            displayName: {
+              type: 'string',
+              example: 'Beauty Salon',
+              description: 'Human-readable business type name',
+            },
+            icon: {
+              type: 'string',
+              nullable: true,
+              example: '💇‍♀️',
+              description: 'Emoji or icon representing the business type',
+            },
+            category: {
+              type: 'string',
+              example: 'Beauty & Wellness',
+              description: 'Category the business type belongs to',
+            },
+            description: {
+              type: 'string',
+              nullable: true,
+              example: 'Hair salons, beauty parlors, and wellness centers',
+              description: 'Description of the business type',
+            },
+            isActive: {
+              type: 'boolean',
+              example: true,
+              description: 'Whether this business type is active',
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time',
+              example: '2024-01-01T00:00:00.000Z',
+              description: 'Date when the business type was created',
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time',
+              example: '2024-01-01T00:00:00.000Z',
+              description: 'Date when the business type was last updated',
+            },
+          },
+        },
+
+        CreateBusinessRequest: {
+          type: 'object',
+          required: ['name', 'businessTypeId'],
+          properties: {
+            name: {
+              type: 'string',
+              minLength: 2,
+              maxLength: 100,
+              example: 'Hair & Beauty Salon',
+              description: 'Business name (2-100 characters)',
+            },
+            businessTypeId: {
+              type: 'string',
+              example: 'beauty_salon',
+              description: 'ID of the business type category',
+            },
+            description: {
+              type: 'string',
+              maxLength: 1000,
+              example: 'Professional hair and beauty services including haircuts, styling, coloring, and beauty treatments',
+              description: 'Business description (optional, max 1000 characters)',
+            },
+            email: {
+              type: 'string',
+              format: 'email',
+              example: 'info@hairbeautysalon.com',
+              description: 'Business email address (optional)',
+            },
+            phone: {
+              type: 'string',
+              pattern: '^\\+?[1-9]\\d{1,14}$',
+              example: '+905551234567',
+              description: 'Business phone number in international format (optional)',
+            },
+            website: {
+              type: 'string',
+              format: 'uri',
+              example: 'https://hairbeautysalon.com',
+              description: 'Business website URL (optional)',
+            },
+            address: {
+              type: 'string',
+              maxLength: 200,
+              example: '123 Main Street, Kadıköy',
+              description: 'Business address (optional, max 200 characters)',
+            },
+            city: {
+              type: 'string',
+              maxLength: 50,
+              example: 'Istanbul',
+              description: 'City name (optional, max 50 characters)',
+            },
+            state: {
+              type: 'string',
+              maxLength: 50,
+              example: 'Istanbul',
+              description: 'State/province name (optional, max 50 characters)',
+            },
+            country: {
+              type: 'string',
+              maxLength: 50,
+              example: 'Turkey',
+              description: 'Country name (optional, max 50 characters)',
+            },
+            postalCode: {
+              type: 'string',
+              maxLength: 20,
+              example: '34710',
+              description: 'Postal/ZIP code (optional, max 20 characters)',
+            },
+            timezone: {
+              type: 'string',
+              maxLength: 50,
+              example: 'Europe/Istanbul',
+              description: 'Business timezone (optional, max 50 characters)',
+            },
+            primaryColor: {
+              type: 'string',
+              pattern: '^#[0-9A-F]{6}$',
+              example: '#FF6B6B',
+              description: 'Primary brand color in hex format (optional)',
+            },
+            tags: {
+              type: 'array',
+              maxItems: 10,
+              items: {
+                type: 'string',
+                maxLength: 50,
+              },
+              example: ['hair', 'beauty', 'salon', 'styling'],
+              description: 'Business tags for categorization (optional, max 10 tags)',
+            },
+          },
+        },
+
+        CreateBusinessResponse: {
+          allOf: [
+            { $ref: '#/components/schemas/SuccessResponse' },
+            {
+              type: 'object',
+              properties: {
+                data: {
+                  $ref: '#/components/schemas/Business',
+                },
+                message: {
+                  type: 'string',
+                  example: 'Business created successfully',
+                },
+              },
+            },
+          ],
+        },
         
         // Token Schemas
         TokenPair: {
@@ -516,6 +1031,10 @@ const options: swaggerJsdoc.Options = {
         description: 'Business discovery and management endpoints',
       },
       {
+        name: 'Business Types',
+        description: 'Business type and category management endpoints',
+      },
+      {
         name: 'Services',
         description: 'Service catalog and management for businesses',
       },
@@ -546,6 +1065,10 @@ const options: swaggerJsdoc.Options = {
       {
         name: 'User Role Management',
         description: 'Assign/revoke roles and query user permissions',
+      },
+      {
+        name: 'Customer Management',
+        description: 'Customer information, banning, flagging, and behavior management for business owners',
       },
     ],
   },

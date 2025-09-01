@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { RoleService } from '../services/roleService';
-import { AuthenticatedRequest } from '../middleware/auth';
 import { 
+  GuaranteedAuthRequest,
   CreateRoleRequest,
   UpdateRoleRequest,
   AssignRoleRequest,
@@ -26,17 +26,17 @@ export class RoleController {
   }
 
   // Role management endpoints
-  createRole = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  createRole = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const context = this.createErrorContext(req, req.user?.id);
+      const context = this.createErrorContext(req, req.user.id);
       const data = req.body as CreateRoleRequest;
       
-      const role = await this.roleService.createRole(data, req.user!.id, context);
+      const role = await this.roleService.createRole(data, req.user.id, context);
 
       logger.info('Role created via API', {
         roleId: role.id,
         roleName: role.name,
-        createdBy: req.user!.id,
+        createdBy: req.user.id,
         ip: req.ip
       });
 
@@ -60,7 +60,7 @@ export class RoleController {
     }
   };
 
-  getRoles = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  getRoles = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const includeInactive = req.query.includeInactive === 'true';
       const roles = await this.roleService.getAllRoles(includeInactive);
@@ -87,7 +87,7 @@ export class RoleController {
     }
   };
 
-  getRoleById = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  getRoleById = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
       const includePermissions = req.query.includePermissions === 'true';
@@ -104,17 +104,17 @@ export class RoleController {
     }
   };
 
-  updateRole = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  updateRole = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
-      const context = this.createErrorContext(req, req.user?.id);
+      const context = this.createErrorContext(req, req.user.id);
       const data = req.body as UpdateRoleRequest;
 
-      const role = await this.roleService.updateRole(id, data, req.user!.id, context);
+      const role = await this.roleService.updateRole(id, data, req.user.id, context);
 
       logger.info('Role updated via API', {
         roleId: id,
-        updatedBy: req.user!.id,
+        updatedBy: req.user.id,
         changes: Object.keys(data),
         ip: req.ip
       });
@@ -129,16 +129,16 @@ export class RoleController {
     }
   };
 
-  deleteRole = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  deleteRole = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
-      const context = this.createErrorContext(req, req.user?.id);
+      const context = this.createErrorContext(req, req.user.id);
 
-      await this.roleService.deleteRole(id, req.user!.id, context);
+      await this.roleService.deleteRole(id, req.user.id, context);
 
       logger.info('Role deleted via API', {
         roleId: id,
-        deletedBy: req.user!.id,
+        deletedBy: req.user.id,
         ip: req.ip
       });
 
@@ -152,7 +152,7 @@ export class RoleController {
   };
 
   // Permission management endpoints
-  createPermission = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  createPermission = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const data = req.body as CreatePermissionRequest;
       
@@ -161,7 +161,7 @@ export class RoleController {
       logger.info('Permission created via API', {
         permissionId: permission.id,
         permissionName: permission.name,
-        createdBy: req.user!.id,
+        createdBy: req.user.id,
         ip: req.ip
       });
 
@@ -175,7 +175,7 @@ export class RoleController {
     }
   };
 
-  getPermissions = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  getPermissions = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { resource } = req.query;
       
@@ -193,7 +193,7 @@ export class RoleController {
     }
   };
 
-  getPermissionById = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  getPermissionById = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
       const permission = await this.roleService.getPermissionById(id);
@@ -208,7 +208,7 @@ export class RoleController {
     }
   };
 
-  updatePermission = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  updatePermission = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
       const data = req.body as UpdatePermissionRequest;
@@ -217,7 +217,7 @@ export class RoleController {
 
       logger.info('Permission updated via API', {
         permissionId: id,
-        updatedBy: req.user!.id,
+        updatedBy: req.user.id,
         changes: Object.keys(data),
         ip: req.ip
       });
@@ -233,18 +233,18 @@ export class RoleController {
   };
 
   // Role-Permission management
-  assignPermissionsToRole = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  assignPermissionsToRole = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { roleId } = req.params;
       const { permissionIds } = req.body;
-      const context = this.createErrorContext(req, req.user?.id);
+      const context = this.createErrorContext(req, req.user.id);
 
-      await this.roleService.assignPermissionsToRole(roleId, permissionIds, req.user!.id, context);
+      await this.roleService.assignPermissionsToRole(roleId, permissionIds, req.user.id, context);
 
       logger.info('Permissions assigned to role via API', {
         roleId,
         permissionCount: permissionIds.length,
-        grantedBy: req.user!.id,
+        grantedBy: req.user.id,
         ip: req.ip
       });
 
@@ -257,17 +257,17 @@ export class RoleController {
     }
   };
 
-  revokePermissionFromRole = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  revokePermissionFromRole = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { roleId, permissionId } = req.params;
-      const context = this.createErrorContext(req, req.user?.id);
+      const context = this.createErrorContext(req, req.user.id);
 
       await this.roleService.revokePermissionFromRole(roleId, permissionId, context);
 
       logger.info('Permission revoked from role via API', {
         roleId,
         permissionId,
-        revokedBy: req.user!.id,
+        revokedBy: req.user.id,
         ip: req.ip
       });
 
@@ -280,7 +280,7 @@ export class RoleController {
     }
   };
 
-  getRolePermissions = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  getRolePermissions = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { roleId } = req.params;
       const permissions = await this.roleService.getRolePermissions(roleId);
@@ -296,17 +296,17 @@ export class RoleController {
   };
 
   // User-Role management
-  assignRoleToUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  assignRoleToUser = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const assignmentData = req.body as AssignRoleRequest;
-      const context = this.createErrorContext(req, req.user?.id);
+      const context = this.createErrorContext(req, req.user.id);
 
-      await this.roleService.assignRoleToUser(assignmentData, req.user!.id, context);
+      await this.roleService.assignRoleToUser(assignmentData, req.user.id, context);
 
       logger.info('Role assigned to user via API', {
         userId: assignmentData.userId,
         roleId: assignmentData.roleId,
-        grantedBy: req.user!.id,
+        grantedBy: req.user.id,
         ip: req.ip
       });
 
@@ -319,17 +319,17 @@ export class RoleController {
     }
   };
 
-  revokeRoleFromUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  revokeRoleFromUser = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { userId, roleId } = req.params;
-      const context = this.createErrorContext(req, req.user?.id);
+      const context = this.createErrorContext(req, req.user.id);
 
       await this.roleService.revokeRoleFromUser(userId, roleId, context);
 
       logger.info('Role revoked from user via API', {
         userId,
         roleId,
-        revokedBy: req.user!.id,
+        revokedBy: req.user.id,
         ip: req.ip
       });
 
@@ -342,12 +342,12 @@ export class RoleController {
     }
   };
 
-  getUserPermissions = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  getUserPermissions = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { userId } = req.params;
       
       // Users can only view their own permissions unless they have admin rights
-      if (userId !== req.user!.id) {
+      if (userId !== req.user.id) {
         // This would need additional permission checking
         // For now, we'll allow it for simplicity
       }
@@ -365,9 +365,9 @@ export class RoleController {
   };
 
   // My permissions endpoint - for current user
-  getMyPermissions = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  getMyPermissions = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const permissions = await this.roleService.getUserPermissionSummary(req.user!.id);
+      const permissions = await this.roleService.getUserPermissionSummary(req.user.id);
 
       res.json({
         success: true,
@@ -380,7 +380,7 @@ export class RoleController {
   };
 
   // Statistics endpoint
-  getRoleStatistics = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  getRoleStatistics = async (req: GuaranteedAuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const statistics = await this.roleService.getRoleStatistics();
 

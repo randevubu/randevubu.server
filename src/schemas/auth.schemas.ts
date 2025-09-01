@@ -51,13 +51,13 @@ const userProfileUpdateSchema = z.object({
     .string()
     .min(1, 'First name cannot be empty')
     .max(50, 'First name must not exceed 50 characters')
-    .regex(/^[a-zA-Z\s\-']+$/, 'First name can only contain letters, spaces, hyphens, and apostrophes')
+    .regex(/^[a-zA-ZğĞüÜşŞıİöÖçÇ\s\-']+$/, 'First name can only contain letters, spaces, hyphens, and apostrophes')
     .optional(),
   lastName: z
     .string()
     .min(1, 'Last name cannot be empty')
     .max(50, 'Last name must not exceed 50 characters')
-    .regex(/^[a-zA-Z\s\-']+$/, 'Last name can only contain letters, spaces, hyphens, and apostrophes')
+    .regex(/^[a-zA-ZğĞüÜşŞıİöÖçÇ\s\-']+$/, 'Last name can only contain letters, spaces, hyphens, and apostrophes')
     .optional(),
   avatar: z
     .string()

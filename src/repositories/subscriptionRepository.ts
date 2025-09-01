@@ -2,7 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import {
   SubscriptionPlanData,
   BusinessSubscriptionData,
-  SubscriptionStatus
+  SubscriptionStatus,
+  StoredPaymentMethodData
 } from '../types/business';
 import { convertBusinessData, convertBusinessDataArray } from '../utils/prismaTypeHelpers';
 
@@ -52,16 +53,22 @@ export class SubscriptionRepository {
     currentPeriodEnd: Date;
     trialStart?: Date;
     trialEnd?: Date;
+    autoRenewal?: boolean;
+    paymentMethodId?: string;
+    nextBillingDate?: Date;
+    failedPaymentCount?: number;
     metadata?: any;
   }): Promise<BusinessSubscriptionData> {
     const result = await this.prisma.businessSubscription.create({
       data: {
         id: `bs_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
         ...data,
+        autoRenewal: data.autoRenewal ?? true,
+        failedPaymentCount: data.failedPaymentCount ?? 0,
         cancelAtPeriodEnd: false
       }
     });
-    return convertBusinessData<BusinessSubscriptionData>(result as any);
+    return this.mapToBusinessSubscriptionData(result as any);
   }
 
   async findSubscriptionById(id: string): Promise<BusinessSubscriptionData | null> {
@@ -75,6 +82,22 @@ export class SubscriptionRepository {
     return result ? convertBusinessData<BusinessSubscriptionData>(result as any) : null;
   }
 
+  async findSubscriptionByIdWithPlan(id: string): Promise<(BusinessSubscriptionData & { plan: SubscriptionPlanData }) | null> {
+    const result = await this.prisma.businessSubscription.findUnique({
+      where: { id },
+      include: {
+        plan: true
+      }
+    });
+    
+    if (!result) return null;
+    
+    return {
+      ...this.mapToBusinessSubscriptionData(result),
+      plan: this.mapToSubscriptionPlanData(result.plan)
+    } as BusinessSubscriptionData & { plan: SubscriptionPlanData };
+  }
+
   async findActiveSubscriptionByBusinessId(businessId: string): Promise<(BusinessSubscriptionData & { plan: SubscriptionPlanData }) | null> {
     const result = await this.prisma.businessSubscription.findFirst({
       where: {
@@ -86,7 +109,13 @@ export class SubscriptionRepository {
       },
       orderBy: { createdAt: 'desc' }
     });
-    return result ? convertBusinessData<BusinessSubscriptionData & { plan: SubscriptionPlanData }>(result as any) : null;
+    
+    if (!result) return null;
+    
+    return {
+      ...this.mapToBusinessSubscriptionData(result),
+      plan: this.mapToSubscriptionPlanData(result.plan)
+    } as BusinessSubscriptionData & { plan: SubscriptionPlanData };
   }
 
   async findSubscriptionsByBusinessId(businessId: string): Promise<BusinessSubscriptionData[]> {
@@ -423,5 +452,124 @@ export class SubscriptionRepository {
     }
 
     return processedCount;
+  }
+
+  // Auto-renewal methods
+  async updateSubscriptionSettings(
+    subscriptionId: string,
+    settings: {
+      autoRenewal?: boolean;
+      paymentMethodId?: string;
+      nextBillingDate?: Date;
+      failedPaymentCount?: number;
+      updatedAt?: Date;
+    }
+  ): Promise<BusinessSubscriptionData> {
+    const subscription = await this.prisma.businessSubscription.update({
+      where: { id: subscriptionId },
+      data: settings
+    });
+
+    return this.mapToBusinessSubscriptionData(subscription);
+  }
+
+
+
+  async getPaymentMethod(paymentMethodId: string): Promise<StoredPaymentMethodData | null> {
+    const paymentMethod = await this.prisma.storedPaymentMethod.findUnique({
+      where: { id: paymentMethodId, isActive: true }
+    });
+
+    if (!paymentMethod) return null;
+
+    return {
+      id: paymentMethod.id,
+      businessId: paymentMethod.businessId,
+      cardHolderName: paymentMethod.cardHolderName,
+      lastFourDigits: paymentMethod.lastFourDigits,
+      cardBrand: paymentMethod.cardBrand || undefined,
+      expiryMonth: paymentMethod.expiryMonth,
+      expiryYear: paymentMethod.expiryYear,
+      isDefault: paymentMethod.isDefault,
+      isActive: paymentMethod.isActive,
+      providerToken: paymentMethod.providerToken || undefined,
+      providerCardId: paymentMethod.providerCardId || undefined,
+      metadata: paymentMethod.metadata || undefined,
+      createdAt: paymentMethod.createdAt,
+      updatedAt: paymentMethod.updatedAt,
+      deletedAt: paymentMethod.deletedAt || undefined
+    };
+  }
+
+  async findSubscriptionsForRenewal(beforeDate: Date): Promise<BusinessSubscriptionData[]> {
+    const subscriptions = await this.prisma.businessSubscription.findMany({
+      where: {
+        status: SubscriptionStatus.ACTIVE,
+        autoRenewal: true,
+        currentPeriodEnd: {
+          lte: beforeDate
+        },
+        cancelAtPeriodEnd: false
+      },
+      include: {
+        plan: true,
+        paymentMethod: true,
+        business: {
+          include: {
+            owner: true
+          }
+        }
+      }
+    });
+
+    return subscriptions.map(subscription => ({
+      ...this.mapToBusinessSubscriptionData(subscription),
+      plan: this.mapToSubscriptionPlanData(subscription.plan),
+      paymentMethod: subscription.paymentMethod,
+      business: subscription.business
+    })) as BusinessSubscriptionData[];
+  }
+
+  private mapToBusinessSubscriptionData(subscription: any): BusinessSubscriptionData {
+    return {
+      id: subscription.id,
+      businessId: subscription.businessId,
+      planId: subscription.planId,
+      status: subscription.status,
+      currentPeriodStart: subscription.currentPeriodStart,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+      canceledAt: subscription.canceledAt,
+      trialStart: subscription.trialStart,
+      trialEnd: subscription.trialEnd,
+      autoRenewal: subscription.autoRenewal ?? true,
+      paymentMethodId: subscription.paymentMethodId,
+      nextBillingDate: subscription.nextBillingDate,
+      failedPaymentCount: subscription.failedPaymentCount ?? 0,
+      metadata: subscription.metadata,
+      createdAt: subscription.createdAt,
+      updatedAt: subscription.updatedAt
+    };
+  }
+
+  private mapToSubscriptionPlanData(plan: any): SubscriptionPlanData {
+    return {
+      id: plan.id,
+      name: plan.name,
+      displayName: plan.displayName,
+      description: plan.description,
+      price: Number(plan.price),
+      currency: plan.currency,
+      billingInterval: plan.billingInterval,
+      maxBusinesses: plan.maxBusinesses,
+      maxStaffPerBusiness: plan.maxStaffPerBusiness,
+      maxAppointmentsPerDay: plan.maxAppointmentsPerDay,
+      features: plan.features,
+      isActive: plan.isActive,
+      isPopular: plan.isPopular,
+      sortOrder: plan.sortOrder,
+      createdAt: plan.createdAt,
+      updatedAt: plan.updatedAt
+    };
   }
 }

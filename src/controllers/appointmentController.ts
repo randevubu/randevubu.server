@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { BusinessContextRequest } from '../middleware/businessContext';
 import {
   appointmentSearchSchema,
   createAppointmentSchema,
@@ -7,9 +8,72 @@ import {
 import { AppointmentService } from '../services/appointmentService';
 import { AuthenticatedRequest } from '../types/auth';
 import { AppointmentStatus } from '../types/business';
+import {
+  handleRouteError,
+  sendSuccessResponse
+} from '../utils/errorResponse';
 
 export class AppointmentController {
   constructor(private appointmentService: AppointmentService) {}
+
+  /**
+   * Get user's appointments from their businesses
+   * GET /api/v1/appointments/my-appointments
+   */
+  async getMyAppointments(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      
+      // Business access validation is now handled by middleware
+
+      const { status, date, businessId, page, limit } = req.query;
+
+      const filters = {
+        status: status as AppointmentStatus,
+        date: date as string,
+        businessId: businessId as string,
+        page: page ? parseInt(page as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined
+      };
+
+      const result = await this.appointmentService.getMyAppointments(userId, filters);
+
+      // Transform appointments to remove unnecessary data
+      const cleanedResult = {
+        ...result,
+        appointments: result.appointments.map((apt: any) => ({
+          id: apt.id,
+          date: apt.date,
+          startTime: apt.startTime,
+          endTime: apt.endTime,
+          duration: apt.duration,
+          status: apt.status,
+          price: apt.price,
+          currency: apt.currency,
+          customerNotes: apt.customerNotes,
+          service: {
+            id: apt.service.id,
+            name: apt.service.name,
+            duration: apt.service.duration
+          },
+          staff: apt.staff ? {
+            firstName: apt.staff.firstName,
+            lastName: apt.staff.lastName
+          } : null,
+          customer: apt.customer ? {
+            firstName: apt.customer.firstName,
+            lastName: apt.customer.lastName,
+            phoneNumber: apt.customer.phoneNumber
+          } : null
+        }))
+      };
+
+      sendSuccessResponse(res, cleanedResult, 'Appointments retrieved successfully');
+
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
 
   async createAppointment(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
@@ -181,6 +245,37 @@ export class AppointmentController {
     }
   }
 
+  async updateAppointmentStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      const userId = req.user!.id;
+
+      // Validate status
+      const validStatuses = ['CONFIRMED', 'COMPLETED', 'CANCELED', 'NO_SHOW'];
+      if (!validStatuses.includes(status)) {
+        res.status(400).json({
+          success: false,
+          error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+        });
+        return;
+      }
+
+      const appointment = await this.appointmentService.updateAppointment(userId, id, { status });
+
+      res.json({
+        success: true,
+        data: appointment,
+        message: `Appointment status updated to ${status}`
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update appointment status'
+      });
+    }
+  }
+
   async cancelAppointment(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -290,19 +385,51 @@ export class AppointmentController {
     }
   }
 
-  async getTodaysAppointments(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getTodaysAppointments(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const userId = req.user!.id;
 
-      const appointments = await this.appointmentService.getTodaysAppointments(userId, businessId);
+      // Business access validation is now handled by middleware
+
+      // Use context-based approach - if businessId is 'my', get all accessible businesses
+      const requestedBusinessId = businessId === 'my' ? undefined : businessId;
+      const appointments = await this.appointmentService.getTodaysAppointments(userId, requestedBusinessId);
+
+      // Clean appointment data
+      const cleanedAppointments = appointments.map((apt: any) => ({
+        id: apt.id,
+        date: apt.date,
+        startTime: apt.startTime,
+        endTime: apt.endTime,
+        duration: apt.duration,
+        status: apt.status,
+        price: apt.price,
+        currency: apt.currency,
+        customerNotes: apt.customerNotes,
+        service: {
+          id: apt.service.id,
+          name: apt.service.name,
+          duration: apt.service.duration
+        },
+        staff: apt.staff ? {
+          firstName: apt.staff.firstName,
+          lastName: apt.staff.lastName
+        } : null,
+        customer: apt.customer ? {
+          firstName: apt.customer.firstName,
+          lastName: apt.customer.lastName,
+          phoneNumber: apt.customer.phoneNumber
+        } : null
+      }));
 
       res.json({
         success: true,
-        data: appointments,
+        data: cleanedAppointments,
         meta: {
           total: appointments.length,
-          businessId,
+          businessId: requestedBusinessId || 'all',
+          accessibleBusinesses: req.businessContext?.businessIds.length || 0,
           date: new Date().toISOString().split('T')[0]
         }
       });
@@ -314,11 +441,13 @@ export class AppointmentController {
     }
   }
 
-  async getAppointmentStats(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getAppointmentStats(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const { startDate, endDate } = req.query;
       const userId = req.user!.id;
+
+      // Business access validation is now handled by middleware
 
       let start: Date | undefined;
       let end: Date | undefined;
@@ -345,9 +474,11 @@ export class AppointmentController {
         }
       }
 
+      // Use context-based approach - if businessId is 'my', get stats for all accessible businesses
+      const requestedBusinessId = businessId === 'my' ? undefined : businessId;
       const stats = await this.appointmentService.getAppointmentStats(
         userId,
-        businessId,
+        requestedBusinessId,
         start,
         end
       );
@@ -356,7 +487,8 @@ export class AppointmentController {
         success: true,
         data: stats,
         meta: {
-          businessId,
+          businessId: requestedBusinessId || 'all',
+          accessibleBusinesses: req.businessContext?.businessIds.length || 0,
           startDate: startDate as string,
           endDate: endDate as string
         }
@@ -487,11 +619,32 @@ export class AppointmentController {
         endDate: endDate as string
       };
 
-      const result = await this.appointmentService.searchAppointments(userId, filters, 1, 1000);
+      const result = await this.appointmentService.getPublicAppointments(filters, 1, 1000);
+
+      // Sanitize data for public access - remove sensitive customer information
+      const sanitizedAppointments = result.appointments.map((apt: any) => ({
+        id: apt.id,
+        date: apt.date,
+        startTime: apt.startTime,
+        endTime: apt.endTime,
+        duration: apt.duration,
+        status: apt.status,
+        service: apt.service ? {
+          id: apt.service.id,
+          name: apt.service.name,
+          duration: apt.service.duration
+        } : null,
+        staff: apt.staff ? {
+          id: apt.staff.id,
+          firstName: apt.staff.firstName,
+          lastName: apt.staff.lastName
+        } : null
+        // Exclude customer data and internal notes for public access
+      }));
 
       res.json({
         success: true,
-        data: result.appointments,
+        data: sanitizedAppointments,
         meta: {
           total: result.total,
           businessId,

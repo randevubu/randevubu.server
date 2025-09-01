@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { RoleController } from '../../controllers/roleController';
-import { authenticateToken, requirePermission, requireRole, requireAny } from '../../middleware/authUtils';
+import { requireAuth, requirePermission, requireRole, requireAny, withAuth } from '../../middleware/authUtils';
 import { validateBody } from '../../middleware/validation';
 import { 
   createRoleSchema,
@@ -46,28 +46,45 @@ export function createRoleRoutes(roleController: RoleController): Router {
   });
 
   // Apply authentication to all routes
-  router.use(authenticateToken);
+  router.use(requireAuth);
   router.use(roleManagementRateLimit);
 
   // Role Management Routes
+  /**
+   * @swagger
+   * /api/v1/roles:
+   *   post:
+   *     tags: [Role Management]
+   *     summary: Create a new role
+   *     description: Create a new role in the system (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       201:
+   *         description: Role created successfully
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Admin access required
+   */
   router.post(
     '/',
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(createRoleSchema),
-    roleController.createRole.bind(roleController)
+    withAuth(roleController.createRole.bind(roleController))
   );
 
   router.get(
     '/',
     requireRole(RoleName.ADMIN),
-    roleController.getRoles.bind(roleController)
+    withAuth(roleController.getRoles.bind(roleController))
   );
 
   router.get(
     '/:id',
     requireRole(RoleName.ADMIN),
-    roleController.getRoleById.bind(roleController)
+    withAuth(roleController.getRoleById.bind(roleController))
   );
 
   router.patch(
@@ -75,14 +92,14 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(updateRoleSchema),
-    roleController.updateRole.bind(roleController)
+    withAuth(roleController.updateRole.bind(roleController))
   );
 
   router.delete(
     '/:id',
     adminRateLimit,
     requireRole(RoleName.ADMIN),
-    roleController.deleteRole.bind(roleController)
+    withAuth(roleController.deleteRole.bind(roleController))
   );
 
   // Permission Management Routes
@@ -91,19 +108,19 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(createPermissionSchema),
-    roleController.createPermission.bind(roleController)
+    withAuth(roleController.createPermission.bind(roleController))
   );
 
   router.get(
     '/permissions',
     requireRole(RoleName.ADMIN),
-    roleController.getPermissions.bind(roleController)
+    withAuth(roleController.getPermissions.bind(roleController))
   );
 
   router.get(
     '/permissions/:id',
     requireRole(RoleName.ADMIN),
-    roleController.getPermissionById.bind(roleController)
+    withAuth(roleController.getPermissionById.bind(roleController))
   );
 
   router.patch(
@@ -111,7 +128,7 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(updatePermissionSchema),
-    roleController.updatePermission.bind(roleController)
+    withAuth(roleController.updatePermission.bind(roleController))
   );
 
   // Role-Permission Assignment Routes
@@ -120,20 +137,20 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(assignPermissionsToRoleSchema),
-    roleController.assignPermissionsToRole.bind(roleController)
+    withAuth(roleController.assignPermissionsToRole.bind(roleController))
   );
 
   router.get(
     '/:roleId/permissions',
     requireRole(RoleName.ADMIN),
-    roleController.getRolePermissions.bind(roleController)
+    withAuth(roleController.getRolePermissions.bind(roleController))
   );
 
   router.delete(
     '/:roleId/permissions/:permissionId',
     adminRateLimit,
     requireRole(RoleName.ADMIN),
-    roleController.revokePermissionFromRole.bind(roleController)
+    withAuth(roleController.revokePermissionFromRole.bind(roleController))
   );
 
   // User-Role Assignment Routes
@@ -142,32 +159,47 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(assignRoleSchema),
-    roleController.assignRoleToUser.bind(roleController)
+    withAuth(roleController.assignRoleToUser.bind(roleController))
   );
 
   router.delete(
     '/revoke/:userId/:roleId',
     adminRateLimit,
     requireRole(RoleName.ADMIN),
-    roleController.revokeRoleFromUser.bind(roleController)
+    withAuth(roleController.revokeRoleFromUser.bind(roleController))
   );
 
   router.get(
     '/users/:userId/permissions',
     requireAny([PermissionName.MANAGE_ROLES, PermissionName.VIEW_OWN_PROFILE]),
-    roleController.getUserPermissions.bind(roleController)
+    withAuth(roleController.getUserPermissions.bind(roleController))
   );
 
+  /**
+   * @swagger
+   * /api/v1/roles/my-permissions:
+   *   get:
+   *     tags: [Role Management] 
+   *     summary: Get my permissions
+   *     description: Get permissions for the currently authenticated user
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: User permissions retrieved
+   *       401:
+   *         description: Unauthorized
+   */
   router.get(
     '/my-permissions',
-    roleController.getMyPermissions.bind(roleController)
+    withAuth(roleController.getMyPermissions.bind(roleController))
   );
 
   // Statistics Routes
   router.get(
     '/statistics',
     requireRole(RoleName.ADMIN),
-    roleController.getRoleStatistics.bind(roleController)
+    withAuth(roleController.getRoleStatistics.bind(roleController))
   );
 
   return router;

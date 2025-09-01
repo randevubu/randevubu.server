@@ -1,38 +1,46 @@
 // Utility functions to convert between Prisma types and application types
 // Prisma uses `null` for nullable fields, but our interfaces use `undefined`
 
-export function convertNullToUndefined<T extends Record<string, any>>(obj: T): T {
-  const result = {} as T;
-  
-  for (const key in obj) {
-    if (obj[key] === null) {
-      (result as any)[key] = undefined;
-    } else if (
-      // Convert Prisma Decimal to number
-      typeof (obj as any)[key] === 'object' &&
-      (obj as any)[key] !== null &&
-      typeof (obj as any)[key].toNumber === 'function'
-    ) {
-      (result as any)[key] = (obj as any)[key].toNumber();
-    } else if (
-      typeof obj[key] === 'object' &&
-      obj[key] !== null &&
-      (obj[key] as any)?.constructor?.name !== 'Date'
-    ) {
-      // Recursively convert nested objects, but skip Dates
-      if (Array.isArray(obj[key])) {
-        (result as any)[key] = obj[key].map((item: any) => 
-          typeof item === 'object' && item !== null ? convertNullToUndefined(item) : item === null ? undefined : item
-        );
+export function convertNullToUndefined<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  // Handle Prisma Decimal objects
+  if (
+    typeof obj === 'object' &&
+    obj !== null &&
+    typeof (obj as any).toNumber === 'function'
+  ) {
+    return (obj as any).toNumber();
+  }
+
+  // Handle arrays
+  if (Array.isArray(obj)) {
+    return obj.map((item: any) => convertNullToUndefined(item)) as unknown as T;
+  }
+
+  // Handle objects (but skip Date objects)
+  if (
+    typeof obj === 'object' &&
+    obj !== null &&
+    (obj as any)?.constructor?.name !== 'Date'
+  ) {
+    const result = {} as T;
+    
+    for (const key in obj) {
+      if (obj[key] === null) {
+        (result as any)[key] = undefined;
       } else {
         (result as any)[key] = convertNullToUndefined(obj[key]);
       }
-    } else {
-      (result as any)[key] = obj[key];
     }
+    
+    return result;
   }
-  
-  return result;
+
+  // Return primitive values as-is
+  return obj;
 }
 
 // Type-safe converter for business data

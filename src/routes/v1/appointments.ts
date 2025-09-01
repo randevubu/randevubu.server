@@ -6,10 +6,11 @@ import { ServiceContainer } from '../../services';
 import { AuthMiddleware } from '../../middleware/auth';
 import { AuthorizationMiddleware } from '../../middleware/authorization';
 import { PermissionName } from '../../types/auth';
+import { attachBusinessContext, requireBusinessAccess } from '../../middleware/attachBusinessContext';
 
 // Initialize middleware dependencies (aligns with v1 routes pattern)
 const repositories = new RepositoryContainer(prisma);
-const services = new ServiceContainer(repositories);
+const services = new ServiceContainer(repositories, prisma);
 const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
 const authorizationMiddleware = new AuthorizationMiddleware(services.rbacService);
 
@@ -18,6 +19,79 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
 
   // All appointment routes require authentication
   router.use(authMiddleware.authenticate);
+  router.use(attachBusinessContext);
+
+  // User's appointments access
+  /**
+   * @swagger
+   * /api/v1/appointments/my-appointments:
+   *   get:
+   *     tags: [Appointments]
+   *     summary: Get user's appointments from their businesses
+   *     description: Returns appointments from businesses the user owns or works at. Only OWNER and STAFF roles can access this endpoint.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: status
+   *         schema:
+   *           type: string
+   *           enum: [CONFIRMED, COMPLETED, CANCELLED, NO_SHOW]
+   *         description: Filter by appointment status
+   *       - in: query
+   *         name: date
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: Filter by specific date (YYYY-MM-DD)
+   *       - in: query
+   *         name: businessId
+   *         schema:
+   *           type: string
+   *         description: Filter by specific business
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           default: 1
+   *         description: Page number for pagination
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           default: 50
+   *         description: Number of appointments per page
+   *     responses:
+   *       200:
+   *         description: Appointments retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Appointments retrieved successfully"
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     appointments:
+   *                       type: array
+   *                       items:
+   *                         $ref: '#/components/schemas/AppointmentWithDetails'
+   *                     total:
+   *                       type: integer
+   *                     page:
+   *                       type: integer
+   *                     totalPages:
+   *                       type: integer
+   *       403:
+   *         description: Access denied - business role required
+   */
+  router.get('/my-appointments', requireBusinessAccess, appointmentController.getMyAppointments.bind(appointmentController));
 
   // Appointment CRUD operations
  /**
@@ -43,6 +117,250 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.post(
     '/',
     appointmentController.createAppointment.bind(appointmentController)
+  );
+
+  // Customer appointments - MUST be before /:id route to avoid route conflicts
+  /**
+   * @swagger
+   * /api/v1/appointments/customer:
+   *   get:
+   *     tags: [Appointments]
+   *     summary: Get appointments for current user as customer
+   *     description: Returns all appointments where the current logged-in user is the customer
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           default: 1
+   *         description: Page number for pagination
+   *         example: 1
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           default: 20
+   *         description: Number of appointments per page (max 100)
+   *         example: 10
+   *     responses:
+   *       200:
+   *         description: User's appointments retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id:
+   *                         type: string
+   *                         example: "apt_123456"
+   *                       businessId:
+   *                         type: string
+   *                         example: "biz_789"
+   *                       serviceId:
+   *                         type: string
+   *                         example: "svc_456"
+   *                       date:
+   *                         type: string
+   *                         format: date-time
+   *                         example: "2024-01-15T00:00:00.000Z"
+   *                       startTime:
+   *                         type: string
+   *                         format: date-time
+   *                         example: "2024-01-15T10:00:00.000Z"
+   *                       endTime:
+   *                         type: string
+   *                         format: date-time
+   *                         example: "2024-01-15T10:30:00.000Z"
+   *                       duration:
+   *                         type: integer
+   *                         example: 30
+   *                       status:
+   *                         type: string
+   *                         enum: [CONFIRMED, COMPLETED, CANCELLED, NO_SHOW]
+   *                         example: "CONFIRMED"
+   *                       price:
+   *                         type: number
+   *                         example: 50.00
+   *                       currency:
+   *                         type: string
+   *                         example: "TRY"
+   *                       customerNotes:
+   *                         type: string
+   *                         nullable: true
+   *                         example: "Please call when you arrive"
+   *                       bookedAt:
+   *                         type: string
+   *                         format: date-time
+   *                         example: "2024-01-10T14:30:00.000Z"
+   *                       business:
+   *                         type: object
+   *                         properties:
+   *                           id:
+   *                             type: string
+   *                             example: "biz_789"
+   *                           name:
+   *                             type: string
+   *                             example: "Downtown Hair Salon"
+   *                           address:
+   *                             type: string
+   *                             example: "123 Main St, City"
+   *                           phoneNumber:
+   *                             type: string
+   *                             example: "+90 555 123 4567"
+   *                           timezone:
+   *                             type: string
+   *                             example: "Europe/Istanbul"
+   *                       service:
+   *                         type: object
+   *                         properties:
+   *                           id:
+   *                             type: string
+   *                             example: "svc_456"
+   *                           name:
+   *                             type: string
+   *                             example: "Haircut & Style"
+   *                           duration:
+   *                             type: integer
+   *                             example: 30
+   *                           price:
+   *                             type: number
+   *                             example: 50.00
+   *                       staff:
+   *                         type: object
+   *                         nullable: true
+   *                         properties:
+   *                           id:
+   *                             type: string
+   *                             example: "staff_123"
+   *                           user:
+   *                             type: object
+   *                             properties:
+   *                               firstName:
+   *                                 type: string
+   *                                 example: "Sarah"
+   *                               lastName:
+   *                                 type: string
+   *                                 example: "Johnson"
+   *                 meta:
+   *                   type: object
+   *                   properties:
+   *                     total:
+   *                       type: integer
+   *                       example: 25
+   *                     page:
+   *                       type: integer
+   *                       example: 1
+   *                     totalPages:
+   *                       type: integer
+   *                       example: 3
+   *                     limit:
+   *                       type: integer
+   *                       example: 10
+   *       401:
+   *         description: Unauthorized - Invalid or missing token
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Unauthorized"
+   *       403:
+   *         description: Access denied
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Access denied"
+   * /api/v1/appointments/customer/{customerId}:
+   *   get:
+   *     tags: [Appointments]
+   *     summary: Get appointments for a specific customer (admin/staff only)
+   *     description: Returns appointments for a specific customer. Requires appropriate permissions.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: customerId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: The ID of the customer
+   *         example: "user_789"
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           default: 1
+   *         description: Page number for pagination
+   *         example: 1
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           default: 20
+   *         description: Number of appointments per page (max 100)
+   *         example: 10
+   *     responses:
+   *       200:
+   *         description: Customer appointments retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: array
+   *                   items:
+   *                     $ref: '#/components/schemas/AppointmentWithDetails'
+   *                 meta:
+   *                   type: object
+   *                   properties:
+   *                     total:
+   *                       type: integer
+   *                       example: 15
+   *                     page:
+   *                       type: integer
+   *                       example: 1
+   *                     totalPages:
+   *                       type: integer
+   *                       example: 2
+   *                     limit:
+   *                       type: integer
+   *                       example: 10
+   *       401:
+   *         description: Unauthorized - Invalid or missing token
+   *       403:
+   *         description: Access denied - Insufficient permissions
+   *       404:
+   *         description: Customer not found
+   */
+  router.get(
+    '/customer/:customerId?',
+    appointmentController.getCustomerAppointments.bind(appointmentController)
   );
 
   /**
@@ -99,13 +417,13 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
     appointmentController.updateAppointment.bind(appointmentController)
   );
 
-  // Appointment status management
   /**
    * @swagger
-   * /api/v1/appointments/{id}/cancel:
-   *   post:
+   * /api/v1/appointments/{id}/status:
+   *   put:
    *     tags: [Appointments]
-   *     summary: Cancel an appointment
+   *     summary: Update appointment status only
+   *     description: Updates only the status of an appointment. Available to business staff and appointment owners.
    *     security:
    *       - bearerAuth: []
    *     parameters:
@@ -114,13 +432,228 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
    *         required: true
    *         schema:
    *           type: string
+   *         description: The appointment ID
+   *         example: "apt_123456"
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - status
+   *             properties:
+   *               status:
+   *                 type: string
+   *                 enum: [CONFIRMED, COMPLETED, CANCELED, NO_SHOW]
+   *                 description: The new status for the appointment
+   *                 example: "COMPLETED"
+   *           examples:
+   *             complete:
+   *               summary: Mark as completed
+   *               value:
+   *                 status: "COMPLETED"
+   *             cancel:
+   *               summary: Cancel appointment
+   *               value:
+   *                 status: "CANCELED"
+   *             no_show:
+   *               summary: Mark as no-show
+   *               value:
+   *                 status: "NO_SHOW"
    *     responses:
    *       200:
-   *         description: Appointment cancelled
+   *         description: Appointment status updated successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Appointment status updated to COMPLETED"
+   *                 data:
+   *                   $ref: '#/components/schemas/AppointmentData'
+   *       400:
+   *         description: Invalid status or validation error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Invalid status. Must be one of: CONFIRMED, COMPLETED, CANCELED, NO_SHOW"
    *       401:
    *         description: Unauthorized
+   *       403:
+   *         description: Access denied
    *       404:
    *         description: Appointment not found
+   */
+  router.put(
+    '/:id/status',
+    appointmentController.updateAppointmentStatus.bind(appointmentController)
+  );
+
+  // Appointment status management
+  /**
+   * @swagger
+   * /api/v1/appointments/{id}/cancel:
+   *   post:
+   *     tags: [Appointments]
+   *     summary: Cancel an appointment
+   *     description: |
+   *       Cancel an appointment. Users can cancel appointments in these cases:
+   *       - Customers can cancel their own appointments
+   *       - Business staff can cancel appointments in their business (with proper permissions)
+   *       - Global admins can cancel any appointment
+   *       
+   *       Cannot cancel appointments that are already completed or cancelled.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: The appointment ID to cancel
+   *         example: "apt_123456"
+   *     requestBody:
+   *       required: false
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               reason:
+   *                 type: string
+   *                 description: Optional reason for cancellation
+   *                 example: "Personal emergency"
+   *                 maxLength: 500
+   *           examples:
+   *             with_reason:
+   *               summary: Cancel with reason
+   *               value:
+   *                 reason: "Personal emergency"
+   *             without_reason:
+   *               summary: Cancel without reason
+   *               value: {}
+   *     responses:
+   *       200:
+   *         description: Appointment cancelled successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Appointment cancelled successfully"
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     id:
+   *                       type: string
+   *                       example: "apt_123456"
+   *                     status:
+   *                       type: string
+   *                       enum: [CANCELED]
+   *                       example: "CANCELED"
+   *                     cancelledAt:
+   *                       type: string
+   *                       format: date-time
+   *                       example: "2024-01-15T10:30:00.000Z"
+   *                     cancelReason:
+   *                       type: string
+   *                       nullable: true
+   *                       example: "Personal emergency"
+   *                     customerId:
+   *                       type: string
+   *                       example: "user_789"
+   *                     businessId:
+   *                       type: string
+   *                       example: "biz_123"
+   *                     serviceId:
+   *                       type: string
+   *                       example: "svc_456"
+   *                     date:
+   *                       type: string
+   *                       format: date-time
+   *                       example: "2024-01-20T00:00:00.000Z"
+   *                     startTime:
+   *                       type: string
+   *                       format: date-time
+   *                       example: "2024-01-20T14:00:00.000Z"
+   *                     endTime:
+   *                       type: string
+   *                       format: date-time
+   *                       example: "2024-01-20T15:00:00.000Z"
+   *       400:
+   *         description: Bad request - Cannot cancel appointment
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   examples:
+   *                     - "Cannot cancel completed appointments"
+   *                     - "Appointment is already cancelled"
+   *                     - "Failed to cancel appointment"
+   *       401:
+   *         description: Unauthorized - Invalid or missing token
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Unauthorized"
+   *       403:
+   *         description: Access denied - Cannot cancel this appointment
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Access denied: You do not have permission to cancel this appointment"
+   *       404:
+   *         description: Appointment not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Appointment not found"
    */
   router.post(
     '/:id/cancel',
@@ -229,46 +762,6 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
     appointmentController.markNoShow.bind(appointmentController)
   );
 
-  // Customer appointments
-  /**
-   * @swagger
-   * /api/v1/appointments/customer:
-   *   get:
-   *     tags: [Appointments]
-   *     summary: Get appointments for current or specific customer
-   *     description: If no customerId is provided, returns appointments for the current user.
-   *     security:
-   *       - bearerAuth: []
-   *     responses:
-   *       200:
-   *         description: Appointments list
-   *       401:
-   *         description: Unauthorized
-   */
-  /**
-   * @swagger
-   * /api/v1/appointments/customer/{customerId}:
-   *   get:
-   *     tags: [Appointments]
-   *     summary: Get appointments for a specific customer
-   *     security:
-   *       - bearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: customerId
-   *         required: true
-   *         schema:
-   *           type: string
-   *     responses:
-   *       200:
-   *         description: Appointments list
-   *       401:
-   *         description: Unauthorized
-   */
-  router.get(
-    '/customer/:customerId?',
-    appointmentController.getCustomerAppointments.bind(appointmentController)
-  );
 
   /**
    * @swagger
@@ -354,6 +847,96 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
     appointmentController.getTodaysAppointments.bind(appointmentController)
   );
 
+  // Context-based today's appointments for user's businesses
+  /**
+   * @swagger
+   * /api/v1/appointments/my/today:
+   *   get:
+   *     tags: [Appointments]
+   *     summary: Get today's appointments for all my businesses
+   *     description: Get today's appointments from all businesses the user owns or works at
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Today's appointments
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id:
+   *                         type: string
+   *                         example: "apt_123"
+   *                       date:
+   *                         type: string
+   *                         format: date
+   *                         example: "2024-01-15"
+   *                       startTime:
+   *                         type: string
+   *                         format: date-time
+   *                         example: "2024-01-15T10:00:00Z"
+   *                       endTime:
+   *                         type: string
+   *                         format: date-time
+   *                         example: "2024-01-15T10:30:00Z"
+   *                       status:
+   *                         type: string
+   *                         example: "CONFIRMED"
+   *                       service:
+   *                         type: object
+   *                         properties:
+   *                           id:
+   *                             type: string
+   *                             example: "svc_456"
+   *                           name:
+   *                             type: string
+   *                             example: "Haircut"
+   *                           duration:
+   *                             type: integer
+   *                             example: 30
+   *                       customer:
+   *                         type: object
+   *                         properties:
+   *                           firstName:
+   *                             type: string
+   *                             example: "John"
+   *                           lastName:
+   *                             type: string
+   *                             example: "Doe"
+   *                 meta:
+   *                   type: object
+   *                   properties:
+   *                     total:
+   *                       type: integer
+   *                       example: 5
+   *                     businessId:
+   *                       type: string
+   *                       example: "all"
+   *                     accessibleBusinesses:
+   *                       type: integer
+   *                       example: 2
+   *                     date:
+   *                       type: string
+   *                       format: date
+   *                       example: "2024-01-15"
+   *       403:
+   *         description: Access denied - business role required
+   */
+  router.get(
+    '/my/today',
+    requireBusinessAccess,
+    appointmentController.getTodaysAppointments.bind(appointmentController)
+  );
+
   /**
    * @swagger
    * /api/v1/appointments/business/{businessId}/stats:
@@ -386,13 +969,97 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
     appointmentController.getAppointmentStats.bind(appointmentController)
   );
 
+  // Context-based stats for user's businesses
+  /**
+   * @swagger
+   * /api/v1/appointments/my/stats:
+   *   get:
+   *     tags: [Appointments]
+   *     summary: Get appointment statistics for all my businesses
+   *     description: Get appointment statistics from all businesses the user owns or works at
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: startDate
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: Start date for statistics (YYYY-MM-DD)
+   *         example: "2024-01-01"
+   *       - in: query
+   *         name: endDate
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: End date for statistics (YYYY-MM-DD)  
+   *         example: "2024-01-31"
+   *     responses:
+   *       200:
+   *         description: Appointment statistics
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   additionalProperties:
+   *                     type: object
+   *                     properties:
+   *                       total:
+   *                         type: integer
+   *                         example: 125
+   *                       byStatus:
+   *                         type: object
+   *                         additionalProperties:
+   *                           type: integer
+   *                         example:
+   *                           COMPLETED: 85
+   *                           CONFIRMED: 25
+   *                           CANCELLED: 5
+   *                       totalRevenue:
+   *                         type: number
+   *                         example: 4250.00
+   *                       averageValue:
+   *                         type: number
+   *                         example: 50.00
+   *                 meta:
+   *                   type: object
+   *                   properties:
+   *                     businessId:
+   *                       type: string
+   *                       example: "all"
+   *                     accessibleBusinesses:
+   *                       type: integer
+   *                       example: 2
+   *                     startDate:
+   *                       type: string
+   *                       format: date
+   *                       example: "2024-01-01"
+   *                     endDate:
+   *                       type: string
+   *                       format: date
+   *                       example: "2024-01-31"
+   *       403:
+   *         description: Access denied - business role required
+   */
+  router.get(
+    '/my/stats',
+    requireBusinessAccess,
+    appointmentController.getAppointmentStats.bind(appointmentController)
+  );
+
   /**
    * @swagger
    * /api/v1/appointments/business/{businessId}/date-range:
    *   get:
    *     tags: [Appointments]
    *     summary: Get appointments by date range for business
-   *     description: Requires appropriate permission.
+   *     description: Public endpoint for customers to check availability. Returns basic appointment info without sensitive data.
    *     security:
    *       - bearerAuth: []
    *     parameters:
@@ -406,15 +1073,9 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
    *         description: Appointments list
    *       401:
    *         description: Unauthorized
-   *       403:
-   *         description: Forbidden
    */
   router.get(
     '/business/:businessId/date-range',
-    authorizationMiddleware.requireAny(
-      authorizationMiddleware.requirePermission({ resource: 'appointment', action: 'view_all' }),
-      authorizationMiddleware.requirePermission({ resource: 'appointment', action: 'view_own' })
-    ),
     appointmentController.getAppointmentsByDateRange.bind(appointmentController)
   );
 

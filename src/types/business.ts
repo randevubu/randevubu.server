@@ -3,8 +3,8 @@ export interface BusinessTypeData {
   id: string;
   name: string;
   displayName: string;
-  description?: string;
-  icon?: string;
+  description: string | null;
+  icon: string | null;
   category: string;
   isActive: boolean;
   createdAt: Date;
@@ -68,7 +68,6 @@ export interface ServiceData {
   duration: number;
   price: number;
   currency: string;
-  category?: string;
   image?: string;
   isActive: boolean;
   sortOrder: number;
@@ -141,6 +140,15 @@ export interface BusinessClosureData {
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+  // Enhanced features
+  notifyCustomers: boolean;
+  notificationMessage?: string;
+  notificationChannels?: NotificationChannel[];
+  affectedServices?: string[];
+  isRecurring: boolean;
+  recurringPattern?: RecurringPattern;
+  createdAppointmentsCount: number;
+  notifiedCustomersCount: number;
 }
 
 export interface BusinessImageData {
@@ -187,9 +195,31 @@ export interface BusinessSubscriptionData {
   canceledAt?: Date;
   trialStart?: Date;
   trialEnd?: Date;
+  autoRenewal: boolean;
+  paymentMethodId?: string;
+  nextBillingDate?: Date;
+  failedPaymentCount: number;
   metadata?: any;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface StoredPaymentMethodData {
+  id: string;
+  businessId: string;
+  cardHolderName: string;
+  lastFourDigits: string;
+  cardBrand?: string;
+  expiryMonth: string;
+  expiryYear: string;
+  isDefault: boolean;
+  isActive: boolean;
+  providerToken?: string;
+  providerCardId?: string;
+  metadata?: any;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt?: Date;
 }
 
 // Enums
@@ -201,9 +231,7 @@ export enum BusinessStaffRole {
 }
 
 export enum AppointmentStatus {
-  PENDING = 'PENDING',
   CONFIRMED = 'CONFIRMED',
-  IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
   CANCELED = 'CANCELED',
   NO_SHOW = 'NO_SHOW'
@@ -217,6 +245,15 @@ export enum SubscriptionStatus {
   UNPAID = 'UNPAID',
   INCOMPLETE = 'INCOMPLETE',
   INCOMPLETE_EXPIRED = 'INCOMPLETE_EXPIRED'
+}
+
+export enum PaymentStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  SUCCEEDED = 'SUCCEEDED',
+  FAILED = 'FAILED',
+  CANCELED = 'CANCELED',
+  REFUNDED = 'REFUNDED'
 }
 
 export enum ClosureType {
@@ -273,7 +310,6 @@ export interface CreateServiceRequest {
   duration: number;
   price: number;
   currency?: string;
-  category?: string;
   bufferTime?: number;
   maxAdvanceBooking?: number;
   minAdvanceBooking?: number;
@@ -285,7 +321,6 @@ export interface UpdateServiceRequest {
   duration?: number;
   price?: number;
   currency?: string;
-  category?: string;
   isActive?: boolean;
   sortOrder?: number;
   bufferTime?: number;
@@ -328,6 +363,13 @@ export interface CreateBusinessClosureRequest {
   endDate?: string;
   reason: string;
   type: ClosureType;
+  // Enhanced features
+  notifyCustomers?: boolean;
+  notificationMessage?: string;
+  notificationChannels?: NotificationChannel[];
+  affectedServices?: string[];
+  isRecurring?: boolean;
+  recurringPattern?: RecurringPattern;
 }
 
 export interface UpdateBusinessClosureRequest {
@@ -336,6 +378,12 @@ export interface UpdateBusinessClosureRequest {
   reason?: string;
   type?: ClosureType;
   isActive?: boolean;
+  // Enhanced features
+  notifyCustomers?: boolean;
+  notificationMessage?: string;
+  notificationChannels?: NotificationChannel[];
+  affectedServices?: string[];
+  recurringPattern?: RecurringPattern;
 }
 
 export interface SubscribeBusinessRequest {
@@ -432,4 +480,252 @@ export interface AppointmentWithDetails extends AppointmentData {
     lastName?: string;
     phoneNumber: string;
   };
+}
+
+// Enhanced Closure System Types
+export enum NotificationChannel {
+  EMAIL = 'EMAIL',
+  SMS = 'SMS',
+  PUSH = 'PUSH'
+}
+
+export enum NotificationStatus {
+  PENDING = 'PENDING',
+  SENT = 'SENT',
+  FAILED = 'FAILED',
+  DELIVERED = 'DELIVERED',
+  READ = 'READ'
+}
+
+export enum CustomerResponse {
+  ACCEPTED = 'ACCEPTED',
+  DECLINED = 'DECLINED',
+  NO_RESPONSE = 'NO_RESPONSE'
+}
+
+export interface RecurringPattern {
+  frequency: 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+  interval: number;
+  endDate?: string;
+  daysOfWeek?: number[]; // For weekly patterns
+  dayOfMonth?: number; // For monthly patterns
+  monthOfYear?: number; // For yearly patterns
+}
+
+export interface EnhancedClosureData {
+  id: string;
+  businessId: string;
+  businessName: string;
+  startDate: Date;
+  endDate?: Date;
+  reason: string;
+  type: ClosureType;
+  message?: string;
+  notifyCustomers: boolean;
+  notificationChannels: NotificationChannel[];
+  affectedServices?: string[];
+  isRecurring: boolean;
+  recurringPattern?: RecurringPattern;
+}
+
+export interface NotificationResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+  channel: NotificationChannel;
+  status: NotificationStatus;
+}
+
+export interface ClosureNotificationData {
+  id: string;
+  closureId: string;
+  customerId: string;
+  channel: NotificationChannel;
+  message: string;
+  sentAt?: Date;
+  status: NotificationStatus;
+  errorMessage?: string;
+  createdAt: Date;
+}
+
+export interface AvailabilityAlertData {
+  id: string;
+  customerId: string;
+  businessId: string;
+  serviceId?: string;
+  preferredDates?: Array<{ startDate: Date; endDate: Date }>;
+  notificationPreferences: {
+    channels: NotificationChannel[];
+  };
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface RescheduleSuggestionData {
+  id: string;
+  originalAppointmentId: string;
+  closureId: string;
+  suggestedDates: Array<{
+    startTime: Date;
+    endTime: Date;
+    serviceId?: string;
+    staffId?: string;
+  }>;
+  customerResponse?: CustomerResponse;
+  responseAt?: Date;
+  createdAt: Date;
+}
+
+export interface ClosureAnalytics {
+  totalClosures: number;
+  closuresByType: Record<ClosureType, number>;
+  averageClosureDuration: number;
+  totalClosureHours: number;
+  affectedAppointments: number;
+  estimatedRevenueLoss: number;
+  customerImpact: {
+    totalAffectedCustomers: number;
+    notificationsSent: number;
+    rescheduledAppointments: number;
+    canceledAppointments: number;
+  };
+  monthlyTrend: Array<{
+    month: string;
+    year: number;
+    closures: number;
+    hours: number;
+    revenue: number;
+  }>;
+}
+
+export interface CustomerImpactReport {
+  closureId: string;
+  businessId: string;
+  businessName: string;
+  startDate: Date;
+  endDate?: Date;
+  totalAffectedAppointments: number;
+  affectedCustomers: Array<{
+    customerId: string;
+    customerName: string;
+    appointmentCount: number;
+    totalValue: number;
+    notificationStatus: string;
+    rescheduleStatus: string;
+  }>;
+  notificationStats: {
+    total: number;
+    sent: number;
+    failed: number;
+    channels: Record<string, number>;
+  };
+}
+
+export interface RevenueImpact {
+  directRevenueLoss: number;
+  potentialRevenueLoss: number;
+  rescheduledRevenue: number;
+  netRevenueLoss: number;
+  impactPercentage: number;
+  comparisonWithPreviousPeriod: {
+    previousLoss: number;
+    changePercentage: number;
+  };
+}
+
+// Request/Response Types for Enhanced Closure System
+export interface CreateEnhancedClosureRequest {
+  startDate: string;
+  endDate?: string;
+  reason: string;
+  type: ClosureType;
+  notifyCustomers: boolean;
+  notificationMessage?: string;
+  notificationChannels: NotificationChannel[];
+  affectedServices?: string[];
+  isRecurring: boolean;
+  recurringPattern?: RecurringPattern;
+}
+
+export interface NotificationRequest {
+  closureId: string;
+  channels: NotificationChannel[];
+  message: string;
+  customTemplate?: string;
+}
+
+export interface AvailabilityAlertRequest {
+  customerId: string;
+  businessId: string;
+  serviceId?: string;
+  preferredDates: Array<{ startDate: string; endDate: string }>;
+  notificationChannels: NotificationChannel[];
+}
+
+export interface RescheduleOptionsRequest {
+  autoReschedule: boolean;
+  maxRescheduleDays: number;
+  preferredTimeSlots: 'MORNING' | 'AFTERNOON' | 'EVENING' | 'ANY';
+  notifyCustomers: boolean;
+  allowWeekends: boolean;
+}
+
+export interface ClosureAnalyticsRequest {
+  period: string;
+  metrics: Array<'FREQUENCY' | 'REVENUE_IMPACT' | 'CUSTOMER_IMPACT'>;
+}
+
+export interface ClosureStatusResponse {
+  businessId: string;
+  date: string;
+  isClosed: boolean;
+  closure?: BusinessClosureData;
+  upcomingClosures?: BusinessClosureData[];
+}
+
+// Enhanced Business Types
+export interface BusinessWithClosureDetails extends BusinessData {
+  closures: BusinessClosureData[];
+  upcomingClosures: BusinessClosureData[];
+  currentClosure?: BusinessClosureData;
+}
+
+export interface BusinessWithServices {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  postalCode: string | null;
+  businessHours: any;
+  timezone: string;
+  logoUrl: string | null;
+  coverImageUrl: string | null;
+  primaryColor: string | null;
+  isVerified: boolean;
+  isClosed: boolean;
+  tags: string[];
+  businessType: {
+    id: string;
+    name: string;
+    displayName: string;
+    icon: string | null;
+    category: string;
+  };
+  services: {
+    id: string;
+    name: string;
+    description: string | null;
+    duration: number;
+    price: number;
+    currency: string;
+    isActive: boolean;
+  }[];
 }

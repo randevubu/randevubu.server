@@ -1,14 +1,29 @@
 import { Request, Response } from 'express';
-import { BusinessClosureService } from '../services/businessClosureService';
-import { 
-  createBusinessClosureSchema, 
-  updateBusinessClosureSchema 
+import { BusinessContextRequest } from '../middleware/businessContext';
+import {
+  createBusinessClosureSchema,
+  updateBusinessClosureSchema
 } from '../schemas/business.schemas';
+import { AppointmentRescheduleService } from '../services/appointmentRescheduleService';
+import { BusinessClosureService } from '../services/businessClosureService';
+import { ClosureAnalyticsService } from '../services/closureAnalyticsService';
+import { NotificationService } from '../services/notificationService';
 import { AuthenticatedRequest } from '../types/auth';
-import { ClosureType } from '../types/business';
+import {
+  AvailabilityAlertRequest,
+  ClosureType,
+  CreateEnhancedClosureRequest,
+  NotificationRequest,
+  RescheduleOptionsRequest
+} from '../types/business';
 
 export class BusinessClosureController {
-  constructor(private businessClosureService: BusinessClosureService) {}
+  constructor(
+    private businessClosureService: BusinessClosureService,
+    private notificationService: NotificationService,
+    private closureAnalyticsService: ClosureAnalyticsService,
+    private appointmentRescheduleService: AppointmentRescheduleService
+  ) {}
 
   async createClosure(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
@@ -715,6 +730,661 @@ export class BusinessClosureController {
       res.status(500).json({
         success: false,
         error: 'Failed to expire closures'
+      });
+    }
+  }
+
+  // Context-aware methods (use business context from middleware)
+  async createMyBusinessClosure(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const validatedData = createBusinessClosureSchema.parse(req.body);
+      const userId = req.user!.id;
+      const businessId = req.businessContext!.primaryBusinessId!;
+
+      const closure = await this.businessClosureService.createClosure(
+        userId,
+        businessId,
+        validatedData
+      );
+
+      res.status(201).json({
+        success: true,
+        data: closure,
+        message: 'Business closure created successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create closure'
+      });
+    }
+  }
+
+  async getMyBusinessClosures(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const { active } = req.query;
+      const userId = req.user!.id;
+      const businessId = req.businessContext!.primaryBusinessId!;
+
+      let closures;
+      if (active === 'true') {
+        closures = await this.businessClosureService.getActiveClosures(userId, businessId);
+      } else if (active === 'upcoming') {
+        closures = await this.businessClosureService.getUpcomingClosures(userId, businessId);
+      } else {
+        closures = await this.businessClosureService.getBusinessClosures(userId, businessId);
+      }
+
+      res.json({
+        success: true,
+        data: closures,
+        meta: {
+          total: closures.length,
+          businessId,
+          filter: active || 'all'
+        }
+      });
+    } catch (error) {
+      res.status(403).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Access denied'
+      });
+    }
+  }
+
+  async createMyEmergencyClosure(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const { reason, endDate } = req.body;
+      const userId = req.user!.id;
+      const businessId = req.businessContext!.primaryBusinessId!;
+
+      if (!reason || typeof reason !== 'string' || reason.trim().length < 5) {
+        res.status(400).json({
+          success: false,
+          error: 'Emergency reason must be at least 5 characters'
+        });
+        return;
+      }
+
+      const start = new Date();
+      let end: Date | undefined;
+      
+      if (endDate) {
+        end = new Date(endDate);
+        if (isNaN(end.getTime())) {
+          res.status(400).json({
+            success: false,
+            error: 'Invalid endDate format'
+          });
+          return;
+        }
+      }
+
+      const closure = await this.businessClosureService.createClosure(
+        userId,
+        businessId,
+        {
+          startDate: start.toISOString().split('T')[0],
+          endDate: end?.toISOString().split('T')[0],
+          reason: reason.trim(),
+          type: ClosureType.EMERGENCY
+        }
+      );
+
+      res.status(201).json({
+        success: true,
+        data: closure,
+        message: 'Emergency closure created successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create emergency closure'
+      });
+    }
+  }
+
+  async createMyMaintenanceClosure(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const { startDate, endDate, reason } = req.body;
+      const userId = req.user!.id;
+      const businessId = req.businessContext!.primaryBusinessId!;
+
+      if (!startDate || !endDate || !reason) {
+        res.status(400).json({
+          success: false,
+          error: 'startDate, endDate, and reason are required for maintenance closure'
+        });
+        return;
+      }
+
+      const closure = await this.businessClosureService.createClosure(
+        userId,
+        businessId,
+        {
+          startDate,
+          endDate,
+          reason: reason.trim(),
+          type: ClosureType.MAINTENANCE
+        }
+      );
+
+      res.status(201).json({
+        success: true,
+        data: closure,
+        message: 'Maintenance closure created successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create maintenance closure'
+      });
+    }
+  }
+
+  // Enhanced Closure System Endpoints
+
+  async createEnhancedClosure(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const userId = req.user!.id;
+      const closureData = req.body as CreateEnhancedClosureRequest;
+
+      // Create closure with enhanced features
+      const closure = await this.businessClosureService.createClosure(userId, businessId, {
+        startDate: closureData.startDate,
+        endDate: closureData.endDate,
+        reason: closureData.reason,
+        type: closureData.type
+      });
+
+      // If notifications are enabled, send them
+      if (closureData.notifyCustomers && closureData.notificationChannels.length > 0) {
+        const affectedAppointments = await this.appointmentRescheduleService.getAffectedAppointments(closure.id);
+        
+        for (const appointment of affectedAppointments) {
+          const enhancedClosureData = {
+            id: closure.id,
+            businessId: closure.businessId,
+            businessName: 'Business Name', // TODO: Get from business service
+            startDate: closure.startDate,
+            endDate: closure.endDate || undefined,
+            reason: closure.reason,
+            type: closure.type,
+            message: closureData.notificationMessage
+          };
+
+          await this.notificationService.sendClosureNotification(
+            appointment.customerId,
+            enhancedClosureData,
+            closureData.notificationChannels
+          );
+        }
+      }
+
+      res.status(201).json({
+        success: true,
+        data: closure,
+        message: 'Enhanced closure created successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create enhanced closure'
+      });
+    }
+  }
+
+  async sendClosureNotifications(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { closureId } = req.params;
+      const { channels, message, customTemplate } = req.body as NotificationRequest;
+      const userId = req.user!.id;
+
+      const affectedAppointments = await this.appointmentRescheduleService.getAffectedAppointments(closureId);
+      const results = [];
+
+      for (const appointment of affectedAppointments) {
+        const enhancedClosureData = {
+          id: closureId,
+          businessId: appointment.businessId,
+          businessName: 'Business Name', // TODO: Get from included business relation
+          startDate: appointment.startTime,
+          reason: 'Business closure notification',
+          type: 'OTHER' as const,
+          message
+        };
+
+        const result = await this.notificationService.sendClosureNotification(
+          appointment.customerId,
+          enhancedClosureData,
+          channels
+        );
+        results.push(result);
+      }
+
+      res.json({
+        success: true,
+        data: {
+          notificationsSent: results.length,
+          results
+        },
+        message: 'Notifications sent successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to send notifications'
+      });
+    }
+  }
+
+  async getAffectedAppointmentsForClosure(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { closureId } = req.params;
+      const userId = req.user!.id;
+
+      const appointments = await this.appointmentRescheduleService.getAffectedAppointments(closureId);
+
+      res.json({
+        success: true,
+        data: appointments,
+        meta: {
+          total: appointments.length,
+          closureId
+        }
+      });
+    } catch (error) {
+      res.status(403).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Access denied'
+      });
+    }
+  }
+
+  async generateRescheduleSuggestions(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { closureId } = req.params;
+      const userId = req.user!.id;
+
+      const closure = await this.businessClosureService.getClosureById(userId, closureId);
+      if (!closure) {
+        res.status(404).json({
+          success: false,
+          error: 'Closure not found'
+        });
+        return;
+      }
+
+      const affectedAppointments = await this.appointmentRescheduleService.getAffectedAppointments(closureId);
+      const suggestions = [];
+
+      for (const appointment of affectedAppointments) {
+        const closureData = {
+          id: closure.id,
+          businessId: closure.businessId,
+          startDate: closure.startDate,
+          endDate: closure.endDate || undefined,
+          type: closure.type,
+          reason: closure.reason
+        };
+
+        const appointmentSuggestions = await this.appointmentRescheduleService.generateRescheduleSuggestions(
+          appointment.id,
+          closureData
+        );
+        suggestions.push(...appointmentSuggestions);
+      }
+
+      res.json({
+        success: true,
+        data: suggestions,
+        meta: {
+          total: suggestions.length,
+          closureId
+        }
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to generate reschedule suggestions'
+      });
+    }
+  }
+
+  async autoRescheduleAppointments(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { closureId } = req.params;
+      const rescheduleOptions = req.body as RescheduleOptionsRequest;
+      const userId = req.user!.id;
+
+      const results = await this.appointmentRescheduleService.autoRescheduleAppointments(
+        closureId,
+        rescheduleOptions
+      );
+
+      const stats = {
+        totalProcessed: results.length,
+        rescheduled: results.filter(r => r.status === 'RESCHEDULED').length,
+        suggested: results.filter(r => r.status === 'SUGGESTED').length,
+        failed: results.filter(r => r.status === 'FAILED').length
+      };
+
+      res.json({
+        success: true,
+        data: {
+          results,
+          statistics: stats
+        },
+        message: 'Auto-reschedule process completed'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to auto-reschedule appointments'
+      });
+    }
+  }
+
+  async getClosureAnalytics(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const { startDate, endDate } = req.query;
+      const userId = req.user!.id;
+
+      if (!startDate || !endDate) {
+        res.status(400).json({
+          success: false,
+          error: 'startDate and endDate are required'
+        });
+        return;
+      }
+
+      const period = {
+        startDate: new Date(startDate as string),
+        endDate: new Date(endDate as string)
+      };
+
+      const analytics = await this.closureAnalyticsService.getClosureImpactAnalytics(businessId, period);
+
+      res.json({
+        success: true,
+        data: analytics,
+        meta: {
+          businessId,
+          period
+        }
+      });
+    } catch (error) {
+      res.status(403).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Access denied'
+      });
+    }
+  }
+
+  async getCustomerImpactReport(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { closureId } = req.params;
+      const userId = req.user!.id;
+
+      const report = await this.closureAnalyticsService.getCustomerImpactReport(closureId);
+
+      res.json({
+        success: true,
+        data: report
+      });
+    } catch (error) {
+      res.status(403).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Access denied'
+      });
+    }
+  }
+
+  async getRevenueImpactAnalysis(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const { closureId } = req.query;
+      const userId = req.user!.id;
+
+      if (!closureId) {
+        res.status(400).json({
+          success: false,
+          error: 'closureId is required'
+        });
+        return;
+      }
+
+      const closure = await this.businessClosureService.getClosureById(userId, closureId as string);
+      if (!closure) {
+        res.status(404).json({
+          success: false,
+          error: 'Closure not found'
+        });
+        return;
+      }
+
+      const closureData = {
+        id: closure.id,
+        businessId: closure.businessId,
+        startDate: closure.startDate,
+        endDate: closure.endDate || undefined,
+        type: closure.type,
+        reason: closure.reason
+      };
+
+      const impact = await this.closureAnalyticsService.getRevenueImpactAnalysis(businessId, closureData);
+
+      res.json({
+        success: true,
+        data: impact
+      });
+    } catch (error) {
+      res.status(403).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Access denied'
+      });
+    }
+  }
+
+  async createAvailabilityAlert(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const alertRequest = req.body as AvailabilityAlertRequest;
+      const userId = req.user!.id;
+
+      // Validate that the requesting user matches the customer
+      if (alertRequest.customerId !== userId) {
+        res.status(403).json({
+          success: false,
+          error: 'Can only create alerts for your own account'
+        });
+        return;
+      }
+
+      const preferredDates = alertRequest.preferredDates.map(date => ({
+        startDate: new Date(date.startDate),
+        endDate: new Date(date.endDate)
+      }));
+
+      const alertId = await this.notificationService.createAvailabilityAlert(
+        alertRequest.customerId,
+        alertRequest.businessId,
+        alertRequest.serviceId || null,
+        preferredDates,
+        alertRequest.notificationChannels
+      );
+
+      res.status(201).json({
+        success: true,
+        data: { alertId },
+        message: 'Availability alert created successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create availability alert'
+      });
+    }
+  }
+
+  async deactivateAvailabilityAlert(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { alertId } = req.params;
+      const userId = req.user!.id;
+
+      await this.notificationService.deactivateAvailabilityAlert(alertId, userId);
+
+      res.json({
+        success: true,
+        message: 'Availability alert deactivated successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to deactivate availability alert'
+      });
+    }
+  }
+
+  async getNotificationDeliveryStats(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { closureId } = req.params;
+      const userId = req.user!.id;
+
+      const stats = await this.notificationService.getNotificationDeliveryStats(closureId);
+
+      res.json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      res.status(403).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Access denied'
+      });
+    }
+  }
+
+  async getRescheduleStatistics(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { closureId } = req.params;
+      const userId = req.user!.id;
+
+      const stats = await this.appointmentRescheduleService.getRescheduleStatistics(closureId);
+
+      res.json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      res.status(403).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Access denied'
+      });
+    }
+  }
+
+  async getClosureImpactPreview(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { businessId, startDate, endDate, services } = req.body;
+      const userId = req.user!.id;
+
+      if (!businessId || !startDate) {
+        res.status(400).json({
+          success: false,
+          error: 'businessId and startDate are required'
+        });
+        return;
+      }
+
+      const start = new Date(startDate);
+      if (isNaN(start.getTime())) {
+        res.status(400).json({
+          success: false,
+          error: 'Invalid startDate format'
+        });
+        return;
+      }
+
+      let end: Date | undefined;
+      if (endDate) {
+        end = new Date(endDate);
+        if (isNaN(end.getTime())) {
+          res.status(400).json({
+            success: false,
+            error: 'Invalid endDate format'
+          });
+          return;
+        }
+      }
+
+      // If no endDate provided or startDate equals endDate, treat as zero-duration closure
+      let affectedAppointments: any[] = [];
+      if (end && end > start) {
+        // Only check for affected appointments if there's an actual time range
+        affectedAppointments = await this.businessClosureService.getAffectedAppointments(
+          userId,
+          businessId,
+          start,
+          end
+        );
+      }
+
+      // Calculate revenue impact
+      const totalRevenue = affectedAppointments.reduce((sum, apt) => {
+        // Assuming appointment has a price field or we need to calculate from service
+        return sum + (apt.price || 0);
+      }, 0);
+
+      // Get closure analytics for business
+      const period = {
+        startDate: start,
+        endDate: end || start // Use same date if no end date (zero duration)
+      };
+      
+      let analytics;
+      try {
+        analytics = await this.closureAnalyticsService.getClosureImpactAnalytics(businessId, period);
+      } catch (error) {
+        // If analytics fail, provide basic impact data
+        analytics = {
+          totalClosures: 1,
+          totalAffectedAppointments: affectedAppointments.length,
+          estimatedRevenueLoss: totalRevenue,
+          customerImpact: {
+            uniqueCustomers: new Set(affectedAppointments.map(apt => apt.customerId)).size,
+            repeatCustomers: 0
+          }
+        };
+      }
+
+      res.json({
+        success: true,
+        data: {
+          impactSummary: {
+            affectedAppointments: affectedAppointments.length,
+            uniqueCustomers: new Set(affectedAppointments.map(apt => apt.customerId)).size,
+            estimatedRevenueLoss: totalRevenue,
+            period: {
+              startDate: start.toISOString(),
+              endDate: end?.toISOString()
+            }
+          },
+          affectedAppointments: affectedAppointments.slice(0, 10), // Limit to first 10 for preview
+          analytics,
+          recommendations: {
+            suggestNotifyCustomers: affectedAppointments.length > 0,
+            suggestReschedule: affectedAppointments.length > 0,
+            highImpact: affectedAppointments.length > 5 || totalRevenue > 1000
+          }
+        },
+        message: 'Closure impact preview generated successfully'
+      });
+    } catch (error) {
+      res.status(403).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Access denied'
       });
     }
   }

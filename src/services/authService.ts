@@ -2,6 +2,7 @@ import { VerificationPurpose, AuditAction } from '@prisma/client';
 import { RepositoryContainer } from '../repositories';
 import { PhoneVerificationService } from './phoneVerificationService';
 import { TokenService } from './tokenService';
+import { RBACService } from './rbacService';
 import { 
   UserProfile,
   CreateUserData,
@@ -26,7 +27,8 @@ export class AuthService {
   constructor(
     private repositories: RepositoryContainer,
     private phoneVerificationService: PhoneVerificationService,
-    private tokenService: TokenService
+    private tokenService: TokenService,
+    private rbacService?: RBACService
   ) {}
 
   async registerOrLogin(
@@ -104,8 +106,28 @@ export class AuthService {
     // Remove security fields from response
     const { failedLoginAttempts, lockedUntil, ...userResponse } = user;
 
+    // Include role information if RBAC service is available
+    let userWithRoles = userResponse;
+    if (this.rbacService) {
+      try {
+        const userPermissions = await this.rbacService.getUserPermissions(user.id);
+        userWithRoles = {
+          ...userResponse,
+          roles: userPermissions.roles.map(role => ({
+            name: role.name,
+            displayName: role.displayName,
+            level: role.level
+          })),
+          effectiveLevel: userPermissions.effectiveLevel
+        };
+      } catch (error) {
+        logger.warn('Failed to fetch user roles during login', { userId: user.id, error: error instanceof Error ? error.message : String(error) });
+        // Continue with user without roles if RBAC fails
+      }
+    }
+
     return {
-      user: userResponse,
+      user: userWithRoles,
       tokens,
       isNewUser,
     };
@@ -116,6 +138,106 @@ export class AuthService {
     
     if (!user) {
       throw new UserNotFoundError('User profile not found', context);
+    }
+
+    // Include role information if RBAC service is available
+    if (this.rbacService) {
+      try {
+        const userPermissions = await this.rbacService.getUserPermissions(userId);
+        return {
+          ...user,
+          roles: userPermissions.roles.map(role => ({
+            name: role.name,
+            displayName: role.displayName,
+            level: role.level
+          })),
+          effectiveLevel: userPermissions.effectiveLevel
+        };
+      } catch (error) {
+        logger.warn('Failed to fetch user roles', { userId, error: error instanceof Error ? error.message : String(error) });
+        // Return user without roles if RBAC fails
+        return user;
+      }
+    }
+
+    return user;
+  }
+
+  async getUserProfileWithBusinessSummary(userId: string, context?: ErrorContext): Promise<UserProfile & {
+    businessSummary?: {
+      totalBusinesses: number;
+      activeSubscriptions: number;
+      subscriptionStatus: string[];
+      primaryBusiness?: {
+        id: string;
+        name: string;
+        slug: string;
+        isVerified: boolean;
+      };
+    };
+  }> {
+    const user = await this.getUserProfile(userId, context);
+    
+    try {
+      // Check if user has OWNER role to fetch business summary
+      const userPermissions = await this.rbacService?.getUserPermissions(userId);
+      const roleNames = userPermissions?.roles.map(role => role.name) || [];
+      
+      if (roleNames.includes('OWNER')) {
+        // Get owned businesses with subscription info using direct Prisma access
+        const prismaClient = this.repositories.prismaClient;
+        const [ownedBusinesses, activeSubscriptions] = await Promise.all([
+          prismaClient.business.findMany({
+            where: {
+              ownerId: userId,
+              deletedAt: null
+            },
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              isVerified: true,
+              isActive: true,
+              createdAt: true
+            },
+            orderBy: { createdAt: 'asc' }
+          }),
+          prismaClient.businessSubscription.findMany({
+            where: {
+              business: {
+                ownerId: userId,
+                deletedAt: null
+              },
+              status: { in: ['ACTIVE', 'TRIAL', 'PAST_DUE'] }
+            },
+            select: {
+              status: true,
+              businessId: true
+            }
+          })
+        ]);
+
+        const businesses = ownedBusinesses || [];
+        const subscriptions = activeSubscriptions || [];
+        const subscriptionStatuses = [...new Set(subscriptions.map(s => s.status))];
+        
+        return {
+          ...user,
+          businessSummary: {
+            totalBusinesses: businesses.length,
+            activeSubscriptions: subscriptions.length,
+            subscriptionStatus: subscriptionStatuses,
+            primaryBusiness: businesses.length > 0 ? {
+              id: businesses[0].id,
+              name: businesses[0].name,
+              slug: businesses[0].slug,
+              isVerified: businesses[0].isVerified
+            } : undefined
+          }
+        };
+      }
+    } catch (error) {
+      logger.warn('Failed to fetch business summary', { userId, error: error instanceof Error ? error.message : String(error) });
     }
 
     return user;
@@ -157,6 +279,26 @@ export class AuthService {
       updatedFields: Object.keys(updates),
       requestId: context?.requestId,
     });
+
+    // Include role information if RBAC service is available
+    if (this.rbacService) {
+      try {
+        const userPermissions = await this.rbacService.getUserPermissions(userId);
+        return {
+          ...updatedUser,
+          roles: userPermissions.roles.map(role => ({
+            name: role.name,
+            displayName: role.displayName,
+            level: role.level
+          })),
+          effectiveLevel: userPermissions.effectiveLevel
+        };
+      } catch (error) {
+        logger.warn('Failed to fetch user roles after update', { userId, error: error instanceof Error ? error.message : String(error) });
+        // Return user without roles if RBAC fails
+        return updatedUser;
+      }
+    }
 
     return updatedUser;
   }
@@ -310,11 +452,37 @@ export class AuthService {
   ): Promise<UserProfile & { failedLoginAttempts: number; lockedUntil?: Date | null }> {
     const userData = {
       ...data,
-      timezone: data.timezone || 'UTC',
-      language: data.language || 'en',
+      timezone: data.timezone || 'Europe/Istanbul',
+      language: data.language || 'tr',
     };
 
     const user = await this.repositories.userRepository.create(userData);
+
+    // Assign default CUSTOMER role to new user
+    if (this.rbacService) {
+      try {
+        await this.rbacService.assignRole(
+          user.id,
+          'CUSTOMER',
+          user.id, // Self-assigned during registration
+          undefined, // no expiration
+          { source: 'auto_registration' }
+        );
+        
+        logger.info('Default CUSTOMER role assigned to new user', {
+          userId: user.id,
+          phoneNumber: this.maskPhoneNumber(user.phoneNumber),
+          requestId: context?.requestId,
+        });
+      } catch (error) {
+        logger.error('Failed to assign default role to new user', {
+          userId: user.id,
+          error: error instanceof Error ? error.message : String(error),
+          requestId: context?.requestId,
+        });
+        // Don't throw error here - user creation should still succeed even if role assignment fails
+      }
+    }
 
     logger.info('New user created', {
       userId: user.id,
@@ -467,6 +635,139 @@ export class AuthService {
     const visibleDigits = 3;
     const maskedPart = '*'.repeat(phoneNumber.length - visibleDigits);
     return maskedPart + phoneNumber.slice(-visibleDigits);
+  }
+
+  async getMyCustomers(userId: string, filters?: {
+    search?: string;
+    page?: number;
+    limit?: number;
+    status?: string;
+    sortBy?: string;
+    sortOrder?: string;
+  }): Promise<{
+    customers: UserProfile[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    // Check if user has business role - only OWNER and STAFF can access
+    if (this.rbacService) {
+      const userPermissions = await this.rbacService.getUserPermissions(userId);
+      const roleNames = userPermissions.roles.map(role => role.name);
+      const hasBusinessRole = roleNames.some(role => ['OWNER', 'STAFF'].includes(role));
+      
+      if (!hasBusinessRole) {
+        throw new Error('Access denied. Business role required.');
+      }
+    }
+
+    // Get customers who have appointments at user's businesses
+    return await this.repositories.userRepository.findCustomersByUserBusinesses(userId, filters);
+  }
+
+  async getCustomerDetails(userId: string, customerId: string): Promise<{
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    phoneNumber: string;
+    avatar?: string | null;
+    isActive: boolean;
+    isVerified: boolean;
+    createdAt: Date;
+    lastLoginAt?: Date | null;
+    totalAppointments: number;
+    completedAppointments: number;
+    cancelledAppointments: number;
+    noShowCount: number;
+    reliabilityScore: number;
+    lastAppointmentDate?: Date | null;
+    isBanned: boolean;
+    bannedUntil?: Date | null;
+    banReason?: string | null;
+    currentStrikes: number;
+  }> {
+    // Check if user has business role
+    if (this.rbacService) {
+      const userPermissions = await this.rbacService.getUserPermissions(userId);
+      const roleNames = userPermissions.roles.map(role => role.name);
+      const hasBusinessRole = roleNames.some(role => ['OWNER', 'STAFF'].includes(role));
+      
+      if (!hasBusinessRole) {
+        throw new Error('Access denied. Business role required.');
+      }
+    }
+
+    // Get basic customer information
+    const customer = await this.repositories.userRepository.findById(customerId);
+    if (!customer) {
+      throw new Error('Customer not found');
+    }
+
+    // Check if customer is accessible by verifying they have appointments with user's businesses
+    try {
+      const customerList = await this.repositories.userRepository.findCustomersByUserBusinesses(userId, { 
+        search: customer.phoneNumber,
+        limit: 1 
+      });
+      
+      const isAccessible = customerList.customers.some(c => c.id === customerId);
+      if (!isAccessible) {
+        throw new Error('Customer not found or not accessible');
+      }
+    } catch (error) {
+      throw new Error('Customer not found or not accessible');
+    }
+
+    // Get actual appointment statistics for this customer
+    const appointmentStats = await this.repositories.appointmentRepository.getCustomerAppointmentStats(customerId, userId);
+    
+    // Get user behavior data including ban status
+    const userBehavior = await this.repositories.userBehaviorRepository.findByUserId(customerId);
+    
+    // Calculate reliability score based on actual data
+    const { totalAppointments, completedAppointments, cancelledAppointments: canceledAppointments, noShowCount, lastAppointmentDate } = appointmentStats;
+    
+    // Reliability score calculation:
+    // - Completed appointments: positive impact
+    // - Cancelled appointments: moderate negative impact 
+    // - No-shows: significant negative impact
+    let reliabilityScore = 100;
+    
+    if (totalAppointments > 0) {
+      const completionRate = (completedAppointments / totalAppointments) * 100;
+      const cancellationPenalty = (canceledAppointments / totalAppointments) * 20; // 20% penalty per cancellation
+      const noShowPenalty = (noShowCount / totalAppointments) * 40; // 40% penalty per no-show
+      
+      reliabilityScore = Math.max(0, completionRate - cancellationPenalty - noShowPenalty);
+    }
+
+    // Check if user is currently banned
+    const now = new Date();
+    const isBanned = userBehavior?.isBanned && 
+                    (!userBehavior.bannedUntil || userBehavior.bannedUntil > now);
+
+    return {
+      id: customer.id,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      phoneNumber: customer.phoneNumber,
+      avatar: customer.avatar,
+      isActive: customer.isActive,
+      isVerified: customer.isVerified,
+      createdAt: customer.createdAt,
+      lastLoginAt: customer.lastLoginAt,
+      totalAppointments,
+      completedAppointments,
+      cancelledAppointments: canceledAppointments,
+      noShowCount,
+      reliabilityScore: Math.round(reliabilityScore * 10) / 10, // Round to 1 decimal place
+      lastAppointmentDate,
+      // Ban status information
+      isBanned: isBanned || false,
+      bannedUntil: userBehavior?.bannedUntil || null,
+      banReason: isBanned ? userBehavior?.banReason || null : null,
+      currentStrikes: userBehavior?.currentStrikes || 0
+    };
   }
 
   private sanitizeDeviceInfo(deviceInfo?: DeviceInfo): any {

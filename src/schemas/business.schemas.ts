@@ -156,10 +156,6 @@ export const createServiceSchema = z.object({
     .length(3, 'Currency must be 3 characters')
     .optional(),
   
-  category: z.string()
-    .max(50, 'Category must be less than 50 characters')
-    .optional(),
-  
   bufferTime: z.number()
     .int('Buffer time must be an integer')
     .min(0, 'Buffer time must be non-negative')
@@ -202,10 +198,6 @@ export const updateServiceSchema = z.object({
   
   currency: z.string()
     .length(3, 'Currency must be 3 characters')
-    .optional(),
-  
-  category: z.string()
-    .max(50, 'Category must be less than 50 characters')
     .optional(),
   
   isActive: z.boolean().optional(),
@@ -302,10 +294,20 @@ export const updateStaffSchema = z.object({
 // Business closure schemas
 export const createBusinessClosureSchema = z.object({
   startDate: z.string()
-    .datetime('Start date must be a valid ISO datetime'),
+    .refine((val) => {
+      // Prefer datetime format (ISO) for better precision, but allow date-only
+      const datetimeRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      return datetimeRegex.test(val) || dateRegex.test(val) || !isNaN(Date.parse(val));
+    }, 'Start date must be a valid datetime (e.g., "2025-08-24T14:30:00") or date (e.g., "2025-08-24")'),
   
   endDate: z.string()
-    .datetime('End date must be a valid ISO datetime')
+    .refine((val) => {
+      // Prefer datetime format (ISO) for better precision, but allow date-only
+      const datetimeRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      return datetimeRegex.test(val) || dateRegex.test(val) || !isNaN(Date.parse(val));
+    }, 'End date must be a valid datetime (e.g., "2025-08-24T17:00:00") or date (e.g., "2025-08-24")')
     .optional(),
   
   reason: z.string()
@@ -315,23 +317,33 @@ export const createBusinessClosureSchema = z.object({
   type: z.nativeEnum(ClosureType)
 }).refine((data) => {
   if (data.endDate) {
-    const start = new Date(data.startDate);
-    const end = new Date(data.endDate);
-    return end > start;
+    const start = parseDate(data.startDate);
+    const end = parseDate(data.endDate);
+    return !isNaN(start.getTime()) && !isNaN(end.getTime()) && end >= start;
   }
   return true;
 }, {
-  message: 'End date must be after start date',
+  message: 'End date must be at or after start date',
   path: ['endDate']
 });
 
 export const updateBusinessClosureSchema = z.object({
   startDate: z.string()
-    .datetime('Start date must be a valid ISO datetime')
+    .refine((val) => {
+      // Accept both date (YYYY-MM-DD) and datetime (ISO) formats
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      const datetimeRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
+      return dateRegex.test(val) || datetimeRegex.test(val) || !isNaN(Date.parse(val));
+    }, 'Start date must be a valid date')
     .optional(),
   
   endDate: z.string()
-    .datetime('End date must be a valid ISO datetime')
+    .refine((val) => {
+      // Accept both date (YYYY-MM-DD) and datetime (ISO) formats
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      const datetimeRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
+      return dateRegex.test(val) || datetimeRegex.test(val) || !isNaN(Date.parse(val));
+    }, 'End date must be a valid date')
     .optional(),
   
   reason: z.string()
@@ -357,7 +369,6 @@ export const subscribeBusinessSchema = z.object({
 // Search and filter schemas
 export const businessSearchSchema = z.object({
   businessTypeId: z.string().optional(),
-  category: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
   country: z.string().optional(),
@@ -463,20 +474,38 @@ export const validateAppointmentTime = (date: string, startTime: string): boolea
   }
 };
 
+const parseDate = (dateString: string): Date => {
+  // Check if it's a date-only string (YYYY-MM-DD)
+  const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
+  
+  if (dateOnlyRegex.test(dateString)) {
+    // For date-only strings, create a date in local timezone at start of day
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, day); // month is 0-indexed in Date constructor
+  }
+  
+  // For datetime strings, use normal parsing
+  return new Date(dateString);
+};
+
 export const validateClosureDates = (startDate: string, endDate?: string): boolean => {
   try {
-    const start = new Date(startDate);
+    const start = parseDate(startDate);
     const now = new Date();
     
-    // Start date cannot be in the past
-    if (start <= now) {
+    // Allow a small buffer (5 minutes) to account for time differences and request processing
+    const bufferMs = 5 * 60 * 1000; // 5 minutes in milliseconds
+    const minimumAllowedTime = new Date(now.getTime() - bufferMs);
+    
+    // Start date cannot be in the past (with buffer)
+    if (start < minimumAllowedTime) {
       return false;
     }
     
     if (endDate) {
-      const end = new Date(endDate);
-      // End date must be after start date
-      return end > start;
+      const end = parseDate(endDate);
+      // End date must be at or after start date
+      return end >= start;
     }
     
     return true;

@@ -12,6 +12,8 @@ import { UserBehaviorRepository } from '../repositories/userBehaviorRepository';
 import { BusinessClosureRepository } from '../repositories/businessClosureRepository';
 import { RBACService } from './rbacService';
 import { PermissionName } from '../types/auth';
+import { BusinessContext } from '../middleware/businessContext';
+import { BusinessService } from './businessService';
 
 export class AppointmentService {
   constructor(
@@ -19,7 +21,8 @@ export class AppointmentService {
     private serviceRepository: ServiceRepository,
     private userBehaviorRepository: UserBehaviorRepository,
     private businessClosureRepository: BusinessClosureRepository,
-    private rbacService: RBACService
+    private rbacService: RBACService,
+    private businessService: BusinessService
   ) {}
 
   // Helper method to split permission name into resource and action
@@ -143,6 +146,34 @@ export class AppointmentService {
     return await this.appointmentRepository.findByCustomerId(customerId, page, limit);
   }
 
+  async getMyAppointments(
+    userId: string,
+    filters?: {
+      status?: AppointmentStatus;
+      date?: string;
+      businessId?: string;
+      page?: number;
+      limit?: number;
+    }
+  ): Promise<{
+    appointments: AppointmentWithDetails[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    // Check if user has business role - only OWNER and STAFF can access
+    const userPermissions = await this.rbacService.getUserPermissions(userId);
+    const roleNames = userPermissions.roles.map(role => role.name);
+    const hasBusinessRole = roleNames.some(role => ['OWNER', 'STAFF'].includes(role));
+    
+    if (!hasBusinessRole) {
+      throw new Error('Access denied. Business role required.');
+    }
+
+    // Get appointments from all businesses user has access to
+    return await this.appointmentRepository.findByUserBusinesses(userId, filters);
+  }
+
   async getBusinessAppointments(
     userId: string,
     businessId: string,
@@ -199,6 +230,25 @@ export class AppointmentService {
     } else {
       // Global search requires admin permissions
       await this.rbacService.requirePermission(userId, PermissionName.VIEW_ALL_APPOINTMENTS);
+    }
+
+    return await this.appointmentRepository.search(filters, page, limit);
+  }
+
+  // Public method for checking appointment availability - no permissions required
+  async getPublicAppointments(
+    filters: AppointmentSearchFilters,
+    page = 1,
+    limit = 20
+  ): Promise<{
+    appointments: AppointmentWithDetails[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    // Only allow specific businessId queries for public access
+    if (!filters.businessId) {
+      throw new Error('Business ID is required for public appointment queries');
     }
 
     return await this.appointmentRepository.search(filters, page, limit);
@@ -377,47 +427,95 @@ export class AppointmentService {
 
   async getTodaysAppointments(
     userId: string,
-    businessId: string
-  ): Promise<AppointmentWithDetails[]> {
-    // Check permissions to view business appointments
-    const { resource: viewAllResource, action: viewAllAction } = this.splitPermissionName(PermissionName.VIEW_ALL_APPOINTMENTS);
-    const hasGlobalView = await this.rbacService.hasPermission(userId, viewAllResource, viewAllAction);
-    
-    if (!hasGlobalView) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_APPOINTMENTS,
-        { businessId }
-      );
+    businessId?: string
+  ): Promise<any[]> {
+    // Get user's accessible businesses
+    const businesses = await this.businessService.getMyBusinesses(userId);
+    const accessibleBusinessIds = businesses.map(b => b.id);
+
+    if (accessibleBusinessIds.length === 0) {
+      throw new Error('No accessible businesses found');
     }
 
-    return await this.appointmentRepository.findTodaysAppointments(businessId);
+    // If specific business requested, validate access
+    if (businessId) {
+      if (!accessibleBusinessIds.includes(businessId)) {
+        throw new Error('Access denied to this business');
+      }
+      return await this.appointmentRepository.findTodaysAppointments(businessId);
+    }
+
+    // Return today's appointments for all accessible businesses
+    return await this.appointmentRepository.findTodaysAppointmentsForBusinesses(accessibleBusinessIds);
   }
 
   async getAppointmentStats(
     userId: string,
-    businessId: string,
+    businessId?: string,
     startDate?: Date,
     endDate?: Date
   ): Promise<{
     total: number;
-    byStatus: Record<AppointmentStatus, number>;
+    byStatus: Partial<Record<AppointmentStatus, number>>;
     totalRevenue: number;
     averageValue: number;
-  }> {
-    // Check permissions to view analytics
-    const { resource: analyticsResource, action: analyticsAction } = this.splitPermissionName(PermissionName.VIEW_ALL_ANALYTICS);
-    const hasGlobalAnalytics = await this.rbacService.hasPermission(userId, analyticsResource, analyticsAction);
-    
-    if (!hasGlobalAnalytics) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_ANALYTICS,
-        { businessId }
-      );
+  } | Record<string, {
+    total: number;
+    byStatus: Partial<Record<AppointmentStatus, number>>;
+    totalRevenue: number;
+    averageValue: number;
+  }>> {
+    // Get user's accessible businesses
+    const businesses = await this.businessService.getMyBusinesses(userId);
+    const accessibleBusinessIds = businesses.map(b => b.id);
+
+    if (accessibleBusinessIds.length === 0) {
+      throw new Error('No accessible businesses found');
     }
 
-    return await this.appointmentRepository.getAppointmentStats(businessId, startDate, endDate);
+    // If specific business requested, validate access and return single stats
+    if (businessId) {
+      if (!accessibleBusinessIds.includes(businessId)) {
+        throw new Error('Access denied to this business');
+      }
+      return await this.appointmentRepository.getAppointmentStats(businessId, startDate, endDate);
+    }
+
+    // Return stats for all accessible businesses
+    return await this.appointmentRepository.getAppointmentStatsForBusinesses(accessibleBusinessIds, startDate, endDate);
+  }
+
+  async getMyTodaysAppointments(userId: string): Promise<any[]> {
+    // Get user's accessible businesses
+    const businesses = await this.businessService.getMyBusinesses(userId);
+    const businessIds = businesses.map(b => b.id);
+
+    if (businessIds.length === 0) {
+      return [];
+    }
+
+    return await this.appointmentRepository.findTodaysAppointmentsForBusinesses(businessIds);
+  }
+
+  async getMyAppointmentStats(
+    userId: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<Record<string, {
+    total: number;
+    byStatus: Partial<Record<AppointmentStatus, number>>;
+    totalRevenue: number;
+    averageValue: number;
+  }>> {
+    // Get user's accessible businesses
+    const businesses = await this.businessService.getMyBusinesses(userId);
+    const businessIds = businesses.map(b => b.id);
+
+    if (businessIds.length === 0) {
+      return {};
+    }
+
+    return await this.appointmentRepository.getAppointmentStatsForBusinesses(businessIds, startDate, endDate);
   }
 
   async confirmAppointment(

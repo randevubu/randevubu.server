@@ -48,10 +48,19 @@ export class BusinessClosureRepository {
       where: {
         businessId,
         isActive: true,
-        startDate: { lte: now },
         OR: [
-          { endDate: null },
-          { endDate: { gte: now } }
+          // Currently active (happening now)
+          {
+            startDate: { lte: now },
+            OR: [
+              { endDate: null },
+              { endDate: { gte: now } }
+            ]
+          },
+          // Upcoming (future closures)
+          {
+            startDate: { gt: now }
+          }
         ]
       },
       orderBy: { startDate: 'asc' }

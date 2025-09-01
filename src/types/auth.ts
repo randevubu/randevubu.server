@@ -15,6 +15,12 @@ export interface UserProfile {
   createdAt: Date;
   updatedAt: Date;
   lastLoginAt?: Date | null;
+  roles?: Array<{
+    name: string;        // Role identifier for logic (e.g., "ADMIN", "OWNER")
+    displayName: string; // Human-readable name for UI
+    level: number;       // Role hierarchy level
+  }>;
+  effectiveLevel?: number;
 }
 
 export interface UserSecurity {
@@ -373,6 +379,12 @@ export interface AuthenticatedRequest extends Request {
   token?: JWTPayload;
 }
 
+// Guaranteed authenticated request - user is always present
+export interface GuaranteedAuthRequest extends Request {
+  user: AuthenticatedUser;
+  token: JWTPayload;
+}
+
 // Business Permission Names
 export enum PermissionName {
   // Business Management
@@ -431,6 +443,7 @@ export enum PermissionName {
   MANAGE_OWN_SUBSCRIPTION = 'subscription:manage_own',
   VIEW_ALL_SUBSCRIPTIONS = 'subscription:view_all',
   VIEW_OWN_SUBSCRIPTION = 'subscription:view_own',
+  CANCEL_OWN_SUBSCRIPTION = 'subscription:cancel_own',
 
   // Role Management
   MANAGE_ROLES = 'role:manage',

@@ -150,25 +150,6 @@ export class ServiceService {
     await this.serviceRepository.reorderServices(businessId, serviceOrders);
   }
 
-  async getServicesByCategory(
-    userId: string,
-    businessId: string,
-    category: string
-  ): Promise<ServiceData[]> {
-    // Check permissions to view services for this business
-    const [resource, action] = PermissionName.VIEW_ALL_SERVICES.split(':');
-    const hasGlobalView = await this.rbacService.hasPermission(userId, resource, action);
-    
-    if (!hasGlobalView) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_SERVICES,
-        { businessId }
-      );
-    }
-
-    return await this.serviceRepository.findByCategory(businessId, category);
-  }
 
   async getServiceStats(
     userId: string,
@@ -338,7 +319,6 @@ export class ServiceService {
       duration: originalService.duration,
       price: originalService.price,
       currency: originalService.currency,
-      category: originalService.category,
       bufferTime: originalService.bufferTime,
       maxAdvanceBooking: originalService.maxAdvanceBooking,
       minAdvanceBooking: originalService.minAdvanceBooking
@@ -393,26 +373,4 @@ export class ServiceService {
     }
   }
 
-  async batchUpdateCategory(
-    userId: string,
-    businessId: string,
-    serviceIds: string[],
-    category: string
-  ): Promise<void> {
-    // Check permissions to manage services for this business
-    const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
-    const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-    
-    if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId }
-      );
-    }
-
-    for (const serviceId of serviceIds) {
-      await this.serviceRepository.update(serviceId, { category });
-    }
-  }
 }

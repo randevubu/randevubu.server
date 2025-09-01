@@ -47,6 +47,8 @@ export enum ErrorCode {
   OPERATION_NOT_ALLOWED = 'OPERATION_NOT_ALLOWED',
 }
 
+// ErrorContext contains sensitive information and should ONLY be used for server-side logging
+// NEVER expose ErrorContext data to client responses
 export interface ErrorContext {
   userId?: string;
   phoneNumber?: string;
@@ -61,14 +63,14 @@ export interface ErrorContext {
 
 export interface ErrorDetails {
   field?: string;
-  value?: any;
+  value?: any; // WARNING: may contain sensitive data - filter out in client responses
   constraint?: string;
   attemptCount?: number;
   maxAttempts?: number;
   retryAfter?: number;
   cooldownSeconds?: number;
   suggestions?: string[];
-  additionalData?: Record<string, any>;
+  additionalData?: Record<string, any>; // WARNING: may contain sensitive data - filter out in client responses
 }
 
 // Base Application Error
@@ -104,9 +106,7 @@ export abstract class BaseError extends Error {
       message: this.message,
       statusCode: this.statusCode,
       code: this.code,
-      context: this.context,
-      details: this.details,
-      stack: this.stack,
+      // Note: context and stack removed for security - these should only be logged server-side
     };
   }
 }
@@ -550,6 +550,32 @@ export class ErrorFactory {
     }
   }
 }
+
+// Utility function to create secure error responses
+export const createSecureErrorResponse = (error: BaseError) => {
+  const safeDetails: any = {};
+  
+  if (error.details) {
+    // Only include safe fields - explicitly exclude sensitive data
+    if (error.details.field) safeDetails.field = error.details.field;
+    if (error.details.suggestions) safeDetails.suggestions = error.details.suggestions;
+    if (error.details.attemptCount !== undefined) safeDetails.attemptCount = error.details.attemptCount;
+    if (error.details.maxAttempts !== undefined) safeDetails.maxAttempts = error.details.maxAttempts;
+    if (error.details.retryAfter !== undefined) safeDetails.retryAfter = error.details.retryAfter;
+    if (error.details.cooldownSeconds !== undefined) safeDetails.cooldownSeconds = error.details.cooldownSeconds;
+    // NOTE: value and additionalData are intentionally excluded for security
+  }
+
+  return {
+    success: false,
+    error: {
+      message: error.message,
+      code: error.code,
+      requestId: error.context?.requestId,
+      ...(Object.keys(safeDetails).length > 0 && { details: safeDetails }),
+    },
+  };
+};
 
 // Error Type Guards
 export const isOperationalError = (error: any): error is BaseError => {

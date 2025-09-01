@@ -1,0 +1,116 @@
+{
+  "errors": {
+    "auth": {
+      "unauthorized": "Oturum açmanız gerekiyor",
+      "invalidToken": "Geçersiz token",
+      "tokenExpired": "Oturumunuz sona erdi, lütfen tekrar giriş yapın",
+      "accessDenied": "Bu işlem için yetkiniz bulunmuyor",
+      "invalidCredentials": "Geçersiz telefon numarası veya doğrulama kodu",
+      "invalidPhoneNumber": "Geçersiz telefon numarası formatı",
+      "invalidVerificationCode": "Geçersiz doğrulama kodu",
+      "verificationCodeExpired": "Doğrulama kodunun süresi dolmuş",
+      "phoneAlreadyRegistered": "Bu telefon numarası zaten kayıtlı",
+      "phoneNotRegistered": "Bu telefon numarası kayıtlı değil",
+      "accountDisabled": "Hesabınız devre dışı bırakıldı",
+      "accountNotVerified": "Hesabınız henüz doğrulanmamış",
+      "tooManyLoginAttempts": "Çok fazla giriş denemesi. Lütfen daha sonra tekrar deneyin",
+      "sessionExpired": "Oturumunuz sona erdi"
+    },
+    "business": {
+      "accessDenied": "İş yerine erişim reddedildi",
+      "notFound": "İş yeri bulunamadı",
+      "inactive": "İş yeri aktif değil",
+      "closed": "İş yeri kapalı",
+      "notVerified": "İş yeri doğrulanmamış",
+      "slugTaken": "Bu URL adresi zaten kullanımda",
+      "ownerRequired": "İş yeri sahibi yetkisi gerekli",
+      "staffRequired": "Personel yetkisi gerekli",
+      "noAccess": "Erişilebilir iş yeriniz bulunmuyor",
+      "subscriptionRequired": "Bu özellik için abonelik gerekli",
+      "limitReached": "İş yeri limitinize ulaştınız",
+      "deletionNotAllowed": "Bu iş yeri silinemez"
+    },
+    "appointment": {
+      "notFound": "Randevu bulunamadı",
+      "accessDenied": "Bu randevuya erişim yetkiniz yok",
+      "timeConflict": "Bu saatte başka bir randevunuz var",
+      "pastDate": "Geçmiş tarih için randevu oluşturamazsınız",
+      "tooFarFuture": "Çok ileri bir tarih için randevu oluşturamazsınız",
+      "outsideHours": "Çalışma saatleri dışında randevu oluşturamazsınız",
+      "alreadyConfirmed": "Bu randevu zaten onaylanmış",
+      "alreadyCompleted": "Bu randevu zaten tamamlanmış",
+      "alreadyCancelled": "Bu randevu zaten iptal edilmiş",
+      "cannotCancel": "Bu randevu iptal edilemez",
+      "noShowNotAllowed": "Gelmedi işaretlenemez",
+      "staffNotAvailable": "Personel bu saatte müsait değil",
+      "serviceUnavailable": "Bu hizmet şu anda mevcut değil"
+    },
+    "service": {
+      "notFound": "Hizmet bulunamadı",
+      "inactive": "Hizmet aktif değil",
+      "accessDenied": "Bu hizmete erişim yetkiniz yok",
+      "nameRequired": "Hizmet adı gerekli",
+      "priceInvalid": "Geçersiz fiyat",
+      "durationInvalid": "Geçersiz süre",
+      "hasAppointments": "Bu hizmette randevular var, silinemez"
+    },
+    "customer": {
+      "notFound": "Müşteri bulunamadı",
+      "accessDenied": "Bu müşteriye erişim yetkiniz yok",
+      "alreadyExists": "Bu müşteri zaten mevcut",
+      "noCustomersFound": "Hiç müşteriniz bulunmuyor"
+    },
+    "staff": {
+      "notFound": "Personel bulunamadı",
+      "accessDenied": "Bu personele erişim yetkiniz yok",
+      "alreadyExists": "Bu personel zaten mevcut",
+      "notAvailable": "Personel müsait değil",
+      "cannotDeleteSelf": "Kendi hesabınızı silemezsiniz"
+    },
+    "role": {
+      "notFound": "Rol bulunamadı",
+      "alreadyExists": "Bu rol zaten mevcut",
+      "assignmentFailed": "Rol ataması başarısız",
+      "adminRequired": "Yönetici yetkisi gerekli"
+    },
+    "permission": {
+      "denied": "İzin reddedildi",
+      "notFound": "İzin bulunamadı",
+      "insufficient": "Yetersiz yetki",
+      "adminRequired": "Yönetici yetkisi gerekli"
+    },
+    "validation": {
+      "general": "Doğrulama hatası",
+      "requiredField": "{fieldName} alanı zorunludur",
+      "invalidEmail": "Geçersiz e-posta formatı",
+      "invalidPhone": "Geçersiz telefon numarası formatı",
+      "invalidDate": "Geçersiz tarih formatı",
+      "invalidTime": "Geçersiz saat formatı",
+      "passwordTooWeak": "Şifre çok zayıf",
+      "invalidFileType": "Geçersiz dosya türü",
+      "fileTooLarge": "Dosya çok büyük",
+      "invalidUrl": "Geçersiz URL formatı"
+    },
+    "system": {
+      "internalError": "Sunucu hatası oluştu",
+      "databaseError": "Veritabanı hatası",
+      "externalServiceError": "Harici servis hatası",
+      "rateLimitExceeded": "Çok fazla istek gönderdiniz. Lütfen bekleyin",
+      "maintenanceMode": "Sistem bakımda",
+      "serviceUnavailable": "Servis şu anda kullanılamıyor",
+      "paymentProcessingError": "Ödeme işlemi hatası"
+    },
+    "subscription": {
+      "notFound": "Abonelik bulunamadı",
+      "expired": "Aboneliğinizin süresi dolmuş",
+      "cancelled": "Aboneliğiniz iptal edilmiş",
+      "required": "Bu özellik için abonelik gerekli",
+      "planLimitReached": "Plan limitinize ulaştınız"
+    },
+    "notification": {
+      "smsDeliveryFailed": "SMS gönderilemedi",
+      "emailDeliveryFailed": "E-posta gönderilemedi",
+      "disabled": "Bildirimler devre dışı"
+    }
+  }
+}

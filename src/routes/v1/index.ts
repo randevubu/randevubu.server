@@ -4,11 +4,18 @@ import { ControllerContainer } from '../../controllers';
 import authRoutes from './auth';
 import { createRoleRoutes } from './roles';
 import { createBusinessRoutes } from './businesses';
+import { createBusinessTypeRoutes } from './businessTypes';
 import { createServiceRoutes } from './services';
 import { createAppointmentRoutes } from './appointments';
 import { createUserBehaviorRoutes } from './user-behavior';
 import { createBusinessClosureRoutes } from './closures';
 import { createSubscriptionRoutes } from './subscriptions';
+import { createUserRoutes } from './users';
+import { createReportsRoutes } from './reports';
+import paymentRoutes from './payments';
+import { createDiscountCodeRoutes } from './discountCodes';
+import { createUsageRoutes } from './usage';
+import testingRouter from './testing';
 
 export function createV1Routes(controllers: ControllerContainer): Router {
   const router = Router();
@@ -57,13 +64,22 @@ export function createV1Routes(controllers: ControllerContainer): Router {
 
   // Mount all v1 routes
   router.use('/auth', authRoutes);
+  router.use('/users', createUserRoutes());
   router.use('/roles', createRoleRoutes(controllers.roleController));
   router.use('/businesses', createBusinessRoutes(controllers.businessController));
+  router.use('/business-types', createBusinessTypeRoutes(controllers.businessTypeController));
   router.use('/services', createServiceRoutes(controllers.serviceController));
   router.use('/appointments', createAppointmentRoutes(controllers.appointmentController));
   router.use('/user-behavior', createUserBehaviorRoutes(controllers.userBehaviorController));
   router.use('/closures', createBusinessClosureRoutes(controllers.businessClosureController));
   router.use('/subscriptions', createSubscriptionRoutes(controllers.subscriptionController));
+  router.use('/discount-codes', createDiscountCodeRoutes(controllers.discountCodeController));
+  router.use('/reports', createReportsRoutes());
+  router.use('/businesses', createUsageRoutes(controllers.usageController));
+  router.use('/', paymentRoutes);
+  
+  // Testing routes (development only)
+  router.use('/testing', testingRouter);
 
   return router;
 }

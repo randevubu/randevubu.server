@@ -34,7 +34,10 @@ export class SubscriptionService {
   async subscribeBusiness(
     userId: string,
     businessId: string,
-    data: SubscribeBusinessRequest
+    data: SubscribeBusinessRequest & { 
+      paymentMethodId?: string;
+      autoRenewal?: boolean;
+    }
   ): Promise<BusinessSubscriptionData> {
     // Check if user owns the business or has global subscription management rights
     const [resource, action] = PermissionName.MANAGE_ALL_SUBSCRIPTIONS.split(':');
@@ -84,6 +87,9 @@ export class SubscriptionService {
       status: SubscriptionStatus.ACTIVE,
       currentPeriodStart: now,
       currentPeriodEnd: periodEnd,
+      autoRenewal: data.autoRenewal ?? true,
+      paymentMethodId: data.paymentMethodId,
+      nextBillingDate: periodEnd,
       metadata: {
         paymentMethodId: data.paymentMethodId,
         createdBy: userId
@@ -587,5 +593,182 @@ export class SubscriptionService {
       isValid: violations.length === 0,
       violations
     };
+  }
+
+  // Auto-renewal management methods
+  async updateAutoRenewal(
+    userId: string,
+    businessId: string,
+    autoRenewal: boolean,
+    paymentMethodId?: string
+  ): Promise<BusinessSubscriptionData> {
+    // Check permissions
+    const [resource, action] = PermissionName.MANAGE_ALL_SUBSCRIPTIONS.split(':');
+    const hasGlobalSubscription = await this.rbacService.hasPermission(userId, resource, action);
+    
+    if (!hasGlobalSubscription) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.MANAGE_OWN_SUBSCRIPTION,
+        { businessId }
+      );
+    }
+
+    const subscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
+    if (!subscription) {
+      throw new Error('No active subscription found');
+    }
+
+    // If enabling auto-renewal, ensure a payment method is provided
+    if (autoRenewal && !paymentMethodId && !subscription.paymentMethodId) {
+      throw new Error('Payment method required for auto-renewal');
+    }
+
+    const updateData: any = {
+      autoRenewal,
+      updatedAt: new Date()
+    };
+
+    if (paymentMethodId) {
+      updateData.paymentMethodId = paymentMethodId;
+    }
+
+    return await this.subscriptionRepository.updateSubscriptionSettings(
+      subscription.id,
+      updateData
+    );
+  }
+
+  async updatePaymentMethod(
+    userId: string,
+    businessId: string,
+    paymentMethodId: string
+  ): Promise<BusinessSubscriptionData> {
+    // Check permissions
+    const [resource, action] = PermissionName.MANAGE_ALL_SUBSCRIPTIONS.split(':');
+    const hasGlobalSubscription = await this.rbacService.hasPermission(userId, resource, action);
+    
+    if (!hasGlobalSubscription) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.MANAGE_OWN_SUBSCRIPTION,
+        { businessId }
+      );
+    }
+
+    const subscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
+    if (!subscription) {
+      throw new Error('No active subscription found');
+    }
+
+    return await this.subscriptionRepository.updateSubscriptionSettings(
+      subscription.id,
+      {
+        paymentMethodId,
+        updatedAt: new Date()
+      }
+    );
+  }
+
+  async getAutoRenewalStatus(
+    userId: string,
+    businessId: string
+  ): Promise<{
+    autoRenewal: boolean;
+    nextBillingDate?: Date;
+    paymentMethodId?: string;
+    paymentMethod?: {
+      id: string;
+      lastFourDigits: string;
+      cardBrand: string;
+      expiryMonth: string;
+      expiryYear: string;
+    };
+  }> {
+    // Check permissions
+    const [resource, action] = PermissionName.VIEW_ALL_SUBSCRIPTIONS.split(':');
+    const hasGlobalView = await this.rbacService.hasPermission(userId, resource, action);
+    
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.VIEW_OWN_SUBSCRIPTION,
+        { businessId }
+      );
+    }
+
+    const subscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
+    if (!subscription) {
+      throw new Error('No active subscription found');
+    }
+
+    const paymentMethod = subscription.paymentMethodId 
+      ? await this.subscriptionRepository.getPaymentMethod(subscription.paymentMethodId)
+      : null;
+
+    return {
+      autoRenewal: subscription.autoRenewal,
+      nextBillingDate: subscription.nextBillingDate,
+      paymentMethodId: subscription.paymentMethodId,
+      paymentMethod: paymentMethod ? {
+        id: paymentMethod.id,
+        lastFourDigits: paymentMethod.lastFourDigits,
+        cardBrand: paymentMethod.cardBrand || '',
+        expiryMonth: paymentMethod.expiryMonth,
+        expiryYear: paymentMethod.expiryYear
+      } : undefined
+    };
+  }
+
+  // Enhanced renewal methods for the scheduler
+  async processAutomaticRenewal(subscriptionId: string): Promise<{
+    success: boolean;
+    paymentId?: string;
+    error?: string;
+  }> {
+    try {
+      // Get subscription with plan included
+      const subscription = await this.subscriptionRepository.findSubscriptionByIdWithPlan(subscriptionId);
+      
+      if (!subscription || !subscription.autoRenewal) {
+        return { success: false, error: 'Subscription not found or auto-renewal disabled' };
+      }
+
+      if (!subscription.paymentMethodId) {
+        return { success: false, error: 'No payment method available' };
+      }
+
+      // Calculate new period
+      const now = new Date();
+      const newPeriodEnd = new Date(now);
+      
+      if (subscription.plan.billingInterval === 'monthly') {
+        newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
+      } else if (subscription.plan.billingInterval === 'yearly') {
+        newPeriodEnd.setFullYear(newPeriodEnd.getFullYear() + 1);
+      }
+
+      // Process renewal
+      await this.subscriptionRepository.renewSubscription(
+        subscription.id,
+        now,
+        newPeriodEnd
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error('Automatic renewal failed:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Renewal failed' 
+      };
+    }
+  }
+
+  async getSubscriptionsForRenewal(): Promise<any[]> {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    return await this.subscriptionRepository.findSubscriptionsForRenewal(tomorrow);
   }
 }

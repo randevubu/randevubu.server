@@ -185,8 +185,9 @@ export class UserBehaviorRepository {
     return convertBusinessData<UserBehaviorData>(result);
   }
 
-  async banUser(userId: string, reason: string, durationDays: number): Promise<UserBehaviorData> {
-    const bannedUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+  async banUser(userId: string, reason: string, durationDays?: number): Promise<UserBehaviorData> {
+    // For permanent bans, don't set bannedUntil (null means permanent)
+    const bannedUntil = durationDays ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000) : null;
     
     const behavior = await this.findByUserId(userId) || 
       await this.createOrUpdate(userId);
