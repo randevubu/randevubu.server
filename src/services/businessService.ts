@@ -22,6 +22,10 @@ export class BusinessService {
     userId: string,
     data: CreateBusinessRequest
   ): Promise<BusinessData> {
+    console.log('🔧 BUSINESS SERVICE: createBusiness called');
+    console.log('🔧 BUSINESS SERVICE: User ID:', userId);
+    console.log('🔧 BUSINESS SERVICE: Data:', data);
+    
     // Check permissions
     await this.rbacService.requirePermission(userId, PermissionName.CREATE_BUSINESS);
 

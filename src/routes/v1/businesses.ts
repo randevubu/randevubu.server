@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { BusinessController } from '../../controllers/businessController';
 import { requireAuth, requirePermission, requireRole, requireAny, withAuth } from '../../middleware/authUtils';
-import { PermissionName } from '../../types/auth';
+import { PermissionName, AuthenticatedRequest } from '../../types/auth';
 import { 
   attachBusinessContext, 
   requireBusinessAccess, 
@@ -468,7 +468,66 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
     // Allow both CUSTOMER and OWNER roles to create businesses
     // The service layer will handle role validation and upgrade
     allowEmptyBusinessContext,
+    (req: AuthenticatedRequest, res, next) => {
+      console.log('🔍 ROUTE DEBUG: POST /businesses endpoint hit');
+      console.log('🔍 ROUTE DEBUG: Request method:', req.method);
+      console.log('🔍 ROUTE DEBUG: Request path:', req.path);
+      console.log('🔍 ROUTE DEBUG: User:', req.user?.id);
+      console.log('🔍 ROUTE DEBUG: Business controller method:', typeof businessController.createBusiness);
+      next();
+    },
     businessController.createBusiness.bind(businessController)
+  );
+
+  // Debug endpoint to test business creation flow
+  router.post(
+    '/debug-create',
+    allowEmptyBusinessContext,
+    (req: AuthenticatedRequest, res, next) => {
+      console.log('🔍 DEBUG ENDPOINT: POST /businesses/debug-create hit');
+      console.log('🔍 DEBUG ENDPOINT: User:', req.user?.id);
+      console.log('🔍 DEBUG ENDPOINT: User roles:', req.user?.roles?.map((r: any) => r.name));
+      console.log('🔍 DEBUG ENDPOINT: Request body:', req.body);
+      next();
+    },
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const userId = req.user!.id;
+        console.log('🔍 DEBUG: Testing business creation flow for user:', userId);
+        
+        // Test RBAC service
+        console.log('🔍 DEBUG: Testing RBAC service...');
+        const hasPermission = await businessController['rbacService']?.hasPermission(userId, 'business', 'create');
+        console.log('🔍 DEBUG: Has business:create permission:', hasPermission);
+        
+        // Test business service
+        console.log('🔍 DEBUG: Testing business service...');
+        const testData = {
+          name: 'Test Business',
+          businessTypeId: 'beauty_salon',
+          description: 'Test business for debugging'
+        };
+        
+        const business = await businessController['businessService'].createBusiness(userId, testData);
+        console.log('🔍 DEBUG: Business created successfully:', business.id);
+        
+        res.json({
+          success: true,
+          message: 'Debug test completed successfully',
+          data: {
+            businessId: business.id,
+            hasPermission,
+            userRoles: req.user?.roles?.map((r: any) => r.name)
+          }
+        });
+      } catch (error) {
+        console.error('🔍 DEBUG ERROR:', error);
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Debug test failed'
+        });
+      }
+    }
   );
 
   /**

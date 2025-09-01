@@ -191,6 +191,10 @@ export class BusinessController {
 
   async createBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
     console.log('🚀 BUSINESS CREATION STARTED - Method called');
+    console.log('🚀 BUSINESS CREATION - Request body:', req.body);
+    console.log('🚀 BUSINESS CREATION - User:', req.user?.id);
+    console.log('🚀 BUSINESS CREATION - Token service available:', !!this.tokenService);
+    console.log('🚀 BUSINESS CREATION - RBAC service available:', !!this.rbacService);
     try {
       const validatedData = createBusinessSchema.parse(req.body);
       const userId = req.user!.id;
@@ -240,6 +244,8 @@ export class BusinessController {
 
       res.status(201).json(response);
     } catch (error) {
+      console.error('❌ BUSINESS CREATION ERROR:', error);
+      console.error('❌ BUSINESS CREATION ERROR STACK:', error instanceof Error ? error.stack : 'No stack trace');
       res.status(400).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to create business'
