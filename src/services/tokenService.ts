@@ -36,8 +36,11 @@ export class TokenService {
     deviceInfo?: DeviceInfo,
     context?: ErrorContext
   ): Promise<TokenPair> {
-    if (!config.JWT_SECRET) {
-      throw new ConfigurationError('JWT_SECRET', 'JWT secret is not configured', context);
+    const accessSecret = config.JWT_ACCESS_SECRET || config.JWT_SECRET;
+    const refreshSecret = config.JWT_REFRESH_SECRET || config.JWT_SECRET;
+    
+    if (!accessSecret || !refreshSecret) {
+      throw new ConfigurationError('JWT_SECRET', 'JWT secrets are not configured', context);
     }
 
     const accessTokenPayload: JWTPayload = {
@@ -55,15 +58,14 @@ export class TokenService {
     };
 
     try {
-      // Generate JWT tokens
-      const jwtSecret = config.JWT_SECRET!;
+      // Generate JWT tokens with separate secrets
       const signOptions: jwt.SignOptions = {
         expiresIn: this.tokenConfig.accessTokenExpirySeconds,
         issuer: 'randevubu-server',
         audience: 'randevubu-client',
         algorithm: 'HS256',
       };
-      const accessToken = jwt.sign(accessTokenPayload, jwtSecret, signOptions);
+      const accessToken = jwt.sign(accessTokenPayload, accessSecret, signOptions);
 
       const refreshSignOptions: jwt.SignOptions = {
         expiresIn: this.tokenConfig.refreshTokenExpirySeconds,
@@ -71,7 +73,7 @@ export class TokenService {
         audience: 'randevubu-client',
         algorithm: 'HS256',
       };
-      const refreshToken = jwt.sign(refreshTokenPayload, jwtSecret, refreshSignOptions);
+      const refreshToken = jwt.sign(refreshTokenPayload, refreshSecret, refreshSignOptions);
 
       // Store refresh token in database
       await this.repositories.refreshTokenRepository.create({
@@ -121,12 +123,14 @@ export class TokenService {
   }
 
   async verifyAccessToken(token: string, context?: ErrorContext): Promise<JWTPayload> {
-    if (!config.JWT_SECRET) {
-      throw new ConfigurationError('JWT_SECRET', 'JWT secret is not configured', context);
+    const accessSecret = config.JWT_ACCESS_SECRET || config.JWT_SECRET;
+    
+    if (!accessSecret) {
+      throw new ConfigurationError('JWT_ACCESS_SECRET', 'JWT access secret is not configured', context);
     }
 
     try {
-      const decoded = jwt.verify(token, config.JWT_SECRET, {
+      const decoded = jwt.verify(token, accessSecret, {
         issuer: 'randevubu-server',
         audience: 'randevubu-client',
         algorithms: ['HS256'],
@@ -157,17 +161,31 @@ export class TokenService {
     deviceInfo?: DeviceInfo,
     context?: ErrorContext
   ): Promise<TokenPair> {
-    if (!config.JWT_SECRET) {
-      throw new ConfigurationError('JWT_SECRET', 'JWT secret is not configured', context);
+    const refreshSecret = config.JWT_REFRESH_SECRET || config.JWT_SECRET;
+    
+    if (!refreshSecret) {
+      throw new ConfigurationError('JWT_REFRESH_SECRET', 'JWT refresh secret is not configured', context);
     }
 
     try {
+      logger.debug('Attempting JWT verification', {
+        tokenStart: refreshToken.substring(0, 50),
+        hasJwtRefreshSecret: !!refreshSecret,
+        requestId: context?.requestId,
+      });
+
       // Verify refresh token JWT
-      const decoded = jwt.verify(refreshToken, config.JWT_SECRET, {
+      const decoded = jwt.verify(refreshToken, refreshSecret, {
         issuer: 'randevubu-server',
         audience: 'randevubu-client',
         algorithms: ['HS256'],
       }) as JWTPayload & { tokenValue: string };
+
+      logger.debug('JWT verification successful', {
+        userId: decoded.userId,
+        tokenType: decoded.type,
+        requestId: context?.requestId,
+      });
 
       if (decoded.type !== 'refresh') {
         throw new InvalidTokenError('Invalid refresh token type', context);
@@ -227,12 +245,25 @@ export class TokenService {
 
     } catch (error) {
       if (error instanceof jwt.JsonWebTokenError) {
+        logger.error('JWT verification failed', {
+          error: error.message,
+          tokenStart: refreshToken.substring(0, 50),
+          requestId: context?.requestId,
+        });
         throw new InvalidTokenError('Invalid refresh token format', context);
       }
       if (error instanceof jwt.TokenExpiredError) {
+        logger.error('Refresh token expired', {
+          error: error.message,
+          requestId: context?.requestId,
+        });
         throw new TokenExpiredError('Refresh token has expired', context);
       }
       if (error instanceof jwt.NotBeforeError) {
+        logger.error('Refresh token not active yet', {
+          error: error.message,
+          requestId: context?.requestId,
+        });
         throw new InvalidTokenError('Refresh token not active yet', context);
       }
 

@@ -479,52 +479,78 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
     businessController.createBusiness.bind(businessController)
   );
 
-  // Debug endpoint to test business creation flow
+  // Test endpoint to create business and immediately fetch it
   router.post(
-    '/debug-create',
+    '/test-create-and-fetch',
     allowEmptyBusinessContext,
-    (req: AuthenticatedRequest, res, next) => {
-      console.log('🔍 DEBUG ENDPOINT: POST /businesses/debug-create hit');
-      console.log('🔍 DEBUG ENDPOINT: User:', req.user?.id);
-      console.log('🔍 DEBUG ENDPOINT: User roles:', req.user?.roles?.map((r: any) => r.name));
-      console.log('🔍 DEBUG ENDPOINT: Request body:', req.body);
-      next();
-    },
     async (req: AuthenticatedRequest, res) => {
       try {
         const userId = req.user!.id;
-        console.log('🔍 DEBUG: Testing business creation flow for user:', userId);
+        console.log('🧪 TEST: Creating business and fetching it immediately');
         
-        // Test RBAC service
-        console.log('🔍 DEBUG: Testing RBAC service...');
-        const hasPermission = await businessController['rbacService']?.hasPermission(userId, 'business', 'create');
-        console.log('🔍 DEBUG: Has business:create permission:', hasPermission);
-        
-        // Test business service
-        console.log('🔍 DEBUG: Testing business service...');
+        // Step 1: Create business
         const testData = {
-          name: 'Test Business',
+          name: 'Test Business for Fetch',
           businessTypeId: 'beauty_salon',
-          description: 'Test business for debugging'
+          description: 'Test business for immediate fetch test'
         };
         
+        console.log('🧪 TEST: Creating business...');
         const business = await businessController['businessService'].createBusiness(userId, testData);
-        console.log('🔍 DEBUG: Business created successfully:', business.id);
+        console.log('🧪 TEST: Business created:', business.id);
+        
+        // Step 2: Clear RBAC cache
+        console.log('🧪 TEST: Clearing RBAC cache...');
+        businessController['rbacService']?.clearUserCache(userId);
+        
+        // Step 3: Wait a moment for database consistency
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Step 4: Try to fetch the business
+        console.log('🧪 TEST: Fetching businesses...');
+        const businesses = await businessController['businessService'].getMyBusinesses(userId);
+        console.log('🧪 TEST: Fetched businesses:', businesses.length);
+        
+        // Step 5: Test business context middleware
+        console.log('🧪 TEST: Testing business context...');
+        const freshUserRoles = await businessController['businessService']['prisma'].userRole.findMany({
+          where: {
+            userId: userId,
+            isActive: true,
+            role: {
+              isActive: true
+            }
+          },
+          include: {
+            role: true
+          }
+        });
+        
+        const userRoles = freshUserRoles.map(ur => ur.role);
+        const isOwner = userRoles.some(role => role.name === 'OWNER');
+        
+        console.log('🧪 TEST: User roles after business creation:', userRoles.map(r => r.name));
+        console.log('🧪 TEST: Is owner:', isOwner);
         
         res.json({
           success: true,
-          message: 'Debug test completed successfully',
+          message: 'Test completed',
           data: {
-            businessId: business.id,
-            hasPermission,
-            userRoles: req.user?.roles?.map((r: any) => r.name)
+            createdBusiness: {
+              id: business.id,
+              name: business.name
+            },
+            fetchedBusinesses: businesses.map(b => ({ id: b.id, name: b.name })),
+            userRoles: userRoles.map(r => r.name),
+            isOwner,
+            businessCount: businesses.length
           }
         });
       } catch (error) {
-        console.error('🔍 DEBUG ERROR:', error);
+        console.error('🧪 TEST ERROR:', error);
         res.status(500).json({
           success: false,
-          error: error instanceof Error ? error.message : 'Debug test failed'
+          error: error instanceof Error ? error.message : 'Test failed'
         });
       }
     }

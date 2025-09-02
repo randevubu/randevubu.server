@@ -22,7 +22,8 @@ const createSubscriptionPaymentSchema = z.object({
     country: z.string().min(1),
     zipCode: z.string().optional()
   }).optional(),
-  installment: z.string().default('1')
+  installment: z.string().default('1'),
+  discountCode: z.string().optional()
 });
 
 const refundPaymentSchema = z.object({
@@ -52,7 +53,8 @@ export class PaymentController {
             email: `user_${userId}@randevubu.com`,
             gsmNumber: req.user.phoneNumber
           },
-          installment: validatedData.installment
+          installment: validatedData.installment,
+          discountCode: validatedData.discountCode
         }
       );
 

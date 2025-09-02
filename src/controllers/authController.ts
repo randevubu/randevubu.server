@@ -254,6 +254,16 @@ export class AuthController {
       const bodyRefreshToken = req.body?.refreshToken;
       const refreshToken = cookieRefreshToken || bodyRefreshToken;
 
+      logger.debug('Refresh token debug info', {
+        hasCookieToken: !!cookieRefreshToken,
+        hasBodyToken: !!bodyRefreshToken,
+        cookieTokenLength: cookieRefreshToken?.length,
+        bodyTokenLength: bodyRefreshToken?.length,
+        cookieTokenStart: cookieRefreshToken?.substring(0, 20),
+        bodyTokenStart: bodyRefreshToken?.substring(0, 20),
+        requestId: this.createErrorContext(req).requestId,
+      });
+
       if (!refreshToken) {
         res.status(400).json({
           success: false,
@@ -265,14 +275,59 @@ export class AuthController {
         return;
       }
 
+      if (typeof refreshToken !== 'string' || refreshToken.trim() === '') {
+        logger.error('Invalid refresh token type or empty', {
+          tokenType: typeof refreshToken,
+          tokenValue: refreshToken,
+          requestId: this.createErrorContext(req).requestId,
+        });
+        res.status(401).json({
+          success: false,
+          error: {
+            message: 'Invalid refresh token format',
+            code: 'INVALID_REFRESH_TOKEN_FORMAT'
+          }
+        });
+        return;
+      }
+
+      // Basic JWT format validation (should have 3 parts separated by dots)
+      const tokenParts = refreshToken.split('.');
+      if (tokenParts.length !== 3) {
+        logger.error('Refresh token does not have JWT structure', {
+          tokenParts: tokenParts.length,
+          token: refreshToken.substring(0, 50) + '...',
+          requestId: this.createErrorContext(req).requestId,
+        });
+        res.status(401).json({
+          success: false,
+          error: {
+            message: 'Invalid refresh token format',
+            code: 'INVALID_REFRESH_TOKEN_STRUCTURE'
+          }
+        });
+        return;
+      }
+
       const deviceInfo = this.extractDeviceInfo(req);
       const context = this.createErrorContext(req);
+
+      console.log('🚀 About to call tokenService.refreshAccessToken');
+      logger.debug('About to call tokenService.refreshAccessToken', {
+        tokenLength: refreshToken.length,
+        requestId: context.requestId,
+      });
 
       const tokens = await this.tokenService.refreshAccessToken(
         refreshToken,
         deviceInfo,
         context
       );
+
+      logger.debug('TokenService returned successfully', {
+        hasAccessToken: !!tokens.accessToken,
+        requestId: context.requestId,
+      });
 
       // Update the refresh token cookie if it was used from cookie
       if (cookieRefreshToken) {

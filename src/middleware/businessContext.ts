@@ -34,7 +34,23 @@ export class BusinessContextMiddleware {
       }
 
       const userId = req.user.id;
-      const userRoles = req.user.roles || [];
+      
+      // Fetch fresh user roles from database to ensure we have the latest roles
+      // This is important after business creation when roles might have changed
+      const freshUserRoles = await this.prisma.userRole.findMany({
+        where: {
+          userId: userId,
+          isActive: true,
+          role: {
+            isActive: true
+          }
+        },
+        include: {
+          role: true
+        }
+      });
+
+      const userRoles = freshUserRoles.map(ur => ur.role);
       
       const isOwner = userRoles.some(role => role.name === 'OWNER');
       const isStaff = userRoles.some(role => role.name === 'STAFF');

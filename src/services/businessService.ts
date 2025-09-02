@@ -141,8 +141,8 @@ export class BusinessService {
     });
 
     // Clear RBAC cache for the user since they now have a new role
-    // Note: This is a private method in RBACService, so we'll need to call it through a public method if available
-    // For now, the cache will expire naturally or we could add a public method to clear it
+    // This ensures that subsequent requests will see the updated roles
+    this.rbacService.clearUserCache(userId);
 
     return business;
   }

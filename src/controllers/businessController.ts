@@ -207,6 +207,11 @@ export class BusinessController {
       // Create business (transaction will be committed inside the service)
       const business = await this.businessService.createBusiness(userId, validatedData);
 
+      // Clear RBAC cache to ensure fresh role data
+      if (this.rbacService) {
+        this.rbacService.clearUserCache(userId);
+      }
+
       // After business creation and role assignment are committed, generate new tokens
       let tokens = null;
       if (this.rbacService && this.tokenService) {

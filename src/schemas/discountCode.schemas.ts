@@ -46,7 +46,7 @@ export const discountCodeBaseSchema = z.object({
     .positive('Minimum purchase amount must be positive')
     .optional(),
   
-  applicablePlans: z.array(z.string().uuid('Invalid plan ID format'))
+  applicablePlans: z.array(z.string().regex(/^plan_[a-z0-9_-]+$/, 'Invalid plan ID format. Expected format: plan_{id}_{suffix}'))
     .default([])
     .optional(),
   
@@ -115,7 +115,8 @@ export const validateDiscountCodeSchema = z.object({
     .max(20, 'Invalid discount code format'),
   
   planId: z.string()
-    .uuid('Invalid plan ID format'),
+    .min(1, 'Plan ID is required')
+    .regex(/^plan_[a-z0-9_-]+$/, 'Invalid plan ID format. Expected format: plan_{id}_{suffix}'),
   
   amount: z.number()
     .positive('Amount must be positive')
@@ -156,7 +157,7 @@ export const bulkDiscountCodeSchema = z.object({
     .positive('Minimum purchase amount must be positive')
     .optional(),
   
-  applicablePlans: z.array(z.string().uuid('Invalid plan ID format'))
+  applicablePlans: z.array(z.string().regex(/^plan_[a-z0-9_-]+$/, 'Invalid plan ID format. Expected format: plan_{id}_{suffix}'))
     .default([])
     .optional(),
   

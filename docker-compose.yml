@@ -11,6 +11,8 @@ services:
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/randevubu?schema=public
+    env_file:
+      - .env
     volumes:
       - .:/app
       - /app/node_modules

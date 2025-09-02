@@ -151,6 +151,21 @@ export class RBACService {
     }
   }
 
+  // Clear cache for a specific user (useful after role changes)
+  clearUserCache(userId: string): void {
+    const cacheKey = `user:${userId}`;
+    this.permissionCache.delete(cacheKey);
+    this.cacheExpiry.delete(cacheKey);
+    logger.info('Cleared RBAC cache for user', { userId });
+  }
+
+  // Clear all cache (useful for system-wide changes)
+  clearAllCache(): void {
+    this.permissionCache.clear();
+    this.cacheExpiry.clear();
+    logger.info('Cleared all RBAC cache');
+  }
+
   async requirePermission(
     userId: string,
     permission: string,
@@ -340,17 +355,6 @@ export class RBACService {
   async getUserRoles(userId: string): Promise<Role[]> {
     const userPermissions = await this.getUserPermissions(userId);
     return userPermissions.roles;
-  }
-
-  clearUserCache(userId: string): void {
-    const cacheKey = `user:${userId}`;
-    this.permissionCache.delete(cacheKey);
-    this.cacheExpiry.delete(cacheKey);
-  }
-
-  clearAllCache(): void {
-    this.permissionCache.clear();
-    this.cacheExpiry.clear();
   }
 
   private evaluateConditions(

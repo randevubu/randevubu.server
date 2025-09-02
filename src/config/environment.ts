@@ -9,6 +9,8 @@ interface Config {
   CORS_ORIGINS: string[];
   DATABASE_URL?: string;
   JWT_SECRET?: string;
+  JWT_ACCESS_SECRET?: string;
+  JWT_REFRESH_SECRET?: string;
   REDIS_URL?: string;
 }
 
@@ -33,6 +35,8 @@ const getConfig = (): Config => {
     CORS_ORIGINS: corsOrigins,
     DATABASE_URL: process.env.DATABASE_URL,
     JWT_SECRET: process.env.JWT_SECRET,
+    JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
+    JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
     REDIS_URL: process.env.REDIS_URL,
   };
 };
@@ -49,7 +53,7 @@ export const validateConfig = (): void => {
   }
 
   if (config.NODE_ENV === 'production') {
-    const productionVars = ['JWT_SECRET'];
+    const productionVars = ['JWT_SECRET', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'];
     for (const varName of productionVars) {
       if (!process.env[varName]) {
         console.warn(`Warning: Missing recommended environment variable for production: ${varName}`);

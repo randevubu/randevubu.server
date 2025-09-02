@@ -96,3 +96,15 @@ export function withAuth<T extends any[]>(
     return handler(authReq, res, ...args);
   };
 }
+
+// Middleware to refresh user roles (useful after role changes)
+export const refreshUserRoles = (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user) {
+    return next();
+  }
+
+  // This will be called after business creation to refresh the user's roles
+  // The actual role refresh should happen in the controller after business creation
+  next();
+};

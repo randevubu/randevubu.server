@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { UsageService } from '../services/usageService';
-import { GuaranteedAuthRequest } from '../types/auth';
+import { AuthenticatedRequest } from '../types/auth';
 import { BusinessContextRequest } from '../middleware/businessContext';
 import {
   createErrorContext,
@@ -25,9 +25,9 @@ export class UsageController {
    * Get business usage summary including current/previous month and quotas
    * GET /api/v1/businesses/:businessId/usage/summary
    */
-  async getUsageSummary(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+  async getUsageSummary(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user.id;
+      const userId = req.user!.id;
       const businessId = req.params.businessId;
 
       const summary = await this.usageService.getBusinessUsageSummary(userId, businessId);
@@ -51,9 +51,9 @@ export class UsageController {
    * Get usage alerts for the business
    * GET /api/v1/businesses/:businessId/usage/alerts
    */
-  async getUsageAlerts(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+  async getUsageAlerts(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user.id;
+      const userId = req.user!.id;
       const businessId = req.params.businessId;
 
       const alerts = await this.usageService.getUsageAlerts(userId, businessId);
@@ -78,9 +78,9 @@ export class UsageController {
    * GET /api/v1/businesses/:businessId/usage/sms-daily
    * Query params: ?days=30 (default: 30, max: 365)
    */
-  async getDailySmsUsage(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+  async getDailySmsUsage(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user.id;
+      const userId = req.user!.id;
       const businessId = req.params.businessId;
       
       const queryResult = usageQuerySchema.safeParse(req.query);
@@ -107,9 +107,9 @@ export class UsageController {
    * GET /api/v1/businesses/:businessId/usage/monthly-history
    * Query params: ?months=12 (default: 12, max: 24)
    */
-  async getMonthlyUsageHistory(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+  async getMonthlyUsageHistory(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user.id;
+      const userId = req.user!.id;
       const businessId = req.params.businessId;
       
       const queryResult = usageQuerySchema.safeParse(req.query);
@@ -135,9 +135,9 @@ export class UsageController {
    * Check if business can perform specific actions (useful for frontend validations)
    * GET /api/v1/businesses/:businessId/usage/limits-check
    */
-  async checkLimits(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+  async checkLimits(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user.id;
+      const userId = req.user!.id;
       const businessId = req.params.businessId;
 
       const [smsCheck, staffCheck, serviceCheck, customerCheck] = await Promise.all([

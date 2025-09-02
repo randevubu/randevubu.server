@@ -1,13 +1,19 @@
 import express from 'express';
 import { PaymentController } from '../../controllers/paymentController';
 import { PaymentService } from '../../services/paymentService';
+import { DiscountCodeService } from '../../services/discountCodeService';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
+import { RepositoryContainer } from '../../repositories';
+import { RBACService } from '../../services/rbacService';
 
 const router = express.Router();
 
 const prisma = new PrismaClient();
-const paymentService = new PaymentService(prisma);
+const repositories = new RepositoryContainer(prisma);
+const rbacService = new RBACService(repositories);
+const discountCodeService = new DiscountCodeService(repositories.discountCodeRepository, rbacService);
+const paymentService = new PaymentService(prisma, discountCodeService);
 const paymentController = new PaymentController(paymentService);
 
 /**

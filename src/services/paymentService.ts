@@ -206,9 +206,9 @@ export class PaymentService {
 
       const currentDate = new Date();
       const nextPeriod = new Date();
-      if (plan.billingInterval === 'MONTHLY') {
+      if (plan.billingInterval.toLowerCase() === 'monthly') {
         nextPeriod.setMonth(currentDate.getMonth() + 1);
-      } else if (plan.billingInterval === 'YEARLY') {
+      } else if (plan.billingInterval.toLowerCase() === 'yearly') {
         nextPeriod.setFullYear(currentDate.getFullYear() + 1);
       }
 
@@ -255,7 +255,7 @@ export class PaymentService {
 
       const paymentRequest: CreatePaymentRequest = {
         conversationId: this.generateConversationId(),
-        price: plan.price.toString(),
+        price: finalPrice.toString(),
         paidPrice: finalPrice.toString(),
         currency: plan.currency,
         installment: paymentData.installment || '1',
@@ -285,7 +285,7 @@ export class PaymentService {
         })]
       };
 
-      const paymentResult = await this.createSubscriptionPayment(subscription.id, paymentRequest);
+      const paymentResult = await this.createSubscriptionPayment(subscription.id, paymentRequest, discountApplied);
 
       if (paymentResult.success) {
         // Record discount code usage if applicable
@@ -382,7 +382,13 @@ export class PaymentService {
 
   async createSubscriptionPayment(
     businessSubscriptionId: string,
-    paymentData: CreatePaymentRequest
+    paymentData: CreatePaymentRequest,
+    discountApplied?: {
+      code: string;
+      discountAmount: number;
+      originalAmount: number;
+      finalAmount: number;
+    }
   ): Promise<{
     success: boolean;
     paymentId?: string;
@@ -445,7 +451,15 @@ export class PaymentService {
                 cardFamily: result.cardFamily,
                 lastFourDigits: result.lastFourDigits,
                 binNumber: result.binNumber
-              }
+              },
+              ...(discountApplied && {
+                discount: {
+                  code: discountApplied.code,
+                  originalAmount: discountApplied.originalAmount,
+                  discountAmount: discountApplied.discountAmount,
+                  finalAmount: discountApplied.finalAmount
+                }
+              })
             }
           }
         });
