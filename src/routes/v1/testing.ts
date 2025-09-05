@@ -2,12 +2,15 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../../middleware/authUtils';
 import prisma from '../../lib/prisma';
 import { TestSubscriptionHelper } from '../../utils/testSubscriptionHelper';
+import { SMSService } from '../../services/smsService';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
 // Only enable testing routes in development
 if (process.env.NODE_ENV === 'development') {
   const testHelper = new TestSubscriptionHelper(prisma);
+  const smsService = new SMSService();
 
   /**
    * @swagger
@@ -198,6 +201,86 @@ if (process.env.NODE_ENV === 'development') {
       return res.status(500).json({ 
         error: 'Failed to get scheduler status',
         details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/v1/testing/sms:
+   *   post:
+   *     tags: [Testing]
+   *     summary: Test SMS sending functionality
+   *     description: Development only - Send a test SMS to verify İleti Merkezi integration
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - phoneNumber
+   *             properties:
+   *               phoneNumber:
+   *                 type: string
+   *                 example: "05551756598"
+   *                 description: "Phone number to send test SMS to"
+   *     responses:
+   *       200:
+   *         description: SMS test result
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 message:
+   *                   type: string
+   *                 smsResult:
+   *                   type: object
+   *       400:
+   *         description: Bad request
+   */
+  router.post('/sms', async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const { phoneNumber } = req.body;
+
+      if (!phoneNumber) {
+        return res.status(400).json({
+          success: false,
+          error: 'Phone number is required',
+        });
+      }
+
+      logger.info('Testing SMS service', {
+        phoneNumber: phoneNumber.replace(/\d(?=\d{3})/g, '*'),
+        requestId: req.headers['x-request-id'] || 'test',
+      });
+
+      const result = await smsService.testSMS(phoneNumber);
+
+      return res.json({
+        success: true,
+        message: 'SMS test completed',
+        smsResult: result,
+        environment: process.env.NODE_ENV,
+        credentials: {
+          apiKey: process.env.ILETI_MERKEZI_API_KEY ? 'Configured' : 'Not configured',
+          secretKey: process.env.ILETI_MERKEZI_SECRET_KEY ? 'Configured' : 'Not configured',
+          sender: process.env.ILETI_MERKEZI_SENDER || 'Not configured',
+        }
+      });
+
+    } catch (error) {
+      logger.error('SMS test error', {
+        error: error instanceof Error ? error.message : String(error),
+        requestId: req.headers['x-request-id'] || 'test',
+      });
+
+      return res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });

@@ -16,6 +16,7 @@ import {
 } from '../types/errors';
 import { logger } from '../utils/logger';
 import { TokenService } from './tokenService';
+import { SMSService } from './smsService';
 
 export interface SendVerificationOptions {
   phoneNumber: string;
@@ -32,10 +33,14 @@ export class PhoneVerificationService {
   private static readonly DAILY_LIMIT = process.env.NODE_ENV === 'development' ? 1000 : 10; // Much higher in dev
   private static readonly IP_DAILY_LIMIT = process.env.NODE_ENV === 'development' ? 5000 : 50; // Much higher in dev
 
+  private smsService: SMSService;
+
   constructor(
     private repositories: RepositoryContainer,
     private tokenService: TokenService
-  ) {}
+  ) {
+    this.smsService = new SMSService();
+  }
 
   async sendVerificationCode(
     options: SendVerificationOptions,
@@ -323,26 +328,38 @@ export class PhoneVerificationService {
     code: string, 
     context?: ErrorContext
   ): Promise<void> {
-    // In production, integrate with SMS providers like:
-    // - Twilio
-    // - AWS SNS
-    // - Azure Communication Services
-    // - SendGrid
     
-    const message = `Your RandevuBu verification code is: ${code}. Valid for ${PhoneVerificationService.CODE_EXPIRY_MINUTES} minutes. Do not share this code.`;
+    // Show verification code in terminal
+    console.log(`🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(phoneNumber)}`);
+    logger.info(`🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(phoneNumber)}`);
+    
+    // Send the working test message via SMS
+    const testMessage = `RandevuBu SMS servisi test mesajıdır. Bu mesaj İleti Merkezi API entegrasyonunu test etmek için gönderilmiştir.`;
 
-    if (process.env.NODE_ENV === 'development') {
-      logger.info('SMS Code (Development Mode)', {
-        phoneNumber: this.maskPhoneNumber(phoneNumber),
-        code,
-        message,
-        requestId: context?.requestId,
+    try {
+      const result = await this.smsService.sendSMS({
+        phoneNumber,
+        message: testMessage,
+        context,
       });
-    } else {
-      // Production SMS sending logic would go here
-      logger.info('SMS sent (Production)', {
+
+      if (result.success) {
+        logger.info('SMS test message sent successfully', {
+          phoneNumber: this.maskPhoneNumber(phoneNumber),
+          messageId: result.messageId,
+          requestId: context?.requestId,
+        });
+      } else {
+        logger.warn('SMS test message failed, but continuing', {
+          phoneNumber: this.maskPhoneNumber(phoneNumber),
+          error: result.error,
+          requestId: context?.requestId,
+        });
+      }
+    } catch (error) {
+      logger.warn('SMS sending error, but continuing', {
+        error: error instanceof Error ? error.message : String(error),
         phoneNumber: this.maskPhoneNumber(phoneNumber),
-        messageLength: message.length,
         requestId: context?.requestId,
       });
     }
