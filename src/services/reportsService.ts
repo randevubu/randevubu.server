@@ -1,5 +1,6 @@
 import { RepositoryContainer } from '../repositories';
 import { AppointmentStatus } from '../types/business';
+import { ReliabilityScoreCalculator } from '../utils/reliabilityScoreCalculator';
 
 export interface BusinessOverviewReport {
   businessId: string;
@@ -653,19 +654,42 @@ export class ReportsService {
       }
     });
 
-    const topCustomers = customerData
-      .filter(c => topCustomerIds.includes(c.customerId))
-      .map(c => {
-        const customer = topCustomersData.find(tc => tc.id === c.customerId);
-        return {
-          customerId: c.customerId,
-          customerName: customer ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() : 'Unknown',
-          totalAppointments: c._count,
-          totalSpent: Number(c._sum.price || 0),
-          lastVisit: customer?.lastLoginAt || new Date(),
-          reliabilityScore: 85 // TODO: Calculate actual reliability score
-        };
-      })
+    // Get appointment statistics for each top customer to calculate reliability score
+    const topCustomersWithStats = await Promise.all(
+      customerData
+        .filter(c => topCustomerIds.includes(c.customerId))
+        .map(async (c) => {
+          const customer = topCustomersData.find(tc => tc.id === c.customerId);
+          
+          // Get detailed appointment statistics for this customer
+          const appointmentStats = await this.repositories.appointmentRepository.getCustomerAppointmentStats(c.customerId, userId);
+          
+          // Get user behavior data
+          const userBehavior = await this.repositories.userBehaviorRepository.findByUserId(c.customerId);
+          
+          // Calculate reliability score using centralized calculator
+          const reliabilityResult = ReliabilityScoreCalculator.calculate({
+            totalAppointments: appointmentStats.totalAppointments,
+            completedAppointments: appointmentStats.completedAppointments,
+            cancelledAppointments: appointmentStats.cancelledAppointments,
+            noShowAppointments: appointmentStats.noShowCount,
+            currentStrikes: userBehavior?.currentStrikes || 0,
+            isBanned: userBehavior?.isBanned || false,
+            bannedUntil: userBehavior?.bannedUntil
+          });
+
+          return {
+            customerId: c.customerId,
+            customerName: customer ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() : 'Unknown',
+            totalAppointments: c._count,
+            totalSpent: Number(c._sum.price || 0),
+            lastVisit: customer?.lastLoginAt || new Date(),
+            reliabilityScore: reliabilityResult.score
+          };
+        })
+    );
+
+    const topCustomers = topCustomersWithStats
       .sort((a, b) => b.totalAppointments - a.totalAppointments);
 
     return {

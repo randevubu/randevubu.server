@@ -13,6 +13,7 @@ import { SubscriptionRepository } from './subscriptionRepository';
 import { RoleRepository } from './roleRepository';
 import { DiscountCodeRepository } from './discountCodeRepository';
 import { UsageRepository } from './usageRepository';
+import { StaffRepository } from './staffRepository';
 
 // Repository container for dependency injection
 export class RepositoryContainer {
@@ -30,6 +31,7 @@ export class RepositoryContainer {
   public readonly roleRepository: RoleRepository;
   public readonly discountCodeRepository: DiscountCodeRepository;
   public readonly usageRepository: UsageRepository;
+  public readonly staffRepository: StaffRepository;
 
   constructor(private prisma: PrismaClient) {
     this.userRepository = new PrismaUserRepository(prisma);
@@ -46,6 +48,7 @@ export class RepositoryContainer {
     this.roleRepository = new RoleRepository(prisma);
     this.discountCodeRepository = new DiscountCodeRepository(prisma);
     this.usageRepository = new UsageRepository(prisma);
+    this.staffRepository = new StaffRepository(prisma);
   }
 
   get prismaClient(): PrismaClient {
@@ -68,7 +71,8 @@ export {
   SubscriptionRepository,
   RoleRepository,
   DiscountCodeRepository,
-  UsageRepository
+  UsageRepository,
+  StaffRepository
 };
 
 // Export interfaces for testing/mocking

@@ -2,6 +2,14 @@ import { Router } from 'express';
 import { ServiceController } from '../../controllers/serviceController';
 import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
+import { attachBusinessContext, requireSpecificBusinessAccess } from '../../middleware/attachBusinessContext';
+import prisma from '../../lib/prisma';
+import { RepositoryContainer } from '../../repositories';
+
+// Initialize business context middleware
+const repositories = new RepositoryContainer(prisma);
+import { initializeBusinessContextMiddleware } from '../../middleware/attachBusinessContext';
+initializeBusinessContextMiddleware(repositories);
 
 export function createServiceRoutes(serviceController: ServiceController): Router {
   const router = Router();
@@ -123,6 +131,8 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.post(
     '/business/:businessId',
+    attachBusinessContext,
+    requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     withAuth(serviceController.createService.bind(serviceController))
   );
@@ -494,6 +504,8 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.get(
     '/business/:businessId',
+    attachBusinessContext,
+    requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),
     serviceController.getBusinessServices.bind(serviceController)
   );
@@ -522,6 +534,8 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.post(
     '/business/:businessId/reorder',
+    attachBusinessContext,
+    requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     serviceController.reorderServices.bind(serviceController)
   );
@@ -551,6 +565,8 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.get(
     '/business/:businessId/popular',
+    attachBusinessContext,
+    requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
     serviceController.getPopularServices.bind(serviceController)
   );
@@ -665,6 +681,8 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.post(
     '/business/:businessId/bulk-update-prices',
+    attachBusinessContext,
+    requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     serviceController.bulkUpdatePrices.bind(serviceController)
   );
@@ -693,6 +711,8 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.post(
     '/business/:businessId/batch-toggle',
+    attachBusinessContext,
+    requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     serviceController.batchToggleServices.bind(serviceController)
   );
@@ -721,6 +741,8 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.post(
     '/business/:businessId/batch-delete',
+    attachBusinessContext,
+    requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     serviceController.batchDeleteServices.bind(serviceController)
   );

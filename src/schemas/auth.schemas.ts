@@ -177,7 +177,7 @@ export const createUserSchema = z.object({
   phoneNumber: phoneNumberSchema,
   firstName: z.string().max(50).optional(),
   lastName: z.string().max(50).optional(),
-  timezone: z.string().max(50).default('UTC'),
+  timezone: z.string().max(50).default('Europe/Istanbul'),
   language: z.string().length(2).default('en'),
 });
 

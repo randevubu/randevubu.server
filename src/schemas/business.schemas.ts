@@ -1,6 +1,192 @@
 import { z } from 'zod';
 import { BusinessStaffRole, AppointmentStatus, ClosureType } from '../types/business';
 
+// Business Hours validation schemas
+const timeFormatRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+
+const breakPeriodSchema = z.object({
+  startTime: z.string()
+    .regex(timeFormatRegex, 'Start time must be in HH:MM format (24-hour)'),
+  endTime: z.string()
+    .regex(timeFormatRegex, 'End time must be in HH:MM format (24-hour)'),
+  description: z.string()
+    .max(100, 'Break description must be less than 100 characters')
+    .optional()
+}).refine((data) => {
+  // Validate that start time is before end time
+  const [startHour, startMin] = data.startTime.split(':').map(Number);
+  const [endHour, endMin] = data.endTime.split(':').map(Number);
+  const startMinutes = startHour * 60 + startMin;
+  const endMinutes = endHour * 60 + endMin;
+  return startMinutes < endMinutes;
+}, {
+  message: 'Break start time must be before end time',
+  path: ['endTime']
+});
+
+const dayHoursSchema = z.object({
+  isOpen: z.boolean(),
+  openTime: z.string()
+    .regex(timeFormatRegex, 'Open time must be in HH:MM format (24-hour)')
+    .optional(),
+  closeTime: z.string()
+    .regex(timeFormatRegex, 'Close time must be in HH:MM format (24-hour)')
+    .optional(),
+  breaks: z.array(breakPeriodSchema)
+    .max(5, 'Maximum 5 breaks per day allowed')
+    .optional()
+}).refine((data) => {
+  // If open, require both open and close times
+  if (data.isOpen) {
+    return data.openTime && data.closeTime;
+  }
+  return true;
+}, {
+  message: 'Open and close times are required when business is open',
+  path: ['openTime']
+}).refine((data) => {
+  // If open, validate that open time is before close time
+  if (data.isOpen && data.openTime && data.closeTime) {
+    const [openHour, openMin] = data.openTime.split(':').map(Number);
+    const [closeHour, closeMin] = data.closeTime.split(':').map(Number);
+    const openMinutes = openHour * 60 + openMin;
+    const closeMinutes = closeHour * 60 + closeMin;
+    return openMinutes < closeMinutes;
+  }
+  return true;
+}, {
+  message: 'Open time must be before close time',
+  path: ['closeTime']
+}).refine((data) => {
+  // Validate breaks are within business hours
+  if (data.isOpen && data.openTime && data.closeTime && data.breaks) {
+    const [openHour, openMin] = data.openTime.split(':').map(Number);
+    const [closeHour, closeMin] = data.closeTime.split(':').map(Number);
+    const openMinutes = openHour * 60 + openMin;
+    const closeMinutes = closeHour * 60 + closeMin;
+    
+    for (const breakPeriod of data.breaks) {
+      const [breakStartHour, breakStartMin] = breakPeriod.startTime.split(':').map(Number);
+      const [breakEndHour, breakEndMin] = breakPeriod.endTime.split(':').map(Number);
+      const breakStartMinutes = breakStartHour * 60 + breakStartMin;
+      const breakEndMinutes = breakEndHour * 60 + breakEndMin;
+      
+      if (breakStartMinutes < openMinutes || breakEndMinutes > closeMinutes) {
+        return false;
+      }
+    }
+  }
+  return true;
+}, {
+  message: 'All breaks must be within business hours',
+  path: ['breaks']
+});
+
+export const businessHoursSchema = z.object({
+  monday: dayHoursSchema.optional(),
+  tuesday: dayHoursSchema.optional(),
+  wednesday: dayHoursSchema.optional(),
+  thursday: dayHoursSchema.optional(),
+  friday: dayHoursSchema.optional(),
+  saturday: dayHoursSchema.optional(),
+  sunday: dayHoursSchema.optional()
+}).refine((data) => {
+  // At least one day must be defined
+  const days = Object.keys(data);
+  return days.length > 0;
+}, {
+  message: 'At least one day must be defined in business hours',
+  path: ['monday']
+});
+
+// Business Hours Override schemas
+export const createBusinessHoursOverrideSchema = z.object({
+  date: z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  isOpen: z.boolean(),
+  openTime: z.string()
+    .regex(timeFormatRegex, 'Open time must be in HH:MM format (24-hour)')
+    .optional(),
+  closeTime: z.string()
+    .regex(timeFormatRegex, 'Close time must be in HH:MM format (24-hour)')
+    .optional(),
+  breaks: z.array(breakPeriodSchema)
+    .max(5, 'Maximum 5 breaks per day allowed')
+    .optional(),
+  reason: z.string()
+    .max(200, 'Reason must be less than 200 characters')
+    .optional(),
+  isRecurring: z.boolean().optional(),
+  recurringPattern: z.object({
+    frequency: z.enum(['YEARLY', 'MONTHLY', 'WEEKLY']),
+    interval: z.number()
+      .int('Interval must be an integer')
+      .min(1, 'Interval must be at least 1')
+      .max(10, 'Interval must be at most 10'),
+    endDate: z.string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'End date must be in YYYY-MM-DD format')
+      .optional()
+  }).optional()
+}).refine((data) => {
+  // If open, require both open and close times
+  if (data.isOpen) {
+    return data.openTime && data.closeTime;
+  }
+  return true;
+}, {
+  message: 'Open and close times are required when business is open',
+  path: ['openTime']
+}).refine((data) => {
+  // If open, validate that open time is before close time
+  if (data.isOpen && data.openTime && data.closeTime) {
+    const [openHour, openMin] = data.openTime.split(':').map(Number);
+    const [closeHour, closeMin] = data.closeTime.split(':').map(Number);
+    const openMinutes = openHour * 60 + openMin;
+    const closeMinutes = closeHour * 60 + closeMin;
+    return openMinutes < closeMinutes;
+  }
+  return true;
+}, {
+  message: 'Open time must be before close time',
+  path: ['closeTime']
+});
+
+export const updateBusinessHoursOverrideSchema = z.object({
+  isOpen: z.boolean().optional(),
+  openTime: z.string()
+    .regex(timeFormatRegex, 'Open time must be in HH:MM format (24-hour)')
+    .optional(),
+  closeTime: z.string()
+    .regex(timeFormatRegex, 'Close time must be in HH:MM format (24-hour)')
+    .optional(),
+  breaks: z.array(breakPeriodSchema)
+    .max(5, 'Maximum 5 breaks per day allowed')
+    .optional(),
+  reason: z.string()
+    .max(200, 'Reason must be less than 200 characters')
+    .optional(),
+  isRecurring: z.boolean().optional(),
+  recurringPattern: z.object({
+    frequency: z.enum(['YEARLY', 'MONTHLY', 'WEEKLY']),
+    interval: z.number()
+      .int('Interval must be an integer')
+      .min(1, 'Interval must be at least 1')
+      .max(10, 'Interval must be at most 10'),
+    endDate: z.string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'End date must be in YYYY-MM-DD format')
+      .optional()
+  }).optional()
+});
+
+export const businessHoursStatusSchema = z.object({
+  date: z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
+    .optional(),
+  timezone: z.string()
+    .max(50, 'Timezone must be less than 50 characters')
+    .optional()
+});
+
 // Business validation schemas
 export const createBusinessSchema = z.object({
   name: z.string()
@@ -23,9 +209,7 @@ export const createBusinessSchema = z.object({
     .regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format')
     .optional(),
   
-  website: z.string()
-    .url('Invalid website URL')
-    .optional(),
+  // website is auto-generated, not user input
   
   address: z.string()
     .max(200, 'Address must be less than 200 characters')
@@ -78,9 +262,7 @@ export const updateBusinessSchema = z.object({
     .regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format')
     .optional(),
   
-  website: z.string()
-    .url('Invalid website URL')
-    .optional(),
+  // website is auto-generated, not user input
   
   address: z.string()
     .max(200, 'Address must be less than 200 characters')
@@ -102,11 +284,7 @@ export const updateBusinessSchema = z.object({
     .max(20, 'Postal code must be less than 20 characters')
     .optional(),
   
-  businessHours: z.record(z.object({
-    open: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format'),
-    close: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format'),
-    closed: z.boolean()
-  })).optional(),
+  businessHours: businessHoursSchema.optional(),
   
   timezone: z.string()
     .max(50, 'Timezone must be less than 50 characters')
@@ -133,6 +311,23 @@ export const updateBusinessSchema = z.object({
     .optional()
 });
 
+// Business Settings validation schemas
+export const updateBusinessPriceSettingsSchema = z.object({
+  hideAllServicePrices: z.boolean()
+    .optional()
+    .describe('Hide prices for all services business-wide'),
+  
+  showPriceOnBooking: z.boolean()
+    .optional()
+    .default(true)
+    .describe('Show prices during the booking flow even if hidden on service list'),
+    
+  priceDisplayMessage: z.string()
+    .max(100, 'Price display message must be less than 100 characters')
+    .optional()
+    .describe('Custom message to show when prices are hidden (e.g., "Contact us for pricing")')
+});
+
 // Service validation schemas
 export const createServiceSchema = z.object({
   name: z.string()
@@ -155,6 +350,10 @@ export const createServiceSchema = z.object({
   currency: z.string()
     .length(3, 'Currency must be 3 characters')
     .optional(),
+  
+  showPrice: z.boolean()
+    .optional()
+    .default(true),
   
   bufferTime: z.number()
     .int('Buffer time must be an integer')
@@ -202,6 +401,8 @@ export const updateServiceSchema = z.object({
   
   isActive: z.boolean().optional(),
   
+  showPrice: z.boolean().optional(),
+  
   sortOrder: z.number()
     .int('Sort order must be an integer')
     .min(0, 'Sort order must be non-negative')
@@ -235,8 +436,7 @@ export const createAppointmentSchema = z.object({
     .min(1, 'Service ID is required'),
   
   staffId: z.string()
-    .min(1, 'Staff ID is required')
-    .optional(),
+    .min(1, 'Staff ID is required'),
   
   date: z.string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
@@ -514,9 +714,46 @@ export const validateClosureDates = (startDate: string, endDate?: string): boole
   }
 };
 
+// Image upload validation schemas
+export const imageUploadSchema = z.object({
+  imageType: z.enum(['logo', 'cover', 'profile', 'gallery'], {
+    errorMap: () => ({ message: 'Image type must be one of: logo, cover, profile, gallery' })
+  })
+});
+
+export const updateBusinessImagesSchema = z.object({
+  logoUrl: z.string()
+    .url('Invalid logo URL')
+    .optional(),
+  
+  coverImageUrl: z.string()
+    .url('Invalid cover image URL')
+    .optional(),
+    
+  profileImageUrl: z.string()
+    .url('Invalid profile image URL')
+    .optional(),
+    
+  galleryImages: z.array(z.string().url('Invalid gallery image URL'))
+    .max(10, 'Maximum 10 gallery images allowed')
+    .optional()
+});
+
+export const deleteImageSchema = z.object({
+  imageType: z.enum(['logo', 'cover', 'profile'], {
+    errorMap: () => ({ message: 'Image type must be one of: logo, cover, profile' })
+  })
+});
+
+export const deleteGalleryImageSchema = z.object({
+  imageUrl: z.string()
+    .url('Invalid image URL')
+});
+
 // Export schema types for TypeScript
 export type CreateBusinessSchema = z.infer<typeof createBusinessSchema>;
 export type UpdateBusinessSchema = z.infer<typeof updateBusinessSchema>;
+export type UpdateBusinessPriceSettingsSchema = z.infer<typeof updateBusinessPriceSettingsSchema>;
 export type CreateServiceSchema = z.infer<typeof createServiceSchema>;
 export type UpdateServiceSchema = z.infer<typeof updateServiceSchema>;
 export type CreateAppointmentSchema = z.infer<typeof createAppointmentSchema>;
@@ -528,3 +765,15 @@ export type UpdateBusinessClosureSchema = z.infer<typeof updateBusinessClosureSc
 export type SubscribeBusinessSchema = z.infer<typeof subscribeBusinessSchema>;
 export type BusinessSearchSchema = z.infer<typeof businessSearchSchema>;
 export type AppointmentSearchSchema = z.infer<typeof appointmentSearchSchema>;
+
+// Image schema types
+export type ImageUploadSchema = z.infer<typeof imageUploadSchema>;
+export type UpdateBusinessImagesSchema = z.infer<typeof updateBusinessImagesSchema>;
+export type DeleteImageSchema = z.infer<typeof deleteImageSchema>;
+export type DeleteGalleryImageSchema = z.infer<typeof deleteGalleryImageSchema>;
+
+// Business Hours schema types
+export type BusinessHoursSchema = z.infer<typeof businessHoursSchema>;
+export type CreateBusinessHoursOverrideSchema = z.infer<typeof createBusinessHoursOverrideSchema>;
+export type UpdateBusinessHoursOverrideSchema = z.infer<typeof updateBusinessHoursOverrideSchema>;
+export type BusinessHoursStatusSchema = z.infer<typeof businessHoursStatusSchema>;

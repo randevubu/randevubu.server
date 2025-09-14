@@ -20,7 +20,8 @@ const services = new ServiceContainer(repositories, prisma);
 const authController = new AuthController(
   services.authService,
   services.phoneVerificationService,
-  services.tokenService
+  services.tokenService,
+  services.rbacService
 );
 const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
 

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, AppointmentStatus, PaymentStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -297,7 +297,7 @@ const SAMPLE_BUSINESSES = [
     owner: {
       firstName: 'Ayşe',
       lastName: 'Yılmaz',
-      phoneNumber: '+905551234567',
+    phoneNumber: '+905551234567',
       timezone: 'Europe/Istanbul',
       language: 'tr'
     },
@@ -678,7 +678,8 @@ async function seedBusinessData() {
     console.log(`   Sample Businesses: ${SAMPLE_BUSINESSES.length}`);
     
     console.log('\n📋 Business Categories:');
-    const categories = [...new Set(DEFAULT_BUSINESS_TYPES.map(bt => bt.category))];
+    const categorySet = new Set(DEFAULT_BUSINESS_TYPES.map(bt => bt.category));
+    const categories = Array.from(categorySet);
     categories.forEach(category => {
       const count = DEFAULT_BUSINESS_TYPES.filter(bt => bt.category === category).length;
       console.log(`   ${category}: ${count} types`);
@@ -700,6 +701,7 @@ async function seedBusinessData() {
 async function main() {
   try {
     await seedBusinessData();
+    await createModernBerberAppointments();
   } catch (error) {
     console.error('Seed failed:', error);
     process.exit(1);
@@ -713,4 +715,248 @@ if (require.main === module) {
   main();
 }
 
-export { seedBusinessData };
+// Helper function to create appointments for Modern Berber
+async function createModernBerberAppointments() {
+  console.log('📅 Creating appointments for Modern Berber...');
+
+  // Clear existing appointments for Modern Berber first
+  console.log('🧹 Clearing existing Modern Berber appointments...');
+  const modernBerberExisting = await prisma.business.findUnique({
+    where: { slug: 'modern-berber' },
+    select: { id: true }
+  });
+  
+  if (modernBerberExisting) {
+    // Delete payments for appointments first
+    const appointmentsToDelete = await prisma.appointment.findMany({
+      where: { businessId: modernBerberExisting.id },
+      select: { id: true }
+    });
+    
+    if (appointmentsToDelete.length > 0) {
+      await prisma.appointment_payments.deleteMany({
+        where: {
+          appointmentId: {
+            in: appointmentsToDelete.map(apt => apt.id)
+          }
+        }
+      });
+    }
+    await prisma.appointment.deleteMany({
+      where: { businessId: modernBerberExisting.id }
+    });
+    console.log('✅ Cleared existing appointments');
+  }
+
+  const modernBerber = await prisma.business.findUnique({
+    where: { slug: 'modern-berber' },
+    include: {
+      services: true,
+      staff: {
+        include: {
+          user: true
+        }
+      }
+    }
+  });
+
+  if (!modernBerber) {
+    console.log('⚠️  Modern Berber not found, skipping appointments');
+    return;
+  }
+
+  if (!modernBerber.services || modernBerber.services.length === 0) {
+    console.log('⚠️  Modern Berber has no services, skipping appointments');
+    return;
+  }
+
+  // Sample customers for appointments (expanded list for high density)
+  const sampleCustomers = [
+    { firstName: 'Ahmet', lastName: 'Yılmaz', phoneNumber: '+905551111001' },
+    { firstName: 'Mehmet', lastName: 'Kaya', phoneNumber: '+905551111002' },
+    { firstName: 'Ali', lastName: 'Çelik', phoneNumber: '+905551111003' },
+    { firstName: 'Mustafa', lastName: 'Şahin', phoneNumber: '+905551111004' },
+    { firstName: 'Hasan', lastName: 'Özdemir', phoneNumber: '+905551111005' },
+    { firstName: 'Emre', lastName: 'Arslan', phoneNumber: '+905551111006' },
+    { firstName: 'Burak', lastName: 'Koç', phoneNumber: '+905551111007' },
+    { firstName: 'Oğuz', lastName: 'Yıldız', phoneNumber: '+905551111008' },
+    { firstName: 'Can', lastName: 'Aydın', phoneNumber: '+905551111009' },
+    { firstName: 'Eren', lastName: 'Polat', phoneNumber: '+905551111010' },
+    { firstName: 'Berk', lastName: 'Güler', phoneNumber: '+905551111011' },
+    { firstName: 'Cem', lastName: 'Soylu', phoneNumber: '+905551111012' },
+    { firstName: 'Deniz', lastName: 'Aktaş', phoneNumber: '+905551111013' },
+    { firstName: 'Ege', lastName: 'Tunç', phoneNumber: '+905551111014' },
+    { firstName: 'Furkan', lastName: 'Bayrak', phoneNumber: '+905551111015' },
+    { firstName: 'Gökhan', lastName: 'Mutlu', phoneNumber: '+905551111016' },
+    { firstName: 'Halil', lastName: 'Erdoğan', phoneNumber: '+905551111017' },
+    { firstName: 'İbrahim', lastName: 'Çakır', phoneNumber: '+905551111018' },
+    { firstName: 'Kerim', lastName: 'Acar', phoneNumber: '+905551111019' },
+    { firstName: 'Levent', lastName: 'Başar', phoneNumber: '+905551111020' }
+  ];
+
+  // Create customers if they don't exist
+  const customers: any[] = [];
+  for (const customerData of sampleCustomers) {
+    let customer = await prisma.user.findUnique({
+      where: { phoneNumber: customerData.phoneNumber }
+    });
+
+    if (!customer) {
+      customer = await prisma.user.create({
+        data: {
+          id: generateId('user'),
+          ...customerData,
+          timezone: 'Europe/Istanbul',
+          language: 'tr',
+          isVerified: true,
+          isActive: true,
+          updatedAt: new Date()
+        }
+      });
+    }
+    customers.push(customer);
+  }
+
+  // Get today and this week's dates
+  const today = new Date();
+  const weekDates: Date[] = [];
+  
+  // Add today and next 6 days
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+    weekDates.push(date);
+  }
+
+  console.log(`📅 Creating appointments for Modern Berber from ${today.toDateString()} to ${weekDates[6].toDateString()}`);
+
+  let totalAppointments = 0;
+
+  // Create appointments for each day this week
+  for (const date of weekDates) {
+    const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
+    const businessHours = modernBerber.businessHours as any;
+    
+    if (!businessHours[dayName] || !businessHours[dayName].isOpen) {
+      console.log(`🏢 Modern Berber is closed on ${dayName}, skipping`);
+      continue;
+    }
+
+    const openHour = parseInt(businessHours[dayName].open.split(':')[0]);
+    const closeHour = parseInt(businessHours[dayName].close.split(':')[0]);
+
+    // Create a single timeline for the day - no overlaps allowed
+    let currentTime = new Date(date);
+    currentTime.setHours(openHour, 0, 0, 0);
+    
+    const endOfDay = new Date(date);
+    endOfDay.setHours(closeHour, 0, 0, 0);
+
+    let appointmentCount = 0;
+    const createdAppointments: { start: Date; end: Date; service: string; customer: string }[] = [];
+
+    // Fill the entire day with sequential appointments (no gaps, no overlaps)
+    while (currentTime < endOfDay) {
+      const service = modernBerber.services[Math.floor(Math.random() * modernBerber.services.length)];
+      const customer = customers[Math.floor(Math.random() * customers.length)];
+      
+      const startTime = new Date(currentTime);
+      const endTime = new Date(startTime.getTime() + (service.duration * 60 * 1000));
+      
+      // Check if this appointment would fit within business hours
+      if (endTime > endOfDay) {
+        // Try with a shorter service if available
+        const shorterServices = modernBerber.services.filter(s => {
+          const testEnd = new Date(startTime.getTime() + (s.duration * 60 * 1000));
+          return testEnd <= endOfDay;
+        });
+        
+        if (shorterServices.length === 0) {
+          break; // No service fits, end of day
+        }
+        
+        const shorterService = shorterServices[Math.floor(Math.random() * shorterServices.length)];
+        service.id = shorterService.id;
+        service.name = shorterService.name;
+        service.duration = shorterService.duration;
+        service.price = shorterService.price;
+        service.currency = shorterService.currency;
+        endTime.setTime(startTime.getTime() + (service.duration * 60 * 1000));
+      }
+
+      // Determine status based on date
+      let status: AppointmentStatus = AppointmentStatus.CONFIRMED;
+      if (date < today) {
+        const pastStatuses: AppointmentStatus[] = [AppointmentStatus.COMPLETED, AppointmentStatus.COMPLETED, AppointmentStatus.COMPLETED, AppointmentStatus.CANCELED, AppointmentStatus.NO_SHOW];
+        status = pastStatuses[Math.floor(Math.random() * pastStatuses.length)];
+      }
+
+      try {
+        const appointment = await prisma.appointment.create({
+          data: {
+            id: generateId('apt'),
+            businessId: modernBerber.id,
+            serviceId: service.id,
+            customerId: customer.id,
+            date: date,
+            startTime: startTime,
+            endTime: endTime,
+            duration: service.duration,
+            status: status,
+            price: service.price,
+            currency: service.currency,
+            customerNotes: 'Randevu notları',
+            internalNotes: 'İç notlar',
+            bookedAt: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000),
+            confirmedAt: status !== AppointmentStatus.CANCELED && status !== AppointmentStatus.NO_SHOW ? new Date() : null,
+            completedAt: status === AppointmentStatus.COMPLETED ? startTime : null,
+            canceledAt: status === AppointmentStatus.CANCELED ? new Date() : null,
+            reminderSent: true,
+            reminderSentAt: new Date()
+          }
+        });
+
+        console.log(`   ✅ ${date.toDateString()} ${startTime.toTimeString().substring(0, 5)}-${endTime.toTimeString().substring(0, 5)} - ${customer.firstName} ${customer.lastName} (${service.name}) [${status}]`);
+        appointmentCount++;
+        totalAppointments++;
+
+        // Create payment if needed
+        if (status === AppointmentStatus.COMPLETED || status === AppointmentStatus.CONFIRMED) {
+          await prisma.appointment_payments.create({
+            data: {
+              id: generateId('pay'),
+              appointmentId: appointment.id,
+              amount: service.price,
+              currency: service.currency,
+              status: status === AppointmentStatus.COMPLETED ? PaymentStatus.SUCCEEDED : PaymentStatus.PENDING,
+              paymentMethod: ['card', 'cash', 'bank_transfer'][Math.floor(Math.random() * 3)],
+              paidAt: status === AppointmentStatus.COMPLETED ? startTime : null
+            }
+          });
+        }
+
+        // Add to tracking array
+        createdAppointments.push({
+          start: startTime,
+          end: endTime,
+          service: service.name,
+          customer: `${customer.firstName} ${customer.lastName}`
+        });
+
+        // Move to next time slot (exactly when this appointment ends)
+        currentTime = new Date(endTime);
+        
+      } catch (error) {
+        console.log(`   ❌ Error creating appointment at ${startTime.toTimeString().substring(0, 5)}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        // If there's an error, move forward by 15 minutes and try again
+        currentTime.setMinutes(currentTime.getMinutes() + 15);
+      }
+    }
+    
+    console.log(`   📊 ${dayName}: Created ${appointmentCount} back-to-back appointments (${openHour}:00-${closeHour}:00)`)
+  }
+
+  console.log(`✅ Created ${totalAppointments} appointments for Modern Berber this week`);
+}
+
+export { seedBusinessData, createModernBerberAppointments };

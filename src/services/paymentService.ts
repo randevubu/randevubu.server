@@ -183,12 +183,15 @@ export class PaymentService {
       let finalPrice = Number(plan.price);
       
       if (paymentData.discountCode && this.discountCodeService) {
+        console.log(`🔍 Processing discount code: ${paymentData.discountCode} for plan: ${planId}, amount: ${plan.price}`);
         const discountResult = await this.discountCodeService.validateDiscountCode(
           paymentData.discountCode,
           planId,
           Number(plan.price),
           business.ownerId
         );
+
+        console.log(`🔍 Discount validation result:`, discountResult);
 
         if (discountResult.isValid && discountResult.calculatedDiscount) {
           finalPrice = discountResult.calculatedDiscount.finalAmount;
@@ -198,10 +201,13 @@ export class PaymentService {
             originalAmount: discountResult.calculatedDiscount.originalAmount,
             finalAmount: discountResult.calculatedDiscount.finalAmount
           };
+          console.log(`✅ Discount applied successfully:`, discountApplied);
         } else {
           // Don't fail the payment for invalid discount codes, just ignore them
-          console.warn(`Invalid discount code: ${discountResult.errorMessage}`);
+          console.warn(`❌ Invalid discount code: ${discountResult.errorMessage}`);
         }
+      } else {
+        console.log(`🔍 No discount code provided or discount service not available. Discount code: ${paymentData.discountCode}, Service available: ${!!this.discountCodeService}`);
       }
 
       const currentDate = new Date();

@@ -11,6 +11,49 @@ export interface BusinessTypeData {
   updatedAt: Date;
 }
 
+// Business Hours Types
+export interface BusinessHours {
+  monday?: DayHours;
+  tuesday?: DayHours;
+  wednesday?: DayHours;
+  thursday?: DayHours;
+  friday?: DayHours;
+  saturday?: DayHours;
+  sunday?: DayHours;
+}
+
+export interface DayHours {
+  isOpen: boolean;
+  openTime?: string; // Format: "HH:MM" (24-hour)
+  closeTime?: string; // Format: "HH:MM" (24-hour)
+  breaks?: BreakPeriod[];
+}
+
+export interface BreakPeriod {
+  startTime: string; // Format: "HH:MM" (24-hour)
+  endTime: string; // Format: "HH:MM" (24-hour)
+  description?: string;
+}
+
+export interface BusinessHoursOverride {
+  id: string;
+  businessId: string;
+  date: string; // Format: "YYYY-MM-DD"
+  isOpen: boolean;
+  openTime?: string;
+  closeTime?: string;
+  breaks?: BreakPeriod[];
+  reason?: string;
+  isRecurring?: boolean;
+  recurringPattern?: {
+    frequency: 'YEARLY' | 'MONTHLY' | 'WEEKLY';
+    interval: number;
+    endDate?: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface BusinessData {
   id: string;
   ownerId: string;
@@ -28,10 +71,12 @@ export interface BusinessData {
   postalCode?: string;
   latitude?: number;
   longitude?: number;
-  businessHours?: any;
+  businessHours?: BusinessHours;
   timezone: string;
   logoUrl?: string;
   coverImageUrl?: string;
+  profileImageUrl?: string;
+  galleryImages: string[];
   primaryColor?: string;
   theme?: any;
   settings?: any;
@@ -45,6 +90,13 @@ export interface BusinessData {
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;
+  businessType?: {
+    id: string;
+    name: string;
+    displayName: string;
+    icon: string | null;
+    category: string;
+  };
 }
 
 export interface BusinessStaffData {
@@ -70,6 +122,7 @@ export interface ServiceData {
   currency: string;
   image?: string;
   isActive: boolean;
+  showPrice: boolean;
   sortOrder: number;
   pricing?: any;
   bufferTime: number;
@@ -77,6 +130,12 @@ export interface ServiceData {
   minAdvanceBooking: number;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// Extended type for public services that can have hidden prices
+export interface PublicServiceData extends Omit<ServiceData, 'price'> {
+  price: number | null; // Can be null when price visibility is hidden
+  priceDisplayMessage?: string;
 }
 
 export interface AppointmentData {
@@ -272,7 +331,7 @@ export interface CreateBusinessRequest {
   description?: string;
   email?: string;
   phone?: string;
-  website?: string;
+  // website is auto-generated
   address?: string;
   city?: string;
   state?: string;
@@ -288,13 +347,13 @@ export interface UpdateBusinessRequest {
   description?: string;
   email?: string;
   phone?: string;
-  website?: string;
+  // website is auto-generated
   address?: string;
   city?: string;
   state?: string;
   country?: string;
   postalCode?: string;
-  businessHours?: any;
+  businessHours?: BusinessHours;
   timezone?: string;
   logoUrl?: string;
   coverImageUrl?: string;
@@ -302,6 +361,59 @@ export interface UpdateBusinessRequest {
   theme?: any;
   settings?: any;
   tags?: string[];
+}
+
+// Business Hours Request/Response Types
+export interface UpdateBusinessHoursRequest {
+  businessHours: BusinessHours;
+}
+
+export interface CreateBusinessHoursOverrideRequest {
+  date: string; // Format: "YYYY-MM-DD"
+  isOpen: boolean;
+  openTime?: string;
+  closeTime?: string;
+  breaks?: BreakPeriod[];
+  reason?: string;
+  isRecurring?: boolean;
+  recurringPattern?: {
+    frequency: 'YEARLY' | 'MONTHLY' | 'WEEKLY';
+    interval: number;
+    endDate?: string;
+  };
+}
+
+export interface UpdateBusinessHoursOverrideRequest {
+  isOpen?: boolean;
+  openTime?: string;
+  closeTime?: string;
+  breaks?: BreakPeriod[];
+  reason?: string;
+  isRecurring?: boolean;
+  recurringPattern?: {
+    frequency: 'YEARLY' | 'MONTHLY' | 'WEEKLY';
+    interval: number;
+    endDate?: string;
+  };
+}
+
+export interface BusinessHoursStatusRequest {
+  date?: string; // Format: "YYYY-MM-DD", defaults to today
+  timezone?: string; // Override business timezone
+}
+
+export interface BusinessHoursStatusResponse {
+  businessId: string;
+  date: string;
+  isOpen: boolean;
+  openTime?: string;
+  closeTime?: string;
+  breaks?: BreakPeriod[];
+  nextOpenTime?: string;
+  nextCloseTime?: string;
+  isOverride: boolean;
+  overrideReason?: string;
+  timezone: string;
 }
 
 export interface CreateServiceRequest {
@@ -331,7 +443,7 @@ export interface UpdateServiceRequest {
 export interface CreateAppointmentRequest {
   businessId: string;
   serviceId: string;
-  staffId?: string;
+  staffId: string;
   date: string;
   startTime: string;
   customerNotes?: string;
@@ -712,6 +824,7 @@ export interface BusinessWithServices {
   isVerified: boolean;
   isClosed: boolean;
   tags: string[];
+  settings?: any;
   businessType: {
     id: string;
     name: string;
@@ -728,4 +841,170 @@ export interface BusinessWithServices {
     currency: string;
     isActive: boolean;
   }[];
+}
+
+// Push Notification Types
+export interface PushSubscriptionData {
+  id: string;
+  userId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  deviceName?: string;
+  deviceType?: string;
+  userAgent?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  lastUsedAt: Date;
+}
+
+export interface NotificationPreferenceData {
+  id: string;
+  userId: string;
+  enableAppointmentReminders: boolean;
+  enableBusinessNotifications: boolean;
+  enablePromotionalMessages: boolean;
+  reminderTiming: {
+    hours: number[];
+  };
+  preferredChannels: {
+    channels: NotificationChannel[];
+  };
+  quietHours?: {
+    start: string;
+    end: string;
+    timezone: string;
+  };
+  timezone: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PushNotificationData {
+  id: string;
+  subscriptionId: string;
+  appointmentId?: string;
+  businessId?: string;
+  title: string;
+  body: string;
+  icon?: string;
+  badge?: string;
+  data?: any;
+  status: NotificationStatus;
+  sentAt?: Date;
+  deliveredAt?: Date;
+  readAt?: Date;
+  errorMessage?: string;
+  retryCount: number;
+  maxRetries: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Request Types for Push Notifications
+export interface PushSubscriptionRequest {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  deviceName?: string;
+  deviceType?: string;
+  userAgent?: string;
+}
+
+export interface NotificationPreferenceRequest {
+  enableAppointmentReminders?: boolean;
+  enableBusinessNotifications?: boolean;
+  enablePromotionalMessages?: boolean;
+  reminderTiming?: {
+    hours: number[];
+  };
+  preferredChannels?: {
+    channels: NotificationChannel[];
+  };
+  quietHours?: {
+    start: string;
+    end: string;
+    timezone: string;
+  };
+  timezone?: string;
+}
+
+export interface SendPushNotificationRequest {
+  userId: string;
+  appointmentId?: string;
+  businessId?: string;
+  title: string;
+  body: string;
+  icon?: string;
+  badge?: string;
+  data?: any;
+  url?: string;
+}
+
+// Response Types
+export interface PushSubscriptionResponse {
+  id: string;
+  isActive: boolean;
+  deviceName?: string;
+  createdAt: Date;
+}
+
+export interface NotificationPreferenceResponse {
+  id: string;
+  enableAppointmentReminders: boolean;
+  enableBusinessNotifications: boolean;
+  enablePromotionalMessages: boolean;
+  reminderTiming: {
+    hours: number[];
+  };
+  preferredChannels: {
+    channels: NotificationChannel[];
+  };
+  quietHours?: {
+    start: string;
+    end: string;
+    timezone: string;
+  };
+  timezone: string;
+}
+
+// Appointment Reminder Types
+export interface AppointmentReminderData {
+  appointmentId: string;
+  customerId: string;
+  businessId: string;
+  appointmentTime: Date;
+  serviceName: string;
+  businessName: string;
+  reminderType: 'IMMEDIATE' | 'HOUR_BEFORE' | 'DAY_BEFORE';
+  scheduledFor: Date;
+}
+
+export interface UpcomingAppointment {
+  id: string;
+  businessId: string;
+  customerId: string;
+  date: Date;
+  startTime: Date;
+  endTime: Date;
+  status: AppointmentStatus;
+  service: {
+    id: string;
+    name: string;
+    duration: number;
+  };
+  business: {
+    id: string;
+    name: string;
+    timezone: string;
+  };
+  customer: {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    phoneNumber: string;
+  };
 }

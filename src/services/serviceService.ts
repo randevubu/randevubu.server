@@ -1,15 +1,18 @@
 import {
   ServiceData,
+  PublicServiceData,
   CreateServiceRequest,
   UpdateServiceRequest
 } from '../types/business';
 import { ServiceRepository } from '../repositories/serviceRepository';
+import { BusinessRepository } from '../repositories/businessRepository';
 import { RBACService } from './rbacService';
 import { PermissionName } from '../types/auth';
 
 export class ServiceService {
   constructor(
     private serviceRepository: ServiceRepository,
+    private businessRepository: BusinessRepository,
     private rbacService: RBACService
   ) {}
 
@@ -79,9 +82,40 @@ export class ServiceService {
     return await this.serviceRepository.findByBusinessId(businessId);
   }
 
-  async getPublicServicesByBusinessId(businessId: string): Promise<ServiceData[]> {
-    // Public method - returns only active services for booking
-    return await this.serviceRepository.findActiveByBusinessId(businessId);
+  async getPublicServicesByBusinessId(businessId: string): Promise<PublicServiceData[]> {
+    // Get active services
+    const services = await this.serviceRepository.findActiveByBusinessId(businessId);
+    
+    // Get business settings to check price visibility
+    const business = await this.businessRepository.findById(businessId);
+    if (!business) {
+      // Return services with prices visible as fallback
+      return services.map(service => ({
+        ...service,
+        showPrice: true
+      }));
+    }
+
+    // Extract price visibility settings
+    const settings = (business.settings as any) || {};
+    const priceVisibility = settings.priceVisibility || {};
+    const hideAllServicePrices = priceVisibility.hideAllServicePrices === true;
+
+    // If prices should be hidden, remove price information
+    if (hideAllServicePrices) {
+      return services.map(service => ({
+        ...service,
+        price: null, // Hide the actual price
+        showPrice: false, // Add flag to indicate price is hidden
+        priceDisplayMessage: priceVisibility.priceDisplayMessage || 'Price available on request'
+      }));
+    }
+
+    // Return services with prices visible
+    return services.map(service => ({
+      ...service,
+      showPrice: true // Add flag to indicate price is visible
+    }));
   }
 
   async updateService(
@@ -370,6 +404,83 @@ export class ServiceService {
 
     for (const serviceId of serviceIds) {
       await this.serviceRepository.delete(serviceId);
+    }
+  }
+
+  /**
+   * Process service data to hide/show prices based on business and service visibility settings
+   */
+  async processServicePriceVisibility(
+    services: ServiceData[],
+    businessSettings: any,
+    context: 'list' | 'booking' | 'owner' = 'list'
+  ): Promise<ServiceData[]> {
+    const businessPriceSettings = businessSettings?.priceVisibility || {};
+    
+    return services.map(service => {
+      // If context is 'owner', always show prices (for business owner/staff)
+      if (context === 'owner') {
+        return service;
+      }
+
+      // Determine if price should be shown based on hierarchical rules:
+      // 1. Business-wide setting can override individual service settings
+      // 2. Individual service showPrice setting
+      // 3. Context-specific rules (booking vs list view)
+      
+      let shouldShowPrice = true;
+
+      // Check business-wide setting first
+      if (businessPriceSettings.hideAllServicePrices === true) {
+        shouldShowPrice = false;
+        
+        // However, if we're in booking context and business allows showing price on booking
+        if (context === 'booking' && businessPriceSettings.showPriceOnBooking === true) {
+          shouldShowPrice = true;
+        }
+      } else {
+        // Check individual service setting
+        shouldShowPrice = service.showPrice !== false;
+      }
+
+      // Create a copy of the service with potentially hidden price info
+      if (!shouldShowPrice) {
+        return {
+          ...service,
+          price: 0, // Set to 0 instead of undefined to match type
+          currency: service.currency || 'TRY', // Keep currency for consistency
+          // Add custom message if available
+          priceDisplayMessage: businessPriceSettings.priceDisplayMessage || 'Contact us for pricing',
+          // Add flag to indicate price is hidden
+          priceHidden: true
+        };
+      }
+
+      return service;
+    });
+  }
+
+  /**
+   * Helper method to determine if user has owner-level access to a business
+   */
+  async hasOwnerAccess(userId: string, businessId: string): Promise<boolean> {
+    try {
+      // Check if user has global service management permission
+      const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
+      const hasGlobal = await this.rbacService.hasPermission(userId, resource, action);
+      
+      if (hasGlobal) return true;
+
+      // Check if user has owner-level access to this specific business
+      const [ownResource, ownAction] = PermissionName.MANAGE_OWN_SERVICES.split(':');
+      return await this.rbacService.hasPermission(
+        userId, 
+        ownResource,
+        ownAction,
+        { businessId }
+      );
+    } catch {
+      return false;
     }
   }
 

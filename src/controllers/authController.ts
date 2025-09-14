@@ -13,6 +13,7 @@ import {
   PhoneVerificationService,
   TokenService
 } from '../services';
+import { RBACService } from '../services/rbacService';
 import {
   ApiResponse,
   ChangePhoneRequest,
@@ -35,7 +36,8 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private phoneVerificationService: PhoneVerificationService,
-    private tokenService: TokenService
+    private tokenService: TokenService,
+    private rbacService?: RBACService
   ) {}
 
   private createErrorContext(req: Request, userId?: string): ErrorContext {
@@ -443,6 +445,13 @@ export class AuthController {
     try {
       const context = this.createErrorContext(req, req.user.id);
       const includeBusinessSummary = req.query.includeBusinessSummary === 'true';
+      const forceRefresh = req.headers['x-role-update'] === 'true';
+
+      // ENTERPRISE PATTERN: If client indicates role update, bypass cache completely
+      if (forceRefresh && this.rbacService) {
+        this.rbacService.forceInvalidateUser(req.user.id);
+        console.log('🔄 Profile fetch with forced cache refresh for user:', req.user.id);
+      }
 
       let profile;
       if (includeBusinessSummary) {

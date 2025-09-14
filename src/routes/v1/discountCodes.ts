@@ -3,12 +3,25 @@ import { DiscountCodeController } from '../../controllers/discountCodeController
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { validateBody } from '../../middleware/validation';
 import { createDiscountCodeSchema, validateDiscountCodeSchema, bulkDiscountCodeSchema } from '../../schemas/discountCode.schemas';
+import { AuthorizationMiddleware } from '../../middleware/authorization';
+import { RBACService } from '../../services/rbacService';
 
-export function createDiscountCodeRoutes(discountCodeController: DiscountCodeController): Router {
+export function createDiscountCodeRoutes(discountCodeController: DiscountCodeController, rbacService: RBACService): Router {
   const router = Router();
+  const authMiddleware = new AuthorizationMiddleware(rbacService);
 
   // Apply authentication to all routes
   router.use(requireAuth);
+
+  // Public validation endpoint (no admin required)
+  router.post(
+    '/validate',
+    validateBody(validateDiscountCodeSchema),
+    withAuth(discountCodeController.validateDiscountCode.bind(discountCodeController))
+  );
+  
+  // Apply admin authorization to all management routes
+  router.use(authMiddleware.requireAdmin());
 
   // Admin routes for managing discount codes
   router.post(
@@ -57,13 +70,6 @@ export function createDiscountCodeRoutes(discountCodeController: DiscountCodeCon
   router.get(
     '/:id/usage',
     withAuth(discountCodeController.getDiscountCodeUsageHistory.bind(discountCodeController))
-  );
-
-  // Public validation endpoint (no admin required)
-  router.post(
-    '/validate',
-    validateBody(validateDiscountCodeSchema),
-    withAuth(discountCodeController.validateDiscountCode.bind(discountCodeController))
   );
 
   return router;

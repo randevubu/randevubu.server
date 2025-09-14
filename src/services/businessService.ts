@@ -5,11 +5,13 @@ import {
   UpdateBusinessRequest,
   BusinessSearchFilters
 } from '../types/business';
+import { UpdateBusinessPriceSettingsSchema } from '../schemas/business.schemas';
 import { BusinessRepository } from '../repositories/businessRepository';
 import { RBACService } from './rbacService';
 import { PermissionName } from '../types/auth';
 import { BusinessContext } from '../middleware/businessContext';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, BusinessStaffRole } from '@prisma/client';
+import { ValidationError } from '../types/errors';
 
 export class BusinessService {
   constructor(
@@ -31,6 +33,20 @@ export class BusinessService {
 
     // Generate unique slug
     const slug = await this.generateUniqueSlug(data.name);
+    
+    // Generate website URL automatically
+    const website = `https://randevubu.com/business/${slug}`;
+
+    // Create default business hours (Monday-Friday 9AM-6PM, weekends closed)
+    const defaultBusinessHours = {
+      monday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
+      tuesday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
+      wednesday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
+      thursday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
+      friday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
+      saturday: { openTime: '10:00', closeTime: '16:00', isOpen: false },
+      sunday: { openTime: '10:00', closeTime: '16:00', isOpen: false }
+    };
 
     // Use transaction to ensure atomicity - either both business creation and role assignment succeed, or both fail
     const business = await this.prisma.$transaction(async (tx) => {
@@ -46,14 +62,16 @@ export class BusinessService {
           description: data.description || '',
           email: data.email,
           phone: data.phone,
-          website: data.website,
+          website: website,
           address: data.address,
           city: data.city,
           state: data.state,
           country: data.country,
           postalCode: data.postalCode,
+          businessHours: defaultBusinessHours,
           timezone: data.timezone,
           primaryColor: data.primaryColor,
+          galleryImages: [],
           isActive: true,
           isVerified: false,
           isClosed: false,
@@ -102,6 +120,21 @@ export class BusinessService {
         }
       });
 
+      // Create owner as staff member in the business
+      await tx.businessStaff.create({
+        data: {
+          id: `staff_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+          businessId: businessId,
+          userId: userId,
+          role: BusinessStaffRole.OWNER,
+          permissions: {},
+          isActive: true,
+          joinedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      });
+
       // Convert the result to BusinessData format
       return {
         id: createdBusiness.id,
@@ -124,6 +157,8 @@ export class BusinessService {
         timezone: createdBusiness.timezone,
         logoUrl: createdBusiness.logoUrl,
         coverImageUrl: createdBusiness.coverImageUrl,
+        profileImageUrl: createdBusiness.profileImageUrl,
+        galleryImages: createdBusiness.galleryImages || [],
         primaryColor: createdBusiness.primaryColor,
         theme: createdBusiness.theme,
         settings: createdBusiness.settings,
@@ -140,9 +175,9 @@ export class BusinessService {
       } as BusinessData;
     });
 
-    // Clear RBAC cache for the user since they now have a new role
-    // This ensures that subsequent requests will see the updated roles
-    this.rbacService.clearUserCache(userId);
+    // ENTERPRISE PATTERN: Aggressively clear all cache for this user
+    // This ensures immediate consistency for role-based operations
+    this.rbacService.forceInvalidateUser(userId);
 
     return business;
   }
@@ -442,7 +477,94 @@ export class BusinessService {
       );
     }
 
+    // If name is being updated, regenerate slug and website URL
+    if (data.name) {
+      const slug = await this.generateUniqueSlug(data.name, businessId);
+      const website = `https://randevubu.com/business/${slug}`;
+      
+      // Add slug and website to update data
+      const updateData = {
+        ...data,
+        slug,
+        website
+      };
+      
+      return await this.businessRepository.update(businessId, updateData);
+    }
+
     return await this.businessRepository.update(businessId, data);
+  }
+
+  async updateBusinessPriceSettings(
+    userId: string,
+    businessId: string,
+    priceSettings: UpdateBusinessPriceSettingsSchema
+  ): Promise<BusinessData> {
+    // Check permissions - either global or business-specific
+    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
+    
+    if (!hasGlobalEdit) {
+      await this.rbacService.requirePermission(
+        userId, 
+        PermissionName.EDIT_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    // Get current business settings
+    const currentBusiness = await this.businessRepository.findById(businessId);
+    if (!currentBusiness) {
+      throw new Error('Business not found');
+    }
+
+    // Merge price settings into existing business settings
+    const currentSettings = (currentBusiness.settings as any) || {};
+    const updatedSettings = {
+      ...currentSettings,
+      priceVisibility: {
+        ...currentSettings.priceVisibility,
+        hideAllServicePrices: priceSettings.hideAllServicePrices ?? currentSettings.priceVisibility?.hideAllServicePrices ?? false,
+        showPriceOnBooking: priceSettings.showPriceOnBooking ?? currentSettings.priceVisibility?.showPriceOnBooking ?? true,
+        priceDisplayMessage: priceSettings.priceDisplayMessage ?? currentSettings.priceVisibility?.priceDisplayMessage ?? null
+      }
+    };
+
+    // Update business with new settings
+    return await this.businessRepository.update(businessId, {
+      settings: updatedSettings
+    });
+  }
+
+  async getBusinessPriceSettings(
+    userId: string,
+    businessId: string
+  ): Promise<any> {
+    // Check permissions - either global or business-specific
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(
+        userId, 
+        PermissionName.VIEW_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    // Get current business settings
+    const currentBusiness = await this.businessRepository.findById(businessId);
+    if (!currentBusiness) {
+      throw new Error('Business not found');
+    }
+
+    // Extract price visibility settings
+    const settings = (currentBusiness.settings as any) || {};
+    const priceVisibility = settings.priceVisibility || {};
+
+    return {
+      hideAllServicePrices: priceVisibility.hideAllServicePrices || false,
+      showPriceOnBooking: priceVisibility.showPriceOnBooking || true,
+      priceDisplayMessage: priceVisibility.priceDisplayMessage || null
+    };
   }
 
   async deleteBusiness(userId: string, businessId: string): Promise<void> {
@@ -594,6 +716,290 @@ export class BusinessService {
     return await this.businessRepository.updateBusinessHours(businessId, businessHours);
   }
 
+  // Enhanced Business Hours Management Methods
+
+  async getBusinessHours(
+    userId: string,
+    businessId: string
+  ): Promise<{ businessHours: any }> {
+    // Check permissions
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.VIEW_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    const business = await this.businessRepository.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    return { businessHours: business.businessHours };
+  }
+
+  async getBusinessHoursStatus(
+    businessId: string,
+    date?: string,
+    timezone?: string
+  ): Promise<{
+    businessId: string;
+    date: string;
+    isOpen: boolean;
+    openTime?: string;
+    closeTime?: string;
+    breaks?: any[];
+    nextOpenTime?: string;
+    nextCloseTime?: string;
+    isOverride: boolean;
+    overrideReason?: string;
+    timezone: string;
+  }> {
+    const business = await this.businessRepository.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    const targetDate = date ? new Date(date) : new Date();
+    const businessTimezone = timezone || business.timezone || 'Europe/Istanbul';
+    
+    // Check for business hours override first
+    const override = await this.prisma.businessHoursOverride.findUnique({
+      where: {
+        businessId_date: {
+          businessId,
+          date: targetDate
+        }
+      }
+    });
+
+    if (override) {
+      return {
+        businessId,
+        date: targetDate.toISOString().split('T')[0],
+        isOpen: override.isOpen,
+        openTime: override.openTime || undefined,
+        closeTime: override.closeTime || undefined,
+        breaks: override.breaks as any[] || [],
+        isOverride: true,
+        overrideReason: override.reason || undefined,
+        timezone: businessTimezone
+      };
+    }
+
+    // Use regular business hours
+    const dayOfWeek = targetDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = dayNames[dayOfWeek];
+
+    const businessHours = business.businessHours as any;
+    const dayHours = businessHours?.[dayName];
+
+    if (!dayHours || !dayHours.isOpen) {
+      // Find next open day
+      const nextOpenTime = await this.findNextOpenTime(business, targetDate, businessTimezone);
+      
+      return {
+        businessId,
+        date: targetDate.toISOString().split('T')[0],
+        isOpen: false,
+        isOverride: false,
+        nextOpenTime,
+        timezone: businessTimezone
+      };
+    }
+
+    return {
+      businessId,
+      date: targetDate.toISOString().split('T')[0],
+      isOpen: true,
+      openTime: dayHours.openTime,
+      closeTime: dayHours.closeTime,
+      breaks: dayHours.breaks || [],
+      isOverride: false,
+      timezone: businessTimezone
+    };
+  }
+
+  async createBusinessHoursOverride(
+    userId: string,
+    businessId: string,
+    data: {
+      date: string;
+      isOpen: boolean;
+      openTime?: string;
+      closeTime?: string;
+      breaks?: any[];
+      reason?: string;
+      isRecurring?: boolean;
+      recurringPattern?: any;
+    }
+  ): Promise<any> {
+    // Check permissions
+    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
+    
+    if (!hasGlobalEdit) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.EDIT_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    const overrideId = `override_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    
+    const override = await this.prisma.businessHoursOverride.create({
+      data: {
+        id: overrideId,
+        businessId,
+        date: new Date(data.date),
+        isOpen: data.isOpen,
+        openTime: data.openTime,
+        closeTime: data.closeTime,
+        breaks: data.breaks,
+        reason: data.reason,
+        isRecurring: data.isRecurring || false,
+        recurringPattern: data.recurringPattern,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    });
+
+    return override;
+  }
+
+  async updateBusinessHoursOverride(
+    userId: string,
+    businessId: string,
+    date: string,
+    data: {
+      isOpen?: boolean;
+      openTime?: string;
+      closeTime?: string;
+      breaks?: any[];
+      reason?: string;
+      isRecurring?: boolean;
+      recurringPattern?: any;
+    }
+  ): Promise<any> {
+    // Check permissions
+    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
+    
+    if (!hasGlobalEdit) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.EDIT_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    const override = await this.prisma.businessHoursOverride.update({
+      where: {
+        businessId_date: {
+          businessId,
+          date: new Date(date)
+        }
+      },
+      data: {
+        ...data,
+        updatedAt: new Date()
+      }
+    });
+
+    return override;
+  }
+
+  async deleteBusinessHoursOverride(
+    userId: string,
+    businessId: string,
+    date: string
+  ): Promise<void> {
+    // Check permissions
+    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
+    
+    if (!hasGlobalEdit) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.EDIT_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    await this.prisma.businessHoursOverride.delete({
+      where: {
+        businessId_date: {
+          businessId,
+          date: new Date(date)
+        }
+      }
+    });
+  }
+
+  async getBusinessHoursOverrides(
+    userId: string,
+    businessId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<any[]> {
+    // Check permissions
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.VIEW_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    const where: any = { businessId };
+    
+    if (startDate && endDate) {
+      where.date = {
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    }
+
+    const overrides = await this.prisma.businessHoursOverride.findMany({
+      where,
+      orderBy: { date: 'asc' }
+    });
+
+    return overrides;
+  }
+
+  // Helper method to find next open time
+  private async findNextOpenTime(
+    business: BusinessData,
+    fromDate: Date,
+    timezone: string
+  ): Promise<string | undefined> {
+    const businessHours = business.businessHours as any;
+    if (!businessHours) return undefined;
+
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    
+    // Check next 7 days
+    for (let i = 1; i <= 7; i++) {
+      const checkDate = new Date(fromDate);
+      checkDate.setDate(checkDate.getDate() + i);
+      
+      const dayOfWeek = checkDate.getDay();
+      const dayName = dayNames[dayOfWeek];
+      const dayHours = businessHours[dayName];
+      
+      if (dayHours && dayHours.isOpen && dayHours.openTime) {
+        return `${checkDate.toISOString().split('T')[0]}T${dayHours.openTime}:00`;
+      }
+    }
+    
+    return undefined;
+  }
+
   async getBusinessBySlug(slug: string): Promise<BusinessData | null> {
     // Public method - no authentication required
     return await this.businessRepository.findBySlug(slug);
@@ -632,13 +1038,46 @@ export class BusinessService {
       name: string;
       description: string | null;
       duration: number;
-      price: number;
+      price: number | null; // Can be null when price visibility is hidden
       currency: string;
       isActive: boolean;
+      showPrice?: boolean;
+      priceDisplayMessage?: string;
     }[];
   } | null> {
     // Public method - no authentication required
-    return await this.businessRepository.findBySlugWithServices(slug);
+    const businessWithServices = await this.businessRepository.findBySlugWithServices(slug);
+    
+    if (!businessWithServices) {
+      return null;
+    }
+
+    // Extract price visibility settings
+    const settings = (businessWithServices.settings as any) || {};
+    const priceVisibility = settings.priceVisibility || {};
+    const hideAllServicePrices = priceVisibility.hideAllServicePrices === true;
+
+    // Apply price visibility logic to services
+    const processedServices = businessWithServices.services.map(service => {
+      if (hideAllServicePrices) {
+        return {
+          ...service,
+          price: null, // Hide the actual price
+          showPrice: false, // Add flag to indicate price is hidden
+          priceDisplayMessage: priceVisibility.priceDisplayMessage || 'Price available on request'
+        };
+      }
+
+      return {
+        ...service,
+        showPrice: true // Add flag to indicate price is visible
+      };
+    });
+
+    return {
+      ...businessWithServices,
+      services: processedServices
+    };
   }
 
   async checkSlugAvailability(slug: string, excludeBusinessId?: string): Promise<boolean> {
@@ -697,7 +1136,7 @@ export class BusinessService {
   }
 
   // Utility methods
-  private async generateUniqueSlug(name: string): Promise<string> {
+  private async generateUniqueSlug(name: string, excludeId?: string): Promise<string> {
     const baseSlug = name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -706,7 +1145,7 @@ export class BusinessService {
     let slug = baseSlug;
     let counter = 1;
 
-    while (!(await this.checkSlugAvailability(slug))) {
+    while (!(await this.checkSlugAvailability(slug, excludeId))) {
       slug = `${baseSlug}-${counter}`;
       counter++;
     }
@@ -790,5 +1229,239 @@ export class BusinessService {
   }> {
     // Public method - no authentication required
     return await this.businessRepository.getAllBusinessesMinimalDetails(page, limit);
+  }
+
+  // Image management methods
+  async uploadBusinessImage(
+    userId: string,
+    businessId: string,
+    imageType: 'logo' | 'cover' | 'profile' | 'gallery',
+    imageBuffer: Buffer,
+    originalName: string,
+    contentType: string
+  ): Promise<{ imageUrl: string; business?: BusinessData }> {
+    // Check if user is the owner of the business
+    const business = await this.businessRepository.findById(businessId);
+    
+    if (!business) {
+      throw new ValidationError('Business not found');
+    }
+
+    // Check permissions - user must have either global business edit permission or own this specific business
+    await this.rbacService.requireAny(userId, [
+      PermissionName.EDIT_ALL_BUSINESSES,
+      PermissionName.EDIT_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, verify they own this business
+    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
+    
+    if (!hasGlobalUpdate) {
+      const hasBusinessAccess = await this.rbacService.hasPermission(
+        userId,
+        'business',
+        'edit_own',
+        { businessId }
+      );
+
+      if (!hasBusinessAccess || business.ownerId !== userId) {
+        throw new Error('Access denied: You do not have permission to update this business');
+      }
+    }
+
+    // Import S3Service dynamically to avoid circular dependencies
+    const { getS3Service } = await import('../utils/s3Service');
+    const s3Service = getS3Service();
+
+    try {
+      // Upload image to S3
+      const imageUrl = await s3Service.uploadBusinessImage(
+        businessId,
+        imageType,
+        imageBuffer,
+        originalName,
+        contentType
+      );
+
+      if (imageType === 'gallery') {
+        // Add to gallery
+        const business = await this.businessRepository.addGalleryImage(businessId, imageUrl);
+        return { imageUrl, business };
+      } else {
+        // Update business image field
+        const business = await this.businessRepository.updateBusinessImage(businessId, imageType, imageUrl);
+        return { imageUrl, business };
+      }
+    } catch (error) {
+      console.error('Error uploading business image:', error);
+      throw new Error('Failed to upload image');
+    }
+  }
+
+  async deleteBusinessImage(
+    userId: string,
+    businessId: string,
+    imageType: 'logo' | 'cover' | 'profile'
+  ): Promise<BusinessData> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.EDIT_ALL_BUSINESSES,
+      PermissionName.EDIT_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
+    
+    if (!hasGlobalUpdate) {
+      const hasBusinessAccess = await this.rbacService.hasPermission(
+        userId,
+        'business',
+        'update_own',
+        { businessId }
+      );
+
+      if (!hasBusinessAccess) {
+        throw new Error('Access denied: You do not have permission to update this business');
+      }
+    }
+
+    // Get current image URL to delete from S3
+    const business = await this.businessRepository.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    let currentImageUrl: string | null = null;
+    switch (imageType) {
+      case 'logo':
+        currentImageUrl = business.logoUrl || null;
+        break;
+      case 'cover':
+        currentImageUrl = business.coverImageUrl || null;
+        break;
+      case 'profile':
+        currentImageUrl = business.profileImageUrl || null;
+        break;
+    }
+
+    try {
+      // Delete from S3 if image exists
+      if (currentImageUrl) {
+        const { getS3Service } = await import('../utils/s3Service');
+        const s3Service = getS3Service();
+        await s3Service.deleteImageByUrl(currentImageUrl);
+      }
+
+      // Update business record
+      return await this.businessRepository.deleteBusinessImage(businessId, imageType);
+    } catch (error) {
+      console.error('Error deleting business image:', error);
+      throw new Error('Failed to delete image');
+    }
+  }
+
+  async deleteGalleryImage(
+    userId: string,
+    businessId: string,
+    imageUrl: string
+  ): Promise<BusinessData> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.EDIT_ALL_BUSINESSES,
+      PermissionName.EDIT_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
+    
+    if (!hasGlobalUpdate) {
+      const hasBusinessAccess = await this.rbacService.hasPermission(
+        userId,
+        'business',
+        'update_own',
+        { businessId }
+      );
+
+      if (!hasBusinessAccess) {
+        throw new Error('Access denied: You do not have permission to update this business');
+      }
+    }
+
+    try {
+      // Delete from S3
+      const { getS3Service } = await import('../utils/s3Service');
+      const s3Service = getS3Service();
+      await s3Service.deleteImageByUrl(imageUrl);
+
+      // Remove from gallery
+      return await this.businessRepository.removeGalleryImage(businessId, imageUrl);
+    } catch (error) {
+      console.error('Error deleting gallery image:', error);
+      throw new Error('Failed to delete gallery image');
+    }
+  }
+
+  async getBusinessImages(
+    userId: string,
+    businessId: string
+  ): Promise<{
+    logoUrl: string | null;
+    coverImageUrl: string | null;
+    profileImageUrl: string | null;
+    galleryImages: string[];
+  }> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    
+    if (!hasGlobalView) {
+      const hasBusinessAccess = await this.rbacService.hasPermission(
+        userId,
+        'business',
+        'view_own',
+        { businessId }
+      );
+
+      if (!hasBusinessAccess) {
+        throw new Error('Access denied: You do not have permission to view this business');
+      }
+    }
+
+    return await this.businessRepository.getBusinessImages(businessId);
+  }
+
+  async updateGalleryImages(
+    userId: string,
+    businessId: string,
+    imageUrls: string[]
+  ): Promise<BusinessData> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.EDIT_ALL_BUSINESSES,
+      PermissionName.EDIT_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
+    
+    if (!hasGlobalUpdate) {
+      const hasBusinessAccess = await this.rbacService.hasPermission(
+        userId,
+        'business',
+        'update_own',
+        { businessId }
+      );
+
+      if (!hasBusinessAccess) {
+        throw new Error('Access denied: You do not have permission to update this business');
+      }
+    }
+
+    return await this.businessRepository.updateGalleryImages(businessId, imageUrls);
   }
 }

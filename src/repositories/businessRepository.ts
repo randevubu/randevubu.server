@@ -12,7 +12,7 @@ import { convertBusinessData, convertBusinessDataArray } from '../utils/prismaTy
 export class BusinessRepository {
   constructor(private prisma: PrismaClient) {}
 
-  async create(data: CreateBusinessRequest & { ownerId: string; slug: string }): Promise<BusinessData> {
+  async create(data: CreateBusinessRequest & { ownerId: string; slug: string; website: string }): Promise<BusinessData> {
     const result = await this.prisma.business.create({
       data: {
         id: `biz_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
@@ -29,7 +29,7 @@ export class BusinessRepository {
         state: data.state,
         country: data.country,
         postalCode: data.postalCode,
-        timezone: data.timezone || 'UTC',
+        timezone: data.timezone || 'Europe/Istanbul',
         primaryColor: data.primaryColor,
         tags: data.tags || [],
         isActive: true,
@@ -85,6 +85,8 @@ export class BusinessRepository {
       },
       select: {
         id: true,
+        ownerId: true,
+        businessTypeId: true,
         name: true,
         slug: true,
         description: true,
@@ -102,6 +104,8 @@ export class BusinessRepository {
         timezone: true,
         logoUrl: true,
         coverImageUrl: true,
+        profileImageUrl: true,
+        galleryImages: true,
         primaryColor: true,
         theme: true,
         settings: true,
@@ -114,11 +118,20 @@ export class BusinessRepository {
         tags: true,
         createdAt: true,
         updatedAt: true,
-        deletedAt: true
+        deletedAt: true,
+        businessType: {
+          select: {
+            id: true,
+            name: true,
+            displayName: true,
+            icon: true,
+            category: true
+          }
+        }
       },
       orderBy: { createdAt: 'desc' }
     });
-    return result as BusinessData[];
+    return convertBusinessDataArray<BusinessData>(result);
   }
 
   async findByStaffUserId(userId: string): Promise<BusinessData[]> {
@@ -135,6 +148,8 @@ export class BusinessRepository {
       },
       select: {
         id: true,
+        ownerId: true,
+        businessTypeId: true,
         name: true,
         slug: true,
         description: true,
@@ -152,6 +167,8 @@ export class BusinessRepository {
         timezone: true,
         logoUrl: true,
         coverImageUrl: true,
+        profileImageUrl: true,
+        galleryImages: true,
         primaryColor: true,
         theme: true,
         settings: true,
@@ -164,11 +181,20 @@ export class BusinessRepository {
         tags: true,
         createdAt: true,
         updatedAt: true,
-        deletedAt: true
+        deletedAt: true,
+        businessType: {
+          select: {
+            id: true,
+            name: true,
+            displayName: true,
+            icon: true,
+            category: true
+          }
+        }
       },
       orderBy: { createdAt: 'desc' }
     });
-    return result as BusinessData[];
+    return convertBusinessDataArray<BusinessData>(result);
   }
 
   async findBySlug(slug: string): Promise<BusinessData | null> {
@@ -202,10 +228,13 @@ export class BusinessRepository {
         timezone: true,
         logoUrl: true,
         coverImageUrl: true,
+        profileImageUrl: true,
+        galleryImages: true,
         primaryColor: true,
         isVerified: true,
         isClosed: true,
         tags: true,
+        settings: true,
         businessType: {
           select: {
             id: true,
@@ -239,9 +268,11 @@ export class BusinessRepository {
   }
 
   async update(id: string, data: UpdateBusinessRequest): Promise<BusinessData> {
+    const updateData: any = { ...data };
+    
     const result = await this.prisma.business.update({
       where: { id },
-      data
+      data: updateData
     });
     return convertBusinessData<BusinessData>(result);
   }
@@ -512,6 +543,8 @@ export class BusinessRepository {
       },
       select: {
         id: true,
+        ownerId: true,
+        businessTypeId: true,
         name: true,
         slug: true,
         description: true,
@@ -523,15 +556,31 @@ export class BusinessRepository {
         state: true,
         country: true,
         postalCode: true,
+        latitude: true,
+        longitude: true,
+        businessHours: true,
+        timezone: true,
+        logoUrl: true,
+        coverImageUrl: true,
+        profileImageUrl: true,
+        galleryImages: true,
+        primaryColor: true,
+        theme: true,
+        settings: true,
         isActive: true,
         isVerified: true,
+        verifiedAt: true,
         isClosed: true,
-        primaryColor: true,
-        tags: true
+        closedUntil: true,
+        closureReason: true,
+        tags: true,
+        createdAt: true,
+        updatedAt: true,
+        deletedAt: true
       },
       orderBy: { createdAt: 'desc' }
     });
-    return result as BusinessData[];
+    return convertBusinessDataArray<BusinessData>(result);
   }
 
   async getServicesByBusinessIds(businessIds: string[], options: {
@@ -721,6 +770,8 @@ export class BusinessRepository {
         timezone: true,
         logoUrl: true,
         coverImageUrl: true,
+        profileImageUrl: true,
+        galleryImages: true,
         primaryColor: true,
         theme: true,
         settings: true,
@@ -734,6 +785,15 @@ export class BusinessRepository {
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
+        businessType: {
+          select: {
+            id: true,
+            name: true,
+            displayName: true,
+            icon: true,
+            category: true
+          }
+        },
         subscription: {
           select: {
             id: true,
@@ -848,6 +908,8 @@ export class BusinessRepository {
         timezone: true,
         logoUrl: true,
         coverImageUrl: true,
+        profileImageUrl: true,
+        galleryImages: true,
         primaryColor: true,
         theme: true,
         settings: true,
@@ -925,6 +987,144 @@ export class BusinessRepository {
           isPopular: boolean;
         };
       };
+    };
+  }
+
+  // Image management methods
+  async updateBusinessImage(
+    businessId: string, 
+    imageType: 'logo' | 'cover' | 'profile', 
+    imageUrl: string
+  ): Promise<BusinessData> {
+    const updateData: any = {};
+    
+    switch (imageType) {
+      case 'logo':
+        updateData.logoUrl = imageUrl;
+        break;
+      case 'cover':
+        updateData.coverImageUrl = imageUrl;
+        break;
+      case 'profile':
+        updateData.profileImageUrl = imageUrl;
+        break;
+    }
+
+    const result = await this.prisma.business.update({
+      where: { id: businessId },
+      data: updateData
+    });
+    
+    return convertBusinessData<BusinessData>(result);
+  }
+
+  async deleteBusinessImage(
+    businessId: string, 
+    imageType: 'logo' | 'cover' | 'profile'
+  ): Promise<BusinessData> {
+    const updateData: any = {};
+    
+    switch (imageType) {
+      case 'logo':
+        updateData.logoUrl = null;
+        break;
+      case 'cover':
+        updateData.coverImageUrl = null;
+        break;
+      case 'profile':
+        updateData.profileImageUrl = null;
+        break;
+    }
+
+    const result = await this.prisma.business.update({
+      where: { id: businessId },
+      data: updateData
+    });
+    
+    return convertBusinessData<BusinessData>(result);
+  }
+
+  async addGalleryImage(businessId: string, imageUrl: string): Promise<BusinessData> {
+    const business = await this.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    const currentGallery = business.galleryImages || [];
+    
+    if (currentGallery.length >= 10) {
+      throw new Error('Maximum 10 gallery images allowed');
+    }
+
+    if (currentGallery.includes(imageUrl)) {
+      throw new Error('Image already exists in gallery');
+    }
+
+    const updatedGallery = [...currentGallery, imageUrl];
+
+    const result = await this.prisma.business.update({
+      where: { id: businessId },
+      data: { galleryImages: updatedGallery }
+    });
+    
+    return convertBusinessData<BusinessData>(result);
+  }
+
+  async removeGalleryImage(businessId: string, imageUrl: string): Promise<BusinessData> {
+    const business = await this.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    const currentGallery = business.galleryImages || [];
+    const updatedGallery = currentGallery.filter((url: string) => url !== imageUrl);
+
+    const result = await this.prisma.business.update({
+      where: { id: businessId },
+      data: { galleryImages: updatedGallery }
+    });
+    
+    return convertBusinessData<BusinessData>(result);
+  }
+
+  async updateGalleryImages(businessId: string, imageUrls: string[]): Promise<BusinessData> {
+    if (imageUrls.length > 10) {
+      throw new Error('Maximum 10 gallery images allowed');
+    }
+
+    const result = await this.prisma.business.update({
+      where: { id: businessId },
+      data: { galleryImages: imageUrls }
+    });
+    
+    return convertBusinessData<BusinessData>(result);
+  }
+
+  async getBusinessImages(businessId: string): Promise<{
+    logoUrl: string | null;
+    coverImageUrl: string | null;
+    profileImageUrl: string | null;
+    galleryImages: string[];
+  }> {
+    const result = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: {
+        logoUrl: true,
+        coverImageUrl: true,
+        profileImageUrl: true,
+        galleryImages: true
+      }
+    });
+
+    if (!result) {
+      throw new Error('Business not found');
+    }
+
+    return {
+      logoUrl: result.logoUrl,
+      coverImageUrl: result.coverImageUrl,
+      profileImageUrl: result.profileImageUrl,
+      galleryImages: result.galleryImages || []
     };
   }
 }

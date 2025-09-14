@@ -379,6 +379,87 @@ const DEFAULT_PERMISSIONS = [
     action: 'admin',
     isSystem: true
   },
+  {
+    id: generateId('perm'),
+    name: 'business:view_all',
+    displayName: 'View All Businesses',
+    description: 'View all businesses across the platform',
+    resource: 'business',
+    action: 'view_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business:view_own',
+    displayName: 'View Own Business',
+    description: 'View businesses you own or work at',
+    resource: 'business',
+    action: 'view_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business:edit_all',
+    displayName: 'Edit All Businesses',
+    description: 'Edit all businesses across the platform',
+    resource: 'business',
+    action: 'edit_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business:edit_own',
+    displayName: 'Edit Own Business',
+    description: 'Edit businesses you own or work at',
+    resource: 'business',
+    action: 'edit_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business:delete_all',
+    displayName: 'Delete All Businesses',
+    description: 'Delete all businesses across the platform',
+    resource: 'business',
+    action: 'delete_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business:delete_own',
+    displayName: 'Delete Own Business',
+    description: 'Delete businesses you own or work at',
+    resource: 'business',
+    action: 'delete_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business:close_all',
+    displayName: 'Close All Businesses',
+    description: 'Close all businesses across the platform',
+    resource: 'business',
+    action: 'close_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business:close_own',
+    displayName: 'Close Own Business',
+    description: 'Close businesses you own or work at',
+    resource: 'business',
+    action: 'close_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business:verify',
+    displayName: 'Verify Businesses',
+    description: 'Verify business accounts (admin only)',
+    resource: 'business',
+    action: 'verify',
+    isSystem: true
+  },
 
   // Business Subscription Permissions (only for platform admins)
   {
@@ -980,6 +1061,145 @@ const DEFAULT_PERMISSIONS = [
     resource: 'subscription',
     action: 'cancel_own',
     isSystem: true
+  },
+
+  // Business Hours Management Permissions
+  {
+    id: generateId('perm'),
+    name: 'business_hours:read',
+    displayName: 'View Business Hours',
+    description: 'View business operating hours and schedules',
+    resource: 'business_hours',
+    action: 'read',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours:update',
+    displayName: 'Update Business Hours',
+    description: 'Modify business operating hours and schedules',
+    resource: 'business_hours',
+    action: 'update',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours:view_all',
+    displayName: 'View All Business Hours',
+    description: 'View business hours across all businesses',
+    resource: 'business_hours',
+    action: 'view_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours:view_own',
+    displayName: 'View Own Business Hours',
+    description: 'View business hours for own business only',
+    resource: 'business_hours',
+    action: 'view_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours:edit_all',
+    displayName: 'Edit All Business Hours',
+    description: 'Edit business hours across all businesses',
+    resource: 'business_hours',
+    action: 'edit_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours:edit_own',
+    displayName: 'Edit Own Business Hours',
+    description: 'Edit business hours for own business only',
+    resource: 'business_hours',
+    action: 'edit_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours:status',
+    displayName: 'Check Business Hours Status',
+    description: 'Check if business is open/closed at specific times',
+    resource: 'business_hours',
+    action: 'status',
+    isSystem: true
+  },
+
+  // Business Hours Override Permissions
+  {
+    id: generateId('perm'),
+    name: 'business_hours_override:create',
+    displayName: 'Create Hours Override',
+    description: 'Create special business hours for specific dates',
+    resource: 'business_hours_override',
+    action: 'create',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours_override:read',
+    displayName: 'View Hours Overrides',
+    description: 'View special business hours and date overrides',
+    resource: 'business_hours_override',
+    action: 'read',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours_override:update',
+    displayName: 'Update Hours Override',
+    description: 'Modify special business hours for specific dates',
+    resource: 'business_hours_override',
+    action: 'update',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours_override:delete',
+    displayName: 'Delete Hours Override',
+    description: 'Remove special business hours for specific dates',
+    resource: 'business_hours_override',
+    action: 'delete',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours_override:view_all',
+    displayName: 'View All Hours Overrides',
+    description: 'View hours overrides across all businesses',
+    resource: 'business_hours_override',
+    action: 'view_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours_override:view_own',
+    displayName: 'View Own Hours Overrides',
+    description: 'View hours overrides for own business only',
+    resource: 'business_hours_override',
+    action: 'view_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours_override:manage_all',
+    displayName: 'Manage All Hours Overrides',
+    description: 'Full management of hours overrides across all businesses',
+    resource: 'business_hours_override',
+    action: 'manage_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_hours_override:manage_own',
+    displayName: 'Manage Own Hours Overrides',
+    description: 'Manage hours overrides for own business only',
+    resource: 'business_hours_override',
+    action: 'manage_own',
+    isSystem: true
   }
 ];
 
@@ -991,7 +1211,8 @@ const ROLE_PERMISSION_MAPPINGS = {
     'permission:create', 'permission:read', 'permission:update', 'permission:delete',
     'system:admin', 'system:read', 'audit:admin', 'audit:read', 'support:admin',
     // Business platform administration
-    'business:admin', 'subscription:admin', 'subscription:create', 'subscription:read', 'subscription:update',
+    'business:admin', 'business:view_all', 'business:edit_all', 'business:delete_all', 'business:close_all', 'business:verify',
+    'subscription:admin', 'subscription:create', 'subscription:read', 'subscription:update',
     'appointment:admin', 'appointment:view_all', 'appointment:view_own',
     'appointment:create', 'appointment:read', 'appointment:update', 'appointment:delete',
     'appointment:edit_all', 'appointment:edit_own', 'appointment:cancel_all', 'appointment:cancel_own',
@@ -1010,11 +1231,16 @@ const ROLE_PERMISSION_MAPPINGS = {
     'user_behavior:read', 'user_behavior:update', 'user_behavior:moderate', 'user_behavior:view', 'user_behavior:manage', 'user_behavior:manage_strikes', 'user_behavior:ban', 'user_behavior:flag',
     'business_closure:create', 'business_closure:read', 'business_closure:update', 'business_closure:delete',
     // Enhanced closure management
-    'closure:manage_all', 'closure:view_all'
+    'closure:manage_all', 'closure:view_all',
+    // Business hours management (admin level)
+    'business_hours:read', 'business_hours:update', 'business_hours:view_all', 'business_hours:edit_all', 'business_hours:status',
+    // Business hours override management (admin level)
+    'business_hours_override:create', 'business_hours_override:read', 'business_hours_override:update', 'business_hours_override:delete',
+    'business_hours_override:view_all', 'business_hours_override:manage_all'
   ],
   'OWNER': [
     // Business owner capabilities - manage own business
-    'business:create', 'business:read', 'business:update',
+    'business:create', 'business:read', 'business:update', 'business:view_own', 'business:edit_own', 'business:delete_own', 'business:close_own',
     'service:create', 'service:read', 'service:update', 'service:delete', 'service:manage_own', 'service:view_own',
     'staff:create', 'staff:read', 'staff:update', 'staff:delete',
     'appointment:create', 'appointment:read', 'appointment:update', 'appointment:delete', 'appointment:admin', 'appointment:view_own',
@@ -1032,13 +1258,18 @@ const ROLE_PERMISSION_MAPPINGS = {
     // Enhanced closure management
     'closure:manage_own', 'closure:view_own',
     // User behavior for own customers
-    'user_behavior:read', 'user_behavior:view', 'user_behavior:manage_strikes', 'user_behavior:ban', 'user_behavior:flag'
+    'user_behavior:read', 'user_behavior:view', 'user_behavior:manage_strikes', 'user_behavior:ban', 'user_behavior:flag',
+    // Business hours management for own business
+    'business_hours:read', 'business_hours:update', 'business_hours:view_own', 'business_hours:edit_own', 'business_hours:status',
+    // Business hours override management for own business
+    'business_hours_override:create', 'business_hours_override:read', 'business_hours_override:update', 'business_hours_override:delete',
+    'business_hours_override:view_own', 'business_hours_override:manage_own'
   ],
   'STAFF': [
     // Staff capabilities - manage appointments and services for assigned business
     'service:read', 'service:view_own', 'appointment:create', 'appointment:read', 'appointment:update', 'appointment:delete', 'appointment:view_own',
     'appointment:edit_own', 'appointment:cancel_own', 'appointment:confirm', 'appointment:complete', 'appointment:mark_no_show',
-    'support:create', 'business:read',
+    'support:create', 'business:read', 'business:view_own',
     // Basic subscription viewing (to understand business plan limits)
     'subscription:view_plans', 'subscription:view_own',
     // Customer management for assigned business
@@ -1046,18 +1277,24 @@ const ROLE_PERMISSION_MAPPINGS = {
     // Basic analytics for assigned business
     'analytics:read', 'analytics:view_own', 'business_closure:read',
     // Limited user behavior for assigned business customers
-    'user_behavior:read', 'user_behavior:view'
+    'user_behavior:read', 'user_behavior:view',
+    // Basic business hours viewing for assigned business
+    'business_hours:read', 'business_hours:view_own', 'business_hours:status',
+    // View business hours overrides for assigned business
+    'business_hours_override:read', 'business_hours_override:view_own'
   ],
   'CUSTOMER': [
     // Customer capabilities - book appointments and manage own profile
     'appointment:create', 'appointment:read', 'appointment:update', 'appointment:cancel_own',
-    'business:read', 'service:read', 'support:create',
+    'business:read', 'business:view_own', 'service:read', 'support:create',
     // Business creation - customers can create businesses and become owners
     'business:create',
     // View subscription plans (for business discovery and understanding service limits)
     'subscription:view_plans',
     // Basic user profile management
-    'user:read', 'user:update'
+    'user:read', 'user:update',
+    // View business hours for booking appointments
+    'business_hours:read', 'business_hours:status'
   ]
 };
 

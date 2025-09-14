@@ -1,5 +1,16 @@
-import { PrismaClient } from '@prisma/client';
-import { NotificationChannel, NotificationStatus } from '../types/business';
+import { PrismaClient, Prisma } from '@prisma/client';
+// @ts-ignore - web-push is available in Docker container
+import * as webpush from 'web-push';
+import { 
+  NotificationChannel, 
+  NotificationStatus,
+  PushSubscriptionData,
+  PushSubscriptionRequest,
+  NotificationPreferenceData,
+  NotificationPreferenceRequest,
+  SendPushNotificationRequest,
+  UpcomingAppointment
+} from '../types/business';
 
 export interface NotificationResult {
   success: boolean;
@@ -34,7 +45,18 @@ export interface RescheduleSuggestion {
 }
 
 export class NotificationService {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: PrismaClient) {
+    // Configure web-push if VAPID keys are available
+    const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
+    const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+    const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:admin@randevubu.com';
+    
+    if (vapidPublicKey && vapidPrivateKey) {
+      webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    } else {
+      console.warn('VAPID keys not configured. Push notifications will not work.');
+    }
+  }
 
   async sendClosureNotification(
     customerId: string,
@@ -55,7 +77,7 @@ export class NotificationService {
             result = await this.sendSMSNotification(customerId, closureData);
             break;
           case NotificationChannel.PUSH:
-            result = await this.sendPushNotification(customerId, closureData);
+            result = await this.sendClosurePushNotification(customerId, closureData);
             break;
           default:
             result = {
@@ -248,21 +270,38 @@ export class NotificationService {
     };
   }
 
-  private async sendPushNotification(
+
+  private async sendClosurePushNotification(
     customerId: string,
     closureData: EnhancedClosureData
   ): Promise<NotificationResult> {
-    // TODO: Implement actual push notification service (FCM, APNS, etc.)
-    console.log(`Sending push notification to customer ${customerId} about closure ${closureData.id}`);
+    const message = closureData.message || this.generateClosureMessage(closureData);
     
-    // Simulate push notification
-    await new Promise(resolve => setTimeout(resolve, 30));
-    
-    return {
-      success: true,
-      messageId: `push-${Date.now()}`,
+    const results = await this.sendPushNotification({
+      userId: customerId,
+      appointmentId: undefined,
+      businessId: closureData.businessId,
+      title: 'Business Closure Notice',
+      body: message,
+      icon: undefined,
+      badge: undefined,
+      data: {
+        closureId: closureData.id,
+        businessId: closureData.businessId,
+        businessName: closureData.businessName,
+        startDate: closureData.startDate.toISOString(),
+        endDate: closureData.endDate?.toISOString(),
+        reason: closureData.reason,
+        type: closureData.type
+      },
+      url: `/business/${closureData.businessId}`
+    });
+
+    return results[0] || {
+      success: false,
+      error: 'No push subscriptions found',
       channel: NotificationChannel.PUSH,
-      status: NotificationStatus.SENT
+      status: NotificationStatus.FAILED
     };
   }
 
@@ -477,5 +516,472 @@ export class NotificationService {
         status: NotificationStatus.FAILED
       };
     }
+  }
+
+  // Push Notification Methods
+
+  async subscribeToPush(userId: string, subscriptionData: PushSubscriptionRequest): Promise<PushSubscriptionData> {
+    const subscriptionId = `push_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // @ts-ignore - pushSubscription model exists in Prisma schema
+    const subscription = await this.prisma.pushSubscription.upsert({
+      where: {
+        userId_endpoint: {
+          userId,
+          endpoint: subscriptionData.endpoint
+        }
+      },
+      update: {
+        p256dh: subscriptionData.keys.p256dh,
+        auth: subscriptionData.keys.auth,
+        deviceName: subscriptionData.deviceName,
+        deviceType: subscriptionData.deviceType || 'web',
+        userAgent: subscriptionData.userAgent,
+        isActive: true,
+        lastUsedAt: new Date(),
+      },
+      create: {
+        id: subscriptionId,
+        userId,
+        endpoint: subscriptionData.endpoint,
+        p256dh: subscriptionData.keys.p256dh,
+        auth: subscriptionData.keys.auth,
+        deviceName: subscriptionData.deviceName,
+        deviceType: subscriptionData.deviceType || 'web',
+        userAgent: subscriptionData.userAgent,
+        isActive: true,
+      }
+    });
+
+    return subscription as PushSubscriptionData;
+  }
+
+  async unsubscribeFromPush(userId: string, endpoint?: string, subscriptionId?: string): Promise<boolean> {
+    const where: any = { userId };
+    
+    if (subscriptionId) {
+      where.id = subscriptionId;
+    } else if (endpoint) {
+      where.endpoint = endpoint;
+    } else {
+      throw new Error('Either endpoint or subscriptionId must be provided');
+    }
+
+    // @ts-ignore - pushSubscription model exists in Prisma schema
+    const result = await this.prisma.pushSubscription.updateMany({
+      where,
+      data: { isActive: false }
+    });
+
+    return result.count > 0;
+  }
+
+  async getUserPushSubscriptions(userId: string, activeOnly = true): Promise<PushSubscriptionData[]> {
+    const where: any = { userId };
+    if (activeOnly) {
+      where.isActive = true;
+    }
+
+    // @ts-ignore - pushSubscription model exists in Prisma schema
+    const subscriptions = await this.prisma.pushSubscription.findMany({
+      where,
+      orderBy: { lastUsedAt: 'desc' }
+    });
+
+    return subscriptions as PushSubscriptionData[];
+  }
+
+  async updateNotificationPreferences(
+    userId: string, 
+    preferences: NotificationPreferenceRequest
+  ): Promise<NotificationPreferenceData> {
+    const preferenceId = `pref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // @ts-ignore - notificationPreference model exists in Prisma schema
+    const result = await this.prisma.notificationPreference.upsert({
+      where: { userId },
+      create: {
+        id: preferenceId,
+        userId,
+        enableAppointmentReminders: preferences.enableAppointmentReminders ?? true,
+        enableBusinessNotifications: preferences.enableBusinessNotifications ?? true,
+        enablePromotionalMessages: preferences.enablePromotionalMessages ?? false,
+        reminderTiming: JSON.stringify(preferences.reminderTiming ?? { hours: [1, 24] }),
+        preferredChannels: JSON.stringify(preferences.preferredChannels ?? { channels: ['PUSH', 'SMS'] }),
+        quietHours: preferences.quietHours ? JSON.stringify(preferences.quietHours) : Prisma.JsonNull,
+        timezone: preferences.timezone ?? 'Europe/Istanbul',
+      },
+      update: {
+        enableAppointmentReminders: preferences.enableAppointmentReminders,
+        enableBusinessNotifications: preferences.enableBusinessNotifications,
+        enablePromotionalMessages: preferences.enablePromotionalMessages,
+        reminderTiming: preferences.reminderTiming ? JSON.stringify(preferences.reminderTiming) : undefined,
+        preferredChannels: preferences.preferredChannels ? JSON.stringify(preferences.preferredChannels) : undefined,
+        quietHours: preferences.quietHours ? JSON.stringify(preferences.quietHours) : undefined,
+        timezone: preferences.timezone,
+      }
+    });
+
+    return {
+      ...result,
+      reminderTiming: JSON.parse(result.reminderTiming as string),
+      preferredChannels: JSON.parse(result.preferredChannels as string),
+      quietHours: result.quietHours ? JSON.parse(result.quietHours as string) : undefined,
+    } as NotificationPreferenceData;
+  }
+
+  async getNotificationPreferences(userId: string): Promise<NotificationPreferenceData | null> {
+    // @ts-ignore - notificationPreference model exists in Prisma schema
+    const preferences = await this.prisma.notificationPreference.findUnique({
+      where: { userId }
+    });
+
+    if (!preferences) return null;
+
+    return {
+      ...preferences,
+      reminderTiming: JSON.parse(preferences.reminderTiming as string),
+      preferredChannels: JSON.parse(preferences.preferredChannels as string),
+      quietHours: preferences.quietHours ? JSON.parse(preferences.quietHours as string) : undefined,
+    } as NotificationPreferenceData;
+  }
+
+  async sendPushNotification(request: SendPushNotificationRequest): Promise<NotificationResult[]> {
+    const subscriptions = await this.getUserPushSubscriptions(request.userId, true);
+    
+    if (subscriptions.length === 0) {
+      return [{
+        success: false,
+        error: 'No active push subscriptions found for user',
+        channel: NotificationChannel.PUSH,
+        status: NotificationStatus.FAILED
+      }];
+    }
+
+    const results: NotificationResult[] = [];
+    
+    for (const subscription of subscriptions) {
+      try {
+        const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Create push notification record
+        // @ts-ignore - pushNotification model exists in Prisma schema
+        await this.prisma.pushNotification.create({
+          data: {
+            id: notificationId,
+            subscriptionId: subscription.id,
+            appointmentId: request.appointmentId,
+            businessId: request.businessId,
+            title: request.title,
+            body: request.body,
+            icon: request.icon,
+            badge: request.badge,
+            data: request.data ? JSON.stringify(request.data) : Prisma.JsonNull,
+            status: NotificationStatus.PENDING,
+          }
+        });
+
+        // Prepare web-push payload
+        const payload = JSON.stringify({
+          title: request.title,
+          body: request.body,
+          icon: request.icon,
+          badge: request.badge,
+          data: {
+            ...request.data,
+            appointmentId: request.appointmentId,
+            businessId: request.businessId,
+            url: request.url,
+            notificationId,
+          }
+        });
+
+        // Send push notification
+        const pushSubscription = {
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.p256dh,
+            auth: subscription.auth,
+          }
+        };
+
+        await webpush.sendNotification(pushSubscription, payload);
+
+        // Update notification status
+        // @ts-ignore - pushNotification model exists in Prisma schema
+        await this.prisma.pushNotification.update({
+          where: { id: notificationId },
+          data: {
+            status: NotificationStatus.SENT,
+            sentAt: new Date(),
+          }
+        });
+
+        // Update subscription last used
+        // @ts-ignore - pushSubscription model exists in Prisma schema
+        await this.prisma.pushSubscription.update({
+          where: { id: subscription.id },
+          data: { lastUsedAt: new Date() }
+        });
+
+        results.push({
+          success: true,
+          messageId: notificationId,
+          channel: NotificationChannel.PUSH,
+          status: NotificationStatus.SENT
+        });
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        // Check if subscription is invalid
+        if (errorMessage.includes('410') || errorMessage.includes('gone')) {
+          // Disable invalid subscription
+          // @ts-ignore - pushSubscription model exists in Prisma schema
+          await this.prisma.pushSubscription.update({
+            where: { id: subscription.id },
+            data: { isActive: false }
+          });
+        }
+
+        // Update notification status
+        if (subscription.id) {
+          try {
+            // @ts-ignore - pushNotification model exists in Prisma schema
+            await this.prisma.pushNotification.updateMany({
+              where: {
+                subscriptionId: subscription.id,
+                status: NotificationStatus.PENDING
+              },
+              data: {
+                status: NotificationStatus.FAILED,
+                errorMessage,
+              }
+            });
+          } catch (dbError) {
+            console.error('Failed to update notification status:', dbError);
+          }
+        }
+
+        results.push({
+          success: false,
+          error: errorMessage,
+          channel: NotificationChannel.PUSH,
+          status: NotificationStatus.FAILED
+        });
+      }
+    }
+
+    return results;
+  }
+
+  async sendAppointmentReminder(appointment: UpcomingAppointment): Promise<NotificationResult[]> {
+    // Check user's notification preferences
+    const preferences = await this.getNotificationPreferences(appointment.customerId);
+    
+    if (preferences && !preferences.enableAppointmentReminders) {
+      return [{
+        success: false,
+        error: 'User has disabled appointment reminders',
+        channel: NotificationChannel.PUSH,
+        status: NotificationStatus.FAILED
+      }];
+    }
+
+    // Check quiet hours
+    if (preferences?.quietHours && this.isInQuietHours(new Date(), preferences.quietHours, preferences.timezone)) {
+      return [{
+        success: false,
+        error: 'Current time is within user quiet hours',
+        channel: NotificationChannel.PUSH,
+        status: NotificationStatus.FAILED
+      }];
+    }
+
+    const title = 'Appointment Reminder';
+    const body = `You have an appointment for ${appointment.service.name} at ${appointment.business.name} at ${appointment.startTime.toLocaleTimeString()}`;
+    
+    const appointmentData = {
+      appointmentId: appointment.id,
+      businessId: appointment.businessId,
+      serviceName: appointment.service.name,
+      businessName: appointment.business.name,
+      startTime: appointment.startTime.toISOString(),
+    };
+
+    return await this.sendPushNotification({
+      userId: appointment.customerId,
+      appointmentId: appointment.id,
+      businessId: appointment.businessId,
+      title,
+      body,
+      icon: undefined,
+      badge: undefined,
+      data: appointmentData,
+      url: `/appointments/${appointment.id}`
+    });
+  }
+
+  async sendBatchPushNotifications(userIds: string[], notification: Omit<SendPushNotificationRequest, 'userId'>): Promise<{
+    successful: number;
+    failed: number;
+    results: NotificationResult[];
+  }> {
+    const allResults: NotificationResult[] = [];
+    let successful = 0;
+    let failed = 0;
+
+    for (const userId of userIds) {
+      try {
+        const results = await this.sendPushNotification({
+          userId,
+          ...notification
+        });
+        
+        allResults.push(...results);
+        
+        const successCount = results.filter(r => r.success).length;
+        const failCount = results.filter(r => !r.success).length;
+        
+        successful += successCount;
+        failed += failCount;
+      } catch (error) {
+        failed++;
+        allResults.push({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          channel: NotificationChannel.PUSH,
+          status: NotificationStatus.FAILED
+        });
+      }
+    }
+
+    return {
+      successful,
+      failed,
+      results: allResults
+    };
+  }
+
+  private isInQuietHours(currentTime: Date, quietHours: { start: string; end: string; timezone: string }, timezone: string): boolean {
+    try {
+      const currentTimeStr = currentTime.toLocaleTimeString('en-GB', { 
+        hour12: false, 
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      const current = this.timeStringToMinutes(currentTimeStr);
+      const start = this.timeStringToMinutes(quietHours.start);
+      const end = this.timeStringToMinutes(quietHours.end);
+      
+      // Handle overnight quiet hours (e.g., 22:00 - 06:00)
+      if (start > end) {
+        return current >= start || current <= end;
+      } else {
+        return current >= start && current <= end;
+      }
+    } catch (error) {
+      console.error('Error checking quiet hours:', error);
+      return false;
+    }
+  }
+
+  private timeStringToMinutes(timeStr: string): number {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+  }
+
+  async getNotificationHistory(
+    userId: string,
+    options?: {
+      page?: number;
+      limit?: number;
+      status?: NotificationStatus;
+      appointmentId?: string;
+      businessId?: string;
+      from?: Date;
+      to?: Date;
+    }
+  ): Promise<{
+    notifications: any[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    const page = options?.page || 1;
+    const limit = Math.min(100, options?.limit || 20);
+    const skip = (page - 1) * limit;
+
+    // Get user's subscriptions
+    // @ts-ignore - pushSubscription model exists in Prisma schema
+    const subscriptions = await this.prisma.pushSubscription.findMany({
+      where: { userId },
+      select: { id: true }
+    });
+
+    const subscriptionIds = subscriptions.map((s: any) => s.id);
+
+    const where: any = {
+      subscriptionId: { in: subscriptionIds }
+    };
+
+    if (options?.status) {
+      where.status = options.status;
+    }
+    if (options?.appointmentId) {
+      where.appointmentId = options.appointmentId;
+    }
+    if (options?.businessId) {
+      where.businessId = options.businessId;
+    }
+    if (options?.from || options?.to) {
+      where.createdAt = {};
+      if (options.from) where.createdAt.gte = options.from;
+      if (options.to) where.createdAt.lte = options.to;
+    }
+
+    const [notifications, total] = await Promise.all([
+      // @ts-ignore - pushNotification model exists in Prisma schema
+      this.prisma.pushNotification.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          appointment: {
+            select: {
+              id: true,
+              startTime: true,
+              service: { select: { name: true } },
+              business: { select: { name: true } }
+            }
+          },
+          business: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      }),
+      // @ts-ignore - pushNotification model exists in Prisma schema
+      this.prisma.pushNotification.count({ where })
+    ]);
+
+    return {
+      notifications: notifications.map((n: any) => ({
+        ...n,
+        data: n.data ? JSON.parse(n.data as string) : null
+      })),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit)
+    };
+  }
+
+  async getVapidPublicKey(): Promise<string | null> {
+    return process.env.VAPID_PUBLIC_KEY || null;
   }
 }

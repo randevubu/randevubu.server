@@ -3,6 +3,7 @@ import { RepositoryContainer } from '../repositories';
 import { PhoneVerificationService } from './phoneVerificationService';
 import { TokenService } from './tokenService';
 import { RBACService } from './rbacService';
+import { ReliabilityScoreCalculator } from '../utils/reliabilityScoreCalculator';
 import { 
   UserProfile,
   CreateUserData,
@@ -727,19 +728,18 @@ export class AuthService {
     // Calculate reliability score based on actual data
     const { totalAppointments, completedAppointments, cancelledAppointments: canceledAppointments, noShowCount, lastAppointmentDate } = appointmentStats;
     
-    // Reliability score calculation:
-    // - Completed appointments: positive impact
-    // - Cancelled appointments: moderate negative impact 
-    // - No-shows: significant negative impact
-    let reliabilityScore = 100;
-    
-    if (totalAppointments > 0) {
-      const completionRate = (completedAppointments / totalAppointments) * 100;
-      const cancellationPenalty = (canceledAppointments / totalAppointments) * 20; // 20% penalty per cancellation
-      const noShowPenalty = (noShowCount / totalAppointments) * 40; // 40% penalty per no-show
-      
-      reliabilityScore = Math.max(0, completionRate - cancellationPenalty - noShowPenalty);
-    }
+    // Calculate reliability score using centralized calculator
+    const reliabilityResult = ReliabilityScoreCalculator.calculate({
+      totalAppointments,
+      completedAppointments,
+      cancelledAppointments: canceledAppointments,
+      noShowAppointments: noShowCount,
+      currentStrikes: userBehavior?.currentStrikes || 0,
+      isBanned: userBehavior?.isBanned || false,
+      bannedUntil: userBehavior?.bannedUntil
+    });
+
+    const reliabilityScore = reliabilityResult.score;
 
     // Check if user is currently banned
     const now = new Date();
@@ -760,7 +760,7 @@ export class AuthService {
       completedAppointments,
       cancelledAppointments: canceledAppointments,
       noShowCount,
-      reliabilityScore: Math.round(reliabilityScore * 10) / 10, // Round to 1 decimal place
+      reliabilityScore: reliabilityScore,
       lastAppointmentDate,
       // Ban status information
       isBanned: isBanned || false,

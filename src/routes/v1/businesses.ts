@@ -8,6 +8,14 @@ import {
   allowEmptyBusinessContext,
   requireSpecificBusinessAccess 
 } from '../../middleware/attachBusinessContext';
+import { validateBody, validateQuery, validateParams } from '../../middleware/validation';
+import { uploadSingleImage, handleMulterError } from '../../middleware/multer';
+import {
+  inviteStaffSchema,
+  verifyStaffInvitationSchema,
+  getBusinessStaffQuerySchema
+} from '../../schemas/staff.schemas';
+import { updateBusinessPriceSettingsSchema } from '../../schemas/business.schemas';
 
 export function createBusinessRoutes(businessController: BusinessController): Router {
   const router = Router();
@@ -282,6 +290,122 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
    *                       example: "BUSINESS_ACCESS_DENIED"
    */
   router.get('/my-business', requireBusinessAccess, businessController.getMyBusiness.bind(businessController));
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business:
+   *   put:
+   *     tags: [Businesses]
+   *     summary: Update current user's business
+   *     description: Update the business owned by the current user. If the user owns multiple businesses, updates the primary business.
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/UpdateBusinessRequest'
+   *     responses:
+   *       200:
+   *         description: Business updated successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Business updated successfully"
+   *                 data:
+   *                   $ref: '#/components/schemas/BusinessData'
+   *       400:
+   *         description: Invalid input data
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Access denied - business role required
+   *       404:
+   *         description: Business not found
+   */
+  router.put('/my-business', requireBusinessAccess, businessController.updateMyBusiness.bind(businessController));
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business:
+   *   patch:
+   *     tags: [Businesses]
+   *     summary: Partially update current user's business
+   *     description: Partially update the business owned by the current user. If the user owns multiple businesses, updates the primary business.
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/UpdateBusinessRequest'
+   *     responses:
+   *       200:
+   *         description: Business updated successfully
+   *       400:
+   *         description: Invalid input data
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Access denied - business role required
+   *       404:
+   *         description: Business not found
+   */
+  router.patch('/my-business', requireBusinessAccess, businessController.updateMyBusiness.bind(businessController));
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/price-settings:
+   *   put:
+   *     tags: [Businesses]
+   *     summary: Update business price visibility settings
+   *     description: Configure price display settings for your business services
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               hideAllServicePrices:
+   *                 type: boolean
+   *                 description: Hide prices for all services business-wide
+   *               showPriceOnBooking:
+   *                 type: boolean
+   *                 description: Show prices during booking even if hidden on service list
+   *               priceDisplayMessage:
+   *                 type: string
+   *                 maxLength: 100
+   *                 description: Custom message when prices are hidden
+   *     responses:
+   *       200:
+   *         description: Price settings updated successfully
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/price-settings',
+    requireBusinessAccess,
+    businessController.getPriceSettings.bind(businessController)
+  );
+  
+  router.put('/my-business/price-settings', 
+    requireBusinessAccess,
+    validateBody(updateBusinessPriceSettingsSchema),
+    businessController.updatePriceSettings.bind(businessController)
+  );
 
   // User's services access
   /**
@@ -589,10 +713,49 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
 
   /**
    * @swagger
+   * /api/v1/businesses/{id}:
+   *   put:
+   *     tags: [Businesses]
+   *     summary: Update a business by ID
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/UpdateBusinessRequest'
+   *     responses:
+   *       200:
+   *         description: Business updated successfully
+   *       400:
+   *         description: Invalid input data
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden - insufficient permissions
+   *       404:
+   *         description: Business not found
+   */
+  router.put(
+    '/:id',
+    requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
+    requireSpecificBusinessAccess(),
+    businessController.updateBusiness.bind(businessController)
+  );
+
+  /**
+   * @swagger
    * /api/v1/businesses/id/{id}:
    *   put:
    *     tags: [Businesses]
-   *     summary: Update a business
+   *     summary: Update a business (alternative route)
    *     security:
    *       - bearerAuth: []
    *     parameters:
@@ -612,6 +775,76 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
    *         description: Not found
    */
   router.put(
+    '/id/:id',
+    requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
+    requireSpecificBusinessAccess(),
+    businessController.updateBusiness.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{id}:
+   *   patch:
+   *     tags: [Businesses]
+   *     summary: Partially update a business by ID
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/UpdateBusinessRequest'
+   *     responses:
+   *       200:
+   *         description: Business updated successfully
+   *       400:
+   *         description: Invalid input data
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden - insufficient permissions
+   *       404:
+   *         description: Business not found
+   */
+  router.patch(
+    '/:id',
+    requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
+    requireSpecificBusinessAccess(),
+    businessController.updateBusiness.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/id/{id}:
+   *   patch:
+   *     tags: [Businesses]
+   *     summary: Partially update a business (alternative route)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Business updated
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden
+   *       404:
+   *         description: Not found
+   */
+  router.patch(
     '/id/:id',
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
     requireSpecificBusinessAccess(),
@@ -792,6 +1025,305 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
     requireSpecificBusinessAccess(),
     businessController.updateBusinessHours.bind(businessController)
+  );
+
+  // Enhanced Business Hours Management Routes
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/hours:
+   *   get:
+   *     tags: [Businesses, Business Hours]
+   *     summary: Get business hours for a specific business
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Business hours retrieved successfully
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden
+   *       404:
+   *         description: Business not found
+   */
+  router.get(
+    '/:businessId/hours',
+    requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
+    requireSpecificBusinessAccess('businessId'),
+    businessController.getBusinessHours.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/hours/status:
+   *   get:
+   *     tags: [Businesses, Business Hours]
+   *     summary: Get business hours status for a specific date
+   *     description: Public endpoint to check if business is open on a specific date
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: date
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: Date to check (YYYY-MM-DD format, defaults to today)
+   *       - in: query
+   *         name: timezone
+   *         schema:
+   *           type: string
+   *         description: Timezone override (defaults to business timezone)
+   *     responses:
+   *       200:
+   *         description: Business hours status retrieved successfully
+   *       404:
+   *         description: Business not found
+   */
+  router.get(
+    '/:businessId/hours/status',
+    businessController.getBusinessHoursStatus.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/hours/overrides:
+   *   post:
+   *     tags: [Businesses, Business Hours]
+   *     summary: Create business hours override for a specific date
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - date
+   *               - isOpen
+   *             properties:
+   *               date:
+   *                 type: string
+   *                 format: date
+   *                 description: Date for the override (YYYY-MM-DD)
+   *               isOpen:
+   *                 type: boolean
+   *                 description: Whether the business is open on this date
+   *               openTime:
+   *                 type: string
+   *                 pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+   *                 description: Opening time (HH:MM format, required if isOpen is true)
+   *               closeTime:
+   *                 type: string
+   *                 pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+   *                 description: Closing time (HH:MM format, required if isOpen is true)
+   *               breaks:
+   *                 type: array
+   *                 items:
+   *                   type: object
+   *                   properties:
+   *                     startTime:
+   *                       type: string
+   *                       pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+   *                     endTime:
+   *                       type: string
+   *                       pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+   *                     description:
+   *                       type: string
+   *                 description: Break periods during business hours
+   *               reason:
+   *                 type: string
+   *                 description: Reason for the override
+   *               isRecurring:
+   *                 type: boolean
+   *                 description: Whether this override should recur
+   *               recurringPattern:
+   *                 type: object
+   *                 properties:
+   *                   frequency:
+   *                     type: string
+   *                     enum: [YEARLY, MONTHLY, WEEKLY]
+   *                   interval:
+   *                     type: integer
+   *                     minimum: 1
+   *                     maximum: 10
+   *                   endDate:
+   *                     type: string
+   *                     format: date
+   *     responses:
+   *       201:
+   *         description: Business hours override created successfully
+   *       400:
+   *         description: Invalid input
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden
+   */
+  router.post(
+    '/:businessId/hours/overrides',
+    requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
+    requireSpecificBusinessAccess('businessId'),
+    businessController.createBusinessHoursOverride.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/hours/overrides/{date}:
+   *   put:
+   *     tags: [Businesses, Business Hours]
+   *     summary: Update business hours override for a specific date
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: path
+   *         name: date
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: date
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               isOpen:
+   *                 type: boolean
+   *               openTime:
+   *                 type: string
+   *                 pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+   *               closeTime:
+   *                 type: string
+   *                 pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+   *               breaks:
+   *                 type: array
+   *                 items:
+   *                   type: object
+   *               reason:
+   *                 type: string
+   *               isRecurring:
+   *                 type: boolean
+   *               recurringPattern:
+   *                 type: object
+   *     responses:
+   *       200:
+   *         description: Business hours override updated successfully
+   *       400:
+   *         description: Invalid input
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden
+   *       404:
+   *         description: Override not found
+   */
+  router.put(
+    '/:businessId/hours/overrides/:date',
+    requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
+    requireSpecificBusinessAccess('businessId'),
+    businessController.updateBusinessHoursOverride.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/hours/overrides/{date}:
+   *   delete:
+   *     tags: [Businesses, Business Hours]
+   *     summary: Delete business hours override for a specific date
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: path
+   *         name: date
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: date
+   *     responses:
+   *       200:
+   *         description: Business hours override deleted successfully
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden
+   *       404:
+   *         description: Override not found
+   */
+  router.delete(
+    '/:businessId/hours/overrides/:date',
+    requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
+    requireSpecificBusinessAccess('businessId'),
+    businessController.deleteBusinessHoursOverride.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/hours/overrides:
+   *   get:
+   *     tags: [Businesses, Business Hours]
+   *     summary: Get business hours overrides for a date range
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: startDate
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: Start date for the range (YYYY-MM-DD)
+   *       - in: query
+   *         name: endDate
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: End date for the range (YYYY-MM-DD)
+   *     responses:
+   *       200:
+   *         description: Business hours overrides retrieved successfully
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden
+   */
+  router.get(
+    '/:businessId/hours/overrides',
+    requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
+    requireSpecificBusinessAccess('businessId'),
+    businessController.getBusinessHoursOverrides.bind(businessController)
   );
 
   /**
@@ -1009,6 +1541,422 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
         next(error);
       }
     }
+  );
+
+  // Staff Management Routes
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/staff:
+   *   get:
+   *     tags: [Businesses, Staff Management]
+   *     summary: Get all staff for a business
+   *     description: Retrieve staff members of a business
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: includeInactive
+   *         schema:
+   *           type: boolean
+   *         description: Include inactive staff members
+   *     responses:
+   *       200:
+   *         description: Staff list retrieved successfully
+   *       404:
+   *         description: Business not found
+   */
+  router.get(
+    '/:businessId/staff',
+    requireAuth,
+    attachBusinessContext,
+    validateQuery(getBusinessStaffQuerySchema),
+    businessController.getBusinessStaff.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/staff/invite:
+   *   post:
+   *     tags: [Businesses, Staff Management]
+   *     summary: Invite staff member to business
+   *     description: Send SMS verification code to potential staff member's phone
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - phoneNumber
+   *               - role
+   *             properties:
+   *               phoneNumber:
+   *                 type: string
+   *                 description: Staff member's phone number (E.164 format)
+   *                 example: "+905551234567"
+   *               role:
+   *                 type: string
+   *                 enum: [OWNER, MANAGER, STAFF, RECEPTIONIST]
+   *                 description: Staff role
+   *               permissions:
+   *                 type: object
+   *                 description: Additional permissions (optional)
+   *               firstName:
+   *                 type: string
+   *                 description: Staff member's first name (optional)
+   *               lastName:
+   *                 type: string
+   *                 description: Staff member's last name (optional)
+   *     responses:
+   *       200:
+   *         description: Invitation sent successfully
+   *       400:
+   *         description: Invalid input or staff limit exceeded
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Insufficient permissions
+   */
+  router.post(
+    '/:businessId/staff/invite',
+    requireAuth,
+    validateBody(inviteStaffSchema),
+    businessController.inviteStaff.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/staff/verify-invitation:
+   *   post:
+   *     tags: [Businesses, Staff Management]
+   *     summary: Complete staff invitation with SMS verification
+   *     description: Verify SMS code and add staff member to business
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - phoneNumber
+   *               - verificationCode
+   *               - role
+   *             properties:
+   *               phoneNumber:
+   *                 type: string
+   *                 description: Staff member's phone number
+   *               verificationCode:
+   *                 type: string
+   *                 description: 6-digit SMS verification code
+   *               role:
+   *                 type: string
+   *                 enum: [OWNER, MANAGER, STAFF, RECEPTIONIST]
+   *               permissions:
+   *                 type: object
+   *                 description: Additional permissions (optional)
+   *               firstName:
+   *                 type: string
+   *               lastName:
+   *                 type: string
+   *     responses:
+   *       201:
+   *         description: Staff member added successfully
+   *       400:
+   *         description: Invalid verification code or input
+   */
+  router.post(
+    '/:businessId/staff/verify-invitation',
+    requireAuth,
+    validateBody(verifyStaffInvitationSchema),
+    businessController.verifyStaffInvitation.bind(businessController)
+  );
+
+  // Image Management Routes
+  
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/images/upload:
+   *   post:
+   *     tags: [Businesses, Images]
+   *     summary: Upload business image
+   *     description: Upload image for business (logo, cover, profile, or gallery)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         multipart/form-data:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - image
+   *               - imageType
+   *             properties:
+   *               image:
+   *                 type: string
+   *                 format: binary
+   *                 description: Image file (JPEG, PNG, WebP, GIF, max 5MB)
+   *               imageType:
+   *                 type: string
+   *                 enum: [logo, cover, profile, gallery]
+   *                 description: Type of image being uploaded
+   *     responses:
+   *       200:
+   *         description: Image uploaded successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "logo image uploaded successfully"
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     imageUrl:
+   *                       type: string
+   *                       example: "https://bucket.s3.amazonaws.com/businesses/biz_123/logo/image.jpg"
+   *                     business:
+   *                       type: object
+   *                       description: Updated business object
+   *       400:
+   *         description: Invalid file or missing parameters
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Insufficient permissions
+   */
+  router.post(
+    '/:businessId/images/upload',
+    requireAuth,
+    uploadSingleImage,
+    handleMulterError,
+    businessController.uploadImage.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/images/{imageType}:
+   *   delete:
+   *     tags: [Businesses, Images]
+   *     summary: Delete business image
+   *     description: Delete business image (logo, cover, or profile)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *       - in: path
+   *         name: imageType
+   *         required: true
+   *         schema:
+   *           type: string
+   *           enum: [logo, cover, profile]
+   *         description: Type of image to delete
+   *     responses:
+   *       200:
+   *         description: Image deleted successfully
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Insufficient permissions
+   *       404:
+   *         description: Business or image not found
+   */
+  router.delete(
+    '/:businessId/images/:imageType',
+    requireAuth,
+    businessController.deleteImage.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/images/gallery:
+   *   delete:
+   *     tags: [Businesses, Images]
+   *     summary: Delete gallery image
+   *     description: Delete specific image from business gallery
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - imageUrl
+   *             properties:
+   *               imageUrl:
+   *                 type: string
+   *                 format: url
+   *                 description: URL of the gallery image to delete
+   *     responses:
+   *       200:
+   *         description: Gallery image deleted successfully
+   *       400:
+   *         description: Invalid image URL
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Insufficient permissions
+   */
+  router.delete(
+    '/:businessId/images/gallery',
+    requireAuth,
+    businessController.deleteGalleryImage.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/images:
+   *   get:
+   *     tags: [Businesses, Images]
+   *     summary: Get business images
+   *     description: Get all images for a business
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *     responses:
+   *       200:
+   *         description: Business images retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     images:
+   *                       type: object
+   *                       properties:
+   *                         logoUrl:
+   *                           type: string
+   *                           nullable: true
+   *                           example: "https://bucket.s3.amazonaws.com/businesses/biz_123/logo/image.jpg"
+   *                         coverImageUrl:
+   *                           type: string
+   *                           nullable: true
+   *                           example: "https://bucket.s3.amazonaws.com/businesses/biz_123/cover/image.jpg"
+   *                         profileImageUrl:
+   *                           type: string
+   *                           nullable: true
+   *                           example: "https://bucket.s3.amazonaws.com/businesses/biz_123/profile/image.jpg"
+   *                         galleryImages:
+   *                           type: array
+   *                           items:
+   *                             type: string
+   *                           example: ["https://bucket.s3.amazonaws.com/businesses/biz_123/gallery/image1.jpg"]
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Insufficient permissions
+   */
+  router.get(
+    '/:businessId/images',
+    requireAuth,
+    businessController.getBusinessImages.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/images/gallery:
+   *   put:
+   *     tags: [Businesses, Images]
+   *     summary: Update gallery images order
+   *     description: Update the order of gallery images
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - imageUrls
+   *             properties:
+   *               imageUrls:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *                   format: url
+   *                 maxItems: 10
+   *                 description: Array of image URLs in desired order
+   *     responses:
+   *       200:
+   *         description: Gallery images updated successfully
+   *       400:
+   *         description: Invalid input (non-array or too many images)
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Insufficient permissions
+   */
+  router.put(
+    '/:businessId/images/gallery',
+    requireAuth,
+    businessController.updateGalleryImages.bind(businessController)
   );
 
   return router;

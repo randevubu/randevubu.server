@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { config } from '../../config/environment';
 import { ControllerContainer } from '../../controllers';
+import { ServiceContainer } from '../../services';
 import authRoutes from './auth';
 import { createRoleRoutes } from './roles';
 import { createBusinessRoutes } from './businesses';
@@ -15,9 +16,12 @@ import { createReportsRoutes } from './reports';
 import paymentRoutes from './payments';
 import { createDiscountCodeRoutes } from './discountCodes';
 import { createUsageRoutes } from './usage';
+import { createStaffRoutes } from './staff';
+import { createPublicRoutes } from './public';
+import { createPushNotificationRoutes } from './pushNotifications';
 import testingRouter from './testing';
 
-export function createV1Routes(controllers: ControllerContainer): Router {
+export function createV1Routes(controllers: ControllerContainer, services: ServiceContainer): Router {
   const router = Router();
 
   router.get('/status', (req, res) => {
@@ -73,10 +77,15 @@ export function createV1Routes(controllers: ControllerContainer): Router {
   router.use('/user-behavior', createUserBehaviorRoutes(controllers.userBehaviorController));
   router.use('/closures', createBusinessClosureRoutes(controllers.businessClosureController));
   router.use('/subscriptions', createSubscriptionRoutes(controllers.subscriptionController));
-  router.use('/discount-codes', createDiscountCodeRoutes(controllers.discountCodeController));
+  router.use('/discount-codes', createDiscountCodeRoutes(controllers.discountCodeController, services.rbacService));
+  router.use('/staff', createStaffRoutes());
   router.use('/reports', createReportsRoutes());
   router.use('/businesses', createUsageRoutes(controllers.usageController));
+  router.use('/notifications/push', createPushNotificationRoutes(controllers.pushNotificationController));
   router.use('/', paymentRoutes);
+  
+  // Public routes (no authentication required) 
+  router.use('/public', createPublicRoutes());
   
   // Testing routes (development only)
   router.use('/testing', testingRouter);

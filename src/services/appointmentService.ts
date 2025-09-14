@@ -10,10 +10,12 @@ import { AppointmentRepository } from '../repositories/appointmentRepository';
 import { ServiceRepository } from '../repositories/serviceRepository';
 import { UserBehaviorRepository } from '../repositories/userBehaviorRepository';
 import { BusinessClosureRepository } from '../repositories/businessClosureRepository';
+import { RepositoryContainer } from '../repositories';
 import { RBACService } from './rbacService';
 import { PermissionName } from '../types/auth';
 import { BusinessContext } from '../middleware/businessContext';
 import { BusinessService } from './businessService';
+import { NotificationService } from './notificationService';
 
 export class AppointmentService {
   constructor(
@@ -22,7 +24,9 @@ export class AppointmentService {
     private userBehaviorRepository: UserBehaviorRepository,
     private businessClosureRepository: BusinessClosureRepository,
     private rbacService: RBACService,
-    private businessService: BusinessService
+    private businessService: BusinessService,
+    private notificationService: NotificationService,
+    private repositories?: RepositoryContainer
   ) {}
 
   // Helper method to split permission name into resource and action
@@ -60,6 +64,24 @@ export class AppointmentService {
       throw new Error('Service not found or not available');
     }
 
+    // Validate staff member exists and is active for this business
+    if (!this.repositories?.staffRepository) {
+      throw new Error('Staff repository not available');
+    }
+    
+    const staffMember = await this.repositories.staffRepository.findById(data.staffId);
+    if (!staffMember) {
+      throw new Error('Staff member not found');
+    }
+    
+    if (!staffMember.isActive) {
+      throw new Error('Staff member is not active');
+    }
+    
+    if (staffMember.businessId !== data.businessId) {
+      throw new Error('Staff member does not belong to this business');
+    }
+
     // Check appointment time constraints
     const appointmentDateTime = new Date(`${data.date}T${data.startTime}`);
     const now = new Date();
@@ -76,17 +98,18 @@ export class AppointmentService {
       throw new Error(`Appointments cannot be booked more than ${service.maxAdvanceBooking} days in advance`);
     }
 
-    // Check for conflicts
+    // Check for staff-specific conflicts
     const endTime = new Date(appointmentDateTime.getTime() + service.duration * 60000);
     const conflicts = await this.appointmentRepository.findConflictingAppointments(
       data.businessId,
       new Date(data.date),
       appointmentDateTime,
-      endTime
+      endTime,
+      data.staffId // Add staffId to check conflicts for specific staff
     );
 
     if (conflicts.length > 0) {
-      throw new Error('Time slot not available');
+      throw new Error('Staff member is not available at the selected time');
     }
 
     // Create appointment
@@ -94,6 +117,14 @@ export class AppointmentService {
 
     // Update user behavior
     await this.userBehaviorRepository.createOrUpdate(userId);
+
+    // Send notification to business owner/staff about new appointment
+    try {
+      await this.notifyNewAppointment(appointment, service);
+    } catch (notificationError) {
+      // Log notification error but don't fail the appointment creation
+      console.error('Failed to send appointment notification:', notificationError);
+    }
 
     return appointment;
   }
@@ -425,6 +456,34 @@ export class AppointmentService {
     return await this.appointmentRepository.findUpcomingByCustomerId(userId, limit);
   }
 
+  async getNearestAppointmentInCurrentHour(userId: string): Promise<AppointmentWithDetails | null> {
+    const now = new Date();
+    const currentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
+    const nextHour = new Date(currentHour.getTime() + 60 * 60 * 1000);
+    
+    return await this.appointmentRepository.findNearestAppointmentInTimeRange(
+      userId, 
+      currentHour, 
+      nextHour
+    );
+  }
+
+  async getAppointmentsInCurrentHour(userId: string): Promise<AppointmentWithDetails[]> {
+    const now = new Date();
+    const currentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
+    const nextHour = new Date(currentHour.getTime() + 60 * 60 * 1000);
+    
+    return await this.appointmentRepository.findAppointmentsInTimeRange(
+      userId, 
+      currentHour, 
+      nextHour
+    );
+  }
+
+  async markReminderSent(appointmentId: string): Promise<void> {
+    await this.appointmentRepository.markReminderSent(appointmentId);
+  }
+
   async getTodaysAppointments(
     userId: string,
     businessId?: string
@@ -577,11 +636,7 @@ export class AppointmentService {
     return completedAppointment;
   }
 
-  async markReminderSent(appointmentId: string): Promise<void> {
-    await this.appointmentRepository.markReminderSent(appointmentId);
-  }
-
-  // Private methods
+  // Private methods 
   private async handleStatusChange(
     userId: string,
     appointment: AppointmentData,
@@ -662,6 +717,65 @@ export class AppointmentService {
 
     for (const appointmentId of appointmentIds) {
       await this.appointmentRepository.cancel(appointmentId, reason);
+    }
+  }
+
+  /**
+   * Send notification to business owner/staff about new appointment booking
+   */
+  private async notifyNewAppointment(appointment: AppointmentData, service: any): Promise<void> {
+    try {
+      // Get business details to find owner/staff
+      const business = await this.businessService.getBusinessById('system', appointment.businessId);
+      if (!business) {
+        console.error('Business not found for notification:', appointment.businessId);
+        return;
+      }
+
+      // Get customer details for the notification
+      const customer = await this.repositories?.userRepository.findById(appointment.customerId);
+      if (!customer) {
+        console.error('Customer not found for notification:', appointment.customerId);
+        return;
+      }
+
+      // Format appointment date and time
+      const appointmentDate = new Date(appointment.date).toLocaleDateString();
+      const appointmentTime = new Date(appointment.startTime).toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+
+      // Create notification content
+      const title = 'New Appointment Booking';
+      const body = `${customer.firstName} ${customer.lastName} booked ${service.name} for ${appointmentDate} at ${appointmentTime}`;
+
+      // Send push notification to business owner
+      await this.notificationService.sendPushNotification({
+        userId: business.ownerId,
+        appointmentId: appointment.id,
+        businessId: appointment.businessId,
+        title,
+        body,
+        icon: undefined,
+        badge: undefined,
+        data: {
+          appointmentId: appointment.id,
+          customerId: appointment.customerId,
+          customerName: `${customer.firstName} ${customer.lastName}`,
+          serviceName: service.name,
+          appointmentDate,
+          appointmentTime,
+          type: 'new_appointment'
+        },
+        url: `/appointments/${appointment.id}`
+      });
+
+      console.log(`Appointment notification sent to business owner: ${business.ownerId}`);
+
+    } catch (error) {
+      console.error('Error sending new appointment notification:', error);
+      throw error;
     }
   }
 }

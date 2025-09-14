@@ -10,6 +10,8 @@ import { SubscriptionController } from './subscriptionController';
 import { RoleController } from './roleController';
 import { DiscountCodeController } from './discountCodeController';
 import { UsageController } from './usageController';
+import { StaffController } from './staffController';
+import { PushNotificationController } from './pushNotificationController';
 
 // Controller container for dependency injection
 export class ControllerContainer {
@@ -23,12 +25,15 @@ export class ControllerContainer {
   public readonly roleController: RoleController;
   public readonly discountCodeController: DiscountCodeController;
   public readonly usageController: UsageController;
+  public readonly staffController: StaffController;
+  public readonly pushNotificationController: PushNotificationController;
 
   constructor(repositories: RepositoryContainer, services: ServiceContainer) {
     this.businessController = new BusinessController(
       services.businessService,
       services.tokenService,
-      services.rbacService
+      services.rbacService,
+      services.staffService
     );
     this.businessTypeController = new BusinessTypeController(services.businessTypeService);
     this.serviceController = new ServiceController(services.serviceService);
@@ -44,6 +49,8 @@ export class ControllerContainer {
     this.roleController = new RoleController(services.roleService);
     this.discountCodeController = new DiscountCodeController(services.discountCodeService);
     this.usageController = new UsageController(services.usageService);
+    this.staffController = new StaffController(services.staffService);
+    this.pushNotificationController = new PushNotificationController(services.notificationService);
   }
 }
 
@@ -58,5 +65,7 @@ export {
   SubscriptionController,
   RoleController,
   DiscountCodeController,
-  UsageController
+  UsageController,
+  StaffController,
+  PushNotificationController
 };

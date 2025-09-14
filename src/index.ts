@@ -55,7 +55,7 @@ app.use(cors({
   origin: config.CORS_ORIGINS,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-role-update']
 }));
 
 app.use(compression());
@@ -174,7 +174,7 @@ initializeBusinessContextMiddleware(repositories);
 setServicesForShutdown(services);
 
 // Mount API routes
-app.use('/api', createRoutes(controllers));
+app.use('/api', createRoutes(controllers, services));
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -197,6 +197,14 @@ const server = app.listen(PORT, () => {
     logger.info(`📅 Subscription scheduler started in DEVELOPMENT mode with accelerated schedules`);
   } else {
     logger.info(`📅 Subscription scheduler disabled in ${config.NODE_ENV} mode`);
+  }
+
+  // Start appointment reminder service
+  if (config.NODE_ENV !== 'test') {
+    services.appointmentReminderService.start();
+    logger.info(`📅 Appointment reminder service started (checks every minute)`);
+  } else {
+    logger.info(`📅 Appointment reminder service disabled in test mode`);
   }
 });
 

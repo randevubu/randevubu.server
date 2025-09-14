@@ -20,6 +20,8 @@ import { AppointmentRescheduleService } from './appointmentRescheduleService';
 import { DiscountCodeService } from './discountCodeService';
 import { UsageService } from './usageService';
 import { SubscriptionSchedulerService } from './subscriptionSchedulerService';
+import { StaffService } from './staffService';
+import { AppointmentReminderService } from './appointmentReminderService';
 
 // Service container for dependency injection
 export class ServiceContainer {
@@ -43,6 +45,8 @@ export class ServiceContainer {
   public readonly discountCodeService: DiscountCodeService;
   public readonly usageService: UsageService;
   public readonly subscriptionSchedulerService: SubscriptionSchedulerService;
+  public readonly staffService: StaffService;
+  public readonly appointmentReminderService: AppointmentReminderService;
 
   constructor(repositories: RepositoryContainer, private prisma: PrismaClient) {
     this.tokenService = new TokenService(repositories);
@@ -59,14 +63,20 @@ export class ServiceContainer {
     // Business services
     this.businessService = new BusinessService(repositories.businessRepository, this.rbacService, this.prisma);
     this.businessTypeService = new BusinessTypeService(repositories.businessTypeRepository);
-    this.serviceService = new ServiceService(repositories.serviceRepository, this.rbacService);
+    this.serviceService = new ServiceService(repositories.serviceRepository, repositories.businessRepository, this.rbacService);
+    
+    // Create notification service first for appointment service dependency
+    this.notificationService = new NotificationService(repositories.prismaClient);
+    
     this.appointmentService = new AppointmentService(
       repositories.appointmentRepository,
       repositories.serviceRepository,
       repositories.userBehaviorRepository,
       repositories.businessClosureRepository,
       this.rbacService,
-      this.businessService
+      this.businessService,
+      this.notificationService,
+      repositories
     );
     this.userBehaviorService = new UserBehaviorService(repositories.userBehaviorRepository, this.rbacService);
     this.businessClosureService = new BusinessClosureService(
@@ -86,7 +96,6 @@ export class ServiceContainer {
     this.paymentService = new PaymentService(repositories.prismaClient, this.discountCodeService);
 
     // Enhanced closure services
-    this.notificationService = new NotificationService(repositories.prismaClient);
     this.closureAnalyticsService = new ClosureAnalyticsService(repositories.prismaClient);
     this.appointmentRescheduleService = new AppointmentRescheduleService(
       repositories.prismaClient,
@@ -105,6 +114,20 @@ export class ServiceContainer {
       this.prisma,
       this.paymentService,
       this.notificationService
+    );
+
+    // Staff management service
+    this.staffService = new StaffService(
+      repositories,
+      this.phoneVerificationService,
+      this.rbacService
+    );
+
+    // Appointment reminder service
+    this.appointmentReminderService = new AppointmentReminderService(
+      this.prisma,
+      this.notificationService,
+      this.appointmentService
     );
   }
 }
@@ -129,5 +152,7 @@ export {
   AppointmentRescheduleService,
   DiscountCodeService,
   UsageService,
-  SubscriptionSchedulerService
+  SubscriptionSchedulerService,
+  StaffService,
+  AppointmentReminderService
 };

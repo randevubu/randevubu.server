@@ -471,6 +471,7 @@ export class RoleRepository {
 
   async getUserRoles(userId: string): Promise<RoleData[]> {
     try {
+      // Get global roles from UserRole table
       const userRoles = await this.prisma.userRole.findMany({
         where: {
           userId,
@@ -486,7 +487,55 @@ export class RoleRepository {
         }
       });
 
-      return userRoles.map(ur => ur.role) as RoleData[];
+      // Get business staff roles from BusinessStaff table
+      const businessStaffRoles = await this.prisma.businessStaff.findMany({
+        where: {
+          userId,
+          isActive: true,
+          business: {
+            isActive: true,
+            deletedAt: null
+          }
+        },
+        select: {
+          role: true,
+          businessId: true
+        }
+      });
+
+      // Convert global roles
+      const globalRoles = userRoles.map(ur => ur.role) as RoleData[];
+      
+      // Convert BusinessStaff roles to RoleData format
+      // Create synthetic role entries for BusinessStaff roles
+      const staffRoleMap: { [key: string]: RoleData } = {};
+      
+      for (const staff of businessStaffRoles) {
+        const roleKey = `BUSINESS_${staff.role}`;
+        if (!staffRoleMap[roleKey]) {
+          staffRoleMap[roleKey] = {
+            id: `business_staff_${staff.role.toLowerCase()}`,
+            name: staff.role,
+            displayName: `Business ${staff.role}`,
+            description: `${staff.role} role in business context`,
+            level: this.getStaffRoleLevel(staff.role),
+            isSystem: true,
+            isActive: true,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          } as RoleData;
+        }
+      }
+
+      // Combine global roles and business staff roles
+      const allRoles = [...globalRoles, ...Object.values(staffRoleMap)];
+      
+      // Remove duplicates based on role name
+      const uniqueRoles = allRoles.filter((role, index, self) =>
+        index === self.findIndex(r => r.name === role.name)
+      );
+
+      return uniqueRoles;
     } catch (error) {
       logger.error('Failed to get user roles', {
         userId,
@@ -494,6 +543,17 @@ export class RoleRepository {
       });
       throw error;
     }
+  }
+
+  private getStaffRoleLevel(role: string): number {
+    // Define role hierarchy levels for BusinessStaff roles
+    const roleLevels = {
+      'OWNER': 300,
+      'MANAGER': 250, 
+      'STAFF': 200,
+      'RECEPTIONIST': 150
+    };
+    return roleLevels[role as keyof typeof roleLevels] || 100;
   }
 
   async getUsersByRole(roleId: string): Promise<string[]> {

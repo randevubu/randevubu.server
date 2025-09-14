@@ -12,6 +12,30 @@ import { convertBusinessData, convertBusinessDataArray } from '../utils/prismaTy
 export class AppointmentRepository {
   constructor(private prisma: PrismaClient) {}
 
+  // Helper method to check if prices should be hidden based on business settings
+  private shouldHidePrice(businessSettings: any, serviceShowPrice: boolean = true): boolean {
+    const hideAllServicePrices = businessSettings?.priceVisibility?.hideAllServicePrices === true;
+    return hideAllServicePrices || serviceShowPrice === false;
+  }
+
+  // Helper method to filter price information from appointment data
+  private filterPriceInfo(appointment: any, shouldHide: boolean): any {
+    if (!shouldHide) return appointment;
+    
+    return {
+      ...appointment,
+      price: undefined,
+      currency: undefined,
+      ...(appointment.service && {
+        service: {
+          ...appointment.service,
+          price: undefined,
+          currency: undefined
+        }
+      })
+    };
+  }
+
   async create(customerId: string, data: CreateAppointmentRequest): Promise<AppointmentData> {
     const service = await this.prisma.service.findUnique({
       where: { id: data.serviceId }
@@ -108,10 +132,21 @@ export class AppointmentRepository {
               name: true,
               address: true,
               phone: true,
-              timezone: true
+              timezone: true,
+              settings: true
             }
           },
-          service: true,
+          service: {
+            select: {
+              id: true,
+              name: true,
+              duration: true,
+              price: true,
+              currency: true,
+              showPrice: true,
+              businessId: true
+            }
+          },
           staff: {
             include: {
               user: {
@@ -138,7 +173,17 @@ export class AppointmentRepository {
     ]);
 
     return {
-      appointments: convertBusinessDataArray<AppointmentWithDetails>(appointments),
+      appointments: appointments.map(apt => {
+        const businessSettings = apt.business?.settings as any;
+        const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+        
+        const filteredApt = this.filterPriceInfo({
+          ...apt,
+          staff: apt.staff?.user
+        }, shouldHide);
+        
+        return filteredApt;
+      }) as unknown as AppointmentWithDetails[],
       total,
       page,
       totalPages: Math.ceil(total / limit)
@@ -288,11 +333,21 @@ export class AppointmentRepository {
           currency: true,
           customerNotes: true,
           internalNotes: true,
+          business: {
+            select: {
+              id: true,
+              name: true,
+              settings: true
+            }
+          },
           service: {
             select: {
               id: true,
               name: true,
-              duration: true
+              duration: true,
+              price: true,
+              currency: true,
+              showPrice: true
             }
           },
           staff: {
@@ -321,10 +376,15 @@ export class AppointmentRepository {
     ]);
 
     return {
-      appointments: appointments.map(apt => ({
-        ...apt,
-        staff: apt.staff?.user
-      })),
+      appointments: appointments.map(apt => {
+        const businessSettings = apt.business?.settings as any;
+        const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+        
+        return this.filterPriceInfo({
+          ...apt,
+          staff: apt.staff?.user
+        }, shouldHide);
+      }),
       total,
       page,
       totalPages: Math.ceil(total / limit)
@@ -420,7 +480,10 @@ export class AppointmentRepository {
         where.startTime.gte = new Date(filters.startDate);
       }
       if (filters.endDate) {
-        where.startTime.lte = new Date(filters.endDate);
+        // Set to end of day (23:59:59.999) instead of beginning of day (00:00:00)
+        const endDate = new Date(filters.endDate);
+        endDate.setHours(23, 59, 59, 999);
+        where.startTime.lte = endDate;
       }
     }
 
@@ -567,6 +630,102 @@ export class AppointmentRepository {
     return convertBusinessDataArray<AppointmentWithDetails>(result);
   }
 
+  async findNearestAppointmentInTimeRange(
+    customerId: string,
+    startTime: Date,
+    endTime: Date
+  ): Promise<AppointmentWithDetails | null> {
+    const result = await this.prisma.appointment.findFirst({
+      where: {
+        customerId,
+        startTime: {
+          gte: startTime,
+          lte: endTime
+        },
+        status: AppointmentStatus.CONFIRMED
+      },
+      orderBy: [
+        { startTime: 'asc' }
+      ],
+      include: {
+        business: true,
+        service: true,
+        staff: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        customer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phoneNumber: true
+          }
+        }
+      }
+    });
+    return result ? convertBusinessData<AppointmentWithDetails>(result) : null;
+  }
+
+  async findAppointmentsInTimeRange(
+    customerId: string,
+    startTime: Date,
+    endTime: Date
+  ): Promise<AppointmentWithDetails[]> {
+    const result = await this.prisma.appointment.findMany({
+      where: {
+        customerId,
+        startTime: {
+          gte: startTime,
+          lte: endTime
+        },
+        status: AppointmentStatus.CONFIRMED
+      },
+      orderBy: [
+        { startTime: 'asc' }
+      ],
+      include: {
+        business: true,
+        service: true,
+        staff: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        customer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phoneNumber: true
+          }
+        }
+      }
+    });
+    return convertBusinessDataArray<AppointmentWithDetails>(result);
+  }
+
+  async markReminderSent(appointmentId: string): Promise<void> {
+    await this.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        reminderSent: true,
+        reminderSentAt: new Date()
+      }
+    });
+  }
+
   async findTodaysAppointments(businessId: string): Promise<any[]> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -592,11 +751,21 @@ export class AppointmentRepository {
         price: true,
         currency: true,
         customerNotes: true,
+        business: {
+          select: {
+            id: true,
+            name: true,
+            settings: true
+          }
+        },
         service: {
           select: {
             id: true,
             name: true,
-            duration: true
+            duration: true,
+            price: true,
+            currency: true,
+            showPrice: true
           }
         },
         staff: {
@@ -619,10 +788,15 @@ export class AppointmentRepository {
       }
     });
     
-    return result.map(apt => ({
-      ...apt,
-      staff: apt.staff?.user
-    }));
+    return result.map(apt => {
+      const businessSettings = apt.business?.settings as any;
+      const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+      
+      return this.filterPriceInfo({
+        ...apt,
+        staff: apt.staff?.user
+      }, shouldHide);
+    });
   }
 
   async findTodaysAppointmentsForBusinesses(businessIds: string[]): Promise<any[]> {
@@ -650,11 +824,21 @@ export class AppointmentRepository {
         price: true,
         currency: true,
         customerNotes: true,
+        business: {
+          select: {
+            id: true,
+            name: true,
+            settings: true
+          }
+        },
         service: {
           select: {
             id: true,
             name: true,
-            duration: true
+            duration: true,
+            price: true,
+            currency: true,
+            showPrice: true
           }
         },
         staff: {
@@ -677,10 +861,15 @@ export class AppointmentRepository {
       }
     });
     
-    return result.map(apt => ({
-      ...apt,
-      staff: apt.staff?.user
-    }));
+    return result.map(apt => {
+      const businessSettings = apt.business?.settings as any;
+      const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+      
+      return this.filterPriceInfo({
+        ...apt,
+        staff: apt.staff?.user
+      }, shouldHide);
+    });
   }
 
   async findConflictingAppointments(
@@ -812,15 +1001,6 @@ export class AppointmentRepository {
     return result;
   }
 
-  async markReminderSent(id: string): Promise<void> {
-    await this.prisma.appointment.update({
-      where: { id },
-      data: {
-        reminderSent: true,
-        reminderSentAt: new Date()
-      }
-    });
-  }
 
   async findByBusinessAndDateRange(
     businessId: string,
@@ -868,7 +1048,9 @@ export class AppointmentRepository {
             id: true,
             name: true,
             duration: true,
-            price: true
+            price: true,
+            currency: true,
+            showPrice: true
           }
         },
         staff: {
@@ -889,13 +1071,19 @@ export class AppointmentRepository {
             id: true,
             name: true,
             email: true,
-            phone: true
+            phone: true,
+            settings: true
           }
         }
       },
       orderBy: { startTime: 'asc' }
     });
 
-    return convertBusinessDataArray<AppointmentWithDetails>(appointments as any);
+    return appointments.map(apt => {
+      const businessSettings = apt.business?.settings as any;
+      const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+      
+      return this.filterPriceInfo(apt, shouldHide);
+    }) as unknown as AppointmentWithDetails[];
   }
 }

@@ -1,6 +1,26 @@
 import { VerificationPurpose, AuditAction } from '@prisma/client';
 import { Request } from 'express';
 
+// Declare global Express namespace for Multer
+declare global {
+  namespace Express {
+    interface Multer {
+      File: {
+        fieldname: string;
+        originalname: string;
+        encoding: string;
+        mimetype: string;
+        size: number;
+        buffer: Buffer;
+        destination?: string;
+        filename?: string;
+        path?: string;
+        stream?: NodeJS.ReadableStream;
+      };
+    }
+  }
+}
+
 // Core Authentication Types
 export interface UserProfile {
   id: string;
@@ -100,6 +120,8 @@ export interface UpdateUserData {
   avatar?: string;
   timezone?: string;
   language?: string;
+  isVerified?: boolean;
+  isActive?: boolean;
 }
 
 export interface LoginResult {
@@ -379,6 +401,11 @@ export interface AuthenticatedRequest extends Request {
   token?: JWTPayload;
 }
 
+// Authenticated request with file upload
+export interface AuthenticatedRequestWithFile extends AuthenticatedRequest {
+  file?: Express.Multer.File;
+}
+
 // Guaranteed authenticated request - user is always present
 export interface GuaranteedAuthRequest extends Request {
   user: AuthenticatedUser;
@@ -448,7 +475,10 @@ export enum PermissionName {
   // Role Management
   MANAGE_ROLES = 'role:manage',
   VIEW_ROLES = 'role:view',
-  VIEW_OWN_PROFILE = 'user:view_own_profile'
+  VIEW_OWN_PROFILE = 'user:view_own_profile',
+  // Notification Management
+  SEND_NOTIFICATIONS = 'notification:send',
+  MANAGE_NOTIFICATIONS = 'notification:manage'
 }
 
 // Standard Role Names

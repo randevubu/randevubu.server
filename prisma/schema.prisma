@@ -65,34 +65,36 @@ model RefreshToken {
 }
 
 model User {
-  id                   String                @id
-  avatar               String?
-  timezone             String?               @default("Europe/Istanbul")
-  language             String?               @default("tr")
-  createdAt            DateTime              @default(now())
-  deletedAt            DateTime?
-  failedLoginAttempts  Int                   @default(0)
-  firstName            String?
-  isActive             Boolean               @default(true)
-  isVerified           Boolean               @default(false)
-  lastLoginAt          DateTime?
-  lastName             String?
-  lockedUntil          DateTime?
-  phoneNumber          String                @unique
-  updatedAt            DateTime
-  appointments         Appointment[]
-  auditLogs            AuditLog[]
-  availabilityAlerts   AvailabilityAlert[]
-  staffPositions       BusinessStaff[]
-  ownedBusinesses      Business[]
-  closureNotifications ClosureNotification[]
-  phoneVerifications   PhoneVerification[]
-  refreshTokens        RefreshToken[]
-  behavior             UserBehavior?
-  grantedRoles         UserRole[]            @relation("UserRoleGrantedBy")
-  userRoles            UserRole[]
-  createdDiscountCodes DiscountCode[]        @relation("DiscountCodeCreatedBy")
-  discountCodeUsages   DiscountCodeUsage[]   @relation("DiscountCodeUsedBy")
+  id                     String                  @id
+  avatar                 String?
+  timezone               String?                 @default("Europe/Istanbul")
+  language               String?                 @default("tr")
+  createdAt              DateTime                @default(now())
+  deletedAt              DateTime?
+  failedLoginAttempts    Int                     @default(0)
+  firstName              String?
+  isActive               Boolean                 @default(true)
+  isVerified             Boolean                 @default(false)
+  lastLoginAt            DateTime?
+  lastName               String?
+  lockedUntil            DateTime?
+  phoneNumber            String                  @unique
+  updatedAt              DateTime
+  appointments           Appointment[]
+  auditLogs              AuditLog[]
+  availabilityAlerts     AvailabilityAlert[]
+  staffPositions         BusinessStaff[]
+  ownedBusinesses        Business[]
+  closureNotifications   ClosureNotification[]
+  phoneVerifications     PhoneVerification[]
+  refreshTokens          RefreshToken[]
+  behavior               UserBehavior?
+  grantedRoles           UserRole[]              @relation("UserRoleGrantedBy")
+  userRoles              UserRole[]
+  createdDiscountCodes   DiscountCode[]          @relation("DiscountCodeCreatedBy")
+  discountCodeUsages     DiscountCodeUsage[]     @relation("DiscountCodeUsedBy")
+  pushSubscriptions      PushSubscription[]
+  notificationPreference NotificationPreference?
 
   @@index([createdAt])
   @@index([isActive])
@@ -295,7 +297,7 @@ model Business {
   latitude           Float?
   longitude          Float?
   businessHours      Json?
-  timezone           String                @default("UTC")
+  timezone           String                @default("Europe/Istanbul")
   primaryColor       String?
   theme              Json?
   settings           Json?
@@ -311,6 +313,8 @@ model Business {
   coverImageUrl      String?
   isClosed           Boolean               @default(false)
   logoUrl            String?
+  profileImageUrl    String?
+  galleryImages      String[]              @default([])
   appointments       Appointment[]
   availabilityAlerts AvailabilityAlert[]
   closures           BusinessClosure[]
@@ -324,6 +328,8 @@ model Business {
   workingHours       WorkingHours[]
   usageRecords       BusinessUsage[]       @relation("BusinessUsage")
   dailySmsUsage      DailySmsUsage[]       @relation("DailySmsUsage")
+  hoursOverrides     BusinessHoursOverride[]
+  pushNotifications  PushNotification[]
 
   @@index([ownerId])
   @@index([businessTypeId])
@@ -368,6 +374,7 @@ model Service {
   currency           String              @default("TRY")
   image              String?
   isActive           Boolean             @default(true)
+  showPrice          Boolean             @default(true)
   sortOrder          Int                 @default(0)
   pricing            Json?
   bufferTime         Int                 @default(0)
@@ -431,6 +438,7 @@ model Appointment {
   service               Service                @relation(fields: [serviceId], references: [id])
   staff                 BusinessStaff?         @relation(fields: [staffId], references: [id])
   rescheduleSuggestions RescheduleSuggestion[]
+  pushNotifications     PushNotification[]
 
   @@index([businessId])
   @@index([serviceId])
@@ -658,6 +666,7 @@ enum VerificationPurpose {
   LOGIN
   PHONE_CHANGE
   ACCOUNT_RECOVERY
+  STAFF_INVITATION
 
   @@map("verification_purpose")
 }
@@ -872,4 +881,99 @@ model DailySmsUsage {
   @@index([businessId])
   @@index([date])
   @@map("daily_sms_usage")
+}
+
+model BusinessHoursOverride {
+  id                String   @id
+  businessId        String
+  date              DateTime @db.Date
+  isOpen            Boolean
+  openTime          String?
+  closeTime         String?
+  breaks            Json?
+  reason            String?
+  isRecurring       Boolean  @default(false)
+  recurringPattern  Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, date])
+  @@index([businessId])
+  @@index([date])
+  @@index([isRecurring])
+  @@map("business_hours_overrides")
+}
+
+model PushSubscription {
+  id                String                    @id
+  userId            String
+  endpoint          String
+  p256dh            String
+  auth              String
+  deviceName        String?
+  deviceType        String?                   @default("web")
+  userAgent         String?
+  isActive          Boolean                   @default(true)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  lastUsedAt        DateTime                  @default(now())
+  user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pushNotifications PushNotification[]
+  
+  @@unique([userId, endpoint])
+  @@index([userId])
+  @@index([isActive])
+  @@index([lastUsedAt])
+  @@map("push_subscriptions")
+}
+
+model NotificationPreference {
+  id                           String   @id
+  userId                       String   @unique
+  enableAppointmentReminders   Boolean  @default(true)
+  enableBusinessNotifications  Boolean  @default(true)
+  enablePromotionalMessages    Boolean  @default(false)
+  reminderTiming               Json     @default("{\"hours\": [1, 24]}")
+  preferredChannels            Json     @default("{\"channels\": [\"PUSH\", \"SMS\"]}")
+  quietHours                   Json?
+  timezone                     String   @default("Europe/Istanbul")
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+  user                         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("notification_preferences")
+}
+
+model PushNotification {
+  id                 String              @id
+  subscriptionId     String
+  appointmentId      String?
+  businessId         String?
+  title              String
+  body               String
+  icon               String?
+  badge              String?
+  data               Json?
+  status             NotificationStatus  @default(PENDING)
+  sentAt             DateTime?
+  deliveredAt        DateTime?
+  readAt             DateTime?
+  errorMessage       String?
+  retryCount         Int                 @default(0)
+  maxRetries         Int                 @default(3)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  subscription       PushSubscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  appointment        Appointment?        @relation(fields: [appointmentId], references: [id])
+  business           Business?           @relation(fields: [businessId], references: [id])
+  
+  @@index([subscriptionId])
+  @@index([appointmentId])
+  @@index([businessId])
+  @@index([status])
+  @@index([sentAt])
+  @@index([createdAt])
+  @@map("push_notifications")
 }

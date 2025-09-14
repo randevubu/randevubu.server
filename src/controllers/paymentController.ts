@@ -42,6 +42,13 @@ export class PaymentController {
       const validatedData = createSubscriptionPaymentSchema.parse(req.body);
       const userId = req.user.id;
 
+      console.log(`🔍 Payment request received:`, {
+        businessId,
+        planId: validatedData.planId,
+        discountCode: validatedData.discountCode,
+        hasCard: !!validatedData.card
+      });
+
       const result = await this.paymentService.createSubscriptionForBusiness(
         businessId,
         validatedData.planId,
@@ -58,13 +65,16 @@ export class PaymentController {
         }
       );
 
+      console.log(`🔍 Payment service result:`, result);
+
       if (result.success) {
         res.status(201).json({
           success: true,
           data: {
             subscriptionId: result.subscriptionId,
             paymentId: result.paymentId,
-            message: result.message
+            message: result.message,
+            discountApplied: result.discountApplied
           }
         });
       } else {

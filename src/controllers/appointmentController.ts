@@ -761,4 +761,91 @@ export class AppointmentController {
       });
     }
   }
+
+  /**
+   * Get nearest appointment in current hour for the authenticated user
+   * GET /api/v1/appointments/nearest-current-hour
+   */
+  async getNearestCurrentHour(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      
+      const appointment = await this.appointmentService.getNearestAppointmentInCurrentHour(userId);
+      
+      if (!appointment) {
+        res.json({
+          success: true,
+          data: null,
+          message: 'No appointments found in the current hour'
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: {
+          id: appointment.id,
+          businessId: appointment.businessId,
+          date: appointment.date,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+          status: appointment.status,
+          service: {
+            id: appointment.service.id,
+            name: appointment.service.name,
+            duration: appointment.service.duration
+          },
+          business: {
+            id: appointment.business.id,
+            name: appointment.business.name,
+            timezone: appointment.business.timezone
+          },
+          timeUntilAppointment: Math.max(0, appointment.startTime.getTime() - Date.now())
+        }
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * Get all appointments in current hour for the authenticated user
+   * GET /api/v1/appointments/current-hour
+   */
+  async getCurrentHourAppointments(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      
+      const appointments = await this.appointmentService.getAppointmentsInCurrentHour(userId);
+      
+      res.json({
+        success: true,
+        data: appointments.map(appointment => ({
+          id: appointment.id,
+          businessId: appointment.businessId,
+          date: appointment.date,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+          status: appointment.status,
+          service: {
+            id: appointment.service.id,
+            name: appointment.service.name,
+            duration: appointment.service.duration
+          },
+          business: {
+            id: appointment.business.id,
+            name: appointment.business.name,
+            timezone: appointment.business.timezone
+          },
+          timeUntilAppointment: Math.max(0, appointment.startTime.getTime() - Date.now())
+        })),
+        meta: {
+          count: appointments.length,
+          currentHour: new Date().getHours()
+        }
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
 }

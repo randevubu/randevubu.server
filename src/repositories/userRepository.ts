@@ -64,7 +64,7 @@ export class PrismaUserRepository implements UserRepository {
         phoneNumber: data.phoneNumber,
         firstName: data.firstName,
         lastName: data.lastName,
-        timezone: data.timezone || 'UTC',
+        timezone: data.timezone || 'Europe/Istanbul',
         language: data.language || 'en',
         isVerified: false,
         isActive: true,

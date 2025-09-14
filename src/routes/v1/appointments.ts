@@ -1271,5 +1271,123 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
     appointmentController.batchCancelAppointments.bind(appointmentController)
   );
 
+  /**
+   * @swagger
+   * /api/v1/appointments/nearest-current-hour:
+   *   get:
+   *     tags: [Appointments]
+   *     summary: Get nearest appointment in current hour
+   *     description: Get the nearest appointment for the authenticated user within the current hour
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Nearest appointment retrieved successfully or null if none found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   oneOf:
+   *                     - type: "null"
+   *                     - type: object
+   *                       properties:
+   *                         id:
+   *                           type: string
+   *                         businessId:
+   *                           type: string
+   *                         startTime:
+   *                           type: string
+   *                           format: date-time
+   *                         endTime:
+   *                           type: string
+   *                           format: date-time
+   *                         status:
+   *                           type: string
+   *                         service:
+   *                           type: object
+   *                           properties:
+   *                             name:
+   *                               type: string
+   *                             duration:
+   *                               type: number
+   *                         business:
+   *                           type: object
+   *                           properties:
+   *                             name:
+   *                               type: string
+   *                             timezone:
+   *                               type: string
+   *                         timeUntilAppointment:
+   *                           type: number
+   *                           description: Milliseconds until appointment
+   *       401:
+   *         description: Unauthorized
+   */
+  router.get(
+    '/nearest-current-hour',
+    appointmentController.getNearestCurrentHour.bind(appointmentController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/appointments/current-hour:
+   *   get:
+   *     tags: [Appointments]
+   *     summary: Get all appointments in current hour
+   *     description: Get all appointments for the authenticated user within the current hour
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Appointments retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id:
+   *                         type: string
+   *                       businessId:
+   *                         type: string
+   *                       startTime:
+   *                         type: string
+   *                         format: date-time
+   *                       endTime:
+   *                         type: string
+   *                         format: date-time
+   *                       status:
+   *                         type: string
+   *                       service:
+   *                         type: object
+   *                       business:
+   *                         type: object
+   *                       timeUntilAppointment:
+   *                         type: number
+   *                 meta:
+   *                   type: object
+   *                   properties:
+   *                     count:
+   *                       type: number
+   *                     currentHour:
+   *                       type: number
+   *       401:
+   *         description: Unauthorized
+   */
+  router.get(
+    '/current-hour',
+    appointmentController.getCurrentHourAppointments.bind(appointmentController)
+  );
+
   return router;
 }

@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { UserBehaviorData, UserBehaviorSummary } from '../types/business';
 import { convertBusinessData } from '../utils/prismaTypeHelpers';
+import { ReliabilityScoreCalculator } from '../utils/reliabilityScoreCalculator';
 
 export class UserBehaviorRepository {
   constructor(private prisma: PrismaClient) {}
@@ -240,20 +241,19 @@ export class UserBehaviorRepository {
       ? (behavior.noShowAppointments / behavior.totalAppointments) * 100 
       : 0;
 
-    // Calculate reliability score (0-100)
-    let reliabilityScore = 100;
-    reliabilityScore -= cancellationRate * 0.5; // Cancellations are less severe
-    reliabilityScore -= noShowRate * 1.5; // No-shows are more severe
-    reliabilityScore -= behavior.currentStrikes * 10; // Strikes penalty
-    reliabilityScore = Math.max(0, Math.min(100, reliabilityScore));
+    // Calculate reliability score using centralized calculator
+    const reliabilityResult = ReliabilityScoreCalculator.calculate({
+      totalAppointments: behavior.totalAppointments,
+      completedAppointments: behavior.completedAppointments,
+      cancelledAppointments: behavior.canceledAppointments,
+      noShowAppointments: behavior.noShowAppointments,
+      currentStrikes: behavior.currentStrikes,
+      isBanned: behavior.isBanned,
+      bannedUntil: behavior.bannedUntil
+    });
 
-    // Determine risk level
-    let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
-    if (behavior.currentStrikes >= 2 || noShowRate > 20) {
-      riskLevel = 'HIGH';
-    } else if (behavior.currentStrikes >= 1 || cancellationRate > 30 || noShowRate > 10) {
-      riskLevel = 'MEDIUM';
-    }
+    const reliabilityScore = reliabilityResult.score;
+    const riskLevel = reliabilityResult.riskLevel;
 
     return {
       userId,
