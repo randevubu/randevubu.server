@@ -112,5 +112,14 @@
       "emailDeliveryFailed": "E-posta gönderilemedi",
       "disabled": "Bildirimler devre dışı"
     }
+  },
+  "notifications": {
+    "appointmentReminder": "{{businessName}}'da {{serviceName}} hizmetiniz için {{time}} saatinde randevunuz var",
+    "businessClosureNotice": "{{businessName}} {{startDate}} tarihinden itibaren{{#endDate}} {{endDate}} tarihine kadar{{/endDate}} kapanacak. Sebep: {{reason}}",
+    "availabilityAlert": "Harika haber! {{businessName}}'da{{#serviceName}} {{serviceName}} için{{/serviceName}} {{slotCount}} müsait slot var. Hemen rezervasyon yapın.",
+    "rescheduleNotification": "{{businessName}}'da {{serviceName}} hizmetiniz için {{originalTime}} tarihindeki randevunuz iş yeri kapanışı nedeniyle yeniden planlanması gerekiyor. {{suggestionCount}} alternatif saat seçeneğiniz mevcut.",
+    "subscriptionRenewalConfirmation": "{{businessName}} için {{planName}} aboneliğiniz başarıyla yenilendi. Sonraki faturalandırma tarihi: {{nextBillingDate}}.",
+    "subscriptionRenewalReminder": "{{businessName}} için {{planName}} aboneliğinizin süresi {{expiryDate}} tarihinde doluyor. Hizmet kesintisini önlemek için lütfen yenileyin.",
+    "paymentFailureNotification": "{{businessName}} aboneliğiniz için ödeme başarısız. Başarısız deneme sayısı: {{failedPaymentCount}}. Hizmet {{expiryDate}} tarihinde sona eriyor. Lütfen ödeme yönteminizi güncelleyin."
   }
 }

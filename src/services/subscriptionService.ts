@@ -351,7 +351,6 @@ export class SubscriptionService {
     limits: {
       maxBusinesses: number;
       maxStaffPerBusiness: number;
-      maxAppointmentsPerDay: number;
     };
     usage: {
       currentBusinesses: number;

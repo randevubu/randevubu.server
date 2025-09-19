@@ -234,7 +234,6 @@ export interface SubscriptionPlanData {
   billingInterval: string;
   maxBusinesses: number;
   maxStaffPerBusiness: number;
-  maxAppointmentsPerDay: number;
   features: string[];
   isActive: boolean;
   isPopular: boolean;
@@ -1006,5 +1005,85 @@ export interface UpcomingAppointment {
     firstName?: string;
     lastName?: string;
     phoneNumber: string;
+  };
+}
+
+// Business Notification Settings Types
+export interface BusinessNotificationSettingsData {
+  id: string;
+  businessId: string;
+  enableAppointmentReminders: boolean;
+  reminderChannels: NotificationChannel[];
+  reminderTiming: number[]; // minutes before appointment
+  smsEnabled: boolean;
+  pushEnabled: boolean;
+  emailEnabled: boolean;
+  quietHours?: {
+    start: string; // HH:MM format
+    end: string;   // HH:MM format
+  };
+  timezone: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface BusinessNotificationSettingsRequest {
+  enableAppointmentReminders?: boolean;
+  reminderChannels?: NotificationChannel[];
+  reminderTiming?: number[]; // minutes before appointment (e.g., [60, 1440] for 1 hour and 24 hours)
+  smsEnabled?: boolean;
+  pushEnabled?: boolean;
+  emailEnabled?: boolean;
+  quietHours?: {
+    start: string; // HH:MM format (e.g., "22:00")
+    end: string;   // HH:MM format (e.g., "08:00")
+  };
+  timezone?: string;
+}
+
+export interface BusinessNotificationSettingsResponse {
+  id: string;
+  businessId: string;
+  enableAppointmentReminders: boolean;
+  reminderChannels: NotificationChannel[];
+  reminderTiming: number[];
+  smsEnabled: boolean;
+  pushEnabled: boolean;
+  emailEnabled: boolean;
+  quietHours?: {
+    start: string;
+    end: string;
+  };
+  timezone: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TestReminderRequest {
+  appointmentId?: string; // Optional - will create a mock appointment if not provided
+  channels?: NotificationChannel[]; // Optional - will use business settings if not provided
+  customMessage?: string; // Optional custom message for testing
+}
+
+// Business Staff Privacy Settings Types
+export interface BusinessStaffPrivacySettings {
+  hideStaffNames: boolean;
+  staffDisplayMode: 'NAMES' | 'ROLES' | 'GENERIC';
+  customStaffLabels: {
+    owner: string;
+    manager: string;
+    staff: string;
+    receptionist: string;
+  };
+}
+
+export interface BusinessStaffPrivacySettingsRequest {
+  hideStaffNames?: boolean;
+  staffDisplayMode?: 'NAMES' | 'ROLES' | 'GENERIC';
+  customStaffLabels?: {
+    owner?: string;
+    manager?: string;
+    staff?: string;
+    receptionist?: string;
   };
 }

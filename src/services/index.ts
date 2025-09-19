@@ -127,7 +127,8 @@ export class ServiceContainer {
     this.appointmentReminderService = new AppointmentReminderService(
       this.prisma,
       this.notificationService,
-      this.appointmentService
+      this.appointmentService,
+      this.businessService
     );
   }
 }

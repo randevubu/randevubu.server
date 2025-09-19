@@ -1,5 +1,5 @@
 import { VerificationPurpose, BusinessStaffRole } from '@prisma/client';
-import { BusinessStaffData } from '../types/business';
+import { BusinessStaffData, BusinessStaffPrivacySettings } from '../types/business';
 import { StaffRepository, CreateStaffRequest, UpdateStaffRequest, StaffWithUser } from '../repositories/staffRepository';
 import { RepositoryContainer } from '../repositories';
 import { PhoneVerificationService } from './phoneVerificationService';
@@ -435,6 +435,53 @@ export class StaffService {
     return maskedPart + phoneNumber.slice(-visibleDigits);
   }
 
+  private getStaffPrivacySettings(businessSettings: any): BusinessStaffPrivacySettings {
+    const defaultSettings: BusinessStaffPrivacySettings = {
+      hideStaffNames: false,
+      staffDisplayMode: 'NAMES',
+      customStaffLabels: {
+        owner: 'Owner',
+        manager: 'Manager',
+        staff: 'Staff',
+        receptionist: 'Receptionist',
+      },
+    };
+
+    if (!businessSettings?.staffPrivacy) {
+      return defaultSettings;
+    }
+
+    return {
+      hideStaffNames: businessSettings.staffPrivacy.hideStaffNames ?? defaultSettings.hideStaffNames,
+      staffDisplayMode: businessSettings.staffPrivacy.staffDisplayMode ?? defaultSettings.staffDisplayMode,
+      customStaffLabels: {
+        owner: businessSettings.staffPrivacy.customStaffLabels?.owner ?? defaultSettings.customStaffLabels.owner,
+        manager: businessSettings.staffPrivacy.customStaffLabels?.manager ?? defaultSettings.customStaffLabels.manager,
+        staff: businessSettings.staffPrivacy.customStaffLabels?.staff ?? defaultSettings.customStaffLabels.staff,
+        receptionist: businessSettings.staffPrivacy.customStaffLabels?.receptionist ?? defaultSettings.customStaffLabels.receptionist,
+      },
+    };
+  }
+
+  private getStaffDisplayName(role: BusinessStaffRole, privacySettings: BusinessStaffPrivacySettings): string {
+    if (privacySettings.staffDisplayMode === 'ROLES') {
+      const roleNames = {
+        [BusinessStaffRole.OWNER]: 'Owner',
+        [BusinessStaffRole.MANAGER]: 'Manager',
+        [BusinessStaffRole.STAFF]: 'Staff Member',
+        [BusinessStaffRole.RECEPTIONIST]: 'Receptionist',
+      };
+      return roleNames[role] || 'Staff';
+    }
+
+    if (privacySettings.staffDisplayMode === 'GENERIC') {
+      return privacySettings.customStaffLabels[role.toLowerCase() as keyof typeof privacySettings.customStaffLabels] || 'Staff';
+    }
+
+    // Default to NAMES mode (shouldn't reach here if hideStaffNames is true)
+    return 'Staff';
+  }
+
   async getPublicBusinessStaff(businessId: string): Promise<Array<{
     id: string;
     role: BusinessStaffRole;
@@ -444,6 +491,7 @@ export class StaffService {
       lastName: string | null;
       avatar: string | null;
     };
+    displayName?: string;
   }>> {
     const business = await this.repositories.businessRepository.findById(businessId);
     if (!business) {
@@ -452,16 +500,37 @@ export class StaffService {
 
     const staff = await this.repositories.staffRepository.findByBusinessId(businessId);
     
-    return staff.map(member => ({
-      id: member.id,
-      role: member.role,
-      user: {
-        id: member.user.id,
-        firstName: member.user.firstName,
-        lastName: member.user.lastName,
-        avatar: member.user.avatar,
-      },
-    }));
+    // Get privacy settings from business settings
+    const privacySettings = this.getStaffPrivacySettings(business.settings);
+    
+    return staff.map(member => {
+      const baseStaff = {
+        id: member.id,
+        role: member.role,
+        user: {
+          id: member.user.id,
+          firstName: member.user.firstName,
+          lastName: member.user.lastName,
+          avatar: member.user.avatar,
+        },
+      };
+
+      // Apply privacy settings
+      if (privacySettings.hideStaffNames) {
+        const displayName = this.getStaffDisplayName(member.role, privacySettings);
+        return {
+          ...baseStaff,
+          user: {
+            ...baseStaff.user,
+            firstName: null,
+            lastName: null,
+          },
+          displayName,
+        };
+      }
+
+      return baseStaff;
+    });
   }
 
   // Utility methods

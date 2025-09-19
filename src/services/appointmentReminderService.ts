@@ -3,6 +3,7 @@ import * as cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import { NotificationService } from './notificationService';
 import { AppointmentService } from './appointmentService';
+import { BusinessService } from './businessService';
 import { UpcomingAppointment, AppointmentStatus, NotificationChannel } from '../types/business';
 
 export class AppointmentReminderService {
@@ -12,7 +13,8 @@ export class AppointmentReminderService {
   constructor(
     private prisma: PrismaClient,
     private notificationService: NotificationService,
-    private appointmentService: AppointmentService
+    private appointmentService: AppointmentService,
+    private businessService: BusinessService
   ) {}
 
   // Start the appointment reminder scheduler
@@ -176,49 +178,90 @@ export class AppointmentReminderService {
 
   // Send reminder for a specific appointment
   private async sendAppointmentReminder(appointment: UpcomingAppointment) {
-    // Check user's notification preferences
-    const preferences = await this.notificationService.getNotificationPreferences(appointment.customerId);
-    
-    if (preferences && !preferences.enableAppointmentReminders) {
+    // Get business notification settings first
+    const businessSettings = await this.businessService.getOrCreateBusinessNotificationSettings(appointment.businessId);
+
+    // Check if business has disabled appointment reminders
+    if (!businessSettings.enableAppointmentReminders) {
+      console.log(`⏭️ Business ${appointment.businessId} has disabled appointment reminders`);
+      return [];
+    }
+
+    // Get user's notification preferences
+    const userPreferences = await this.notificationService.getNotificationPreferences(appointment.customerId);
+
+    // User preferences can override business settings to disable reminders
+    if (userPreferences && !userPreferences.enableAppointmentReminders) {
       console.log(`⏭️ User ${appointment.customerId} has disabled appointment reminders`);
       return [];
     }
 
-    // Check if current time is within reminder timing preferences
-    if (preferences?.reminderTiming) {
-      const hoursUntilAppointment = (appointment.startTime.getTime() - Date.now()) / (1000 * 60 * 60);
-      const reminderHours = preferences.reminderTiming.hours;
-      
-      // Check if current time matches any of the preferred reminder hours
-      const shouldSendNow = reminderHours.some(hour => {
-        const timeDiff = Math.abs(hoursUntilAppointment - hour);
-        return timeDiff < 0.1; // Within 6 minutes of the preferred hour
-      });
+    // Determine timing: Business settings take precedence, fall back to user preferences
+    const minutesUntilAppointment = (appointment.startTime.getTime() - Date.now()) / (1000 * 60);
+    const reminderTimings = businessSettings.reminderTiming || userPreferences?.reminderTiming?.hours?.map(h => h * 60) || [60, 1440];
 
-      if (!shouldSendNow) {
-        console.log(`⏭️ Not yet time to send reminder for appointment ${appointment.id} (${hoursUntilAppointment.toFixed(1)}h until appointment)`);
-        return [];
-      }
+    // Check if current time matches any of the reminder timings (within 2 minutes tolerance)
+    const shouldSendNow = reminderTimings.some(reminderMinutes => {
+      const timeDiff = Math.abs(minutesUntilAppointment - reminderMinutes);
+      return timeDiff <= 2; // Within 2 minutes of the reminder time
+    });
+
+    if (!shouldSendNow) {
+      console.log(`⏭️ Not yet time to send reminder for appointment ${appointment.id} (${(minutesUntilAppointment / 60).toFixed(1)}h until appointment)`);
+      return [];
     }
 
-    // Use preferred channels or default to PUSH
-    const preferredChannels = preferences?.preferredChannels?.channels || [NotificationChannel.PUSH];
+    // Check business quiet hours
+    if (businessSettings.quietHours && this.isInBusinessQuietHours(new Date(), businessSettings.quietHours, businessSettings.timezone)) {
+      console.log(`⏭️ Current time is within business quiet hours for appointment ${appointment.id}`);
+      return [];
+    }
+
+    // Check user quiet hours (if any)
+    if (userPreferences?.quietHours && this.isInQuietHours(new Date(), userPreferences.quietHours, userPreferences.timezone)) {
+      console.log(`⏭️ Current time is within user quiet hours for appointment ${appointment.id}`);
+      return [];
+    }
+
+    // Determine channels: Business settings take precedence, fall back to user preferences
+    const availableChannels = businessSettings.reminderChannels || userPreferences?.preferredChannels?.channels || [NotificationChannel.PUSH];
+
+    // Filter channels based on what's enabled in business settings
+    const enabledChannels = availableChannels.filter(channel => {
+      switch (channel) {
+        case NotificationChannel.SMS:
+          return businessSettings.smsEnabled;
+        case NotificationChannel.PUSH:
+          return businessSettings.pushEnabled;
+        case NotificationChannel.EMAIL:
+          return businessSettings.emailEnabled;
+        default:
+          return false;
+      }
+    });
+
+    if (enabledChannels.length === 0) {
+      console.log(`⏭️ No enabled channels for appointment ${appointment.id}`);
+      return [];
+    }
+
     const results = [];
 
-    // Send push notification if PUSH is in preferred channels
-    if (preferredChannels.includes(NotificationChannel.PUSH)) {
+    // Send push notification if enabled
+    if (enabledChannels.includes(NotificationChannel.PUSH)) {
       const pushResults = await this.notificationService.sendAppointmentReminder(appointment);
       results.push(...pushResults);
     }
 
-    // You can add SMS and Email reminders here if needed
-    if (preferredChannels.includes(NotificationChannel.SMS)) {
-      // TODO: Implement SMS reminders
-      console.log(`📱 SMS reminder would be sent to ${appointment.customer.phoneNumber}`);
+    // Send SMS if enabled
+    if (enabledChannels.includes(NotificationChannel.SMS)) {
+      const smsResults = await this.notificationService.sendSMSAppointmentReminder(appointment);
+      results.push(...smsResults);
     }
 
-    if (preferredChannels.includes(NotificationChannel.EMAIL)) {
-      // TODO: Implement email reminders  
+    // Send email if enabled
+    if (enabledChannels.includes(NotificationChannel.EMAIL)) {
+      // TODO: Implement email reminders
       console.log(`📧 Email reminder would be sent to user ${appointment.customerId}`);
     }
 
@@ -365,5 +408,63 @@ export class AppointmentReminderService {
         phoneNumber: apt.customer.phoneNumber
       }
     }));
+  }
+
+  // Helper method to check if current time is within business quiet hours
+  private isInBusinessQuietHours(currentTime: Date, quietHours: { start: string; end: string }, timezone: string): boolean {
+    try {
+      const currentTimeStr = currentTime.toLocaleTimeString('en-GB', {
+        hour12: false,
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const current = this.timeStringToMinutes(currentTimeStr);
+      const start = this.timeStringToMinutes(quietHours.start);
+      const end = this.timeStringToMinutes(quietHours.end);
+
+      // Handle overnight quiet hours (e.g., 22:00 - 06:00)
+      if (start > end) {
+        return current >= start || current <= end;
+      } else {
+        return current >= start && current <= end;
+      }
+    } catch (error) {
+      console.error('Error checking business quiet hours:', error);
+      return false;
+    }
+  }
+
+  // Helper method to check if current time is within user quiet hours
+  private isInQuietHours(currentTime: Date, quietHours: { start: string; end: string; timezone: string }, timezone: string): boolean {
+    try {
+      const currentTimeStr = currentTime.toLocaleTimeString('en-GB', {
+        hour12: false,
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const current = this.timeStringToMinutes(currentTimeStr);
+      const start = this.timeStringToMinutes(quietHours.start);
+      const end = this.timeStringToMinutes(quietHours.end);
+
+      // Handle overnight quiet hours (e.g., 22:00 - 06:00)
+      if (start > end) {
+        return current >= start || current <= end;
+      } else {
+        return current >= start && current <= end;
+      }
+    } catch (error) {
+      console.error('Error checking user quiet hours:', error);
+      return false;
+    }
+  }
+
+  // Helper method to convert time string (HH:MM) to minutes
+  private timeStringToMinutes(timeStr: string): number {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
   }
 }

@@ -738,7 +738,6 @@ export class BusinessRepository {
         billingInterval: string;
         maxBusinesses: number;
         maxStaffPerBusiness: number;
-        maxAppointmentsPerDay: number;
         features: string[];
         isPopular: boolean;
       };
@@ -814,7 +813,6 @@ export class BusinessRepository {
                 billingInterval: true,
                 maxBusinesses: true,
                 maxStaffPerBusiness: true,
-                maxAppointmentsPerDay: true,
                 features: true,
                 isPopular: true
               }
@@ -852,7 +850,6 @@ export class BusinessRepository {
           billingInterval: string;
           maxBusinesses: number;
           maxStaffPerBusiness: number;
-          maxAppointmentsPerDay: number;
           features: string[];
           isPopular: boolean;
         };
@@ -879,7 +876,6 @@ export class BusinessRepository {
         billingInterval: string;
         maxBusinesses: number;
         maxStaffPerBusiness: number;
-        maxAppointmentsPerDay: number;
         features: string[];
         isPopular: boolean;
       };
@@ -943,7 +939,6 @@ export class BusinessRepository {
                 billingInterval: true,
                 maxBusinesses: true,
                 maxStaffPerBusiness: true,
-                maxAppointmentsPerDay: true,
                 features: true,
                 isPopular: true
               }
@@ -982,7 +977,6 @@ export class BusinessRepository {
           billingInterval: string;
           maxBusinesses: number;
           maxStaffPerBusiness: number;
-          maxAppointmentsPerDay: number;
           features: string[];
           isPopular: boolean;
         };

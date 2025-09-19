@@ -59,8 +59,6 @@ export function createUsageRoutes(usageController: UsageController): Router {
    *                           type: integer
    *                         maxStaffPerBusiness:
    *                           type: integer
-   *                         maxAppointmentsPerDay:
-   *                           type: integer
    *                     remainingQuotas:
    *                       type: object
    *                       properties:

@@ -5,6 +5,7 @@ import {
   createBusinessSchema,
   updateBusinessSchema,
   updateBusinessPriceSettingsSchema,
+  updateBusinessStaffPrivacySettingsSchema,
   imageUploadSchema,
   deleteImageSchema,
   deleteGalleryImageSchema
@@ -131,8 +132,7 @@ export class BusinessController {
                     features: sub.plan.features,
                     limits: {
                       maxBusinesses: sub.plan.maxBusinesses,
-                      maxStaffPerBusiness: sub.plan.maxStaffPerBusiness,
-                      maxAppointmentsPerDay: sub.plan.maxAppointmentsPerDay
+                      maxStaffPerBusiness: sub.plan.maxStaffPerBusiness
                     },
                     isPopular: sub.plan.isPopular
                   }
@@ -1453,6 +1453,275 @@ export class BusinessController {
       sendSuccessResponse(res, {
         message: 'Gallery images updated successfully',
         business
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  // Business Notification Settings Methods
+
+  async getNotificationSettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const settings = await this.businessService.getBusinessNotificationSettings(userId, businessId);
+
+      if (!settings) {
+        // Return default settings if none exist
+        res.status(200).json({
+          success: true,
+          data: {
+            id: '',
+            businessId,
+            enableAppointmentReminders: true,
+            reminderChannels: ['PUSH'],
+            reminderTiming: [60, 1440], // 1 hour and 24 hours
+            smsEnabled: false,
+            pushEnabled: true,
+            emailEnabled: false,
+            timezone: 'Europe/Istanbul',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          },
+          message: 'Default notification settings (not yet configured)'
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: settings,
+        message: 'Notification settings retrieved successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async updateNotificationSettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const settings = await this.businessService.updateBusinessNotificationSettings(
+        userId,
+        businessId,
+        req.body
+      );
+
+      res.status(200).json({
+        success: true,
+        data: settings,
+        message: 'Notification settings updated successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async testReminder(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      // Import the services dynamically to avoid circular dependencies
+      const { NotificationService } = await import('../services/notificationService');
+      const notificationService = new NotificationService(this.businessService['prisma']);
+
+      const testData = req.body || {};
+
+      // Get business notification settings
+      const businessSettings = await this.businessService.getOrCreateBusinessNotificationSettings(businessId);
+
+      // Create a mock appointment for testing
+      const now = new Date();
+      const testTime = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
+
+      const testAppointment = {
+        id: `test-${Date.now()}`,
+        businessId,
+        customerId: userId, // Use current user as customer
+        date: testTime,
+        startTime: testTime,
+        endTime: new Date(testTime.getTime() + 60 * 60 * 1000), // 1 hour duration
+        status: 'CONFIRMED' as any,
+        service: {
+          id: 'test-service',
+          name: 'Test Service',
+          duration: 60
+        },
+        business: {
+          id: businessId,
+          name: 'Test Business',
+          timezone: businessSettings.timezone
+        },
+        customer: {
+          id: userId,
+          firstName: 'Test',
+          lastName: 'User',
+          phoneNumber: req.user!.phoneNumber
+        }
+      };
+
+      // Determine channels to test
+      const channelsToTest = testData.channels || businessSettings.reminderChannels;
+      const results = [];
+
+      // Test push notification if enabled and requested
+      if (channelsToTest.includes('PUSH') && businessSettings.pushEnabled) {
+        const pushResults = await notificationService.sendAppointmentReminder(testAppointment);
+        results.push(...pushResults);
+      }
+
+      // Test SMS if enabled and requested with rate limiting
+      if (channelsToTest.includes('SMS') && businessSettings.smsEnabled) {
+        // Check SMS rate limiting (5 minutes between SMS tests per user)
+        const SMS_RATE_LIMIT_MINUTES = 5;
+        const lastSmsTest = await this.businessService['prisma'].auditLog.findFirst({
+          where: {
+            userId,
+            entity: 'SMS_TEST',
+            createdAt: {
+              gte: new Date(Date.now() - SMS_RATE_LIMIT_MINUTES * 60 * 1000)
+            }
+          },
+          orderBy: { createdAt: 'desc' }
+        });
+
+        if (lastSmsTest) {
+          const timeRemaining = Math.ceil((lastSmsTest.createdAt.getTime() + SMS_RATE_LIMIT_MINUTES * 60 * 1000 - Date.now()) / 1000 / 60);
+          results.push({
+            success: false,
+            error: `SMS test rate limited. Please wait ${timeRemaining} more minute(s) before testing SMS again.`,
+            channel: 'SMS',
+            status: 'RATE_LIMITED'
+          });
+        } else {
+          const smsResults = await notificationService.sendSMSAppointmentReminder(testAppointment);
+          results.push(...smsResults);
+
+          // Log SMS test activity for rate limiting
+          await this.businessService['prisma'].auditLog.create({
+            data: {
+              id: `sms-test-${Date.now()}`,
+              action: 'USER_UPDATE',
+              entity: 'SMS_TEST',
+              entityId: testAppointment.id,
+              userId,
+              details: { businessId, testId: testAppointment.id }
+            }
+          });
+        }
+      }
+
+      // Test email if enabled and requested (placeholder for now)
+      if (channelsToTest.includes('EMAIL') && businessSettings.emailEnabled) {
+        results.push({
+          success: true,
+          messageId: `test-email-${Date.now()}`,
+          channel: 'EMAIL',
+          status: 'SENT'
+        });
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      const failureCount = results.filter(r => !r.success).length;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          results,
+          summary: {
+            total: results.length,
+            successful: successCount,
+            failed: failureCount,
+            channels: channelsToTest,
+            testMessage: testData.customMessage || 'Test reminder sent'
+          }
+        },
+        message: `Test reminder completed: ${successCount} successful, ${failureCount} failed`
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async getStaffPrivacySettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const settings = await this.businessService.getStaffPrivacySettings(userId, businessId);
+
+      res.status(200).json({
+        success: true,
+        data: settings,
+        message: 'Staff privacy settings retrieved successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async updateStaffPrivacySettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const validatedData = updateBusinessStaffPrivacySettingsSchema.parse(req.body);
+      
+      const settings = await this.businessService.updateStaffPrivacySettings(
+        userId,
+        businessId,
+        validatedData
+      );
+
+      res.status(200).json({
+        success: true,
+        data: settings,
+        message: 'Staff privacy settings updated successfully'
       });
     } catch (error) {
       handleRouteError(error, req, res);

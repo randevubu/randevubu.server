@@ -1,21 +1,28 @@
 import { Router } from 'express';
 import { BusinessController } from '../../controllers/businessController';
-import { requireAuth, requirePermission, requireRole, requireAny, withAuth } from '../../middleware/authUtils';
-import { PermissionName, AuthenticatedRequest } from '../../types/auth';
-import { 
-  attachBusinessContext, 
-  requireBusinessAccess, 
-  allowEmptyBusinessContext,
-  requireSpecificBusinessAccess 
-} from '../../middleware/attachBusinessContext';
-import { validateBody, validateQuery, validateParams } from '../../middleware/validation';
-import { uploadSingleImage, handleMulterError } from '../../middleware/multer';
 import {
+  allowEmptyBusinessContext,
+  attachBusinessContext,
+  requireBusinessAccess,
+  requireSpecificBusinessAccess
+} from '../../middleware/attachBusinessContext';
+import { requireAny, requireAuth, requirePermission, withAuth } from '../../middleware/authUtils';
+import { handleMulterError, uploadSingleImage } from '../../middleware/multer';
+import { validateNotificationSettings } from '../../middleware/notificationValidation';
+import { validateBody, validateQuery } from '../../middleware/validation';
+import {
+  businessNotificationSettingsSchema,
+  testReminderSchema,
+  updateBusinessNotificationSettingsSchema,
+  updateBusinessPriceSettingsSchema,
+  updateBusinessStaffPrivacySettingsSchema
+} from '../../schemas/business.schemas';
+import {
+  getBusinessStaffQuerySchema,
   inviteStaffSchema,
-  verifyStaffInvitationSchema,
-  getBusinessStaffQuerySchema
+  verifyStaffInvitationSchema
 } from '../../schemas/staff.schemas';
-import { updateBusinessPriceSettingsSchema } from '../../schemas/business.schemas';
+import { AuthenticatedRequest, PermissionName } from '../../types/auth';
 
 export function createBusinessRoutes(businessController: BusinessController): Router {
   const router = Router();
@@ -401,10 +408,388 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
     businessController.getPriceSettings.bind(businessController)
   );
   
-  router.put('/my-business/price-settings', 
+  router.put('/my-business/price-settings',
     requireBusinessAccess,
     validateBody(updateBusinessPriceSettingsSchema),
     businessController.updatePriceSettings.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/staff-privacy-settings:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get business staff privacy settings
+   *     description: Get current staff privacy settings for your business
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Staff privacy settings retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     hideStaffNames:
+   *                       type: boolean
+   *                       example: false
+   *                     staffDisplayMode:
+   *                       type: string
+   *                       enum: [NAMES, ROLES, GENERIC]
+   *                       example: "NAMES"
+   *                     customStaffLabels:
+   *                       type: object
+   *                       properties:
+   *                         owner:
+   *                           type: string
+   *                           example: "Owner"
+   *                         manager:
+   *                           type: string
+   *                           example: "Manager"
+   *                         staff:
+   *                           type: string
+   *                           example: "Staff"
+   *                         receptionist:
+   *                           type: string
+   *                           example: "Receptionist"
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/staff-privacy-settings',
+    requireBusinessAccess,
+    businessController.getStaffPrivacySettings.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/staff-privacy-settings:
+   *   put:
+   *     tags: [Businesses]
+   *     summary: Update business staff privacy settings
+   *     description: Configure how staff members are displayed to customers during booking
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               hideStaffNames:
+   *                 type: boolean
+   *                 description: Hide individual staff member names from customers
+   *                 example: true
+   *               staffDisplayMode:
+   *                 type: string
+   *                 enum: [NAMES, ROLES, GENERIC]
+   *                 description: How to display staff to customers
+   *                 example: "GENERIC"
+   *               customStaffLabels:
+   *                 type: object
+   *                 description: Custom labels for different staff roles
+   *                 properties:
+   *                   owner:
+   *                     type: string
+   *                     maxLength: 50
+   *                     example: "Owner"
+   *                   manager:
+   *                     type: string
+   *                     maxLength: 50
+   *                     example: "Manager"
+   *                   staff:
+   *                     type: string
+   *                     maxLength: 50
+   *                     example: "Staff"
+   *                   receptionist:
+   *                     type: string
+   *                     maxLength: 50
+   *                     example: "Receptionist"
+   *     responses:
+   *       200:
+   *         description: Staff privacy settings updated successfully
+   *       400:
+   *         description: Invalid input data
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.put('/my-business/staff-privacy-settings',
+    requireBusinessAccess,
+    validateBody(updateBusinessStaffPrivacySettingsSchema),
+    businessController.updateStaffPrivacySettings.bind(businessController)
+  );
+
+  // Business notification settings routes
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/notification-settings:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get business notification settings
+   *     description: Get appointment reminder and notification configuration for your business
+   *     security:
+   *       - BearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Notification settings retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     enableAppointmentReminders:
+   *                       type: boolean
+   *                     reminderChannels:
+   *                       type: array
+   *                       items:
+   *                         type: string
+   *                         enum: [SMS, PUSH, EMAIL]
+   *                     reminderTiming:
+   *                       type: array
+   *                       items:
+   *                         type: integer
+   *                       description: Minutes before appointment
+   *                     smsEnabled:
+   *                       type: boolean
+   *                     pushEnabled:
+   *                       type: boolean
+   *                     emailEnabled:
+   *                       type: boolean
+   *                     quietHours:
+   *                       type: object
+   *                       properties:
+   *                         start:
+   *                           type: string
+   *                         end:
+   *                           type: string
+   *                     timezone:
+   *                       type: string
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   *   put:
+   *     tags: [Businesses]
+   *     summary: Update business notification settings
+   *     description: Configure appointment reminder and notification settings for your business
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               enableAppointmentReminders:
+   *                 type: boolean
+   *               reminderChannels:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *                   enum: [SMS, PUSH, EMAIL]
+   *               reminderTiming:
+   *                 type: array
+   *                 items:
+   *                   type: integer
+   *                 description: Minutes before appointment (e.g., [60, 1440] for 1 hour and 24 hours)
+   *               smsEnabled:
+   *                 type: boolean
+   *               pushEnabled:
+   *                 type: boolean
+   *               emailEnabled:
+   *                 type: boolean
+   *               quietHours:
+   *                 type: object
+   *                 properties:
+   *                   start:
+   *                     type: string
+   *                     description: HH:MM format (e.g., "22:00")
+   *                   end:
+   *                     type: string
+   *                     description: HH:MM format (e.g., "08:00")
+   *               timezone:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Notification settings updated successfully
+   *       400:
+   *         description: Invalid request data
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/notification-settings',
+    requireBusinessAccess,
+    businessController.getNotificationSettings.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/notification-settings:
+   *   put:
+   *     tags: [Businesses]
+   *     summary: Update business notification settings
+   *     description: Update appointment reminder and notification configuration for your business. Supports partial updates with auto-sync.
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               enableAppointmentReminders:
+   *                 type: boolean
+   *                 description: Enable appointment reminder notifications
+   *               smsEnabled:
+   *                 type: boolean
+   *                 description: Enable SMS notifications
+   *               pushEnabled:
+   *                 type: boolean
+   *                 description: Enable push notifications
+   *               emailEnabled:
+   *                 type: boolean
+   *                 description: Enable email notifications
+   *               reminderChannels:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *                   enum: [SMS, PUSH, EMAIL]
+   *                 description: Active reminder channels (auto-synced with enabled channels)
+   *               reminderTiming:
+   *                 type: array
+   *                 items:
+   *                   type: integer
+   *                 description: Reminder timing in minutes
+   *               quietHours:
+   *                 type: object
+   *                 properties:
+   *                   start:
+   *                     type: string
+   *                     format: time
+   *                   end:
+   *                     type: string
+   *                     format: time
+   *                 description: Quiet hours when notifications should not be sent
+   *               timezone:
+   *                 type: string
+   *                 description: Business timezone for scheduling reminders
+   *     responses:
+   *       200:
+   *         description: Notification settings updated successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     enableAppointmentReminders:
+   *                       type: boolean
+   *                     reminderChannels:
+   *                       type: array
+   *                       items:
+   *                         type: string
+   *                         enum: [SMS, PUSH, EMAIL]
+   *                     reminderTiming:
+   *                       type: array
+   *                       items:
+   *                         type: integer
+   *                     smsEnabled:
+   *                       type: boolean
+   *                     pushEnabled:
+   *                       type: boolean
+   *                     emailEnabled:
+   *                       type: boolean
+   *                     quietHours:
+   *                       type: object
+   *                       properties:
+   *                         start:
+   *                           type: string
+   *                         end:
+   *                           type: string
+   *                     timezone:
+   *                       type: string
+   *       400:
+   *         description: Invalid request data or validation error
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.put('/my-business/notification-settings',
+    requireBusinessAccess,
+    validateBody(updateBusinessNotificationSettingsSchema),
+    validateNotificationSettings,
+    businessController.updateNotificationSettings.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/test-reminder:
+   *   post:
+   *     tags: [Businesses]
+   *     summary: Test appointment reminder
+   *     description: Send a test reminder to verify notification settings
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: false
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               appointmentId:
+   *                 type: string
+   *                 description: Optional existing appointment ID to test with
+   *               channels:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *                   enum: [SMS, PUSH, EMAIL]
+   *                 description: Channels to test (defaults to business settings)
+   *               customMessage:
+   *                 type: string
+   *                 description: Custom message for testing
+   *     responses:
+   *       200:
+   *         description: Test reminder sent successfully
+   *       400:
+   *         description: Invalid request data
+   *       403:
+   *         description: Access denied - business role required
+   *       404:
+   *         description: Appointment not found (if appointmentId provided)
+   *       500:
+   *         description: Internal server error
+   */
+  router.post('/my-business/test-reminder',
+    requireBusinessAccess,
+    validateBody(testReminderSchema),
+    businessController.testReminder.bind(businessController)
   );
 
   // User's services access

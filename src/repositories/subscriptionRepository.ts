@@ -14,14 +14,48 @@ export class SubscriptionRepository {
   async findAllPlans(): Promise<SubscriptionPlanData[]> {
     const result = await this.prisma.subscriptionPlan.findMany({
       where: { isActive: true },
-      orderBy: { sortOrder: 'asc' }
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        displayName: true,
+        description: true,
+        price: true,
+        currency: true,
+        billingInterval: true,
+        maxBusinesses: true,
+        maxStaffPerBusiness: true,
+        features: true,
+        isActive: true,
+        isPopular: true,
+        sortOrder: true,
+        createdAt: true,
+        updatedAt: true
+      }
     });
     return convertBusinessDataArray<SubscriptionPlanData>(result as any);
   }
 
   async findPlanById(id: string): Promise<SubscriptionPlanData | null> {
     const result = await this.prisma.subscriptionPlan.findUnique({
-      where: { id }
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        displayName: true,
+        description: true,
+        price: true,
+        currency: true,
+        billingInterval: true,
+        maxBusinesses: true,
+        maxStaffPerBusiness: true,
+        features: true,
+        isActive: true,
+        isPopular: true,
+        sortOrder: true,
+        createdAt: true,
+        updatedAt: true
+      }
     });
     return result ? convertBusinessData<SubscriptionPlanData>(result as any) : null;
   }
@@ -354,7 +388,6 @@ export class SubscriptionRepository {
     limits: {
       maxBusinesses: number;
       maxStaffPerBusiness: number;
-      maxAppointmentsPerDay: number;
     };
     usage: {
       currentBusinesses: number;
@@ -372,8 +405,7 @@ export class SubscriptionRepository {
         hasActiveSubscription: false,
         limits: {
           maxBusinesses: 0,
-          maxStaffPerBusiness: 0,
-          maxAppointmentsPerDay: 0
+          maxStaffPerBusiness: 0
         },
         usage: {
           currentBusinesses: 0,
@@ -412,8 +444,7 @@ export class SubscriptionRepository {
 
     const limits = {
       maxBusinesses: plan.maxBusinesses,
-      maxStaffPerBusiness: plan.maxStaffPerBusiness,
-      maxAppointmentsPerDay: plan.maxAppointmentsPerDay
+      maxStaffPerBusiness: plan.maxStaffPerBusiness
     };
 
     const usage = {
@@ -424,7 +455,7 @@ export class SubscriptionRepository {
 
     const canCreateBusiness = plan.maxBusinesses === -1 || businessCount < plan.maxBusinesses;
     const canAddStaff = plan.maxStaffPerBusiness === -1 || staffCount < plan.maxStaffPerBusiness;
-    const canBookAppointment = plan.maxAppointmentsPerDay === -1 || todaysAppointments < plan.maxAppointmentsPerDay;
+    const canBookAppointment = true; // No appointment limits
 
     return {
       hasActiveSubscription: true,
@@ -563,7 +594,6 @@ export class SubscriptionRepository {
       billingInterval: plan.billingInterval,
       maxBusinesses: plan.maxBusinesses,
       maxStaffPerBusiness: plan.maxStaffPerBusiness,
-      maxAppointmentsPerDay: plan.maxAppointmentsPerDay,
       features: plan.features,
       isActive: plan.isActive,
       isPopular: plan.isPopular,

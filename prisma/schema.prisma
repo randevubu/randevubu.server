@@ -330,6 +330,7 @@ model Business {
   dailySmsUsage      DailySmsUsage[]       @relation("DailySmsUsage")
   hoursOverrides     BusinessHoursOverride[]
   pushNotifications  PushNotification[]
+  notificationSettings BusinessNotificationSettings?
 
   @@index([ownerId])
   @@index([businessTypeId])
@@ -976,4 +977,23 @@ model PushNotification {
   @@index([sentAt])
   @@index([createdAt])
   @@map("push_notifications")
+}
+
+model BusinessNotificationSettings {
+  id                           String   @id
+  businessId                   String   @unique
+  enableAppointmentReminders   Boolean  @default(true)
+  reminderChannels             Json     @default("[\"PUSH\"]")
+  reminderTiming               Json     @default("[60, 1440]")
+  smsEnabled                   Boolean  @default(false)
+  pushEnabled                  Boolean  @default(true)
+  emailEnabled                 Boolean  @default(false)
+  quietHours                   Json?
+  timezone                     String   @default("Europe/Istanbul")
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+  business                     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@map("business_notification_settings")
 }

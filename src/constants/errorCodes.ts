@@ -149,6 +149,15 @@ export const ERROR_CODES = {
   EMAIL_DELIVERY_FAILED: 'EMAIL_DELIVERY_FAILED',
   NOTIFICATION_DISABLED: 'NOTIFICATION_DISABLED',
 
+  // Notification Messages
+  APPOINTMENT_REMINDER: 'APPOINTMENT_REMINDER',
+  BUSINESS_CLOSURE_NOTICE: 'BUSINESS_CLOSURE_NOTICE',
+  AVAILABILITY_ALERT: 'AVAILABILITY_ALERT',
+  RESCHEDULE_NOTIFICATION: 'RESCHEDULE_NOTIFICATION',
+  SUBSCRIPTION_RENEWAL_CONFIRMATION: 'SUBSCRIPTION_RENEWAL_CONFIRMATION',
+  SUBSCRIPTION_RENEWAL_REMINDER: 'SUBSCRIPTION_RENEWAL_REMINDER',
+  PAYMENT_FAILURE_NOTIFICATION: 'PAYMENT_FAILURE_NOTIFICATION',
+
 } as const;
 
 // =============================================================================
@@ -265,6 +274,15 @@ export const ERROR_TRANSLATION_KEYS = {
   [ERROR_CODES.SMS_DELIVERY_FAILED]: 'errors.notification.smsDeliveryFailed',
   [ERROR_CODES.EMAIL_DELIVERY_FAILED]: 'errors.notification.emailDeliveryFailed',
   [ERROR_CODES.NOTIFICATION_DISABLED]: 'errors.notification.disabled',
+
+  // Notification Messages
+  [ERROR_CODES.APPOINTMENT_REMINDER]: 'notifications.appointmentReminder',
+  [ERROR_CODES.BUSINESS_CLOSURE_NOTICE]: 'notifications.businessClosureNotice',
+  [ERROR_CODES.AVAILABILITY_ALERT]: 'notifications.availabilityAlert',
+  [ERROR_CODES.RESCHEDULE_NOTIFICATION]: 'notifications.rescheduleNotification',
+  [ERROR_CODES.SUBSCRIPTION_RENEWAL_CONFIRMATION]: 'notifications.subscriptionRenewalConfirmation',
+  [ERROR_CODES.SUBSCRIPTION_RENEWAL_REMINDER]: 'notifications.subscriptionRenewalReminder',
+  [ERROR_CODES.PAYMENT_FAILURE_NOTIFICATION]: 'notifications.paymentFailureNotification',
 
 } as const;
 

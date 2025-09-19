@@ -62,7 +62,6 @@ Returns current month usage, previous month for comparison, plan limits, and rem
     "planLimits": {
       "smsQuota": 2500,
       "maxStaffPerBusiness": 10,
-      "maxAppointmentsPerDay": 150,
       "maxCustomers": 5000,
       "maxServices": 50,
       "storageGB": 10

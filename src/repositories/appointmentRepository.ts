@@ -18,6 +18,34 @@ export class AppointmentRepository {
     return hideAllServicePrices || serviceShowPrice === false;
   }
 
+  // Helper method to check if staff names should be hidden based on business settings
+  private shouldHideStaffNames(businessSettings: any): boolean {
+    return businessSettings?.staffPrivacy?.hideStaffNames === true;
+  }
+
+  // Helper method to get staff display name based on privacy settings
+  private getStaffDisplayName(role: string, businessSettings: any): string {
+    const privacySettings = businessSettings?.staffPrivacy;
+    if (!privacySettings) return 'Staff';
+
+    if (privacySettings.staffDisplayMode === 'ROLES') {
+      const roleNames = {
+        'OWNER': 'Owner',
+        'MANAGER': 'Manager',
+        'STAFF': 'Staff Member',
+        'RECEPTIONIST': 'Receptionist',
+      };
+      return roleNames[role as keyof typeof roleNames] || 'Staff';
+    }
+
+    if (privacySettings.staffDisplayMode === 'GENERIC') {
+      const customLabels = privacySettings.customStaffLabels || {};
+      return customLabels[role.toLowerCase() as keyof typeof customLabels] || 'Staff';
+    }
+
+    return 'Staff';
+  }
+
   // Helper method to filter price information from appointment data
   private filterPriceInfo(appointment: any, shouldHide: boolean): any {
     if (!shouldHide) return appointment;
@@ -33,6 +61,27 @@ export class AppointmentRepository {
           currency: undefined
         }
       })
+    };
+  }
+
+  // Helper method to filter staff information from appointment data
+  private filterStaffInfo(appointment: any, shouldHide: boolean, businessSettings: any): any {
+    if (!shouldHide || !appointment.staff) return appointment;
+    
+    const staffRole = appointment.staff.role || 'STAFF';
+    const displayName = this.getStaffDisplayName(staffRole, businessSettings);
+    
+    return {
+      ...appointment,
+      staff: {
+        ...appointment.staff,
+        user: {
+          ...appointment.staff.user,
+          firstName: null,
+          lastName: null,
+        },
+        displayName,
+      }
     };
   }
 
@@ -148,7 +197,8 @@ export class AppointmentRepository {
             }
           },
           staff: {
-            include: {
+            select: {
+              role: true,
               user: {
                 select: {
                   firstName: true,
@@ -412,7 +462,8 @@ export class AppointmentRepository {
           business: true,
           service: true,
           staff: {
-            include: {
+            select: {
+              role: true,
               user: {
                 select: {
                   firstName: true,
@@ -500,7 +551,8 @@ export class AppointmentRepository {
           business: true,
           service: true,
           staff: {
-            include: {
+            select: {
+              role: true,
               user: {
                 select: {
                   firstName: true,
@@ -770,6 +822,7 @@ export class AppointmentRepository {
         },
         staff: {
           select: {
+            role: true,
             user: {
               select: {
                 firstName: true,
@@ -790,12 +843,21 @@ export class AppointmentRepository {
     
     return result.map(apt => {
       const businessSettings = apt.business?.settings as any;
-      const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+      const shouldHidePrice = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+      const shouldHideStaffNames = this.shouldHideStaffNames(businessSettings);
       
-      return this.filterPriceInfo({
+      let appointment = {
         ...apt,
         staff: apt.staff?.user
-      }, shouldHide);
+      };
+      
+      // Apply price filtering
+      appointment = this.filterPriceInfo(appointment, shouldHidePrice);
+      
+      // Apply staff privacy filtering
+      appointment = this.filterStaffInfo(appointment, shouldHideStaffNames, businessSettings);
+      
+      return appointment;
     });
   }
 
@@ -843,6 +905,7 @@ export class AppointmentRepository {
         },
         staff: {
           select: {
+            role: true,
             user: {
               select: {
                 firstName: true,
@@ -863,12 +926,21 @@ export class AppointmentRepository {
     
     return result.map(apt => {
       const businessSettings = apt.business?.settings as any;
-      const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+      const shouldHidePrice = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+      const shouldHideStaffNames = this.shouldHideStaffNames(businessSettings);
       
-      return this.filterPriceInfo({
+      let appointment = {
         ...apt,
         staff: apt.staff?.user
-      }, shouldHide);
+      };
+      
+      // Apply price filtering
+      appointment = this.filterPriceInfo(appointment, shouldHidePrice);
+      
+      // Apply staff privacy filtering
+      appointment = this.filterStaffInfo(appointment, shouldHideStaffNames, businessSettings);
+      
+      return appointment;
     });
   }
 
@@ -1057,6 +1129,7 @@ export class AppointmentRepository {
           select: {
             id: true,
             userId: true,
+            role: true,
             user: {
               select: {
                 firstName: true,

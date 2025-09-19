@@ -51,16 +51,16 @@ async function seedSubscriptionPlans() {
       sortOrder: 1
     },
     {
-      id: 'plan_professional_monthly',
-      name: 'professional',
-      displayName: 'Professional Plan',
-      description: 'Ideal for growing businesses with advanced needs',
+      id: 'plan_premium_monthly',
+      name: 'premium',
+      displayName: 'Premium Paket',
+      description: 'Büyüyen işletmeler için gelişmiş özellikler',
       price: 1250.00,
       currency: 'TRY',
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
-      maxStaffPerBusiness: 10,
-      maxAppointmentsPerDay: 150,
+      maxStaffPerBusiness: 5,
+      maxAppointmentsPerDay: 0, // Sınırsız
       features: {
         appointmentBooking: true,
         staffManagement: true,
@@ -76,12 +76,12 @@ async function seedSubscriptionPlans() {
         maxServices: 50,
         maxCustomers: 5000,
         storageGB: 10,
-        smsQuota: 2500,
+        smsQuota: 2500, // Reduced from 5000
         description: [
           'All Starter features',
           'Up to 10 staff members',
           'Customer management (up to 5,000)',
-          '2,500 SMS per month',
+          '2.500 SMS', // Updated from '5.000 SMS'
           'Advanced reporting & analytics',
           'Custom branding & themes',
           'Google Calendar integration',
@@ -96,16 +96,16 @@ async function seedSubscriptionPlans() {
       sortOrder: 2
     },
     {
-      id: 'plan_enterprise_monthly',
-      name: 'enterprise',
-      displayName: 'Enterprise Plan',
-      description: 'Complete solution for large businesses and chains',
+      id: 'plan_pro_monthly',
+      name: 'pro',
+      displayName: 'Pro Paket',
+      description: 'Büyük işletmeler ve salon zincirleri için profesyonel çözüm',
       price: 2000.00,
       currency: 'TRY',
       billingInterval: 'MONTHLY',
-      maxBusinesses: 5,
-      maxStaffPerBusiness: 50,
-      maxAppointmentsPerDay: 500,
+      maxBusinesses: 1,
+      maxStaffPerBusiness: 15,
+      maxAppointmentsPerDay: 0, // Sınırsız
       features: {
         appointmentBooking: true,
         staffManagement: true,
@@ -121,13 +121,13 @@ async function seedSubscriptionPlans() {
         maxServices: 200,
         maxCustomers: 25000,
         storageGB: 50,
-        smsQuota: 5000,
+        smsQuota: 5000, // Reduced from 10000
         description: [
           'All Professional features',
           'Up to 5 business locations',
           'Up to 50 staff members per location',
           'Customer management (up to 25,000)',
-          '5,000 SMS per month',
+          '5.000 SMS', // Updated from '10.000 SMS'
           'Full API access',
           'Multi-location management',
           'POS system integration',

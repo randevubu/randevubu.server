@@ -3,9 +3,13 @@ import {
   BusinessWithDetails,
   CreateBusinessRequest,
   UpdateBusinessRequest,
-  BusinessSearchFilters
+  BusinessSearchFilters,
+  BusinessNotificationSettingsData,
+  BusinessNotificationSettingsRequest,
+  BusinessStaffPrivacySettings,
+  BusinessStaffPrivacySettingsRequest
 } from '../types/business';
-import { UpdateBusinessPriceSettingsSchema } from '../schemas/business.schemas';
+import { UpdateBusinessPriceSettingsSchema, UpdateBusinessStaffPrivacySettingsSchema } from '../schemas/business.schemas';
 import { BusinessRepository } from '../repositories/businessRepository';
 import { RBACService } from './rbacService';
 import { PermissionName } from '../types/auth';
@@ -239,7 +243,6 @@ export class BusinessService {
         billingInterval: string;
         maxBusinesses: number;
         maxStaffPerBusiness: number;
-        maxAppointmentsPerDay: number;
         features: string[];
         isPopular: boolean;
       };
@@ -336,7 +339,6 @@ export class BusinessService {
         billingInterval: string;
         maxBusinesses: number;
         maxStaffPerBusiness: number;
-        maxAppointmentsPerDay: number;
         features: string[];
         isPopular: boolean;
       };
@@ -564,6 +566,94 @@ export class BusinessService {
       hideAllServicePrices: priceVisibility.hideAllServicePrices || false,
       showPriceOnBooking: priceVisibility.showPriceOnBooking || true,
       priceDisplayMessage: priceVisibility.priceDisplayMessage || null
+    };
+  }
+
+  async updateStaffPrivacySettings(
+    userId: string,
+    businessId: string,
+    staffPrivacySettings: UpdateBusinessStaffPrivacySettingsSchema
+  ): Promise<BusinessData> {
+    // Check permissions - either global or business-specific
+    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
+    
+    if (!hasGlobalEdit) {
+      await this.rbacService.requirePermission(
+        userId, 
+        PermissionName.EDIT_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    // Get current business settings
+    const currentBusiness = await this.businessRepository.findById(businessId);
+    if (!currentBusiness) {
+      throw new Error('Business not found');
+    }
+
+    // Merge staff privacy settings into existing business settings
+    const currentSettings = (currentBusiness.settings as any) || {};
+    const updatedSettings = {
+      ...currentSettings,
+      staffPrivacy: {
+        ...currentSettings.staffPrivacy,
+        hideStaffNames: staffPrivacySettings.hideStaffNames ?? currentSettings.staffPrivacy?.hideStaffNames ?? false,
+        staffDisplayMode: staffPrivacySettings.staffDisplayMode ?? currentSettings.staffPrivacy?.staffDisplayMode ?? 'NAMES',
+        customStaffLabels: {
+          owner: staffPrivacySettings.customStaffLabels?.owner ?? currentSettings.staffPrivacy?.customStaffLabels?.owner ?? 'Owner',
+          manager: staffPrivacySettings.customStaffLabels?.manager ?? currentSettings.staffPrivacy?.customStaffLabels?.manager ?? 'Manager',
+          staff: staffPrivacySettings.customStaffLabels?.staff ?? currentSettings.staffPrivacy?.customStaffLabels?.staff ?? 'Staff',
+          receptionist: staffPrivacySettings.customStaffLabels?.receptionist ?? currentSettings.staffPrivacy?.customStaffLabels?.receptionist ?? 'Receptionist',
+        }
+      }
+    };
+
+    // Update business with new settings
+    const updatedBusiness = await this.businessRepository.update(businessId, {
+      settings: updatedSettings
+    });
+
+    // ENTERPRISE PATTERN: Clear all cache for this user to ensure immediate consistency
+    // This ensures that any cached business data is refreshed with the new settings
+    this.rbacService.forceInvalidateUser(userId);
+
+    return updatedBusiness;
+  }
+
+  async getStaffPrivacySettings(
+    userId: string,
+    businessId: string
+  ): Promise<BusinessStaffPrivacySettings> {
+    // Check permissions - either global or business-specific
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(
+        userId, 
+        PermissionName.VIEW_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    // Get current business settings
+    const currentBusiness = await this.businessRepository.findById(businessId);
+    if (!currentBusiness) {
+      throw new Error('Business not found');
+    }
+
+    // Extract staff privacy settings from business settings
+    const settings = (currentBusiness.settings as any) || {};
+    const staffPrivacy = settings.staffPrivacy || {};
+    
+    return {
+      hideStaffNames: staffPrivacy.hideStaffNames || false,
+      staffDisplayMode: staffPrivacy.staffDisplayMode || 'NAMES',
+      customStaffLabels: {
+        owner: staffPrivacy.customStaffLabels?.owner || 'Owner',
+        manager: staffPrivacy.customStaffLabels?.manager || 'Manager',
+        staff: staffPrivacy.customStaffLabels?.staff || 'Staff',
+        receptionist: staffPrivacy.customStaffLabels?.receptionist || 'Receptionist',
+      }
     };
   }
 
@@ -1463,5 +1553,236 @@ export class BusinessService {
     }
 
     return await this.businessRepository.updateGalleryImages(businessId, imageUrls);
+  }
+
+  // Business Notification Settings Methods
+
+  async getBusinessNotificationSettings(
+    userId: string,
+    businessId: string
+  ): Promise<BusinessNotificationSettingsData | null> {
+    // Check permissions
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+
+    if (!hasGlobalView) {
+      const hasBusinessAccess = await this.rbacService.hasPermission(
+        userId,
+        'business',
+        'view_own',
+        { businessId }
+      );
+
+      if (!hasBusinessAccess) {
+        throw new Error('Access denied: You do not have permission to view this business settings');
+      }
+    }
+
+    const settings = await this.prisma.businessNotificationSettings.findUnique({
+      where: { businessId }
+    });
+
+    if (!settings) return null;
+
+    return {
+      id: settings.id,
+      businessId: settings.businessId,
+      enableAppointmentReminders: settings.enableAppointmentReminders,
+      reminderChannels: JSON.parse(settings.reminderChannels as string),
+      reminderTiming: JSON.parse(settings.reminderTiming as string),
+      smsEnabled: settings.smsEnabled,
+      pushEnabled: settings.pushEnabled,
+      emailEnabled: settings.emailEnabled,
+      quietHours: settings.quietHours ? JSON.parse(settings.quietHours as string) : undefined,
+      timezone: settings.timezone,
+      createdAt: settings.createdAt,
+      updatedAt: settings.updatedAt
+    };
+  }
+
+  async updateBusinessNotificationSettings(
+    userId: string,
+    businessId: string,
+    data: BusinessNotificationSettingsRequest
+  ): Promise<BusinessNotificationSettingsData> {
+    // Check permissions - use specific business notification permissions
+    const hasGlobalNotificationEdit = await this.rbacService.hasPermission(userId, 'business_notification', 'edit_all');
+
+    if (!hasGlobalNotificationEdit) {
+      const hasOwnNotificationEdit = await this.rbacService.hasPermission(
+        userId,
+        'business_notification',
+        'edit_own',
+        { businessId }
+      );
+
+      if (!hasOwnNotificationEdit) {
+        throw new Error('Access denied: You do not have permission to update this business settings');
+      }
+    }
+
+    // Verify business exists
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId }
+    });
+
+    if (!business) {
+      throw new ValidationError('Business not found');
+    }
+
+    // Get current settings for smart validation
+    const currentSettings = await this.getBusinessNotificationSettings(userId, businessId);
+    
+    // Merge with incoming updates for smart validation
+    const mergedSettings = {
+      ...currentSettings,
+      ...data
+    };
+
+    // Smart validation: Auto-sync reminder channels with enabled channels
+    const enabledChannels: string[] = [];
+    if (mergedSettings.smsEnabled) enabledChannels.push('SMS');
+    if (mergedSettings.pushEnabled) enabledChannels.push('PUSH');
+    if (mergedSettings.emailEnabled) enabledChannels.push('EMAIL');
+
+    // Auto-sync: ensure all enabled channels are in reminderChannels
+    const syncedReminderChannels = [...new Set([
+      ...(mergedSettings.reminderChannels || []),
+      ...enabledChannels
+    ])];
+
+    // Remove disabled channels from reminderChannels
+    const finalReminderChannels = syncedReminderChannels.filter(channel => {
+      switch (channel) {
+        case 'SMS': return mergedSettings.smsEnabled;
+        case 'PUSH': return mergedSettings.pushEnabled;
+        case 'EMAIL': return mergedSettings.emailEnabled;
+        default: return true;
+      }
+    });
+
+    // Use the synced reminder channels
+    const validatedData = {
+      ...data,
+      reminderChannels: finalReminderChannels
+    };
+
+    // Prepare update data
+    const updateData: any = {};
+
+    if (validatedData.enableAppointmentReminders !== undefined) {
+      updateData.enableAppointmentReminders = validatedData.enableAppointmentReminders;
+    }
+
+    if (validatedData.reminderChannels !== undefined) {
+      updateData.reminderChannels = JSON.stringify(validatedData.reminderChannels);
+    }
+
+    if (validatedData.reminderTiming !== undefined) {
+      updateData.reminderTiming = JSON.stringify(validatedData.reminderTiming);
+    }
+
+    if (validatedData.smsEnabled !== undefined) {
+      updateData.smsEnabled = validatedData.smsEnabled;
+    }
+
+    if (validatedData.pushEnabled !== undefined) {
+      updateData.pushEnabled = validatedData.pushEnabled;
+    }
+
+    if (validatedData.emailEnabled !== undefined) {
+      updateData.emailEnabled = validatedData.emailEnabled;
+    }
+
+    if (validatedData.quietHours !== undefined) {
+      updateData.quietHours = validatedData.quietHours ? JSON.stringify(validatedData.quietHours) : undefined;
+    }
+
+    if (validatedData.timezone !== undefined) {
+      updateData.timezone = validatedData.timezone;
+    }
+
+    // Upsert notification settings
+    const settingsId = `bns_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+    const settings = await this.prisma.businessNotificationSettings.upsert({
+      where: { businessId },
+      create: {
+        id: settingsId,
+        businessId,
+        enableAppointmentReminders: validatedData.enableAppointmentReminders ?? true,
+        reminderChannels: JSON.stringify(validatedData.reminderChannels ?? ['PUSH']),
+        reminderTiming: JSON.stringify(validatedData.reminderTiming ?? [60, 1440]),
+        smsEnabled: validatedData.smsEnabled ?? false,
+        pushEnabled: validatedData.pushEnabled ?? true,
+        emailEnabled: validatedData.emailEnabled ?? false,
+        quietHours: validatedData.quietHours ? JSON.stringify(validatedData.quietHours) : undefined,
+        timezone: validatedData.timezone ?? business.timezone ?? 'Europe/Istanbul'
+      },
+      update: updateData
+    });
+
+    return {
+      id: settings.id,
+      businessId: settings.businessId,
+      enableAppointmentReminders: settings.enableAppointmentReminders,
+      reminderChannels: JSON.parse(settings.reminderChannels as string),
+      reminderTiming: JSON.parse(settings.reminderTiming as string),
+      smsEnabled: settings.smsEnabled,
+      pushEnabled: settings.pushEnabled,
+      emailEnabled: settings.emailEnabled,
+      quietHours: settings.quietHours ? JSON.parse(settings.quietHours as string) : undefined,
+      timezone: settings.timezone,
+      createdAt: settings.createdAt,
+      updatedAt: settings.updatedAt
+    };
+  }
+
+  async getOrCreateBusinessNotificationSettings(
+    businessId: string
+  ): Promise<BusinessNotificationSettingsData> {
+    // This method is used internally by other services
+    let settings = await this.prisma.businessNotificationSettings.findUnique({
+      where: { businessId }
+    });
+
+    if (!settings) {
+      // Get business timezone for defaults
+      const business = await this.prisma.business.findUnique({
+        where: { id: businessId },
+        select: { timezone: true }
+      });
+
+      const settingsId = `bns_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+      // Create default settings
+      settings = await this.prisma.businessNotificationSettings.create({
+        data: {
+          id: settingsId,
+          businessId,
+          enableAppointmentReminders: true,
+          reminderChannels: JSON.stringify(['PUSH']),
+          reminderTiming: JSON.stringify([60, 1440]), // 1 hour and 24 hours
+          smsEnabled: false,
+          pushEnabled: true,
+          emailEnabled: false,
+          timezone: business?.timezone ?? 'Europe/Istanbul'
+        }
+      });
+    }
+
+    return {
+      id: settings.id,
+      businessId: settings.businessId,
+      enableAppointmentReminders: settings.enableAppointmentReminders,
+      reminderChannels: JSON.parse(settings.reminderChannels as string),
+      reminderTiming: JSON.parse(settings.reminderTiming as string),
+      smsEnabled: settings.smsEnabled,
+      pushEnabled: settings.pushEnabled,
+      emailEnabled: settings.emailEnabled,
+      quietHours: settings.quietHours ? JSON.parse(settings.quietHours as string) : undefined,
+      timezone: settings.timezone,
+      createdAt: settings.createdAt,
+      updatedAt: settings.updatedAt
+    };
   }
 }

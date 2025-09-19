@@ -328,6 +328,43 @@ export const updateBusinessPriceSettingsSchema = z.object({
     .describe('Custom message to show when prices are hidden (e.g., "Contact us for pricing")')
 });
 
+export const updateBusinessStaffPrivacySettingsSchema = z.object({
+  hideStaffNames: z.boolean()
+    .optional()
+    .default(false)
+    .describe('Hide individual staff member names from customers during booking'),
+  
+  staffDisplayMode: z.enum(['NAMES', 'ROLES', 'GENERIC'])
+    .optional()
+    .default('NAMES')
+    .describe('How to display staff to customers: NAMES (show actual names), ROLES (show role titles), GENERIC (show generic labels)'),
+    
+  customStaffLabels: z.object({
+    owner: z.string()
+      .max(50, 'Owner label must be less than 50 characters')
+      .optional()
+      .default('Owner')
+      .describe('Custom label for business owner'),
+    manager: z.string()
+      .max(50, 'Manager label must be less than 50 characters')
+      .optional()
+      .default('Manager')
+      .describe('Custom label for managers'),
+    staff: z.string()
+      .max(50, 'Staff label must be less than 50 characters')
+      .optional()
+      .default('Staff')
+      .describe('Custom label for staff members'),
+    receptionist: z.string()
+      .max(50, 'Receptionist label must be less than 50 characters')
+      .optional()
+      .default('Receptionist')
+      .describe('Custom label for receptionists')
+  })
+  .optional()
+  .describe('Custom labels for different staff roles when names are hidden')
+});
+
 // Service validation schemas
 export const createServiceSchema = z.object({
   name: z.string()
@@ -754,6 +791,7 @@ export const deleteGalleryImageSchema = z.object({
 export type CreateBusinessSchema = z.infer<typeof createBusinessSchema>;
 export type UpdateBusinessSchema = z.infer<typeof updateBusinessSchema>;
 export type UpdateBusinessPriceSettingsSchema = z.infer<typeof updateBusinessPriceSettingsSchema>;
+export type UpdateBusinessStaffPrivacySettingsSchema = z.infer<typeof updateBusinessStaffPrivacySettingsSchema>;
 export type CreateServiceSchema = z.infer<typeof createServiceSchema>;
 export type UpdateServiceSchema = z.infer<typeof updateServiceSchema>;
 export type CreateAppointmentSchema = z.infer<typeof createAppointmentSchema>;
@@ -777,3 +815,150 @@ export type BusinessHoursSchema = z.infer<typeof businessHoursSchema>;
 export type CreateBusinessHoursOverrideSchema = z.infer<typeof createBusinessHoursOverrideSchema>;
 export type UpdateBusinessHoursOverrideSchema = z.infer<typeof updateBusinessHoursOverrideSchema>;
 export type BusinessHoursStatusSchema = z.infer<typeof businessHoursStatusSchema>;
+
+// Business Notification Settings schemas
+export const businessNotificationSettingsSchema = z.object({
+  enableAppointmentReminders: z.boolean()
+    .optional()
+    .default(true)
+    .describe('Enable appointment reminder notifications'),
+
+  reminderChannels: z.array(z.enum(['SMS', 'PUSH', 'EMAIL']))
+    .min(1, 'At least one reminder channel must be selected')
+    .max(3, 'Maximum 3 reminder channels allowed')
+    .optional()
+    .default(['PUSH'])
+    .describe('Notification channels to use for reminders'),
+
+  reminderTiming: z.array(z.number()
+    .int('Reminder timing must be integers')
+    .min(5, 'Minimum reminder time is 5 minutes')
+    .max(10080, 'Maximum reminder time is 7 days (10080 minutes)'))
+    .min(1, 'At least one reminder time must be specified')
+    .max(5, 'Maximum 5 reminder times allowed')
+    .optional()
+    .default([60, 1440])
+    .describe('Minutes before appointment to send reminders'),
+
+  smsEnabled: z.boolean()
+    .optional()
+    .default(false)
+    .describe('Enable SMS notifications'),
+
+  pushEnabled: z.boolean()
+    .optional()
+    .default(true)
+    .describe('Enable push notifications'),
+
+  emailEnabled: z.boolean()
+    .optional()
+    .default(false)
+    .describe('Enable email notifications'),
+
+  quietHours: z.object({
+    start: z.string()
+      .regex(timeFormatRegex, 'Start time must be in HH:MM format (24-hour)'),
+    end: z.string()
+      .regex(timeFormatRegex, 'End time must be in HH:MM format (24-hour)')
+  }).optional()
+    .describe('Quiet hours when notifications should not be sent'),
+
+  timezone: z.string()
+    .max(50, 'Timezone must be less than 50 characters')
+    .optional()
+    .default('Europe/Istanbul')
+    .describe('Business timezone for scheduling reminders')
+}).refine((data) => {
+  // Validate quiet hours if provided
+  if (data.quietHours) {
+    const [startHour, startMin] = data.quietHours.start.split(':').map(Number);
+    const [endHour, endMin] = data.quietHours.end.split(':').map(Number);
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+
+    // Allow overnight quiet hours (e.g., 22:00 - 06:00)
+    // Both same time (no quiet hours) and different times are valid
+    return startMinutes !== endMinutes;
+  }
+  return true;
+}, {
+  message: 'Quiet hours start and end times cannot be the same',
+  path: ['quietHours']
+}).refine((data) => {
+  // Sort and validate reminder timing
+  if (data.reminderTiming && data.reminderTiming.length > 1) {
+    const sorted = [...data.reminderTiming].sort((a, b) => a - b);
+    const hasDuplicates = sorted.some((time, index) => index > 0 && time === sorted[index - 1]);
+    return !hasDuplicates;
+  }
+  return true;
+}, {
+  message: 'Reminder times must be unique',
+  path: ['reminderTiming']
+});
+
+// Partial update schema for notification settings (supports smart validation)
+export const updateBusinessNotificationSettingsSchema = z.object({
+  enableAppointmentReminders: z.boolean()
+    .optional()
+    .describe('Enable appointment reminder notifications'),
+
+  reminderChannels: z.array(z.enum(['SMS', 'PUSH', 'EMAIL']))
+    .max(3, 'Maximum 3 reminder channels allowed')
+    .optional()
+    .describe('Notification channels to use for reminders (auto-synced with enabled channels)'),
+
+  reminderTiming: z.array(z.number()
+    .int('Reminder timing must be integers')
+    .min(5, 'Minimum reminder time is 5 minutes')
+    .max(10080, 'Maximum reminder time is 7 days (10080 minutes)'))
+    .max(5, 'Maximum 5 reminder times allowed')
+    .optional()
+    .describe('Minutes before appointment to send reminders'),
+
+  smsEnabled: z.boolean()
+    .optional()
+    .describe('Enable SMS notifications'),
+
+  pushEnabled: z.boolean()
+    .optional()
+    .describe('Enable push notifications'),
+
+  emailEnabled: z.boolean()
+    .optional()
+    .describe('Enable email notifications'),
+
+  quietHours: z.object({
+    start: z.string()
+      .regex(timeFormatRegex, 'Start time must be in HH:MM format (24-hour)'),
+    end: z.string()
+      .regex(timeFormatRegex, 'End time must be in HH:MM format (24-hour)')
+  }).optional()
+    .describe('Quiet hours when notifications should not be sent'),
+
+  timezone: z.string()
+    .max(50, 'Timezone must be less than 50 characters')
+    .optional()
+    .describe('Business timezone for scheduling reminders')
+});
+
+export const testReminderSchema = z.object({
+  appointmentId: z.string()
+    .optional()
+    .describe('Existing appointment ID to test reminder for'),
+
+  channels: z.array(z.enum(['SMS', 'PUSH', 'EMAIL']))
+    .min(1, 'At least one channel must be selected for testing')
+    .optional()
+    .describe('Channels to test (will use business settings if not provided)'),
+
+  customMessage: z.string()
+    .max(500, 'Custom message must be less than 500 characters')
+    .optional()
+    .describe('Custom message for testing')
+});
+
+// Export notification settings schema types
+export type BusinessNotificationSettingsSchema = z.infer<typeof businessNotificationSettingsSchema>;
+export type UpdateBusinessNotificationSettingsSchema = z.infer<typeof updateBusinessNotificationSettingsSchema>;
+export type TestReminderSchema = z.infer<typeof testReminderSchema>;

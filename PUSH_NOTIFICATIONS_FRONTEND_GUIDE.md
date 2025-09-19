@@ -1,810 +1,437 @@
-# 📱 Push Notifications Frontend Integration Guide
+# Push Notifications Frontend Implementation Guide
 
-This guide explains how to integrate push notifications for appointment reminders in your PWA frontend application.
+## Overview
 
-## 🚀 Quick Start
+This guide explains how to implement browser push notifications on the frontend to work with the Randevubu backend API. The backend is already configured and ready - you just need to implement the frontend subscription flow.
 
-### 1. Check Push Notification Support
+## 🎯 Problem Summary
+
+Currently, the backend shows:
+```
+Found 0 active push subscriptions for user 74d5ac65-26a2-4cd5-9f45-5e89b8158385: []
+```
+
+This means the **browser hasn't subscribed** to push notifications yet, even though business notification settings are properly configured.
+
+## 🔄 Two Different Systems
+
+### 1. Business Notification Settings ✅ (Already Working)
+- **Purpose**: Controls business-level notification preferences
+- **Endpoint**: `PUT /api/v1/businesses/my-business/notification-settings`
+- **Controls**: `pushEnabled`, `smsEnabled`, `emailEnabled`, `reminderChannels`
+- **Status**: ✅ Working correctly
+
+### 2. Browser Push Subscription ❌ (Missing - Needs Implementation)
+- **Purpose**: Creates browser/device-specific push subscription tokens
+- **Endpoint**: `POST /api/v1/notifications/push/subscribe`
+- **Creates**: FCM tokens that allow actual notification delivery
+- **Status**: ❌ Not implemented in frontend
+
+## 🛠️ Frontend Implementation Steps
+
+### Step 1: Check Browser Support
 
 ```javascript
-// Check if push notifications are supported
-if ('serviceWorker' in navigator && 'PushManager' in window) {
-  console.log('Push notifications are supported');
-} else {
-  console.log('Push notifications are not supported');
+function isPushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+if (!isPushSupported()) {
+  console.warn('Push notifications are not supported in this browser');
+  // Show fallback UI or message
+  return;
 }
 ```
 
-### 2. Get VAPID Public Key
+### Step 2: Request Permission
 
 ```javascript
-const getVapidPublicKey = async () => {
-  try {
-    const response = await fetch('/api/v1/notifications/push/vapid-key');
-    const data = await response.json();
-    
-    if (data.success) {
-      return data.data.publicKey;
-    } else {
-      throw new Error('Push notifications not configured on server');
-    }
-  } catch (error) {
-    console.error('Failed to get VAPID key:', error);
-    return null;
+async function requestNotificationPermission() {
+  if (Notification.permission === 'granted') {
+    return true;
   }
-};
+
+  if (Notification.permission === 'denied') {
+    alert('Push notifications are blocked. Please enable them in your browser settings.');
+    return false;
+  }
+
+  const permission = await Notification.requestPermission();
+  return permission === 'granted';
+}
 ```
 
-### 3. Register Service Worker
+### Step 3: Get VAPID Public Key
 
 ```javascript
-// Register service worker
-const registerServiceWorker = async () => {
+async function getVapidPublicKey() {
+  try {
+    const response = await fetch('/api/v1/notifications/push/vapid-public-key', {
+      headers: {
+        'Authorization': `Bearer ${getAccessToken()}` // Your auth token
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to get VAPID public key');
+    }
+
+    const data = await response.json();
+    return data.data.publicKey;
+  } catch (error) {
+    console.error('Error getting VAPID public key:', error);
+    throw error;
+  }
+}
+```
+
+### Step 4: Helper Function for VAPID Key Conversion
+
+```javascript
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+
+  return outputArray;
+}
+```
+
+### Step 5: Subscribe to Push Notifications
+
+```javascript
+async function subscribeToNotifications() {
+  try {
+    // 1. Check if already subscribed
+    const registration = await navigator.serviceWorker.ready;
+    const existingSubscription = await registration.pushManager.getSubscription();
+
+    if (existingSubscription) {
+      console.log('Already subscribed to push notifications');
+      return await sendSubscriptionToServer(existingSubscription);
+    }
+
+    // 2. Request permission
+    const hasPermission = await requestNotificationPermission();
+    if (!hasPermission) {
+      throw new Error('Notification permission denied');
+    }
+
+    // 3. Get VAPID public key
+    const vapidPublicKey = await getVapidPublicKey();
+
+    // 4. Subscribe to push manager
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+    });
+
+    // 5. Send subscription to server
+    return await sendSubscriptionToServer(subscription);
+
+  } catch (error) {
+    console.error('Error subscribing to push notifications:', error);
+    throw error;
+  }
+}
+```
+
+### Step 6: Send Subscription to Backend
+
+```javascript
+async function sendSubscriptionToServer(subscription) {
+  try {
+    const response = await fetch('/api/v1/notifications/push/subscribe', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${getAccessToken()}`, // Your auth token
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey('p256dh')))),
+          auth: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey('auth'))))
+        },
+        deviceName: navigator.userAgent, // Optional: device identification
+        deviceType: 'web' // Optional: device type
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to subscribe');
+    }
+
+    const result = await response.json();
+    console.log('Successfully subscribed to push notifications:', result);
+    return result;
+
+  } catch (error) {
+    console.error('Error sending subscription to server:', error);
+    throw error;
+  }
+}
+```
+
+### Step 7: Create Service Worker
+
+Create a file: `public/sw.js` or `public/service-worker.js`:
+
+```javascript
+// Service Worker for handling push notifications
+self.addEventListener('push', function(event) {
+  if (!event.data) {
+    return;
+  }
+
+  const data = event.data.json();
+
+  const options = {
+    body: data.body,
+    icon: data.icon || '/icon-192x192.png', // Your app icon
+    badge: data.badge || '/badge-72x72.png', // Your badge icon
+    data: data.data,
+    requireInteraction: false,
+    actions: data.actions || []
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+// Handle notification click
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+
+  // Handle click action
+  const urlToOpen = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    clients.matchAll().then(function(clientList) {
+      // If app is already open, focus it
+      for (const client of clientList) {
+        if (client.url.includes(urlToOpen) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+
+      // Otherwise open new tab
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
+});
+```
+
+### Step 8: Register Service Worker
+
+In your main application file:
+
+```javascript
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) {
+    throw new Error('Service Worker not supported');
+  }
+
   try {
     const registration = await navigator.serviceWorker.register('/sw.js');
     console.log('Service Worker registered:', registration);
     return registration;
   } catch (error) {
     console.error('Service Worker registration failed:', error);
-    return null;
-  }
-};
-```
-
-## 📋 API Endpoints
-
-### Base URL
-```
-http://localhost:3001/api/v1
-```
-
-### Authentication
-All endpoints (except VAPID key) require JWT authentication:
-```javascript
-headers: {
-  'Authorization': `Bearer ${userToken}`,
-  'Content-Type': 'application/json'
-}
-```
-
-## 🔧 Core Implementation
-
-### 1. Complete Push Notification Setup
-
-```javascript
-class PushNotificationManager {
-  constructor() {
-    this.vapidPublicKey = null;
-    this.registration = null;
-    this.subscription = null;
-    this.userToken = localStorage.getItem('authToken'); // Your auth token
-  }
-
-  async initialize() {
-    try {
-      // Check support
-      if (!this.isSupported()) {
-        throw new Error('Push notifications not supported');
-      }
-
-      // Get VAPID key
-      this.vapidPublicKey = await this.getVapidPublicKey();
-      if (!this.vapidPublicKey) {
-        throw new Error('Failed to get VAPID key');
-      }
-
-      // Register service worker
-      this.registration = await this.registerServiceWorker();
-      if (!this.registration) {
-        throw new Error('Failed to register service worker');
-      }
-
-      console.log('Push notification manager initialized');
-      return true;
-    } catch (error) {
-      console.error('Push notification initialization failed:', error);
-      return false;
-    }
-  }
-
-  isSupported() {
-    return 'serviceWorker' in navigator && 
-           'PushManager' in window && 
-           'Notification' in window;
-  }
-
-  async getVapidPublicKey() {
-    const response = await fetch('/api/v1/notifications/push/vapid-key');
-    const data = await response.json();
-    return data.success ? data.data.publicKey : null;
-  }
-
-  async registerServiceWorker() {
-    return await navigator.serviceWorker.register('/sw.js');
-  }
-
-  async requestPermission() {
-    const permission = await Notification.requestPermission();
-    return permission === 'granted';
-  }
-
-  async subscribe() {
-    try {
-      if (!this.registration) {
-        throw new Error('Service worker not registered');
-      }
-
-      // Request permission
-      const hasPermission = await this.requestPermission();
-      if (!hasPermission) {
-        throw new Error('Notification permission denied');
-      }
-
-      // Create push subscription
-      this.subscription = await this.registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: this.urlBase64ToUint8Array(this.vapidPublicKey)
-      });
-
-      // Send subscription to server
-      const success = await this.sendSubscriptionToServer(this.subscription);
-      if (success) {
-        console.log('Successfully subscribed to push notifications');
-        return true;
-      } else {
-        throw new Error('Failed to register subscription on server');
-      }
-    } catch (error) {
-      console.error('Push subscription failed:', error);
-      return false;
-    }
-  }
-
-  async sendSubscriptionToServer(subscription) {
-    try {
-      const response = await fetch('/api/v1/notifications/push/subscribe', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.userToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: this.arrayBufferToBase64(subscription.getKey('p256dh')),
-            auth: this.arrayBufferToBase64(subscription.getKey('auth'))
-          },
-          deviceName: this.getDeviceName(),
-          deviceType: 'web',
-          userAgent: navigator.userAgent
-        })
-      });
-
-      const data = await response.json();
-      return data.success;
-    } catch (error) {
-      console.error('Failed to send subscription to server:', error);
-      return false;
-    }
-  }
-
-  async unsubscribe() {
-    try {
-      if (this.subscription) {
-        // Unsubscribe from browser
-        await this.subscription.unsubscribe();
-        
-        // Remove from server
-        await fetch('/api/v1/notifications/push/unsubscribe', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.userToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            endpoint: this.subscription.endpoint
-          })
-        });
-
-        this.subscription = null;
-        console.log('Unsubscribed from push notifications');
-        return true;
-      }
-    } catch (error) {
-      console.error('Unsubscribe failed:', error);
-      return false;
-    }
-  }
-
-  // Utility methods
-  urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding)
-      .replace(/-/g, '+')
-      .replace(/_/g, '/');
-
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-  }
-
-  arrayBufferToBase64(buffer) {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    bytes.forEach(byte => binary += String.fromCharCode(byte));
-    return window.btoa(binary);
-  }
-
-  getDeviceName() {
-    // Simple device detection
-    const userAgent = navigator.userAgent;
-    if (userAgent.includes('Mobile')) return 'Mobile Device';
-    if (userAgent.includes('Tablet')) return 'Tablet';
-    return 'Desktop';
-  }
-}
-```
-
-### 2. Notification Preferences Management
-
-```javascript
-class NotificationPreferences {
-  constructor(userToken) {
-    this.userToken = userToken;
-  }
-
-  async getPreferences() {
-    try {
-      const response = await fetch('/api/v1/notifications/push/preferences', {
-        headers: {
-          'Authorization': `Bearer ${this.userToken}`
-        }
-      });
-      const data = await response.json();
-      return data.success ? data.data : null;
-    } catch (error) {
-      console.error('Failed to get preferences:', error);
-      return null;
-    }
-  }
-
-  async updatePreferences(preferences) {
-    try {
-      const response = await fetch('/api/v1/notifications/push/preferences', {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${this.userToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(preferences)
-      });
-      const data = await response.json();
-      return data.success;
-    } catch (error) {
-      console.error('Failed to update preferences:', error);
-      return false;
-    }
+    throw error;
   }
 }
 
-// Usage example
-const preferences = new NotificationPreferences(userToken);
-
-// Get current preferences
-const currentPrefs = await preferences.getPreferences();
-console.log('Current preferences:', currentPrefs);
-
-// Update preferences
-const success = await preferences.updatePreferences({
-  enableAppointmentReminders: true,
-  enableBusinessNotifications: true,
-  enablePromotionalMessages: false,
-  reminderTiming: {
-    hours: [1, 24] // 1 hour and 24 hours before appointment
-  },
-  preferredChannels: {
-    channels: ['PUSH', 'SMS']
-  },
-  quietHours: {
-    start: '22:00',
-    end: '08:00',
-    timezone: 'Europe/Istanbul'
-  },
-  timezone: 'Europe/Istanbul'
-});
-```
-
-### 3. Appointment Data Integration
-
-```javascript
-class AppointmentManager {
-  constructor(userToken) {
-    this.userToken = userToken;
-  }
-
-  // Get the nearest appointment in the current hour
-  async getNearestAppointmentCurrentHour() {
-    try {
-      const response = await fetch('/api/v1/appointments/nearest-current-hour', {
-        headers: {
-          'Authorization': `Bearer ${this.userToken}`
-        }
-      });
-      const data = await response.json();
-      
-      if (data.success && data.data) {
-        return {
-          appointment: data.data,
-          timeUntilAppointment: data.data.timeUntilAppointment // milliseconds
-        };
-      }
-      return null;
-    } catch (error) {
-      console.error('Failed to get nearest appointment:', error);
-      return null;
-    }
-  }
-
-  // Get all appointments in current hour
-  async getCurrentHourAppointments() {
-    try {
-      const response = await fetch('/api/v1/appointments/current-hour', {
-        headers: {
-          'Authorization': `Bearer ${this.userToken}`
-        }
-      });
-      const data = await response.json();
-      return data.success ? data.data : [];
-    } catch (error) {
-      console.error('Failed to get current hour appointments:', error);
-      return [];
-    }
-  }
-
-  // Format time until appointment for display
-  formatTimeUntil(milliseconds) {
-    const minutes = Math.floor(milliseconds / (1000 * 60));
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes % 60}m`;
-    }
-    return `${minutes}m`;
-  }
-}
-```
-
-## 🎯 Service Worker Implementation
-
-Create `/public/sw.js`:
-
-```javascript
-// Service Worker for handling push notifications
-self.addEventListener('push', function(event) {
-  console.log('Push received:', event);
-
-  let notificationData = {
-    title: 'Appointment Reminder',
-    body: 'You have an upcoming appointment',
-    icon: '/icons/appointment.png',
-    badge: '/icons/badge.png',
-    data: {}
-  };
-
-  // Parse push data if available
-  if (event.data) {
-    try {
-      const pushData = event.data.json();
-      notificationData = {
-        title: pushData.title || notificationData.title,
-        body: pushData.body || notificationData.body,
-        icon: pushData.icon || notificationData.icon,
-        badge: pushData.badge || notificationData.badge,
-        data: pushData.data || {}
-      };
-    } catch (error) {
-      console.error('Error parsing push data:', error);
-    }
-  }
-
-  const options = {
-    body: notificationData.body,
-    icon: notificationData.icon,
-    badge: notificationData.badge,
-    data: notificationData.data,
-    actions: [
-      {
-        action: 'view',
-        title: 'View Appointment',
-        icon: '/icons/view.png'
-      },
-      {
-        action: 'dismiss',
-        title: 'Dismiss',
-        icon: '/icons/dismiss.png'
-      }
-    ],
-    requireInteraction: true, // Keep notification visible
-    tag: 'appointment-reminder' // Prevent duplicate notifications
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(notificationData.title, options)
-  );
-});
-
-// Handle notification clicks
-self.addEventListener('notificationclick', function(event) {
-  console.log('Notification clicked:', event);
-
-  event.notification.close();
-
-  if (event.action === 'view') {
-    // Open appointment details
-    const appointmentId = event.notification.data.appointmentId;
-    const url = appointmentId ? `/appointments/${appointmentId}` : '/appointments';
-    
-    event.waitUntil(
-      clients.openWindow(url)
-    );
-  } else if (event.action === 'dismiss') {
-    // Just close the notification
-    console.log('Notification dismissed');
-  } else {
-    // Default click action - open the app
-    event.waitUntil(
-      clients.openWindow('/')
-    );
+// Initialize when app loads
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await registerServiceWorker();
+    console.log('Push notification system ready');
+  } catch (error) {
+    console.error('Failed to initialize push notifications:', error);
   }
 });
 ```
 
-## 🖥️ UI Components
+## 🎨 UI Implementation
 
-### 1. Notification Settings Component
+### Simple Enable/Disable Button
 
-```jsx
-import React, { useState, useEffect } from 'react';
-
-const NotificationSettings = ({ userToken }) => {
-  const [preferences, setPreferences] = useState(null);
+```javascript
+// React example
+function PushNotificationToggle() {
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const pushManager = new PushNotificationManager();
-  const preferencesManager = new NotificationPreferences(userToken);
+  const handleToggleNotifications = async () => {
+    setIsLoading(true);
 
-  useEffect(() => {
-    loadPreferences();
-    checkSubscriptionStatus();
-  }, []);
-
-  const loadPreferences = async () => {
-    const prefs = await preferencesManager.getPreferences();
-    setPreferences(prefs || {
-      enableAppointmentReminders: true,
-      enableBusinessNotifications: true,
-      enablePromotionalMessages: false,
-      reminderTiming: { hours: [1, 24] },
-      preferredChannels: { channels: ['PUSH'] },
-      quietHours: null,
-      timezone: 'Europe/Istanbul'
-    });
-    setLoading(false);
+    try {
+      if (isSubscribed) {
+        await unsubscribeFromNotifications();
+        setIsSubscribed(false);
+      } else {
+        await subscribeToNotifications();
+        setIsSubscribed(true);
+      }
+    } catch (error) {
+      alert('Failed to update notification settings: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const checkSubscriptionStatus = async () => {
-    // Check if already subscribed
+  return (
+    <button
+      onClick={handleToggleNotifications}
+      disabled={isLoading}
+    >
+      {isLoading ? 'Loading...' : (isSubscribed ? 'Disable Notifications' : 'Enable Notifications')}
+    </button>
+  );
+}
+```
+
+### Unsubscribe Function
+
+```javascript
+async function unsubscribeFromNotifications() {
+  try {
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
-    setIsSubscribed(!!subscription);
-  };
 
-  const handleSubscribe = async () => {
-    setLoading(true);
-    const initialized = await pushManager.initialize();
-    if (initialized) {
-      const success = await pushManager.subscribe();
-      setIsSubscribed(success);
+    if (!subscription) {
+      console.log('No subscription found');
+      return;
     }
-    setLoading(false);
-  };
 
-  const handleUnsubscribe = async () => {
-    setLoading(true);
-    const success = await pushManager.unsubscribe();
-    if (success) {
-      setIsSubscribed(false);
-    }
-    setLoading(false);
-  };
+    // Unsubscribe from browser
+    await subscription.unsubscribe();
 
-  const handlePreferenceChange = async (newPreferences) => {
-    setPreferences(newPreferences);
-    await preferencesManager.updatePreferences(newPreferences);
-  };
-
-  if (loading) return <div>Loading...</div>;
-
-  return (
-    <div className="notification-settings">
-      <h2>Push Notification Settings</h2>
-      
-      {/* Subscription Status */}
-      <div className="subscription-status">
-        <h3>Push Notifications</h3>
-        <p>Status: {isSubscribed ? '✅ Enabled' : '❌ Disabled'}</p>
-        
-        {!isSubscribed ? (
-          <button onClick={handleSubscribe} disabled={loading}>
-            Enable Push Notifications
-          </button>
-        ) : (
-          <button onClick={handleUnsubscribe} disabled={loading}>
-            Disable Push Notifications
-          </button>
-        )}
-      </div>
-
-      {/* Preferences */}
-      {isSubscribed && preferences && (
-        <div className="preferences">
-          <h3>Notification Preferences</h3>
-          
-          <label>
-            <input
-              type="checkbox"
-              checked={preferences.enableAppointmentReminders}
-              onChange={(e) => handlePreferenceChange({
-                ...preferences,
-                enableAppointmentReminders: e.target.checked
-              })}
-            />
-            Appointment Reminders
-          </label>
-
-          <label>
-            <input
-              type="checkbox"
-              checked={preferences.enableBusinessNotifications}
-              onChange={(e) => handlePreferenceChange({
-                ...preferences,
-                enableBusinessNotifications: e.target.checked
-              })}
-            />
-            Business Updates
-          </label>
-
-          {/* Reminder Timing */}
-          <div className="reminder-timing">
-            <h4>Remind me:</h4>
-            {[0.5, 1, 2, 24].map(hours => (
-              <label key={hours}>
-                <input
-                  type="checkbox"
-                  checked={preferences.reminderTiming.hours.includes(hours)}
-                  onChange={(e) => {
-                    const newHours = e.target.checked
-                      ? [...preferences.reminderTiming.hours, hours]
-                      : preferences.reminderTiming.hours.filter(h => h !== hours);
-                    
-                    handlePreferenceChange({
-                      ...preferences,
-                      reminderTiming: { hours: newHours }
-                    });
-                  }}
-                />
-                {hours < 1 ? `${hours * 60} minutes` : `${hours} hour${hours > 1 ? 's' : ''}`} before
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default NotificationSettings;
-```
-
-### 2. Appointment Dashboard Widget
-
-```jsx
-import React, { useState, useEffect } from 'react';
-
-const NearestAppointmentWidget = ({ userToken }) => {
-  const [appointment, setAppointment] = useState(null);
-  const [timeUntil, setTimeUntil] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  const appointmentManager = new AppointmentManager(userToken);
-
-  useEffect(() => {
-    loadNearestAppointment();
-    // Refresh every minute
-    const interval = setInterval(loadNearestAppointment, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (appointment?.timeUntilAppointment) {
-      updateTimeDisplay();
-      const interval = setInterval(updateTimeDisplay, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [appointment]);
-
-  const loadNearestAppointment = async () => {
-    const result = await appointmentManager.getNearestAppointmentCurrentHour();
-    setAppointment(result?.appointment || null);
-    setLoading(false);
-  };
-
-  const updateTimeDisplay = () => {
-    if (appointment) {
-      const now = Date.now();
-      const appointmentTime = new Date(appointment.startTime).getTime();
-      const remaining = Math.max(0, appointmentTime - now);
-      setTimeUntil(appointmentManager.formatTimeUntil(remaining));
-    }
-  };
-
-  if (loading) return <div>Loading...</div>;
-
-  if (!appointment) {
-    return (
-      <div className="appointment-widget">
-        <h3>Next Appointment</h3>
-        <p>No appointments in the current hour</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="appointment-widget urgent">
-      <h3>🔔 Next Appointment</h3>
-      <div className="appointment-info">
-        <h4>{appointment.service.name}</h4>
-        <p><strong>{appointment.business.name}</strong></p>
-        <p>⏰ {new Date(appointment.startTime).toLocaleTimeString()}</p>
-        <p className="time-until">Starting in: <strong>{timeUntil}</strong></p>
-      </div>
-      <button 
-        onClick={() => window.location.href = `/appointments/${appointment.id}`}
-        className="view-appointment-btn"
-      >
-        View Details
-      </button>
-    </div>
-  );
-};
-
-export default NearestAppointmentWidget;
-```
-
-## 🧪 Testing
-
-### Test Push Notifications
-
-```javascript
-const testPushNotification = async (userToken) => {
-  try {
-    const response = await fetch('/api/v1/notifications/push/test', {
+    // Notify server
+    await fetch('/api/v1/notifications/push/unsubscribe', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${userToken}`,
+        'Authorization': `Bearer ${getAccessToken()}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        title: 'Test Notification',
-        body: 'This is a test push notification from your PWA!',
-        icon: '/icons/test.png',
-        data: { test: true }
+        endpoint: subscription.endpoint
       })
     });
 
-    const data = await response.json();
-    console.log('Test notification result:', data);
-    return data.success;
+    console.log('Successfully unsubscribed from push notifications');
   } catch (error) {
-    console.error('Test notification failed:', error);
-    return false;
+    console.error('Error unsubscribing:', error);
+    throw error;
   }
-};
-```
-
-## 📱 PWA Manifest Updates
-
-Update your `manifest.json`:
-
-```json
-{
-  "name": "RandevuBu",
-  "short_name": "RandevuBu",
-  "description": "Appointment booking and management",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#007bff",
-  "icons": [
-    {
-      "src": "/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ],
-  "gcm_sender_id": "103953800507"
 }
 ```
 
-## 🚨 Error Handling
+## 🧪 Testing the Implementation
+
+### 1. Check Subscription Status
 
 ```javascript
-class NotificationError extends Error {
-  constructor(message, code) {
-    super(message);
-    this.name = 'NotificationError';
-    this.code = code;
+async function checkSubscriptionStatus() {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+
+    if (subscription) {
+      console.log('Push subscription active:', subscription.endpoint);
+      return true;
+    } else {
+      console.log('No push subscription found');
+      return false;
+    }
+  } catch (error) {
+    console.error('Error checking subscription:', error);
+    return false;
   }
 }
-
-const handleNotificationError = (error) => {
-  console.error('Notification error:', error);
-  
-  switch (error.code || error.name) {
-    case 'NotAllowedError':
-      return 'Please allow notifications in your browser settings';
-    case 'AbortError':
-      return 'Notification request was cancelled';
-    case 'NotSupportedError':
-      return 'Push notifications are not supported on this device';
-    default:
-      return 'An error occurred with notifications. Please try again.';
-  }
-};
 ```
 
-## 📋 Implementation Checklist
+### 2. Test Notification
 
-- [ ] Set up service worker (`/public/sw.js`)
-- [ ] Implement `PushNotificationManager` class
-- [ ] Add notification permission request UI
-- [ ] Create notification settings page
-- [ ] Add nearest appointment widget to dashboard
-- [ ] Test push notifications on different devices
-- [ ] Handle offline scenarios
-- [ ] Add proper error messages for users
-- [ ] Configure VAPID keys on server
-- [ ] Test notification preferences
-- [ ] Verify quiet hours functionality
-- [ ] Test appointment reminder timing
-
-## 🔧 Environment Configuration
-
-Make sure your server has these environment variables:
-
-```bash
-VAPID_PUBLIC_KEY=your_vapid_public_key_here
-VAPID_PRIVATE_KEY=your_vapid_private_key_here
-VAPID_SUBJECT=mailto:admin@randevubu.com
+After implementing the above, you should see logs like:
+```
+Creating/updating push subscription: {
+  userId: '74d5ac65-26a2-4cd5-9f45-5e89b8158385',
+  endpoint: 'https://fcm.googleapis.com/fcm/send/NEW_TOKEN...',
+  subscriptionId: 'push_TIMESTAMP_RANDOM'
+}
 ```
 
-## 📚 Additional Resources
+And when testing reminders:
+```
+Found 1 active push subscriptions for user 74d5ac65-26a2-4cd5-9f45-5e89b8158385: [...]
+```
 
-- [Web Push Protocol](https://web.dev/push-notifications/)
-- [Service Worker API](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API)
-- [Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API)
-- [Notification API](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API)
+## 🚨 Common Issues
 
----
+### iOS Safari Limitations
+- Push notifications require the site to be added to Home Screen
+- Consider showing instructions or using a different browser for testing
 
-This guide provides everything needed to implement push notifications in your PWA. The backend automatically handles appointment reminders, and the frontend provides user control over notification preferences and displays upcoming appointments prominently.
+### Permission Denied
+```javascript
+if (Notification.permission === 'denied') {
+  // Show instructions to manually enable in browser settings
+  showNotificationInstructions();
+}
+```
+
+### Service Worker Issues
+- Ensure service worker is served from root path (`/sw.js`)
+- Check browser dev tools → Application → Service Workers
+- Verify service worker is registered and active
+
+### HTTPS Required
+- Push notifications only work on HTTPS (or localhost for development)
+- Ensure your site is served over HTTPS in production
+
+## 🎯 Integration Points
+
+### Backend API Endpoints Already Available:
+- `GET /api/v1/notifications/push/vapid-public-key` - Get VAPID public key
+- `POST /api/v1/notifications/push/subscribe` - Create subscription
+- `POST /api/v1/notifications/push/unsubscribe` - Remove subscription
+- `POST /api/v1/businesses/my-business/test-reminder` - Test notifications
+
+### Business Settings Integration:
+- The business notification settings (`pushEnabled`, `smsEnabled`) control which channels are used
+- The push subscription creates the delivery mechanism
+- Both are required for notifications to work
+
+## ✅ Success Criteria
+
+After implementation, you should be able to:
+
+1. ✅ **Enable push notifications** in browser (permission granted)
+2. ✅ **See subscription created** in backend logs
+3. ✅ **Test reminder works** and delivers notification
+4. ✅ **Click notification** opens your app
+5. ✅ **Disable/re-enable** notifications as needed
+
+## 🔗 Next Steps
+
+1. **Implement the code above** in your frontend framework
+2. **Test browser permission flow**
+3. **Verify subscription creation** (check backend logs)
+4. **Test notification delivery** with reminder endpoint
+5. **Add UI controls** for users to manage their notification preferences
+
+The backend is fully ready - you just need to implement the frontend subscription flow! 🚀

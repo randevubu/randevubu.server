@@ -11,6 +11,14 @@ import {
   SendPushNotificationRequest,
   UpcomingAppointment
 } from '../types/business';
+import { 
+  translateNotification, 
+  getNotificationTranslationKey,
+  formatDateForLanguage,
+  formatTimeForLanguage,
+  formatDateTimeForLanguage,
+  NotificationTranslationParams
+} from '../utils/notificationTranslations';
 
 export interface NotificationResult {
   success: boolean;
@@ -61,7 +69,8 @@ export class NotificationService {
   async sendClosureNotification(
     customerId: string,
     closureData: EnhancedClosureData,
-    channels: NotificationChannel[]
+    channels: NotificationChannel[],
+    language: string = 'tr'
   ): Promise<NotificationResult[]> {
     const results: NotificationResult[] = [];
 
@@ -77,7 +86,7 @@ export class NotificationService {
             result = await this.sendSMSNotification(customerId, closureData);
             break;
           case NotificationChannel.PUSH:
-            result = await this.sendClosurePushNotification(customerId, closureData);
+            result = await this.sendClosurePushNotification(customerId, closureData, language);
             break;
           default:
             result = {
@@ -93,7 +102,7 @@ export class NotificationService {
           closureData.id,
           customerId,
           channel,
-          closureData.message || this.generateClosureMessage(closureData),
+          closureData.message || this.generateClosureMessage(closureData, language),
           result
         );
 
@@ -110,7 +119,7 @@ export class NotificationService {
           closureData.id,
           customerId,
           channel,
-          closureData.message || this.generateClosureMessage(closureData),
+          closureData.message || this.generateClosureMessage(closureData, language),
           failedResult
         );
 
@@ -156,7 +165,8 @@ export class NotificationService {
       const message = this.generateAvailabilityMessage(
         availabilityAlert.business.name,
         availableSlots,
-        availabilityAlert.service?.name
+        availabilityAlert.service?.name,
+        'tr' // Default to Turkish for now
       );
 
       const results: NotificationResult[] = [];
@@ -210,7 +220,8 @@ export class NotificationService {
         appointment.business.name,
         appointment.service.name,
         appointment.startTime,
-        suggestions
+        suggestions,
+        'tr' // Default to Turkish for now
       );
 
       // Default to email for reschedule notifications
@@ -273,15 +284,17 @@ export class NotificationService {
 
   private async sendClosurePushNotification(
     customerId: string,
-    closureData: EnhancedClosureData
+    closureData: EnhancedClosureData,
+    language: string = 'tr'
   ): Promise<NotificationResult> {
-    const message = closureData.message || this.generateClosureMessage(closureData);
+    const message = closureData.message || this.generateClosureMessage(closureData, language);
+    const title = language === 'tr' ? 'İş Yeri Kapanış Bildirimi' : 'Business Closure Notice';
     
     const results = await this.sendPushNotification({
       userId: customerId,
       appointmentId: undefined,
       businessId: closureData.businessId,
-      title: 'Business Closure Notice',
+      title,
       body: message,
       icon: undefined,
       badge: undefined,
@@ -344,33 +357,50 @@ export class NotificationService {
     });
   }
 
-  private generateClosureMessage(closureData: EnhancedClosureData): string {
-    const formatDate = (date: Date) => date.toLocaleDateString();
-    const endDateText = closureData.endDate ? ` until ${formatDate(closureData.endDate)}` : '';
+  private generateClosureMessage(closureData: EnhancedClosureData, language: string = 'tr'): string {
+    const translationKey = getNotificationTranslationKey('BUSINESS_CLOSURE_NOTICE');
+    const translationParams: NotificationTranslationParams = {
+      businessName: closureData.businessName,
+      startDate: formatDateForLanguage(closureData.startDate, language),
+      endDate: closureData.endDate ? formatDateForLanguage(closureData.endDate, language) : undefined,
+      reason: closureData.reason
+    };
     
-    return `${closureData.businessName} will be closed starting ${formatDate(closureData.startDate)}${endDateText}. Reason: ${closureData.reason}`;
+    return translateNotification(translationKey, translationParams, language);
   }
 
   private generateAvailabilityMessage(
     businessName: string,
     slots: TimeSlot[],
-    serviceName?: string
+    serviceName?: string,
+    language: string = 'tr'
   ): string {
-    const serviceText = serviceName ? ` for ${serviceName}` : '';
-    const slotCount = slots.length;
+    const translationKey = getNotificationTranslationKey('AVAILABILITY_ALERT');
+    const translationParams: NotificationTranslationParams = {
+      businessName,
+      slotCount: slots.length,
+      serviceName
+    };
     
-    return `Good news! ${businessName} now has ${slotCount} available slot${slotCount > 1 ? 's' : ''}${serviceText}. Book now to secure your appointment.`;
+    return translateNotification(translationKey, translationParams, language);
   }
 
   private generateRescheduleMessage(
     businessName: string,
     serviceName: string,
     originalTime: Date,
-    suggestions: RescheduleSuggestion[]
+    suggestions: RescheduleSuggestion[],
+    language: string = 'tr'
   ): string {
-    const formatDateTime = (date: Date) => date.toLocaleString();
+    const translationKey = getNotificationTranslationKey('RESCHEDULE_NOTIFICATION');
+    const translationParams: NotificationTranslationParams = {
+      businessName,
+      serviceName,
+      originalTime: formatDateTimeForLanguage(originalTime, language),
+      suggestionCount: suggestions.length
+    };
     
-    return `Your appointment at ${businessName} for ${serviceName} scheduled on ${formatDateTime(originalTime)} needs to be rescheduled due to a business closure. We have ${suggestions.length} alternative time slots available for you.`;
+    return translateNotification(translationKey, translationParams, language);
   }
 
   async getNotificationDeliveryStats(closureId: string): Promise<{
@@ -441,9 +471,17 @@ export class NotificationService {
     phoneNumber: string,
     businessName: string,
     planName: string,
-    nextBillingDate: Date
+    nextBillingDate: Date,
+    language: string = 'tr'
   ): Promise<NotificationResult> {
-    const message = `Your subscription to ${planName} for ${businessName} has been successfully renewed. Next billing date: ${nextBillingDate.toLocaleDateString()}.`;
+    const translationKey = getNotificationTranslationKey('SUBSCRIPTION_RENEWAL_CONFIRMATION');
+    const translationParams: NotificationTranslationParams = {
+      businessName,
+      planName,
+      nextBillingDate: formatDateForLanguage(nextBillingDate, language)
+    };
+    
+    const message = translateNotification(translationKey, translationParams, language);
     
     try {
       // For now, just log the notification - implement actual SMS sending later
@@ -468,9 +506,17 @@ export class NotificationService {
     phoneNumber: string,
     businessName: string,
     planName: string,
-    expiryDate: Date
+    expiryDate: Date,
+    language: string = 'tr'
   ): Promise<NotificationResult> {
-    const message = `Your subscription to ${planName} for ${businessName} expires on ${expiryDate.toLocaleDateString()}. Please renew to avoid service interruption.`;
+    const translationKey = getNotificationTranslationKey('SUBSCRIPTION_RENEWAL_REMINDER');
+    const translationParams: NotificationTranslationParams = {
+      businessName,
+      planName,
+      expiryDate: formatDateForLanguage(expiryDate, language)
+    };
+    
+    const message = translateNotification(translationKey, translationParams, language);
     
     try {
       // For now, just log the notification - implement actual SMS sending later
@@ -495,9 +541,17 @@ export class NotificationService {
     phoneNumber: string,
     businessName: string,
     failedPaymentCount: number,
-    expiryDate: Date
+    expiryDate: Date,
+    language: string = 'tr'
   ): Promise<NotificationResult> {
-    const message = `Payment failed for your ${businessName} subscription. Failed attempts: ${failedPaymentCount}. Service expires on ${expiryDate.toLocaleDateString()}. Please update your payment method.`;
+    const translationKey = getNotificationTranslationKey('PAYMENT_FAILURE_NOTIFICATION');
+    const translationParams: NotificationTranslationParams = {
+      businessName,
+      failedPaymentCount,
+      expiryDate: formatDateForLanguage(expiryDate, language)
+    };
+    
+    const message = translateNotification(translationKey, translationParams, language);
     
     try {
       // For now, just log the notification - implement actual SMS sending later
@@ -522,7 +576,13 @@ export class NotificationService {
 
   async subscribeToPush(userId: string, subscriptionData: PushSubscriptionRequest): Promise<PushSubscriptionData> {
     const subscriptionId = `push_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
+    console.log('Creating/updating push subscription:', {
+      userId,
+      endpoint: subscriptionData.endpoint,
+      subscriptionId
+    });
+
     // @ts-ignore - pushSubscription model exists in Prisma schema
     const subscription = await this.prisma.pushSubscription.upsert({
       where: {
@@ -648,7 +708,11 @@ export class NotificationService {
 
   async sendPushNotification(request: SendPushNotificationRequest): Promise<NotificationResult[]> {
     const subscriptions = await this.getUserPushSubscriptions(request.userId, true);
-    
+
+    console.log(`Found ${subscriptions.length} active push subscriptions for user ${request.userId}:`,
+      subscriptions.map(s => ({ id: s.id, endpoint: s.endpoint.substring(0, 50) + '...', isActive: s.isActive }))
+    );
+
     if (subscriptions.length === 0) {
       return [{
         success: false,
@@ -665,12 +729,15 @@ export class NotificationService {
         const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         // Create push notification record
+        // For test appointments, set appointmentId to null to avoid foreign key constraints
+        const isTestAppointment = request.appointmentId?.startsWith('test-');
+
         // @ts-ignore - pushNotification model exists in Prisma schema
         await this.prisma.pushNotification.create({
           data: {
             id: notificationId,
             subscriptionId: subscription.id,
-            appointmentId: request.appointmentId,
+            appointmentId: isTestAppointment ? null : request.appointmentId,
             businessId: request.businessId,
             title: request.title,
             body: request.body,
@@ -733,15 +800,44 @@ export class NotificationService {
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        
+
+        // Log detailed error information for debugging
+        console.error('Push notification error details:', {
+          subscriptionId: subscription.id,
+          endpoint: subscription.endpoint,
+          error: errorMessage,
+          errorObject: error
+        });
+
         // Check if subscription is invalid
-        if (errorMessage.includes('410') || errorMessage.includes('gone')) {
+        const statusCode = (error as any)?.statusCode;
+        const errorBody = (error as any)?.body || '';
+
+        const isInvalidSubscription = statusCode === 410 ||
+                                    statusCode === 404 ||
+                                    errorMessage.includes('410') ||
+                                    errorMessage.includes('gone') ||
+                                    errorMessage.includes('expired') ||
+                                    errorMessage.includes('unsubscribed') ||
+                                    errorBody.includes('expired') ||
+                                    errorBody.includes('unsubscribed');
+
+        console.log('Subscription validity check:', {
+          statusCode,
+          errorBody,
+          isInvalidSubscription,
+          subscriptionId: subscription.id
+        });
+
+        if (isInvalidSubscription) {
+          console.log(`Disabling invalid subscription: ${subscription.id}, endpoint: ${subscription.endpoint}`);
           // Disable invalid subscription
           // @ts-ignore - pushSubscription model exists in Prisma schema
           await this.prisma.pushSubscription.update({
             where: { id: subscription.id },
             data: { isActive: false }
           });
+          console.log(`Successfully disabled subscription: ${subscription.id}`);
         }
 
         // Update notification status
@@ -798,8 +894,19 @@ export class NotificationService {
       }];
     }
 
-    const title = 'Appointment Reminder';
-    const body = `You have an appointment for ${appointment.service.name} at ${appointment.business.name} at ${appointment.startTime.toLocaleTimeString()}`;
+    // Get user's language preference (default to Turkish)
+    const userLanguage = preferences?.timezone?.includes('Istanbul') ? 'tr' : 'en';
+    
+    // Generate translated notification
+    const translationKey = getNotificationTranslationKey('APPOINTMENT_REMINDER');
+    const translationParams: NotificationTranslationParams = {
+      serviceName: appointment.service.name,
+      businessName: appointment.business.name,
+      time: formatTimeForLanguage(appointment.startTime, userLanguage)
+    };
+    
+    const title = userLanguage === 'tr' ? 'Randevu Hatırlatması' : 'Appointment Reminder';
+    const body = translateNotification(translationKey, translationParams, userLanguage);
     
     const appointmentData = {
       appointmentId: appointment.id,
@@ -820,6 +927,74 @@ export class NotificationService {
       data: appointmentData,
       url: `/appointments/${appointment.id}`
     });
+  }
+
+  async sendSMSAppointmentReminder(appointment: UpcomingAppointment): Promise<NotificationResult[]> {
+    // Check user's notification preferences
+    const preferences = await this.getNotificationPreferences(appointment.customerId);
+
+    if (preferences && !preferences.enableAppointmentReminders) {
+      return [{
+        success: false,
+        error: 'User has disabled appointment reminders',
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.FAILED
+      }];
+    }
+
+    // Check quiet hours
+    if (preferences?.quietHours && this.isInQuietHours(new Date(), preferences.quietHours, preferences.timezone)) {
+      return [{
+        success: false,
+        error: 'Current time is within user quiet hours',
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.FAILED
+      }];
+    }
+
+    // Format the SMS message
+    const appointmentDate = appointment.startTime.toLocaleDateString('tr-TR', {
+      timeZone: appointment.business.timezone,
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+
+    const appointmentTime = appointment.startTime.toLocaleTimeString('tr-TR', {
+      timeZone: appointment.business.timezone,
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const message = `${appointment.business.name} randevu hatırlatması: ${appointment.service.name} hizmetiniz ${appointmentDate} tarihinde saat ${appointmentTime}'de. Detaylar: https://randevubu.com/appointments/${appointment.id}`;
+
+    try {
+      // Use the existing SMS service
+      const { SMSService } = await import('./smsService');
+      const smsService = new SMSService();
+
+      const result = await smsService.sendSMS({
+        phoneNumber: appointment.customer.phoneNumber,
+        message,
+        context: { requestId: `reminder-${appointment.id}` }
+      });
+
+      return [{
+        success: result.success,
+        messageId: result.messageId,
+        error: result.error,
+        channel: NotificationChannel.SMS,
+        status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED
+      }];
+
+    } catch (error) {
+      return [{
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to send SMS reminder',
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.FAILED
+      }];
+    }
   }
 
   async sendBatchPushNotifications(userIds: string[], notification: Omit<SendPushNotificationRequest, 'userId'>): Promise<{

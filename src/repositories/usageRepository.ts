@@ -31,7 +31,6 @@ export interface UsageSummary {
   planLimits: {
     smsQuota: number;
     maxStaffPerBusiness: number;
-    maxAppointmentsPerDay: number;
     maxCustomers: number;
     maxServices: number;
     storageGB: number;
@@ -281,7 +280,6 @@ export class UsageRepository {
     const planLimits = {
       smsQuota: planFeatures.smsQuota || 0,
       maxStaffPerBusiness: business.subscription.plan.maxStaffPerBusiness,
-      maxAppointmentsPerDay: business.subscription.plan.maxAppointmentsPerDay,
       maxCustomers: planFeatures.maxCustomers || 0,
       maxServices: planFeatures.maxServices || 0,
       storageGB: planFeatures.storageGB || 0

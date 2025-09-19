@@ -1200,6 +1200,147 @@ const DEFAULT_PERMISSIONS = [
     resource: 'business_hours_override',
     action: 'manage_own',
     isSystem: true
+  },
+
+  // Business Notification Settings Permissions
+  {
+    id: generateId('perm'),
+    name: 'business_notification:read',
+    displayName: 'View Business Notification Settings',
+    description: 'View business notification preferences and settings',
+    resource: 'business_notification',
+    action: 'read',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_notification:update',
+    displayName: 'Update Business Notification Settings',
+    description: 'Modify business notification preferences and settings',
+    resource: 'business_notification',
+    action: 'update',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_notification:view_all',
+    displayName: 'View All Business Notifications',
+    description: 'View notification settings across all businesses',
+    resource: 'business_notification',
+    action: 'view_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_notification:view_own',
+    displayName: 'View Own Business Notifications',
+    description: 'View notification settings for own business only',
+    resource: 'business_notification',
+    action: 'view_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_notification:edit_all',
+    displayName: 'Edit All Business Notifications',
+    description: 'Edit notification settings across all businesses',
+    resource: 'business_notification',
+    action: 'edit_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'business_notification:edit_own',
+    displayName: 'Edit Own Business Notifications',
+    description: 'Edit notification settings for own business only',
+    resource: 'business_notification',
+    action: 'edit_own',
+    isSystem: true
+  },
+
+  // Push Notification Management Permissions
+  {
+    id: generateId('perm'),
+    name: 'push_notification:send',
+    displayName: 'Send Push Notifications',
+    description: 'Send push notifications to users and businesses',
+    resource: 'push_notification',
+    action: 'send',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'push_notification:subscribe',
+    displayName: 'Manage Push Subscriptions',
+    description: 'Subscribe and unsubscribe from push notifications',
+    resource: 'push_notification',
+    action: 'subscribe',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'push_notification:test',
+    displayName: 'Test Push Notifications',
+    description: 'Send test push notifications',
+    resource: 'push_notification',
+    action: 'test',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'push_notification:admin',
+    displayName: 'Administer Push Notifications',
+    description: 'Full control over push notification system',
+    resource: 'push_notification',
+    action: 'admin',
+    isSystem: true
+  },
+
+  // User Notification Preferences Permissions
+  {
+    id: generateId('perm'),
+    name: 'user_notification:read',
+    displayName: 'View User Notification Preferences',
+    description: 'View user notification preferences and settings',
+    resource: 'user_notification',
+    action: 'read',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'user_notification:update',
+    displayName: 'Update User Notification Preferences',
+    description: 'Modify user notification preferences and settings',
+    resource: 'user_notification',
+    action: 'update',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'user_notification:view_all',
+    displayName: 'View All User Notifications',
+    description: 'View notification preferences for all users',
+    resource: 'user_notification',
+    action: 'view_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'user_notification:view_own',
+    displayName: 'View Own Notification Preferences',
+    description: 'View own notification preferences only',
+    resource: 'user_notification',
+    action: 'view_own',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
+    name: 'user_notification:edit_own',
+    displayName: 'Edit Own Notification Preferences',
+    description: 'Edit own notification preferences only',
+    resource: 'user_notification',
+    action: 'edit_own',
+    isSystem: true
   }
 ];
 
@@ -1236,7 +1377,11 @@ const ROLE_PERMISSION_MAPPINGS = {
     'business_hours:read', 'business_hours:update', 'business_hours:view_all', 'business_hours:edit_all', 'business_hours:status',
     // Business hours override management (admin level)
     'business_hours_override:create', 'business_hours_override:read', 'business_hours_override:update', 'business_hours_override:delete',
-    'business_hours_override:view_all', 'business_hours_override:manage_all'
+    'business_hours_override:view_all', 'business_hours_override:manage_all',
+    // Notification management (admin level)
+    'business_notification:read', 'business_notification:update', 'business_notification:view_all', 'business_notification:edit_all',
+    'push_notification:send', 'push_notification:subscribe', 'push_notification:test', 'push_notification:admin',
+    'user_notification:read', 'user_notification:update', 'user_notification:view_all', 'user_notification:edit_own'
   ],
   'OWNER': [
     // Business owner capabilities - manage own business
@@ -1263,7 +1408,11 @@ const ROLE_PERMISSION_MAPPINGS = {
     'business_hours:read', 'business_hours:update', 'business_hours:view_own', 'business_hours:edit_own', 'business_hours:status',
     // Business hours override management for own business
     'business_hours_override:create', 'business_hours_override:read', 'business_hours_override:update', 'business_hours_override:delete',
-    'business_hours_override:view_own', 'business_hours_override:manage_own'
+    'business_hours_override:view_own', 'business_hours_override:manage_own',
+    // Notification management for own business
+    'business_notification:read', 'business_notification:update', 'business_notification:view_own', 'business_notification:edit_own',
+    'push_notification:send', 'push_notification:subscribe', 'push_notification:test',
+    'user_notification:read', 'user_notification:update', 'user_notification:view_own', 'user_notification:edit_own'
   ],
   'STAFF': [
     // Staff capabilities - manage appointments and services for assigned business
@@ -1281,7 +1430,11 @@ const ROLE_PERMISSION_MAPPINGS = {
     // Basic business hours viewing for assigned business
     'business_hours:read', 'business_hours:view_own', 'business_hours:status',
     // View business hours overrides for assigned business
-    'business_hours_override:read', 'business_hours_override:view_own'
+    'business_hours_override:read', 'business_hours_override:view_own',
+    // Basic notification viewing for assigned business
+    'business_notification:read', 'business_notification:view_own',
+    'push_notification:subscribe',
+    'user_notification:read', 'user_notification:view_own', 'user_notification:edit_own'
   ],
   'CUSTOMER': [
     // Customer capabilities - book appointments and manage own profile
@@ -1294,7 +1447,10 @@ const ROLE_PERMISSION_MAPPINGS = {
     // Basic user profile management
     'user:read', 'user:update',
     // View business hours for booking appointments
-    'business_hours:read', 'business_hours:status'
+    'business_hours:read', 'business_hours:status',
+    // Basic notification preferences
+    'push_notification:subscribe',
+    'user_notification:read', 'user_notification:view_own', 'user_notification:edit_own'
   ]
 };
 

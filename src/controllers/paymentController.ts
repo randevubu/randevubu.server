@@ -263,7 +263,6 @@ export class PaymentController {
           billingInterval: true,
           maxBusinesses: true,
           maxStaffPerBusiness: true,
-          maxAppointmentsPerDay: true,
           features: true,
           isPopular: true,
           sortOrder: true
