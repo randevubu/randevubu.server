@@ -297,5 +297,59 @@ export function createUsageRoutes(usageController: UsageController): Router {
     withAuth(usageController.checkLimits.bind(usageController))
   );
 
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/usage/refresh:
+   *   post:
+   *     tags: [Usage]
+   *     summary: Refresh usage counters for the business
+   *     description: Updates current usage counters (staff, services, customers) based on actual database counts. Useful for fixing inconsistent usage data.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: The business ID
+   *     responses:
+   *       200:
+   *         description: Usage data refreshed successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Usage data refreshed successfully"
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     refreshedCounters:
+   *                       type: array
+   *                       items:
+   *                         type: string
+   *                       example: ["staff", "services", "customers"]
+   *                     updatedAt:
+   *                       type: string
+   *                       format: date-time
+   *       403:
+   *         description: Insufficient permissions
+   *       404:
+   *         description: Business not found
+   */
+  router.post(
+    '/:businessId/usage/refresh',
+    requireAuth,
+    attachBusinessContext,
+    requireBusinessAccess,
+    withAuth(usageController.refreshUsageCounters.bind(usageController))
+  );
+
   return router;
 }

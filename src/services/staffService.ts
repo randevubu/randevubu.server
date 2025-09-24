@@ -4,6 +4,7 @@ import { StaffRepository, CreateStaffRequest, UpdateStaffRequest, StaffWithUser 
 import { RepositoryContainer } from '../repositories';
 import { PhoneVerificationService } from './phoneVerificationService';
 import { RBACService } from './rbacService';
+import { UsageService } from './usageService';
 import { PermissionName, CreateUserData, UpdateUserData } from '../types/auth';
 import { ErrorContext } from '../types/errors';
 import { AuthError } from '../types/errorResponse';
@@ -40,7 +41,8 @@ export class StaffService {
   constructor(
     private repositories: RepositoryContainer,
     private phoneVerificationService: PhoneVerificationService,
-    private rbacService: RBACService
+    private rbacService: RBACService,
+    private usageService: UsageService
   ) {}
 
   /**
@@ -52,6 +54,12 @@ export class StaffService {
     request: InviteStaffRequest,
     context?: ErrorContext
   ): Promise<{ success: boolean; message: string }> {
+    // Check if business can add more staff members
+    const canAddStaff = await this.usageService.canAddStaffMember(request.businessId);
+    if (!canAddStaff.allowed) {
+      throw new Error(`Cannot invite staff member: ${canAddStaff.reason}`);
+    }
+
     logger.info('Staff invitation initiated', {
       ownerId,
       businessId: request.businessId,
@@ -71,6 +79,12 @@ export class StaffService {
 
     // Check subscription limits
     await this.validateStaffLimit(request.businessId);
+
+    // Check SMS quota before sending verification code
+    const canSendSms = await this.usageService.canSendSms(request.businessId);
+    if (!canSendSms.allowed) {
+      throw new Error(`Cannot send staff invitation SMS: ${canSendSms.reason}`);
+    }
 
     // Check if user is already staff member of this business
     const existingStaff = await this.repositories.staffRepository.findByBusinessIdAndUserId(
@@ -93,7 +107,10 @@ export class StaffService {
       context
     );
 
-    logger.info('Staff invitation SMS sent', {
+    // Record SMS usage for staff invitation verification
+    await this.usageService.recordSmsUsage(request.businessId, 1);
+
+    logger.info('Staff invitation SMS sent and usage recorded', {
       ownerId,
       businessId: request.businessId,
       phoneNumber: this.maskPhoneNumber(normalizedPhone),
@@ -235,6 +252,9 @@ export class StaffService {
       role: request.role,
       permissions: request.permissions,
     });
+
+    // Update staff usage tracking
+    await this.usageService.updateStaffUsage(request.businessId);
 
     logger.info('New staff member added to business', {
       staffId: newStaff.id,
@@ -394,11 +414,11 @@ export class StaffService {
     }
 
     const maxStaff = business.subscription.plan.maxStaffPerBusiness;
-    
+
     if (currentStaffCount >= maxStaff) {
       throw new Error(
-        `Staff limit reached. Your ${business.subscription.plan.displayName} plan allows ${maxStaff} staff members. ` +
-        `Please upgrade your subscription to add more staff.`
+        `Staff limit reached. Your ${business.subscription.plan.displayName} plan allows ${maxStaff} staff members (including owner). ` +
+        `Current: ${currentStaffCount}/${maxStaff}. Please upgrade your subscription to add more staff.`
       );
     }
   }

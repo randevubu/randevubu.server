@@ -20,6 +20,7 @@ import { AppointmentRescheduleService } from './appointmentRescheduleService';
 import { DiscountCodeService } from './discountCodeService';
 import { UsageService } from './usageService';
 import { SubscriptionSchedulerService } from './subscriptionSchedulerService';
+import { AppointmentSchedulerService } from './appointmentSchedulerService';
 import { StaffService } from './staffService';
 import { AppointmentReminderService } from './appointmentReminderService';
 
@@ -45,6 +46,7 @@ export class ServiceContainer {
   public readonly discountCodeService: DiscountCodeService;
   public readonly usageService: UsageService;
   public readonly subscriptionSchedulerService: SubscriptionSchedulerService;
+  public readonly appointmentSchedulerService: AppointmentSchedulerService;
   public readonly staffService: StaffService;
   public readonly appointmentReminderService: AppointmentReminderService;
 
@@ -60,14 +62,25 @@ export class ServiceContainer {
     // Auth service with RBAC support
     this.authService = new AuthService(repositories, this.phoneVerificationService, this.tokenService, this.rbacService);
 
-    // Business services
-    this.businessService = new BusinessService(repositories.businessRepository, this.rbacService, this.prisma);
+    // Business type service
     this.businessTypeService = new BusinessTypeService(repositories.businessTypeRepository);
-    this.serviceService = new ServiceService(repositories.serviceRepository, repositories.businessRepository, this.rbacService);
-    
+
+    // Usage tracking service (needed for multiple services)
+    this.usageService = new UsageService(
+      repositories.usageRepository,
+      this.rbacService,
+      this.prisma
+    );
+
+    // Business services (needs usage service for staff counting)
+    this.businessService = new BusinessService(repositories.businessRepository, this.rbacService, this.prisma, this.usageService);
+
+    // Create services that depend on usage service
+    this.serviceService = new ServiceService(repositories.serviceRepository, repositories.businessRepository, this.rbacService, this.usageService);
+
     // Create notification service first for appointment service dependency
-    this.notificationService = new NotificationService(repositories.prismaClient);
-    
+    this.notificationService = new NotificationService(repositories.prismaClient, this.usageService);
+
     this.appointmentService = new AppointmentService(
       repositories.appointmentRepository,
       repositories.serviceRepository,
@@ -76,6 +89,7 @@ export class ServiceContainer {
       this.rbacService,
       this.businessService,
       this.notificationService,
+      this.usageService,
       repositories
     );
     this.userBehaviorService = new UserBehaviorService(repositories.userBehaviorRepository, this.rbacService);
@@ -102,12 +116,6 @@ export class ServiceContainer {
       this.notificationService
     );
 
-    // Usage tracking service
-    this.usageService = new UsageService(
-      repositories.usageRepository,
-      this.rbacService,
-      this.prisma
-    );
 
     // Subscription scheduler service
     this.subscriptionSchedulerService = new SubscriptionSchedulerService(
@@ -116,11 +124,17 @@ export class ServiceContainer {
       this.notificationService
     );
 
+    // Appointment scheduler service
+    this.appointmentSchedulerService = new AppointmentSchedulerService(
+      this.prisma
+    );
+
     // Staff management service
     this.staffService = new StaffService(
       repositories,
       this.phoneVerificationService,
-      this.rbacService
+      this.rbacService,
+      this.usageService
     );
 
     // Appointment reminder service
@@ -154,6 +168,7 @@ export {
   DiscountCodeService,
   UsageService,
   SubscriptionSchedulerService,
+  AppointmentSchedulerService,
   StaffService,
   AppointmentReminderService
 };

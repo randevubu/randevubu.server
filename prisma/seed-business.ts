@@ -174,95 +174,7 @@ const DEFAULT_BUSINESS_TYPES = [
   }
 ];
 
-// Abonelik Planları - 3 Türkçe plan
-const DEFAULT_SUBSCRIPTION_PLANS = [
-  {
-    id: generateId('plan'),
-    name: 'baslangic',
-    displayName: 'Başlangıç',
-    description: 'Bireysel profesyoneller ve küçük işletmeler için ideal',
-    price: 750.00,
-    currency: 'TRY',
-    billingInterval: 'monthly',
-    maxBusinesses: 1,
-    maxStaffPerBusiness: 2,
-    maxAppointmentsPerDay: 50,
-    features: [
-      'appointment_booking',
-      'calendar_management',
-      'customer_database',
-      'email_notifications',
-      'basic_analytics',
-      'business_hours',
-      'staff_management'
-    ],
-    isActive: true,
-    isPopular: false,
-    sortOrder: 1
-  },
-  {
-    id: generateId('plan'),
-    name: 'standart',
-    displayName: 'Standart',
-    description: 'Büyüyen işletmeler ve çoklu personeli olan salonlar için',
-    price: 1250.00,
-    currency: 'TRY',
-    billingInterval: 'monthly',
-    maxBusinesses: 1,
-    maxStaffPerBusiness: 10,
-    maxAppointmentsPerDay: 100,
-    features: [
-      'appointment_booking',
-      'calendar_management',
-      'customer_database',
-      'email_notifications',
-      'sms_notifications',
-      'advanced_analytics',
-      'business_hours',
-      'staff_management',
-      'service_management',
-      'custom_branding',
-      'business_closure_management',
-      'user_behavior_tracking'
-    ],
-    isActive: true,
-    isPopular: true,
-    sortOrder: 2
-  },
-  {
-    id: generateId('plan'),
-    name: 'premium',
-    displayName: 'Premium',
-    description: 'Köklü işletmeler ve şirket zincirleri için tam çözüm',
-    price: 2000.00,
-    currency: 'TRY',
-    billingInterval: 'monthly',
-    maxBusinesses: 3,
-    maxStaffPerBusiness: 25,
-    maxAppointmentsPerDay: 200,
-    features: [
-      'appointment_booking',
-      'calendar_management',
-      'customer_database',
-      'email_notifications',
-      'sms_notifications',
-      'premium_analytics',
-      'business_hours',
-      'staff_management',
-      'service_management',
-      'custom_branding',
-      'business_closure_management',
-      'multi_location',
-      'api_access',
-      'priority_support',
-      'user_behavior_tracking',
-      'advanced_reporting'
-    ],
-    isActive: true,
-    isPopular: false,
-    sortOrder: 3
-  }
-];
+// Subscription plans are now handled by seed-subscription-plans.ts
 
 // Sample businesses for testing - these will have real phone numbers you can use to login
 const SAMPLE_BUSINESSES = [
@@ -302,7 +214,7 @@ const SAMPLE_BUSINESSES = [
       language: 'tr'
     },
     businessType: 'hair_salon',
-    subscriptionPlan: 'standart'
+    subscriptionPlan: 'premium'
   },
   {
     business: {
@@ -340,7 +252,7 @@ const SAMPLE_BUSINESSES = [
       language: 'tr'
     },
     businessType: 'barber_shop',
-    subscriptionPlan: 'baslangic'
+    subscriptionPlan: 'starter'
   },
   {
     business: {
@@ -378,7 +290,7 @@ const SAMPLE_BUSINESSES = [
       language: 'tr'
     },
     businessType: 'spa_wellness',
-    subscriptionPlan: 'premium'
+    subscriptionPlan: 'pro'
   },
   {
     business: {
@@ -416,7 +328,7 @@ const SAMPLE_BUSINESSES = [
       language: 'tr'
     },
     businessType: 'dental_clinic',
-    subscriptionPlan: 'standart'
+    subscriptionPlan: 'premium'
   }
 ];
 
@@ -478,33 +390,8 @@ async function seedBusinessData() {
       console.log(`✅ Created/Updated business type: ${businessType.displayName} (${businessType.category})`);
     }
 
-    // Create subscription plans
-    console.log('\nCreating subscription plans...');
-    for (const plan of DEFAULT_SUBSCRIPTION_PLANS) {
-      await prisma.subscriptionPlan.upsert({
-        where: { name: plan.name },
-        update: {
-          displayName: plan.displayName,
-          description: plan.description,
-          price: plan.price,
-          currency: plan.currency,
-          billingInterval: plan.billingInterval,
-          maxBusinesses: plan.maxBusinesses,
-          maxStaffPerBusiness: plan.maxStaffPerBusiness,
-          maxAppointmentsPerDay: plan.maxAppointmentsPerDay,
-          features: plan.features,
-          isActive: plan.isActive,
-          isPopular: plan.isPopular,
-          sortOrder: plan.sortOrder
-        },
-        create: plan
-      });
-      
-      const pricing = plan.billingInterval === 'yearly' 
-        ? `₺${plan.price}/year` 
-        : `₺${plan.price}/month`;
-      console.log(`✅ Created/Updated plan: ${plan.displayName} (${pricing})`);
-    }
+    // Subscription plans are handled by seed-subscription-plans.ts
+    console.log('\nℹ️  Subscription plans are managed by seed-subscription-plans.ts');
 
     // Create sample businesses with owners
     console.log('\nCreating sample businesses with owners...');
@@ -674,8 +561,8 @@ async function seedBusinessData() {
     console.log('\n🎉 Business Data seed completed successfully!');
     console.log('\n📊 Summary:');
     console.log(`   Business Types: ${DEFAULT_BUSINESS_TYPES.length}`);
-    console.log(`   Subscription Plans: ${DEFAULT_SUBSCRIPTION_PLANS.length}`);
     console.log(`   Sample Businesses: ${SAMPLE_BUSINESSES.length}`);
+    console.log(`   Note: Subscription plans are managed separately by seed-subscription-plans.ts`);
     
     console.log('\n📋 Business Categories:');
     const categorySet = new Set(DEFAULT_BUSINESS_TYPES.map(bt => bt.category));

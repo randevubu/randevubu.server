@@ -468,19 +468,23 @@ export const updateServiceSchema = z.object({
 export const createAppointmentSchema = z.object({
   businessId: z.string()
     .min(1, 'Business ID is required'),
-  
+
   serviceId: z.string()
     .min(1, 'Service ID is required'),
-  
+
   staffId: z.string()
     .min(1, 'Staff ID is required'),
-  
+
+  customerId: z.string()
+    .min(1, 'Customer ID is required')
+    .optional(),
+
   date: z.string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
-  
+
   startTime: z.string()
     .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Start time must be in HH:MM format'),
-  
+
   customerNotes: z.string()
     .max(500, 'Customer notes must be less than 500 characters')
     .optional()

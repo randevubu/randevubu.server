@@ -1552,7 +1552,19 @@ export class BusinessController {
 
       // Import the services dynamically to avoid circular dependencies
       const { NotificationService } = await import('../services/notificationService');
-      const notificationService = new NotificationService(this.businessService['prisma']);
+      const { UsageService } = await import('../services/usageService');
+      const { UsageRepository } = await import('../repositories/usageRepository');
+
+      // Create usage service for SMS tracking
+      const usageRepository = new UsageRepository(this.businessService['prisma']);
+      
+      if (!this.rbacService) {
+        throw new Error('RBAC service not available');
+      }
+      
+      const usageService = new UsageService(usageRepository, this.rbacService, this.businessService['prisma']);
+
+      const notificationService = new NotificationService(this.businessService['prisma'], usageService);
 
       const testData = req.body || {};
 

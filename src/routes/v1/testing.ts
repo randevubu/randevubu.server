@@ -1,9 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../../middleware/authUtils';
+import { attachBusinessContext, requireBusinessAccess } from '../../middleware/attachBusinessContext';
 import prisma from '../../lib/prisma';
 import { TestSubscriptionHelper } from '../../utils/testSubscriptionHelper';
 import { SMSService } from '../../services/smsService';
+import { UsageService } from '../../services/usageService';
+import { RBACService } from '../../services/rbacService';
+import { UsageRepository } from '../../repositories/usageRepository';
+import { AppointmentSchedulerService } from '../../services/appointmentSchedulerService';
 import { logger } from '../../utils/logger';
+import { BusinessContextRequest } from '../../middleware/businessContext';
 
 const router = Router();
 
@@ -11,6 +17,10 @@ const router = Router();
 if (process.env.NODE_ENV === 'development') {
   const testHelper = new TestSubscriptionHelper(prisma);
   const smsService = new SMSService();
+  const usageRepository = new UsageRepository(prisma);
+  const rbacService = new RBACService({ usageRepository } as any);
+  const usageService = new UsageService(usageRepository, rbacService, prisma);
+  const appointmentScheduler = new AppointmentSchedulerService(prisma, { developmentMode: true });
 
   /**
    * @swagger
@@ -85,7 +95,7 @@ if (process.env.NODE_ENV === 'development') {
       });
     } catch (error) {
       console.error('Create test subscription error:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Failed to create test subscription',
         details: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -106,7 +116,7 @@ if (process.env.NODE_ENV === 'development') {
   router.get('/subscription/list', requireAuth, async (req: Request, res: Response): Promise<Response> => {
     try {
       const testSubscriptions = await testHelper.getTestSubscriptions();
-      
+
       return res.json({
         success: true,
         count: testSubscriptions.length,
@@ -124,7 +134,7 @@ if (process.env.NODE_ENV === 'development') {
       });
     } catch (error) {
       console.error('List test subscriptions error:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Failed to list test subscriptions',
         details: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -145,7 +155,7 @@ if (process.env.NODE_ENV === 'development') {
   router.delete('/subscription/cleanup', requireAuth, async (req: Request, res: Response): Promise<Response> => {
     try {
       const result = await testHelper.cleanupTestData();
-      
+
       return res.json({
         success: true,
         message: 'Test data cleaned up successfully',
@@ -153,7 +163,7 @@ if (process.env.NODE_ENV === 'development') {
       });
     } catch (error) {
       console.error('Cleanup test data error:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Failed to cleanup test data',
         details: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -198,20 +208,28 @@ if (process.env.NODE_ENV === 'development') {
       });
     } catch (error) {
       console.error('Get scheduler status error:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Failed to get scheduler status',
         details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });
 
+
   /**
    * @swagger
-   * /api/v1/testing/sms:
+   * /api/v1/testing/sms/{businessId}:
    *   post:
    *     tags: [Testing]
-   *     summary: Test SMS sending functionality
-   *     description: Development only - Send a test SMS to verify İleti Merkezi integration
+   *     summary: Test SMS sending functionality with usage tracking
+   *     description: Development only - Send a test SMS to verify İleti Merkezi integration and usage tracking
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID for usage tracking
    *     requestBody:
    *       required: true
    *       content:
@@ -239,12 +257,21 @@ if (process.env.NODE_ENV === 'development') {
    *                   type: string
    *                 smsResult:
    *                   type: object
+   *                 usageUpdated:
+   *                   type: boolean
    *       400:
    *         description: Bad request
+   *       403:
+   *         description: SMS quota exceeded
    */
-  router.post('/sms', async (req: Request, res: Response): Promise<Response> => {
+  router.post('/sms/:businessId',
+    requireAuth,
+    attachBusinessContext,
+    requireBusinessAccess,
+    async (req: BusinessContextRequest, res: Response): Promise<Response> => {
     try {
       const { phoneNumber } = req.body;
+      const businessId = req.params.businessId;
 
       if (!phoneNumber) {
         return res.status(400).json({
@@ -253,17 +280,38 @@ if (process.env.NODE_ENV === 'development') {
         });
       }
 
-      logger.info('Testing SMS service', {
+      // Check if business can send SMS based on subscription limits
+      const canSendSms = await usageService.canSendSms(businessId);
+      if (!canSendSms.allowed) {
+        return res.status(403).json({
+          success: false,
+          error: `SMS quota exceeded: ${canSendSms.reason}`,
+          quotaInfo: canSendSms
+        });
+      }
+
+      logger.info('Testing SMS service with usage tracking', {
+        businessId,
         phoneNumber: phoneNumber.replace(/\d(?=\d{3})/g, '*'),
         requestId: req.headers['x-request-id'] || 'test',
       });
 
       const result = await smsService.testSMS(phoneNumber);
 
+      // Record SMS usage if successful
+      let usageUpdated = false;
+      if (result.success) {
+        await usageService.recordSmsUsage(businessId, 1);
+        usageUpdated = true;
+        logger.info('SMS usage recorded', { businessId, smsCount: 1 });
+      }
+
       return res.json({
         success: true,
-        message: 'SMS test completed',
+        message: 'SMS test completed with usage tracking',
         smsResult: result,
+        usageUpdated,
+        businessId,
         environment: process.env.NODE_ENV,
         credentials: {
           apiKey: process.env.ILETI_MERKEZI_API_KEY ? 'Configured' : 'Not configured',
@@ -275,12 +323,73 @@ if (process.env.NODE_ENV === 'development') {
     } catch (error) {
       logger.error('SMS test error', {
         error: error instanceof Error ? error.message : String(error),
+        businessId: req.params.businessId,
         requestId: req.headers['x-request-id'] || 'test',
       });
 
       return res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/v1/testing/appointments/auto-complete:
+   *   post:
+   *     tags: [Testing]
+   *     summary: Trigger appointment auto-completion (Development only)
+   *     description: Manually trigger the appointment auto-completion process for testing
+   *     responses:
+   *       200:
+   *         description: Auto-completion triggered
+   *       500:
+   *         description: Error triggering auto-completion
+   */
+  router.post('/appointments/auto-complete', async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const result = await appointmentScheduler.triggerAutoComplete();
+      logger.info(`🔧 Manual trigger: Auto-completed ${result.completed} appointments`);
+
+      return res.json({
+        success: true,
+        message: `Auto-completed ${result.completed} appointments`,
+        data: result
+      });
+    } catch (error) {
+      logger.error('❌ Error in manual appointment auto-completion:', error);
+      return res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/v1/testing/appointments/scheduler-status:
+   *   get:
+   *     tags: [Testing]
+   *     summary: Get appointment scheduler status (Development only)
+   *     description: Get the current status of the appointment scheduler
+   *     responses:
+   *       200:
+   *         description: Scheduler status
+   */
+  router.get('/appointments/scheduler-status', async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const status = appointmentScheduler.getStatus();
+
+      return res.json({
+        success: true,
+        data: status
+      });
+    } catch (error) {
+      logger.error('❌ Error getting appointment scheduler status:', error);
+      return res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });

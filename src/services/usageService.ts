@@ -120,16 +120,16 @@ export class UsageService {
         limit: summary.planLimits.maxStaffPerBusiness
       },
       customerLimitAlert: {
-        isNearLimit: customerUsagePercentage >= 80,
-        percentage: customerUsagePercentage,
+        isNearLimit: false, // Unlimited customers
+        percentage: 0,
         current: summary.currentMonth?.customersAdded || 0,
-        limit: summary.planLimits.maxCustomers
+        limit: 0 // Unlimited
       },
       storageLimitAlert: {
-        isNearLimit: storageUsagePercentage >= 80,
-        percentage: storageUsagePercentage,
+        isNearLimit: false, // Unlimited storage
+        percentage: 0,
         usedMB: summary.currentMonth?.storageUsedMB || 0,
-        limitMB: summary.planLimits.storageGB * 1024
+        limitMB: 0 // Unlimited
       }
     };
   }
@@ -255,36 +255,12 @@ export class UsageService {
   }
 
   async canAddService(businessId: string): Promise<{ allowed: boolean; reason?: string }> {
-    const summary = await this.usageRepository.getUsageSummary(businessId);
-    if (!summary) {
-      return { allowed: false, reason: 'Business subscription not found' };
-    }
-
-    const currentServices = summary.currentMonth?.servicesActive || 0;
-    if (currentServices >= summary.planLimits.maxServices) {
-      return {
-        allowed: false,
-        reason: `Service limit reached. Current: ${currentServices}/${summary.planLimits.maxServices}`
-      };
-    }
-
+    // Unlimited services allowed
     return { allowed: true };
   }
 
   async canAddCustomer(businessId: string): Promise<{ allowed: boolean; reason?: string }> {
-    const summary = await this.usageRepository.getUsageSummary(businessId);
-    if (!summary) {
-      return { allowed: false, reason: 'Business subscription not found' };
-    }
-
-    const currentCustomers = summary.currentMonth?.customersAdded || 0;
-    if (currentCustomers >= summary.planLimits.maxCustomers) {
-      return {
-        allowed: false,
-        reason: `Customer limit reached. Current: ${currentCustomers}/${summary.planLimits.maxCustomers}`
-      };
-    }
-
+    // Unlimited customers allowed
     return { allowed: true };
   }
 }

@@ -13,6 +13,7 @@
     "db:generate": "prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
     "db:seed-rbac": "ts-node prisma/seed-rbac.ts",
+    "db:seed-subscription-plans": "ts-node prisma/seed-subscription-plans.ts",
     "db:seed-business": "ts-node prisma/seed-business.ts",
     "db:seed-customers": "ts-node prisma/seed-customers-appointments.ts",
     "db:reset": "prisma migrate reset && npm run db:seed"

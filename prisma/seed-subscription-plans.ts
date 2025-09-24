@@ -5,6 +5,19 @@ const prisma = new PrismaClient();
 async function seedSubscriptionPlans() {
   console.log('🎯 Seeding subscription plans...');
 
+  // Clear all existing subscription plans first
+  console.log('🧹 Clearing existing subscription plans...');
+  
+  // First delete business subscriptions that reference the plans
+  console.log('   Deleting business subscriptions...');
+  await prisma.businessSubscription.deleteMany({});
+  console.log('   ✅ Cleared business subscriptions');
+  
+  // Then delete the subscription plans
+  console.log('   Deleting subscription plans...');
+  await prisma.subscriptionPlan.deleteMany({});
+  console.log('✅ Cleared all existing subscription plans');
+
   const subscriptionPlans = [
     {
       id: 'plan_starter_monthly',
@@ -15,8 +28,8 @@ async function seedSubscriptionPlans() {
       currency: 'TRY',
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
-      maxStaffPerBusiness: 3,
-      maxAppointmentsPerDay: 50,
+      maxStaffPerBusiness: 1,
+      maxAppointmentsPerDay: 0, // Sınırsız
       features: {
         appointmentBooking: true,
         staffManagement: true,
@@ -28,22 +41,27 @@ async function seedSubscriptionPlans() {
         apiAccess: false,
         multiLocation: false,
         prioritySupport: false,
-        integrations: ['whatsapp'],
-        maxServices: 15,
-        maxCustomers: 1000,
-        storageGB: 2,
+        integrations: ['whatsapp', 'calendar', 'google'],
+        maxServices: 0, // Sınırsız
+        maxCustomers: 0, // Sınırsız
         smsQuota: 1000,
         description: [
           'Online appointment booking system',
-          'Up to 3 staff members',
-          'Customer management (up to 1,000)',
+          'Up to 1 staff member',
+          'Unlimited customers',
           'Email & SMS notifications',
           '1,000 SMS per month',
           'Basic reporting & analytics',
           'WhatsApp integration',
-          '50 appointments per day',
-          '2 GB storage',
-          'Email support'
+          'Google Calendar sync',
+          'Unlimited appointments',
+          'Email support',
+          'Mobile app access',
+          'Customer management',
+          'Service management',
+          'Basic customer segmentation',
+          'Appointment reminders',
+          'Business hours management'
         ]
       },
       isActive: true,
@@ -55,7 +73,7 @@ async function seedSubscriptionPlans() {
       name: 'premium',
       displayName: 'Premium Paket',
       description: 'Büyüyen işletmeler için gelişmiş özellikler',
-      price: 1250.00,
+      price: 1500.00,
       currency: 'TRY',
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
@@ -69,26 +87,33 @@ async function seedSubscriptionPlans() {
         smsNotifications: true,
         customBranding: true,
         advancedReports: true,
-        apiAccess: false,
+        apiAccess: true,
         multiLocation: false,
         prioritySupport: true,
-        integrations: ['calendar', 'whatsapp', 'google'],
-        maxServices: 50,
-        maxCustomers: 5000,
-        storageGB: 10,
-        smsQuota: 2500, // Reduced from 5000
+        integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
+        maxServices: 0, // Sınırsız
+        maxCustomers: 0, // Sınırsız
+        smsQuota: 1500,
         description: [
           'All Starter features',
-          'Up to 10 staff members',
-          'Customer management (up to 5,000)',
-          '2.500 SMS', // Updated from '5.000 SMS'
+          'Up to 5 staff members',
+          'Unlimited customers',
+          '1,500 SMS per month',
           'Advanced reporting & analytics',
           'Custom branding & themes',
-          'Google Calendar integration',
-          'Online payment processing',
+          'Google Calendar & Outlook integration',
           'Priority email & phone support',
-          '150 appointments per day',
-          '10 GB storage'
+          'Unlimited appointments',
+          'API access',
+          'Advanced customer segmentation',
+          'Automated marketing campaigns',
+          'Customer loyalty programs',
+          'Advanced appointment scheduling',
+          'Staff performance tracking',
+          'Revenue analytics',
+          'Customer feedback system',
+          'Advanced notification settings',
+          'Custom business rules'
         ]
       },
       isActive: true,
@@ -99,8 +124,8 @@ async function seedSubscriptionPlans() {
       id: 'plan_pro_monthly',
       name: 'pro',
       displayName: 'Pro Paket',
-      description: 'Büyük işletmeler ve salon zincirleri için profesyonel çözüm',
-      price: 2000.00,
+      description: 'Büyük işletmeler için profesyonel çözüm',
+      price: 3000.00,
       currency: 'TRY',
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
@@ -115,28 +140,42 @@ async function seedSubscriptionPlans() {
         customBranding: true,
         advancedReports: true,
         apiAccess: true,
-        multiLocation: true,
+        multiLocation: false,
         prioritySupport: true,
-        integrations: ['calendar', 'whatsapp', 'pos', 'crm', 'google', 'outlook'],
-        maxServices: 200,
-        maxCustomers: 25000,
-        storageGB: 50,
-        smsQuota: 5000, // Reduced from 10000
+        integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
+        maxServices: 0, // Sınırsız
+        maxCustomers: 0, // Sınırsız
+        smsQuota: 3000,
         description: [
-          'All Professional features',
-          'Up to 5 business locations',
-          'Up to 50 staff members per location',
-          'Customer management (up to 25,000)',
-          '5.000 SMS', // Updated from '10.000 SMS'
+          'All Premium features',
+          'Up to 15 staff members',
+          'Unlimited customers',
+          '3,000 SMS per month',
           'Full API access',
-          'Multi-location management',
-          'POS system integration',
-          'CRM integration',
           'Advanced analytics & reporting',
           'Custom integrations',
           'Dedicated account manager',
-          '500 appointments per day',
-          '50 GB storage'
+          'Unlimited appointments',
+          'White-label solutions',
+          'Advanced automation workflows',
+          'Priority phone & email support',
+          'Custom training sessions',
+          'Advanced staff scheduling',
+          'Multi-language support',
+          'Advanced customer analytics',
+          'Custom reporting dashboards',
+          'Advanced notification automation',
+          'Business intelligence tools',
+          'Custom field management',
+          'Advanced security features',
+          '24/7 priority support',
+          'Sınırsız Randevu',
+          'Sınırsız Müşteri',
+          'Randevu Hatırlatma Mesajları',
+          'Müşteri Galeri Sistemi',
+          'Periyodik Randevu Takibi',
+          'Duyuru Yönetim Paneli',
+          'Aktif Müşteri Takibi'
         ]
       },
       isActive: true,
@@ -146,26 +185,11 @@ async function seedSubscriptionPlans() {
   ];
 
   for (const plan of subscriptionPlans) {
-    await prisma.subscriptionPlan.upsert({
-      where: { name: plan.name },
-      update: {
-        displayName: plan.displayName,
-        description: plan.description,
-        price: plan.price,
-        currency: plan.currency,
-        billingInterval: plan.billingInterval,
-        maxBusinesses: plan.maxBusinesses,
-        maxStaffPerBusiness: plan.maxStaffPerBusiness,
-        maxAppointmentsPerDay: plan.maxAppointmentsPerDay,
-        features: plan.features,
-        isActive: plan.isActive,
-        isPopular: plan.isPopular,
-        sortOrder: plan.sortOrder
-      },
-      create: plan
+    await prisma.subscriptionPlan.create({
+      data: plan
     });
     
-    console.log(`✅ Created/Updated subscription plan: ${plan.displayName} - ${plan.price} ${plan.currency}/${plan.billingInterval.toLowerCase()}`);
+    console.log(`✅ Created subscription plan: ${plan.displayName} - ${plan.price} ${plan.currency}/${plan.billingInterval.toLowerCase()}`);
   }
 }
 

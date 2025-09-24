@@ -179,6 +179,34 @@ export class StaffRepository {
     });
   }
 
+  async countTotalStaffIncludingOwner(businessId: string): Promise<number> {
+    // Count active staff members in BusinessStaff table
+    const staffCount = await this.prisma.businessStaff.count({
+      where: {
+        businessId,
+        isActive: true,
+      },
+    });
+
+    // Check if business exists and has an active owner
+    const business = await this.prisma.business.findUnique({
+      where: {
+        id: businessId,
+        isActive: true
+      },
+      include: {
+        owner: {
+          select: { isActive: true }
+        }
+      }
+    });
+
+    // If business exists and owner is active, add 1 for the owner
+    const ownerCount = (business && business.owner.isActive) ? 1 : 0;
+
+    return staffCount + ownerCount;
+  }
+
   async findStaffByRole(
     businessId: string,
     role: BusinessStaffRole,

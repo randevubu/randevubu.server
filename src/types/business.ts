@@ -289,10 +289,10 @@ export enum BusinessStaffRole {
 }
 
 export enum AppointmentStatus {
-  CONFIRMED = 'CONFIRMED',
-  COMPLETED = 'COMPLETED',
-  CANCELED = 'CANCELED',
-  NO_SHOW = 'NO_SHOW'
+  CONFIRMED = 'CONFIRMED',   // Initial status after creation, auto-updates to COMPLETED
+  COMPLETED = 'COMPLETED',   // Automatically when service time ends
+  CANCELED = 'CANCELED',     // Manual action only
+  NO_SHOW = 'NO_SHOW'        // Manual action only
 }
 
 export enum SubscriptionStatus {
@@ -443,6 +443,7 @@ export interface CreateAppointmentRequest {
   businessId: string;
   serviceId: string;
   staffId: string;
+  customerId?: string;
   date: string;
   startTime: string;
   customerNotes?: string;

@@ -13,9 +13,11 @@ import { BusinessClosureRepository } from '../repositories/businessClosureReposi
 import { RepositoryContainer } from '../repositories';
 import { RBACService } from './rbacService';
 import { PermissionName } from '../types/auth';
+import { createDateTimeInIstanbul, getCurrentTimeInIstanbul } from '../utils/timezoneHelper';
 import { BusinessContext } from '../middleware/businessContext';
 import { BusinessService } from './businessService';
 import { NotificationService } from './notificationService';
+import { UsageService } from './usageService';
 
 export class AppointmentService {
   constructor(
@@ -26,6 +28,7 @@ export class AppointmentService {
     private rbacService: RBACService,
     private businessService: BusinessService,
     private notificationService: NotificationService,
+    private usageService: UsageService,
     private repositories?: RepositoryContainer
   ) {}
 
@@ -39,12 +42,45 @@ export class AppointmentService {
     userId: string,
     data: CreateAppointmentRequest
   ): Promise<AppointmentData> {
-    // Check if user is banned
-    const userBehavior = await this.userBehaviorRepository.findByUserId(userId);
+    // Determine the actual customer for this appointment
+    const customerId = data.customerId || userId;
+    const isBookingForOther = data.customerId && data.customerId !== userId;
+
+    // If booking for another customer, check permissions
+    if (isBookingForOther) {
+      const { resource, action } = this.splitPermissionName(PermissionName.EDIT_ALL_APPOINTMENTS);
+      const hasPermission = await this.rbacService.hasPermission(
+        userId,
+        resource,
+        action,
+        { businessId: data.businessId }
+      );
+
+      if (!hasPermission) {
+        throw new Error('You do not have permission to create appointments for other customers');
+      }
+
+      // Validate that the customer exists
+      if (!this.repositories?.userRepository) {
+        throw new Error('User repository not available');
+      }
+
+      const customer = await this.repositories.userRepository.findById(data.customerId!);
+      if (!customer) {
+        throw new Error('Customer not found');
+      }
+
+      if (!customer.isActive) {
+        throw new Error('Customer account is not active');
+      }
+    }
+
+    // Check if user is banned (only check for the actual customer, not the person creating)
+    const userBehavior = await this.userBehaviorRepository.findByUserId(customerId);
     if (userBehavior?.isBanned) {
-      const banMessage = userBehavior.bannedUntil 
-        ? `You are banned until ${userBehavior.bannedUntil.toLocaleDateString()}`
-        : 'You are permanently banned';
+      const banMessage = userBehavior.bannedUntil
+        ? `Customer is banned until ${userBehavior.bannedUntil.toLocaleDateString()}`
+        : 'Customer is permanently banned';
       throw new Error(`Cannot book appointment: ${banMessage}. Reason: ${userBehavior.banReason}`);
     }
 
@@ -82,9 +118,9 @@ export class AppointmentService {
       throw new Error('Staff member does not belong to this business');
     }
 
-    // Check appointment time constraints
-    const appointmentDateTime = new Date(`${data.date}T${data.startTime}`);
-    const now = new Date();
+    // Check appointment time constraints - convert to Istanbul timezone
+    const appointmentDateTime = createDateTimeInIstanbul(data.date, data.startTime);
+    const now = getCurrentTimeInIstanbul();
     
     // Check minimum advance booking
     const hoursUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -100,9 +136,10 @@ export class AppointmentService {
 
     // Check for staff-specific conflicts
     const endTime = new Date(appointmentDateTime.getTime() + service.duration * 60000);
+    const appointmentDate = createDateTimeInIstanbul(data.date, '00:00');
     const conflicts = await this.appointmentRepository.findConflictingAppointments(
       data.businessId,
-      new Date(data.date),
+      appointmentDate,
       appointmentDateTime,
       endTime,
       data.staffId // Add staffId to check conflicts for specific staff
@@ -113,10 +150,13 @@ export class AppointmentService {
     }
 
     // Create appointment
-    const appointment = await this.appointmentRepository.create(userId, data);
+    const appointment = await this.appointmentRepository.create(customerId, data);
 
-    // Update user behavior
-    await this.userBehaviorRepository.createOrUpdate(userId);
+    // Record appointment usage for subscription tracking
+    await this.usageService.recordAppointmentUsage(data.businessId);
+
+    // Update user behavior for the customer (not the person creating the appointment)
+    await this.userBehaviorRepository.createOrUpdate(customerId);
 
     // Send notification to business owner/staff about new appointment
     try {
@@ -338,8 +378,9 @@ export class AppointmentService {
 
     // If rescheduling, check availability
     if (data.date || data.startTime) {
-      const newDate = data.date ? new Date(data.date) : appointment.date;
-      const newStartTime = data.startTime ? new Date(`${data.date || appointment.date.toISOString().split('T')[0]}T${data.startTime}`) : appointment.startTime;
+      const newDate = data.date ? createDateTimeInIstanbul(data.date, '00:00') : appointment.date;
+      const dateStr = data.date || appointment.date.toISOString().split('T')[0];
+      const newStartTime = data.startTime ? createDateTimeInIstanbul(dateStr, data.startTime) : appointment.startTime;
       
       const service = await this.serviceRepository.findById(appointment.serviceId);
       if (service) {
@@ -457,7 +498,7 @@ export class AppointmentService {
   }
 
   async getNearestAppointmentInCurrentHour(userId: string): Promise<AppointmentWithDetails | null> {
-    const now = new Date();
+    const now = getCurrentTimeInIstanbul();
     const currentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
     const nextHour = new Date(currentHour.getTime() + 60 * 60 * 1000);
     
@@ -469,7 +510,7 @@ export class AppointmentService {
   }
 
   async getAppointmentsInCurrentHour(userId: string): Promise<AppointmentWithDetails[]> {
-    const now = new Date();
+    const now = getCurrentTimeInIstanbul();
     const currentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
     const nextHour = new Date(currentHour.getTime() + 60 * 60 * 1000);
     

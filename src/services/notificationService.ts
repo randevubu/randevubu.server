@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 // @ts-ignore - web-push is available in Docker container
 import * as webpush from 'web-push';
+import { UsageService } from './usageService';
 import { 
   NotificationChannel, 
   NotificationStatus,
@@ -53,7 +54,7 @@ export interface RescheduleSuggestion {
 }
 
 export class NotificationService {
-  constructor(private prisma: PrismaClient) {
+  constructor(private prisma: PrismaClient, private usageService?: UsageService) {
     // Configure web-push if VAPID keys are available
     const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
     const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
@@ -267,18 +268,67 @@ export class NotificationService {
     customerId: string,
     closureData: EnhancedClosureData
   ): Promise<NotificationResult> {
-    // TODO: Implement actual SMS service integration (Twilio, AWS SNS, etc.)
-    console.log(`Sending SMS notification to customer ${customerId} about closure ${closureData.id}`);
-    
-    // Simulate SMS sending
-    await new Promise(resolve => setTimeout(resolve, 50));
-    
-    return {
-      success: true,
-      messageId: `sms-${Date.now()}`,
-      channel: NotificationChannel.SMS,
-      status: NotificationStatus.SENT
-    };
+    try {
+      // Check if business can send SMS based on subscription limits
+      if (this.usageService) {
+        const canSendSms = await this.usageService.canSendSms(closureData.businessId);
+        if (!canSendSms.allowed) {
+          return {
+            success: false,
+            error: `SMS quota exceeded: ${canSendSms.reason}`,
+            channel: NotificationChannel.SMS,
+            status: NotificationStatus.FAILED
+          };
+        }
+      }
+
+      // Get customer details for phone number
+      const customer = await this.prisma.user.findUnique({
+        where: { id: customerId }
+      });
+
+      if (!customer?.phoneNumber) {
+        return {
+          success: false,
+          error: 'Customer phone number not found',
+          channel: NotificationChannel.SMS,
+          status: NotificationStatus.FAILED
+        };
+      }
+
+      // Format closure message
+      const message = `${closureData.businessName} bilgilendirme: ${closureData.reason}. ${closureData.startDate.toLocaleDateString('tr-TR')} tarihinde kapıyız. Detaylar: https://randevubu.com/business/${closureData.businessId}`;
+
+      // Use the existing SMS service
+      const { SMSService } = await import('./smsService');
+      const smsService = new SMSService();
+
+      const result = await smsService.sendSMS({
+        phoneNumber: customer.phoneNumber,
+        message,
+        context: { requestId: `closure-${closureData.id}` }
+      });
+
+      // Record SMS usage after successful sending
+      if (result.success && this.usageService) {
+        await this.usageService.recordSmsUsage(closureData.businessId, 1);
+      }
+
+      return {
+        success: result.success,
+        messageId: result.messageId,
+        error: result.error,
+        channel: NotificationChannel.SMS,
+        status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to send SMS notification',
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.FAILED
+      };
+    }
   }
 
 
@@ -969,6 +1019,19 @@ export class NotificationService {
     const message = `${appointment.business.name} randevu hatırlatması: ${appointment.service.name} hizmetiniz ${appointmentDate} tarihinde saat ${appointmentTime}'de. Detaylar: https://randevubu.com/appointments/${appointment.id}`;
 
     try {
+      // Check if business can send SMS based on subscription limits
+      if (this.usageService) {
+        const canSendSms = await this.usageService.canSendSms(appointment.businessId);
+        if (!canSendSms.allowed) {
+          return [{
+            success: false,
+            error: `SMS quota exceeded: ${canSendSms.reason}`,
+            channel: NotificationChannel.SMS,
+            status: NotificationStatus.FAILED
+          }];
+        }
+      }
+
       // Use the existing SMS service
       const { SMSService } = await import('./smsService');
       const smsService = new SMSService();
@@ -978,6 +1041,11 @@ export class NotificationService {
         message,
         context: { requestId: `reminder-${appointment.id}` }
       });
+
+      // Record SMS usage after successful sending
+      if (result.success && this.usageService) {
+        await this.usageService.recordSmsUsage(appointment.businessId, 1);
+      }
 
       return [{
         success: result.success,

@@ -10,10 +10,15 @@ export const setServicesForShutdown = (serviceContainer: any) => {
 export const gracefulShutdown = (server: Server): void => {
   logger.info('Received shutdown signal, shutting down gracefully...');
   
-  // Stop subscription scheduler if running
+  // Stop schedulers if running
   if (services?.subscriptionSchedulerService) {
     services.subscriptionSchedulerService.stop();
     logger.info('📅 Subscription scheduler stopped');
+  }
+
+  if (services?.appointmentSchedulerService) {
+    services.appointmentSchedulerService.stop();
+    logger.info('📅 Appointment scheduler stopped');
   }
   
   server.close((err) => {

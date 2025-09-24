@@ -100,19 +100,89 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
    *   post:
    *     tags: [Appointments]
    *     summary: Create an appointment
+   *     description: Create an appointment for yourself or on behalf of a customer (requires appropriate permissions)
    *     security:
    *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - businessId
+   *               - serviceId
+   *               - staffId
+   *               - date
+   *               - startTime
+   *             properties:
+   *               businessId:
+   *                 type: string
+   *                 description: ID of the business
+   *                 example: "biz_123456"
+   *               serviceId:
+   *                 type: string
+   *                 description: ID of the service
+   *                 example: "svc_789"
+   *               staffId:
+   *                 type: string
+   *                 description: ID of the staff member
+   *                 example: "staff_456"
+   *               customerId:
+   *                 type: string
+   *                 description: ID of the customer (optional - if not provided, appointment is created for the authenticated user)
+   *                 example: "user_321"
+   *               date:
+   *                 type: string
+   *                 format: date
+   *                 description: Appointment date in YYYY-MM-DD format
+   *                 example: "2024-01-15"
+   *               startTime:
+   *                 type: string
+   *                 pattern: "^([01]?[0-9]|2[0-3]):[0-5][0-9]$"
+   *                 description: Start time in HH:MM format (24-hour)
+   *                 example: "14:30"
+   *               customerNotes:
+   *                 type: string
+   *                 maxLength: 500
+   *                 description: Optional notes from the customer
+   *                 example: "Please call when you arrive"
    *     responses:
-   *       200:
-   *         description: Appointment created
+   *       201:
+   *         description: Appointment created successfully
    *         content:
    *           application/json:
    *             schema:
-   *               $ref: '#/components/schemas/SuccessResponse'
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   $ref: '#/components/schemas/AppointmentData'
+   *                 message:
+   *                   type: string
+   *                   example: "Appointment created successfully"
    *       400:
-   *         description: Validation error
+   *         description: Validation error or business logic error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   examples:
+   *                     - "You do not have permission to create appointments for other customers"
+   *                     - "Customer not found"
+   *                     - "Staff member is not available at the selected time"
    *       401:
    *         description: Unauthorized
+   *       403:
+   *         description: Forbidden - insufficient permissions to create appointments for others
    */
   router.post(
     '/',

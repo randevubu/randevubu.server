@@ -8,6 +8,7 @@ import {
   AppointmentStatus
 } from '../types/business';
 import { convertBusinessData, convertBusinessDataArray } from '../utils/prismaTypeHelpers';
+import { createDateTimeInIstanbul, getCurrentTimeInIstanbul } from '../utils/timezoneHelper';
 
 export class AppointmentRepository {
   constructor(private prisma: PrismaClient) {}
@@ -95,7 +96,7 @@ export class AppointmentRepository {
       throw new Error('Service not found');
     }
 
-    const startDateTime = new Date(`${data.date}T${data.startTime}`);
+    const startDateTime = createDateTimeInIstanbul(data.date, data.startTime);
     const endDateTime = new Date(startDateTime.getTime() + service.duration * 60000);
     const appointmentId = `apt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -106,7 +107,7 @@ export class AppointmentRepository {
         serviceId: data.serviceId,
         staffId: data.staffId,
         customerId,
-        date: new Date(data.date),
+        date: createDateTimeInIstanbul(data.date, '00:00'),
         startTime: startDateTime,
         endTime: endDateTime,
         duration: service.duration,
@@ -114,7 +115,7 @@ export class AppointmentRepository {
         price: service.price as any,
         currency: service.currency,
         customerNotes: data.customerNotes,
-        bookedAt: new Date(),
+        bookedAt: getCurrentTimeInIstanbul(),
         reminderSent: false
       }
     });
@@ -358,8 +359,8 @@ export class AppointmentRepository {
       whereClause.status = filters.status;
     }
     if (filters?.date) {
-      const startOfDay = new Date(`${filters.date}T00:00:00`);
-      const endOfDay = new Date(`${filters.date}T23:59:59`);
+      const startOfDay = createDateTimeInIstanbul(filters.date, '00:00');
+      const endOfDay = createDateTimeInIstanbul(filters.date, '23:59');
       whereClause.date = {
         gte: startOfDay,
         lte: endOfDay

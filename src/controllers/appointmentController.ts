@@ -628,18 +628,8 @@ export class AppointmentController {
         startTime: apt.startTime,
         endTime: apt.endTime,
         duration: apt.duration,
-        status: apt.status,
-        service: apt.service ? {
-          id: apt.service.id,
-          name: apt.service.name,
-          duration: apt.service.duration
-        } : null,
-        staff: apt.staff ? {
-          id: apt.staff.id,
-          firstName: apt.staff.firstName,
-          lastName: apt.staff.lastName
-        } : null
-        // Exclude customer data and internal notes for public access
+        status: apt.status
+        // Exclude customer data, service, staff and internal notes for public access
       }));
 
       res.json({

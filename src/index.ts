@@ -199,6 +199,12 @@ const server = app.listen(PORT, () => {
     logger.info(`📅 Subscription scheduler disabled in ${config.NODE_ENV} mode`);
   }
 
+  // Start appointment scheduler
+  if (config.NODE_ENV !== 'test') {
+    services.appointmentSchedulerService.start();
+    logger.info(`📅 Appointment auto-completion scheduler started in ${config.NODE_ENV} mode`);
+  }
+
   // Start appointment reminder service
   if (config.NODE_ENV !== 'test') {
     services.appointmentReminderService.start();

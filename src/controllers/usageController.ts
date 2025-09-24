@@ -160,4 +160,26 @@ export class UsageController {
       handleRouteError(error, req, res);
     }
   }
+
+  async refreshUsageCounters(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const businessId = req.params.businessId;
+
+      // Update all usage counters based on current database state
+      await Promise.all([
+        this.usageService.updateStaffUsage(businessId),
+        this.usageService.updateServiceUsage(businessId)
+      ]);
+
+      sendSuccessResponse(res, {
+        data: {
+          refreshedCounters: ['staff', 'services'],
+          updatedAt: new Date().toISOString()
+        },
+        message: 'Usage data refreshed successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
 }

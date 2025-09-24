@@ -16,12 +16,14 @@ import { PermissionName } from '../types/auth';
 import { BusinessContext } from '../middleware/businessContext';
 import { PrismaClient, BusinessStaffRole } from '@prisma/client';
 import { ValidationError } from '../types/errors';
+import { UsageService } from './usageService';
 
 export class BusinessService {
   constructor(
     private businessRepository: BusinessRepository,
     private rbacService: RBACService,
-    private prisma: PrismaClient
+    private prisma: PrismaClient,
+    private usageService?: UsageService
   ) {}
 
   async createBusiness(
@@ -178,6 +180,11 @@ export class BusinessService {
         deletedAt: createdBusiness.deletedAt
       } as BusinessData;
     });
+
+    // Update staff usage to count the owner
+    if (this.usageService) {
+      await this.usageService.updateStaffUsage(business.id);
+    }
 
     // ENTERPRISE PATTERN: Aggressively clear all cache for this user
     // This ensures immediate consistency for role-based operations

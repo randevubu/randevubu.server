@@ -7,13 +7,15 @@ import {
 import { ServiceRepository } from '../repositories/serviceRepository';
 import { BusinessRepository } from '../repositories/businessRepository';
 import { RBACService } from './rbacService';
+import { UsageService } from './usageService';
 import { PermissionName } from '../types/auth';
 
 export class ServiceService {
   constructor(
     private serviceRepository: ServiceRepository,
     private businessRepository: BusinessRepository,
-    private rbacService: RBACService
+    private rbacService: RBACService,
+    private usageService: UsageService
   ) {}
 
   async createService(
@@ -21,10 +23,16 @@ export class ServiceService {
     businessId: string,
     data: CreateServiceRequest
   ): Promise<ServiceData> {
+    // Check if business can add more services
+    const canAddService = await this.usageService.canAddService(businessId);
+    if (!canAddService.allowed) {
+      throw new Error(`Cannot create service: ${canAddService.reason}`);
+    }
+
     // Check permissions to manage services for this business
     const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalService) {
       await this.rbacService.requirePermission(
         userId,
@@ -33,7 +41,12 @@ export class ServiceService {
       );
     }
 
-    return await this.serviceRepository.create(businessId, data);
+    const service = await this.serviceRepository.create(businessId, data);
+
+    // Update service usage tracking
+    await this.usageService.updateServiceUsage(businessId);
+
+    return service;
   }
 
   async getServiceById(

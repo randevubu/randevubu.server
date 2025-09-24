@@ -51,6 +51,10 @@ export const ERROR_CODES = {
   BUSINESS_SUBSCRIPTION_REQUIRED: 'BUSINESS_SUBSCRIPTION_REQUIRED',
   BUSINESS_LIMIT_REACHED: 'BUSINESS_LIMIT_REACHED',
   BUSINESS_DELETION_NOT_ALLOWED: 'BUSINESS_DELETION_NOT_ALLOWED',
+  SMS_QUOTA_EXCEEDED: 'SMS_QUOTA_EXCEEDED',
+  STAFF_LIMIT_EXCEEDED: 'STAFF_LIMIT_EXCEEDED',
+  SERVICE_LIMIT_EXCEEDED: 'SERVICE_LIMIT_EXCEEDED',
+  CUSTOMER_LIMIT_EXCEEDED: 'CUSTOMER_LIMIT_EXCEEDED',
 
   // =============================================================================
   // APPOINTMENT ERRORS
@@ -195,6 +199,10 @@ export const ERROR_TRANSLATION_KEYS = {
   [ERROR_CODES.BUSINESS_SUBSCRIPTION_REQUIRED]: 'errors.business.subscriptionRequired',
   [ERROR_CODES.BUSINESS_LIMIT_REACHED]: 'errors.business.limitReached',
   [ERROR_CODES.BUSINESS_DELETION_NOT_ALLOWED]: 'errors.business.deletionNotAllowed',
+  [ERROR_CODES.SMS_QUOTA_EXCEEDED]: 'errors.business.smsQuotaExceeded',
+  [ERROR_CODES.STAFF_LIMIT_EXCEEDED]: 'errors.business.staffLimitExceeded',
+  [ERROR_CODES.SERVICE_LIMIT_EXCEEDED]: 'errors.business.serviceLimitExceeded',
+  [ERROR_CODES.CUSTOMER_LIMIT_EXCEEDED]: 'errors.business.customerLimitExceeded',
 
   // Appointments
   [ERROR_CODES.APPOINTMENT_NOT_FOUND]: 'errors.appointment.notFound',
