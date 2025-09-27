@@ -103,6 +103,10 @@ RUN npx prisma generate
 # Copy built application from builder stage
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 
+# Copy startup script
+COPY --chown=nodejs:nodejs start.sh ./
+RUN chmod +x start.sh
+
 # SECURITY: Set environment variables for production
 ENV NODE_ENV=production
 ENV NPM_CONFIG_CACHE=/tmp/.npm
@@ -116,10 +120,10 @@ EXPOSE 3000
 
 # SECURITY: Enhanced health check with timeout and user context
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+    CMD curl -f http://localhost:3000/health || exit 1
 
 # SECURITY: Use dumb-init to handle signals properly and prevent zombie processes
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application
-CMD ["node", "dist/index.js"]
+# Start the application with migration script
+CMD ["./start.sh"]
