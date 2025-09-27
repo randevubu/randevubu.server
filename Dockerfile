@@ -122,4 +122,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ENTRYPOINT ["dumb-init", "--"]
 
 # Start the application with database setup
-CMD ["/bin/sh", "-c", "echo '🚀 Starting RandevuBu Server...' && echo '🔄 Running database migrations...' && npx prisma migrate deploy && echo '✅ Database migrations completed' && echo '🚀 Starting application...' && exec node dist/index.js"]
+CMD ["/bin/sh", "-c", "echo '🚀 Starting RandevuBu Server...' && echo '🔄 Resolving failed migrations...' && (npx prisma migrate resolve --applied 20250926125245_staff_id_for_services || echo 'Migration resolution skipped or already resolved') && echo '🔄 Running database migrations...' && npx prisma migrate deploy && echo '✅ Database migrations completed' && echo '🚀 Starting application...' && exec node dist/index.js"]
