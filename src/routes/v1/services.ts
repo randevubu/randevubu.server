@@ -747,6 +747,126 @@ export function createServiceRoutes(serviceController: ServiceController): Route
     serviceController.batchDeleteServices.bind(serviceController)
   );
 
+  // NEW: Staff-specific routes
+
+  /**
+   * @swagger
+   * /api/v1/services/staff/{staffId}:
+   *   get:
+   *     tags: [Services]
+   *     summary: Get services owned by a specific staff member
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: staffId
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: activeOnly
+   *         schema:
+   *           type: boolean
+   *     responses:
+   *       200:
+   *         description: Staff services retrieved successfully
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden
+   */
+  router.get(
+    '/staff/:staffId',
+    requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),
+    serviceController.getStaffServices.bind(serviceController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/services/business/{businessId}/owner-services:
+   *   get:
+   *     tags: [Services]
+   *     summary: Get owner services for a business
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Owner services retrieved successfully
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden
+   */
+  router.get(
+    '/business/:businessId/owner-services',
+    attachBusinessContext,
+    requireSpecificBusinessAccess('businessId'),
+    requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),
+    serviceController.getOwnerServices.bind(serviceController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/services/business/{businessId}/staff/{staffId}/copy-owner-services:
+   *   post:
+   *     tags: [Services]
+   *     summary: Copy owner services to a staff member
+   *     description: Copy all or selected services from the business owner to a staff member
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: path
+   *         name: staffId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               serviceIds:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *                 description: Specific service IDs to copy (optional - copies all if not provided)
+   *           examples:
+   *             copy_all:
+   *               summary: Copy all owner services
+   *               value: {}
+   *             copy_specific:
+   *               summary: Copy specific services
+   *               value:
+   *                 serviceIds: ["svc_123", "svc_456"]
+   *     responses:
+   *       201:
+   *         description: Services copied successfully
+   *       400:
+   *         description: Bad request
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden
+   */
+  router.post(
+    '/business/:businessId/staff/:staffId/copy-owner-services',
+    attachBusinessContext,
+    requireSpecificBusinessAccess('businessId'),
+    requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
+    serviceController.copyOwnerServices.bind(serviceController)
+  );
 
   return router;
 }

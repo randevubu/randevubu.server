@@ -430,4 +430,93 @@ export class ServiceController {
     }
   }
 
+  // NEW: Staff-specific methods
+
+  async getStaffServices(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { staffId } = req.params;
+      const { activeOnly } = req.query;
+      const userId = req.user!.id;
+
+      const services = await this.serviceService.getServicesByStaffId(
+        userId,
+        staffId,
+        activeOnly === 'true'
+      );
+
+      res.json({
+        success: true,
+        data: services,
+        meta: {
+          total: services.length,
+          staffId,
+          activeOnly: activeOnly === 'true'
+        }
+      });
+    } catch (error) {
+      res.status(403).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Access denied'
+      });
+    }
+  }
+
+  async copyOwnerServices(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { businessId, staffId } = req.params;
+      const { serviceIds } = req.body;
+      const userId = req.user!.id;
+
+      if (serviceIds && (!Array.isArray(serviceIds) || serviceIds.some(id => typeof id !== 'string'))) {
+        res.status(400).json({
+          success: false,
+          error: 'serviceIds must be an array of strings if provided'
+        });
+        return;
+      }
+
+      const copiedServices = await this.serviceService.copyOwnerServicesToStaff(
+        userId,
+        businessId,
+        staffId,
+        serviceIds
+      );
+
+      res.status(201).json({
+        success: true,
+        data: copiedServices,
+        message: `${copiedServices.length} services copied to staff member successfully`
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to copy services'
+      });
+    }
+  }
+
+  async getOwnerServices(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const userId = req.user!.id;
+
+      const services = await this.serviceService.getOwnerServices(userId, businessId);
+
+      res.json({
+        success: true,
+        data: services,
+        meta: {
+          total: services.length,
+          businessId,
+          type: 'owner_services'
+        }
+      });
+    } catch (error) {
+      res.status(403).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Access denied'
+      });
+    }
+  }
+
 }
