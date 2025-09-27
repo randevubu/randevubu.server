@@ -473,7 +473,8 @@ export const createAppointmentSchema = z.object({
     .min(1, 'Service ID is required'),
 
   staffId: z.string()
-    .min(1, 'Staff ID is required'),
+    .min(1, 'Staff ID is required')
+    .optional(),
 
   customerId: z.string()
     .min(1, 'Customer ID is required')
@@ -601,10 +602,28 @@ export const updateBusinessClosureSchema = z.object({
 export const subscribeBusinessSchema = z.object({
   planId: z.string()
     .min(1, 'Plan ID is required'),
-  
+
   paymentMethodId: z.string()
     .min(1, 'Payment method ID is required')
     .optional()
+});
+
+export const changePlanSchema = z.object({
+  newPlanId: z.string()
+    .min(1, 'New plan ID is required'),
+
+  paymentMethodId: z.string()
+    .min(1, 'Payment method ID is required')
+    .optional(),
+
+  billingCycle: z.enum(['monthly', 'yearly'])
+    .optional(),
+
+  effectiveDate: z.enum(['immediate', 'next_billing_cycle'])
+    .default('immediate'),
+
+  prorationPreference: z.enum(['prorate', 'credit_forward'])
+    .default('prorate')
 });
 
 // Search and filter schemas
@@ -805,6 +824,7 @@ export type UpdateStaffSchema = z.infer<typeof updateStaffSchema>;
 export type CreateBusinessClosureSchema = z.infer<typeof createBusinessClosureSchema>;
 export type UpdateBusinessClosureSchema = z.infer<typeof updateBusinessClosureSchema>;
 export type SubscribeBusinessSchema = z.infer<typeof subscribeBusinessSchema>;
+export type ChangePlanSchema = z.infer<typeof changePlanSchema>;
 export type BusinessSearchSchema = z.infer<typeof businessSearchSchema>;
 export type AppointmentSearchSchema = z.infer<typeof appointmentSearchSchema>;
 

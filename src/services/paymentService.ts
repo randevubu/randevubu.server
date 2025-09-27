@@ -994,6 +994,251 @@ export class PaymentService {
     };
   }
 
+  async createProrationPayment(
+    businessId: string,
+    subscriptionId: string,
+    amount: number,
+    paymentMethodId: string,
+    metadata: {
+      previousPlanId: string;
+      newPlanId: string;
+      changeType: 'upgrade' | 'downgrade' | 'change';
+    }
+  ): Promise<{
+    success: boolean;
+    paymentId?: string;
+    iyzicoPaymentId?: string;
+    error?: string;
+  }> {
+    try {
+      // Get business and stored payment method
+      const [business, paymentMethod] = await Promise.all([
+        this.prisma.business.findUnique({
+          where: { id: businessId },
+          include: { owner: true }
+        }),
+        this.prisma.storedPaymentMethod.findFirst({
+          where: {
+            id: paymentMethodId,
+            businessId,
+            isActive: true
+          }
+        })
+      ]);
+
+      if (!business) {
+        return { success: false, error: 'Business not found' };
+      }
+
+      if (!paymentMethod) {
+        return { success: false, error: 'Payment method not found or inactive' };
+      }
+
+      // Create payment request for proration
+      const paymentData: CreatePaymentRequest = {
+        conversationId: this.generateConversationId(),
+        price: amount.toString(),
+        paidPrice: amount.toString(),
+        currency: 'TRY', // Default currency, should be configurable
+        installment: '1',
+        basketId: this.generateBasketId(),
+        paymentChannel: 'WEB',
+        paymentGroup: 'SUBSCRIPTION_CHANGE',
+        card: {
+          cardHolderName: paymentMethod.cardHolderName,
+          cardNumber: this.reconstructCardNumber(paymentMethod),
+          expireMonth: paymentMethod.expiryMonth,
+          expireYear: paymentMethod.expiryYear,
+          cvc: '000' // For stored cards, use masked CVC
+        },
+        buyer: this.createBuyerFromBusiness(business),
+        shippingAddress: this.createAddressFromBusiness(business),
+        billingAddress: this.createAddressFromBusiness(business),
+        basketItems: [this.createProrationBasketItem({
+          previousPlanId: metadata.previousPlanId,
+          newPlanId: metadata.newPlanId,
+          amount: amount.toString()
+        })]
+      };
+
+      // Process payment with enhanced metadata
+      const paymentResult = await this.createProrationPaymentTransaction(
+        subscriptionId,
+        paymentData,
+        metadata
+      );
+
+      return paymentResult;
+    } catch (error) {
+      console.error('Proration payment error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to process proration payment'
+      };
+    }
+  }
+
+  private async createProrationPaymentTransaction(
+    subscriptionId: string,
+    paymentData: CreatePaymentRequest,
+    metadata: {
+      previousPlanId: string;
+      newPlanId: string;
+      changeType: 'upgrade' | 'downgrade' | 'change';
+    }
+  ): Promise<{
+    success: boolean;
+    paymentId?: string;
+    iyzicoPaymentId?: string;
+    error?: string;
+  }> {
+    try {
+      const request: any = {
+        locale: Iyzipay.LOCALE.TR,
+        conversationId: paymentData.conversationId,
+        price: paymentData.price,
+        paidPrice: paymentData.paidPrice,
+        currency: paymentData.currency === 'TRY' ? Iyzipay.CURRENCY.TRY : Iyzipay.CURRENCY.USD,
+        installment: paymentData.installment,
+        basketId: paymentData.basketId,
+        paymentChannel: paymentData.paymentChannel,
+        paymentGroup: paymentData.paymentGroup,
+        paymentCard: {
+          cardHolderName: paymentData.card.cardHolderName,
+          cardNumber: paymentData.card.cardNumber,
+          expireMonth: paymentData.card.expireMonth,
+          expireYear: paymentData.card.expireYear,
+          cvc: paymentData.card.cvc,
+          registerCard: '0' // Don't re-register already stored cards
+        },
+        buyer: paymentData.buyer,
+        shippingAddress: paymentData.shippingAddress,
+        billingAddress: paymentData.billingAddress,
+        basketItems: paymentData.basketItems
+      };
+
+      const result = await new Promise<any>((resolve, reject) => {
+        this.iyzipay.payment.create(request, (err: any, result: any) => {
+          if (err) reject(err);
+          else resolve(result);
+        });
+      });
+
+      if (result.status === 'success') {
+        // Record successful proration payment
+        const paymentRecord = await this.prisma.payment.create({
+          data: {
+            id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+            businessSubscriptionId: subscriptionId,
+            amount: parseFloat(paymentData.paidPrice),
+            currency: paymentData.currency,
+            status: PaymentStatus.SUCCEEDED,
+            paymentMethod: 'card',
+            paymentProvider: 'iyzico',
+            providerPaymentId: result.paymentId,
+            paidAt: new Date(),
+            metadata: {
+              iyzicoResponse: result,
+              conversationId: paymentData.conversationId,
+              basketId: paymentData.basketId,
+              paymentType: 'proration',
+              planChange: {
+                previousPlanId: metadata.previousPlanId,
+                newPlanId: metadata.newPlanId,
+                changeType: metadata.changeType
+              },
+              cardInfo: {
+                cardType: result.cardType,
+                cardAssociation: result.cardAssociation,
+                cardFamily: result.cardFamily,
+                lastFourDigits: result.lastFourDigits,
+                binNumber: result.binNumber
+              }
+            }
+          }
+        });
+
+        return {
+          success: true,
+          paymentId: paymentRecord.id,
+          iyzicoPaymentId: result.paymentId
+        };
+      } else {
+        // Record failed payment
+        await this.prisma.payment.create({
+          data: {
+            id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+            businessSubscriptionId: subscriptionId,
+            amount: parseFloat(paymentData.paidPrice),
+            currency: paymentData.currency,
+            status: PaymentStatus.FAILED,
+            paymentMethod: 'card',
+            paymentProvider: 'iyzico',
+            failedAt: new Date(),
+            metadata: {
+              iyzicoResponse: result,
+              conversationId: paymentData.conversationId,
+              error: result.errorMessage || 'Proration payment failed',
+              paymentType: 'proration',
+              planChange: metadata
+            }
+          }
+        });
+
+        return {
+          success: false,
+          error: result.errorMessage || 'Proration payment failed'
+        };
+      }
+    } catch (error) {
+      console.error('Proration payment transaction error:', error);
+
+      // Record error payment
+      try {
+        await this.prisma.payment.create({
+          data: {
+            id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+            businessSubscriptionId: subscriptionId,
+            amount: parseFloat(paymentData.paidPrice),
+            currency: paymentData.currency,
+            status: PaymentStatus.FAILED,
+            paymentMethod: 'card',
+            paymentProvider: 'iyzico',
+            failedAt: new Date(),
+            metadata: {
+              error: error instanceof Error ? error.message : 'Unknown error',
+              conversationId: paymentData.conversationId,
+              paymentType: 'proration',
+              planChange: metadata
+            }
+          }
+        });
+      } catch (dbError) {
+        console.error('Failed to record payment error:', dbError);
+      }
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Payment processing failed'
+      };
+    }
+  }
+
+  private createProrationBasketItem(metadata: {
+    previousPlanId: string;
+    newPlanId: string;
+    amount: string;
+  }): PaymentBasketItem {
+    return {
+      id: `proration_${Date.now()}`,
+      name: `Plan Change Proration`,
+      category1: 'Subscription',
+      category2: 'Plan Change',
+      itemType: 'VIRTUAL',
+      price: metadata.amount
+    };
+  }
+
   getTestCards() {
     return {
       success: {

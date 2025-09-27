@@ -1037,6 +1037,15 @@ const DEFAULT_PERMISSIONS = [
   },
   {
     id: generateId('perm'),
+    name: 'subscription:manage_all',
+    displayName: 'Manage All Subscriptions',
+    description: 'Manage subscriptions for all businesses',
+    resource: 'subscription',
+    action: 'manage_all',
+    isSystem: true
+  },
+  {
+    id: generateId('perm'),
     name: 'subscription:manage_own',
     displayName: 'Manage Own Subscription',
     description: 'Manage subscription for own business',
@@ -1364,7 +1373,7 @@ const ROLE_PERMISSION_MAPPINGS = {
     'payment:admin', 'payment:create', 'payment:read', 'payment:view_all', 'payment:view_own',
     'payment:refund', 'payment:cancel',
     // Subscription management (admin level)
-    'subscription:purchase', 'subscription:view_plans', 'subscription:manage_own', 'subscription:view_own',
+    'subscription:purchase', 'subscription:view_plans', 'subscription:manage_all', 'subscription:manage_own', 'subscription:view_own',
     'subscription:cancel_own',
     // Customer management (full access)
     'customer:view_own', 'customer:view_all',
@@ -1416,19 +1425,22 @@ const ROLE_PERMISSION_MAPPINGS = {
   ],
   'STAFF': [
     // Staff capabilities - manage appointments and services for assigned business
-    'service:read', 'service:view_own', 'appointment:create', 'appointment:read', 'appointment:update', 'appointment:delete', 'appointment:view_own',
+    'service:create', 'service:read', 'service:update', 'service:delete', 'service:manage_own', 'service:view_own',
+    'appointment:create', 'appointment:read', 'appointment:update', 'appointment:delete', 'appointment:view_own',
     'appointment:edit_own', 'appointment:cancel_own', 'appointment:confirm', 'appointment:complete', 'appointment:mark_no_show',
-    'support:create', 'business:read', 'business:view_own',
+    'support:create', 'business:read', 'business:view_own', 'business:edit_own',
     // Basic subscription viewing (to understand business plan limits)
     'subscription:view_plans', 'subscription:view_own',
     // Customer management for assigned business
     'customer:view_own',
     // Basic analytics for assigned business
     'analytics:read', 'analytics:view_own', 'business_closure:read',
+    // Business closure permissions for assigned business
+    'closure:view_own', 'closure:manage_own',
     // Limited user behavior for assigned business customers
     'user_behavior:read', 'user_behavior:view',
-    // Basic business hours viewing for assigned business
-    'business_hours:read', 'business_hours:view_own', 'business_hours:status',
+    // Basic business hours management for assigned business
+    'business_hours:read', 'business_hours:view_own', 'business_hours:edit_own', 'business_hours:status',
     // View business hours overrides for assigned business
     'business_hours_override:read', 'business_hours_override:view_own',
     // Basic notification viewing for assigned business

@@ -1,0 +1,75 @@
+# Prometheus Configuration for RandevuBu Production
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'randevubu-production'
+    replica: '1'
+
+# Alertmanager configuration (if you have one)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+
+  # RandevuBu Application
+  - job_name: 'randevubu-app'
+    static_configs:
+      - targets: ['app:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    honor_labels: true
+
+  # RandevuBu Health Check
+  - job_name: 'randevubu-health'
+    static_configs:
+      - targets: ['app:3000']
+    metrics_path: '/health'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Nginx Metrics (if nginx-prometheus-exporter is added)
+  # - job_name: 'nginx'
+  #   static_configs:
+  #     - targets: ['nginx-exporter:9113']
+  #   scrape_interval: 15s
+
+  # PostgreSQL Metrics (if postgres-exporter is added)
+  # - job_name: 'postgresql'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  #   scrape_interval: 15s
+
+  # Redis Metrics (if redis-exporter is added)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #   scrape_interval: 15s
+
+  # Node/System Metrics (if node-exporter is added)
+  # - job_name: 'node'
+  #   static_configs:
+  #     - targets: ['node-exporter:9100']
+  #   scrape_interval: 15s
+
+  # Container Metrics (if cadvisor is added)
+  # - job_name: 'cadvisor'
+  #   static_configs:
+  #     - targets: ['cadvisor:8080']
+  #   scrape_interval: 15s

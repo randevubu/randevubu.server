@@ -14,17 +14,23 @@ import { BusinessRepository } from '../repositories/businessRepository';
 import { RBACService } from './rbacService';
 import { PermissionName } from '../types/auth';
 import { BusinessContext } from '../middleware/businessContext';
-import { PrismaClient, BusinessStaffRole } from '@prisma/client';
+import { PrismaClient, BusinessStaffRole, Prisma } from '@prisma/client';
 import { ValidationError } from '../types/errors';
 import { UsageService } from './usageService';
+import { WorkingHoursService } from './workingHoursService';
+import { logger } from '../utils/logger';
 
 export class BusinessService {
+  private workingHoursService: WorkingHoursService;
+
   constructor(
     private businessRepository: BusinessRepository,
     private rbacService: RBACService,
     private prisma: PrismaClient,
     private usageService?: UsageService
-  ) {}
+  ) {
+    this.workingHoursService = new WorkingHoursService(this.prisma);
+  }
 
   async createBusiness(
     userId: string,
@@ -181,6 +187,17 @@ export class BusinessService {
       } as BusinessData;
     });
 
+    // Create default working hours in the WorkingHours table (9AM-6PM, Mon-Fri)
+    try {
+      await this.workingHoursService.createDefaultBusinessHours(business.id);
+    } catch (error) {
+      logger.error('Failed to create default working hours', {
+        businessId: business.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      // Don't fail business creation if working hours creation fails
+    }
+
     // Update staff usage to count the owner
     if (this.usageService) {
       await this.usageService.updateStaffUsage(business.id);
@@ -302,26 +319,19 @@ export class BusinessService {
   }
 
   async getMyBusinesses(userId: string): Promise<BusinessData[]> {
-    // Get user permissions to determine what businesses they can access
-    const userPermissions = await this.rbacService.getUserPermissions(userId);
-    const roleNames = userPermissions.roles.map(role => role.name);
-
     let businesses: BusinessData[] = [];
 
-    // If user is an owner, get their owned businesses
-    if (roleNames.includes('OWNER')) {
-      const ownedBusinesses = await this.businessRepository.findByOwnerId(userId);
-      businesses.push(...ownedBusinesses);
-    }
+    // Get businesses owned by the user (owners should have OWNER RBAC role)
+    const ownedBusinesses = await this.businessRepository.findByOwnerId(userId);
+    businesses.push(...ownedBusinesses);
 
-    // If user is staff, get businesses they work at
-    if (roleNames.includes('STAFF')) {
-      const staffBusinesses = await this.businessRepository.findByStaffUserId(userId);
-      businesses.push(...staffBusinesses);
-    }
+    // Get businesses where user is staff (based on staff records, not RBAC roles)
+    // Staff members are added to businessStaff table but may not have STAFF RBAC role
+    const staffBusinesses = await this.businessRepository.findByStaffUserId(userId);
+    businesses.push(...staffBusinesses);
 
     // Remove duplicates (in case user is both owner and staff of same business)
-    const uniqueBusinesses = businesses.filter((business, index, self) => 
+    const uniqueBusinesses = businesses.filter((business, index, self) =>
       self.findIndex(b => b.id === business.id) === index
     );
 
@@ -351,23 +361,16 @@ export class BusinessService {
       };
     };
   })[]> {
-    // Get user permissions to determine what businesses they can access
-    const userPermissions = await this.rbacService.getUserPermissions(userId);
-    const roleNames = userPermissions.roles.map(role => role.name);
-
     let businesses: (BusinessData & { subscription?: any })[] = [];
 
-    // If user is an owner, get their owned businesses with subscription info
-    if (roleNames.includes('OWNER')) {
-      const ownedBusinesses = await this.businessRepository.findByOwnerIdWithSubscription(userId);
-      businesses.push(...ownedBusinesses);
-    }
+    // Get businesses owned by the user (with subscription info)
+    const ownedBusinesses = await this.businessRepository.findByOwnerIdWithSubscription(userId);
+    businesses.push(...ownedBusinesses);
 
-    // If user is staff, get businesses they work at (basic info only)
-    if (roleNames.includes('STAFF')) {
-      const staffBusinesses = await this.businessRepository.findByStaffUserId(userId);
-      businesses.push(...staffBusinesses.map(b => ({ ...b, subscription: undefined })));
-    }
+    // Get businesses where user is staff (based on staff records, not RBAC roles)
+    // Staff members are added to businessStaff table but may not have STAFF RBAC role
+    const staffBusinesses = await this.businessRepository.findByStaffUserId(userId);
+    businesses.push(...staffBusinesses.map(b => ({ ...b, subscription: undefined })));
 
     // Remove duplicates (in case user is both owner and staff of same business)
     // Keep the version with subscription info if available
@@ -1700,8 +1703,13 @@ export class BusinessService {
       updateData.emailEnabled = validatedData.emailEnabled;
     }
 
-    if (validatedData.quietHours !== undefined) {
-      updateData.quietHours = validatedData.quietHours ? JSON.stringify(validatedData.quietHours) : undefined;
+    // Handle quietHours field presence/absence logic
+    if ('quietHours' in data) {
+      // quietHours field is present in request - use the provided object
+      updateData.quietHours = validatedData.quietHours ? JSON.stringify(validatedData.quietHours) : Prisma.DbNull;
+    } else {
+      // quietHours field is absent from request - set to null to disable
+      updateData.quietHours = Prisma.DbNull;
     }
 
     if (validatedData.timezone !== undefined) {
@@ -1722,7 +1730,7 @@ export class BusinessService {
         smsEnabled: validatedData.smsEnabled ?? false,
         pushEnabled: validatedData.pushEnabled ?? true,
         emailEnabled: validatedData.emailEnabled ?? false,
-        quietHours: validatedData.quietHours ? JSON.stringify(validatedData.quietHours) : undefined,
+        quietHours: ('quietHours' in data) ? (validatedData.quietHours ? JSON.stringify(validatedData.quietHours) : Prisma.DbNull) : Prisma.DbNull,
         timezone: validatedData.timezone ?? business.timezone ?? 'Europe/Istanbul'
       },
       update: updateData
