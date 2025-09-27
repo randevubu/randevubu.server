@@ -103,10 +103,6 @@ RUN npx prisma generate
 # Copy built application from builder stage
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 
-# Copy startup script
-COPY --chown=nodejs:nodejs start.sh ./
-RUN chmod +x start.sh
-
 # SECURITY: Set environment variables for production
 ENV NODE_ENV=production
 ENV NPM_CONFIG_CACHE=/tmp/.npm
@@ -125,5 +121,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # SECURITY: Use dumb-init to handle signals properly and prevent zombie processes
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application with migration script
-CMD ["./start.sh"]
+# Start the application with database setup
+CMD ["/bin/sh", "-c", "echo '🚀 Starting RandevuBu Server...' && echo '⏳ Waiting for database...' && until npx prisma db execute --stdin <<< 'SELECT 1;' > /dev/null 2>&1; do echo 'Database not ready, waiting...'; sleep 2; done && echo '✅ Database is ready' && echo '🔄 Running database migrations...' && npx prisma migrate deploy && echo '✅ Database migrations completed' && echo '🚀 Starting application...' && exec node dist/index.js"]
