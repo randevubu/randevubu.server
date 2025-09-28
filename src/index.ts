@@ -1,5 +1,8 @@
 // Load environment variables first
-import { config } from './config/environment';
+import { config, validateConfig } from './config/environment';
+
+// Validate configuration before starting the server
+validateConfig();
 
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -212,6 +215,22 @@ const server = app.listen(PORT, () => {
   } else {
     logger.info(`📅 Appointment reminder service disabled in test mode`);
   }
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't crash the process in production, but log the error
+  if (config.NODE_ENV !== 'production') {
+    process.exit(1);
+  }
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+  gracefulShutdown(server);
+  process.exit(1);
 });
 
 process.on('SIGTERM', () => gracefulShutdown(server));
