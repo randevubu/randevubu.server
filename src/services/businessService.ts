@@ -77,7 +77,7 @@ export class BusinessService {
           businessHours: defaultBusinessHours,
           timezone: data.timezone,
           primaryColor: data.primaryColor,
-          galleryImages: data.galleryImages || [],
+          galleryImages: [],
           isActive: true,
           isVerified: false,
           isClosed: false,
