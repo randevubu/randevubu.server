@@ -165,9 +165,11 @@ app.get('/health', (req: Request, res: Response) => {
 // Special endpoint to manually trigger database initialization (for debugging)
 app.post('/init-db', async (req: Request, res: Response) => {
   try {
+    logger.info('🔧 Manual database initialization triggered');
     await ensureEssentialData(prisma);
-    res.json({ success: true, message: 'Database initialization completed' });
+    res.json({ success: true, message: 'Database initialization completed - check logs for details' });
   } catch (error) {
+    logger.error('❌ Manual initialization failed:', error);
     res.status(500).json({ success: false, error: error instanceof Error ? error.message : String(error) });
   }
 });
