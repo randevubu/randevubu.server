@@ -443,7 +443,7 @@ export interface UpdateServiceRequest {
 export interface CreateAppointmentRequest {
   businessId: string;
   serviceId: string;
-  staffId: string;
+  staffId?: string;
   customerId?: string;
   date: string;
   startTime: string;

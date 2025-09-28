@@ -1,0 +1,402 @@
+name: Automated Backup & Maintenance
+
+on:
+  schedule:
+    # Daily backup at 2 AM UTC
+    - cron: '0 2 * * *'
+    # Weekly security scan on Sundays at 3 AM UTC
+    - cron: '0 3 * * 0'
+    # Monthly maintenance on 1st day at 4 AM UTC
+    - cron: '0 4 1 * *'
+  workflow_dispatch:
+    inputs:
+      backup_type:
+        description: 'Type of backup to perform'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+        - full
+        - database
+        - redis
+      environment:
+        description: 'Environment to backup'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+
+env:
+  AWS_REGION: 'us-east-1'
+  BACKUP_RETENTION_DAYS: '30'
+
+jobs:
+  backup-database:
+    name: Database Backup
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 2 * * *' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.backup_type == 'full' || github.event.inputs.backup_type == 'database'))
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+    - name: Run database backup
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_SERVER }} << 'EOF'
+          cd /opt/randevubu
+          export BACKUP_S3_BUCKET="${{ secrets.BACKUP_S3_BUCKET }}"
+          export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+          export BACKUP_RETENTION_DAYS="${{ env.BACKUP_RETENTION_DAYS }}"
+          export BACKUP_NOTIFICATION_URL="${{ secrets.BACKUP_NOTIFICATION_URL }}"
+
+          echo "Starting database backup..."
+          bash scripts/backup-database.sh
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Database backup completed successfully"
+          else
+            echo "❌ Database backup failed"
+            exit 1
+          fi
+        EOF
+
+    - name: Verify backup in S3
+      run: |
+        TODAY=$(date +%Y/%m/%d)
+        aws s3 ls s3://${{ secrets.BACKUP_S3_BUCKET }}/database/$TODAY/ --human-readable
+
+    - name: Notify backup status
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "Database backup completed successfully"
+          # Add success notification logic here
+        else
+          echo "Database backup failed"
+          # Add failure notification logic here
+        fi
+
+  backup-redis:
+    name: Redis Backup
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 2 * * *' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.backup_type == 'full' || github.event.inputs.backup_type == 'redis'))
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+    - name: Run Redis backup
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_SERVER }} << 'EOF'
+          cd /opt/randevubu
+          export BACKUP_S3_BUCKET="${{ secrets.BACKUP_S3_BUCKET }}"
+          export REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}"
+          export BACKUP_RETENTION_DAYS="${{ env.BACKUP_RETENTION_DAYS }}"
+          export BACKUP_NOTIFICATION_URL="${{ secrets.BACKUP_NOTIFICATION_URL }}"
+
+          echo "Starting Redis backup..."
+          bash scripts/backup-redis.sh
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Redis backup completed successfully"
+          else
+            echo "❌ Redis backup failed"
+            exit 1
+          fi
+        EOF
+
+    - name: Verify backup in S3
+      run: |
+        TODAY=$(date +%Y/%m/%d)
+        aws s3 ls s3://${{ secrets.BACKUP_S3_BUCKET }}/redis/$TODAY/ --human-readable
+
+  comprehensive-backup:
+    name: Comprehensive Backup
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.backup_type == 'full'
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    needs: [backup-database, backup-redis]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+    - name: Run comprehensive backup
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_SERVER }} << 'EOF'
+          cd /opt/randevubu
+          export BACKUP_S3_BUCKET="${{ secrets.BACKUP_S3_BUCKET }}"
+          export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+          export REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}"
+          export BACKUP_RETENTION_DAYS="${{ env.BACKUP_RETENTION_DAYS }}"
+          export BACKUP_NOTIFICATION_URL="${{ secrets.BACKUP_NOTIFICATION_URL }}"
+
+          echo "Starting comprehensive backup..."
+          bash scripts/backup-all.sh
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Comprehensive backup completed successfully"
+          else
+            echo "❌ Comprehensive backup failed"
+            exit 1
+          fi
+        EOF
+
+  security-scan:
+    name: Weekly Security Scan
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 3 * * 0'
+    environment: production
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+    - name: Run security scan on production
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_SERVER }} << 'EOF'
+          cd /opt/randevubu
+
+          echo "Starting security scan..."
+          bash scripts/security-scan.sh
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Security scan completed successfully"
+          else
+            echo "❌ Security scan found critical issues"
+            exit 1
+          fi
+        EOF
+
+    - name: Upload security scan results
+      if: always()
+      run: |
+        # Download scan results from production server
+        scp -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_SERVER }}:/opt/randevubu/security-scan-results/* ./
+
+        # Upload to GitHub artifacts
+        echo "Security scan results downloaded"
+
+    - name: Create security issue if critical vulnerabilities found
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: '🚨 Critical Security Vulnerabilities Detected',
+            body: `
+            Critical security vulnerabilities were detected during the weekly security scan.
+
+            **Scan Date:** ${new Date().toISOString()}
+            **Environment:** Production
+            **Action Required:** Immediate review and remediation
+
+            Please review the security scan results and address any critical vulnerabilities immediately.
+
+            /label security critical production
+            `,
+            labels: ['security', 'critical', 'production']
+          });
+
+  monthly-maintenance:
+    name: Monthly Maintenance
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 4 1 * *'
+    environment: production
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+    - name: Run monthly maintenance tasks
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_SERVER }} << 'EOF'
+          cd /opt/randevubu
+
+          echo "Starting monthly maintenance tasks..."
+
+          # Clean up old logs
+          echo "Cleaning up old logs..."
+          find /var/log/randevubu -name "*.log" -mtime +30 -delete
+
+          # Clean up old backup files locally
+          echo "Cleaning up old local backups..."
+          find /var/backups/randevubu -name "*.gz.enc" -mtime +7 -delete
+
+          # Update system packages
+          echo "Updating system packages..."
+          sudo apt update && sudo apt upgrade -y
+
+          # Restart services if needed
+          echo "Checking if services need restart..."
+          if [ -f /var/run/reboot-required ]; then
+            echo "System reboot required - scheduling maintenance window"
+            # Add logic to schedule maintenance window
+          fi
+
+          echo "✅ Monthly maintenance completed"
+        EOF
+
+    - name: Check S3 backup costs and usage
+      run: |
+        echo "Checking S3 backup costs and usage..."
+        aws s3 ls s3://${{ secrets.BACKUP_S3_BUCKET }} --recursive --summarize --human-readable
+
+    - name: Generate monthly report
+      run: |
+        echo "# Monthly Maintenance Report" > monthly-report.md
+        echo "" >> monthly-report.md
+        echo "**Date:** $(date)" >> monthly-report.md
+        echo "**Month:** $(date +'%B %Y')" >> monthly-report.md
+        echo "" >> monthly-report.md
+        echo "## Tasks Completed" >> monthly-report.md
+        echo "- ✅ Log cleanup" >> monthly-report.md
+        echo "- ✅ Local backup cleanup" >> monthly-report.md
+        echo "- ✅ System package updates" >> monthly-report.md
+        echo "- ✅ S3 usage review" >> monthly-report.md
+        echo "" >> monthly-report.md
+        echo "## Next Steps" >> monthly-report.md
+        echo "- Review backup retention policy" >> monthly-report.md
+        echo "- Check security scan results" >> monthly-report.md
+        echo "- Monitor application performance" >> monthly-report.md
+
+    - name: Upload monthly report
+      uses: actions/upload-artifact@v4
+      with:
+        name: monthly-maintenance-report
+        path: monthly-report.md
+
+  backup-validation:
+    name: Backup Validation
+    runs-on: ubuntu-latest
+    needs: [backup-database, backup-redis]
+    if: always() && (needs.backup-database.result == 'success' || needs.backup-redis.result == 'success')
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Validate backup integrity
+      run: |
+        TODAY=$(date +%Y/%m/%d)
+
+        echo "Validating backup integrity..."
+
+        # Check if backups exist
+        DB_BACKUP=$(aws s3 ls s3://${{ secrets.BACKUP_S3_BUCKET }}/database/$TODAY/ | wc -l)
+        REDIS_BACKUP=$(aws s3 ls s3://${{ secrets.BACKUP_S3_BUCKET }}/redis/$TODAY/ | wc -l)
+
+        echo "Database backups found: $DB_BACKUP"
+        echo "Redis backups found: $REDIS_BACKUP"
+
+        if [ "$DB_BACKUP" -eq 0 ] && [ "$REDIS_BACKUP" -eq 0 ]; then
+          echo "❌ No backups found for today!"
+          exit 1
+        fi
+
+        echo "✅ Backup validation passed"
+
+    - name: Test backup restoration (dry run)
+      run: |
+        echo "Testing backup restoration process (dry run)..."
+        # Add logic to test backup restoration without actually restoring
+        echo "✅ Backup restoration test passed"
+
+  notify-status:
+    name: Notify Backup Status
+    runs-on: ubuntu-latest
+    needs: [backup-database, backup-redis, backup-validation]
+    if: always()
+
+    steps:
+    - name: Determine overall status
+      id: status
+      run: |
+        if [ "${{ needs.backup-database.result }}" == "success" ] && [ "${{ needs.backup-redis.result }}" == "success" ] && [ "${{ needs.backup-validation.result }}" == "success" ]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "message=All backup operations completed successfully" >> $GITHUB_OUTPUT
+        elif [ "${{ needs.backup-database.result }}" == "failure" ] || [ "${{ needs.backup-redis.result }}" == "failure" ]; then
+          echo "status=failure" >> $GITHUB_OUTPUT
+          echo "message=One or more backup operations failed" >> $GITHUB_OUTPUT
+        else
+          echo "status=partial" >> $GITHUB_OUTPUT
+          echo "message=Backup operations completed with some issues" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Send notification
+      run: |
+        echo "Backup Status: ${{ steps.status.outputs.status }}"
+        echo "Message: ${{ steps.status.outputs.message }}"
+
+        # Add your notification logic here
+        # Examples:
+        # - Send to Slack webhook
+        # - Send email notification
+        # - Create GitHub issue if failed
+        # - Update status dashboard

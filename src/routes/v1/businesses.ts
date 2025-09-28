@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { BusinessController } from '../../controllers/businessController';
+import { SubscriptionController } from '../../controllers/subscriptionController';
 import {
   allowEmptyBusinessContext,
   attachBusinessContext,
@@ -10,6 +11,8 @@ import { requireAny, requireAuth, requirePermission, withAuth } from '../../midd
 import { handleMulterError, uploadSingleImage } from '../../middleware/multer';
 import { validateNotificationSettings } from '../../middleware/notificationValidation';
 import { validateBody, validateQuery } from '../../middleware/validation';
+import { changePlanSchema } from '../../schemas/business.schemas';
+import { z } from 'zod';
 import {
   businessNotificationSettingsSchema,
   testReminderSchema,
@@ -24,7 +27,7 @@ import {
 } from '../../schemas/staff.schemas';
 import { AuthenticatedRequest, PermissionName } from '../../types/auth';
 
-export function createBusinessRoutes(businessController: BusinessController): Router {
+export function createBusinessRoutes(businessController: BusinessController, subscriptionController?: SubscriptionController): Router {
   const router = Router();
 
   // Public routes (no authentication required)
@@ -790,6 +793,35 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
     requireBusinessAccess,
     validateBody(testReminderSchema),
     businessController.testReminder.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/notification-analytics:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get notification analytics
+   *     description: Retrieve analytics on appointment reminders and their effectiveness
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: days
+   *         schema:
+   *           type: integer
+   *           default: 30
+   *         description: Number of days to analyze (default 30)
+   *     responses:
+   *       200:
+   *         description: Analytics retrieved successfully
+   *       403:
+   *         description: No business access
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/notification-analytics',
+    requireBusinessAccess,
+    businessController.getNotificationAnalytics.bind(businessController)
   );
 
   // User's services access
@@ -1914,6 +1946,8 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
         
         // If slug doesn't work and user is authenticated, try as ID
         if ((req as any).user) {
+          // Set the id parameter for the getBusinessById method
+          (req.params as any).id = req.params.slugOrId;
           return withAuth((authReq, authRes) => businessController.getBusinessById(authReq, authRes))(req, res);
         }
         
@@ -2342,6 +2376,374 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
     '/:businessId/images/gallery',
     requireAuth,
     businessController.updateGalleryImages.bind(businessController)
+  );
+
+  // Subscription Management Routes
+  if (subscriptionController) {
+    /**
+     * @swagger
+     * /api/v1/businesses/{businessId}/subscription/{subscriptionId}/change-plan:
+     *   post:
+     *     tags: [Businesses, Subscriptions]
+     *     summary: Change subscription plan for a business
+     *     description: Change the subscription plan for a business following industry standards with prorated billing and customer-friendly practices
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: businessId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Business ID
+     *       - in: path
+     *         name: subscriptionId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Subscription ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - newPlanId
+     *             properties:
+     *               newPlanId:
+     *                 type: string
+     *                 description: ID of the new subscription plan
+     *                 example: "plan_professional_monthly"
+     *               paymentMethodId:
+     *                 type: string
+     *                 description: Payment method ID (optional, for plan upgrades)
+     *                 example: "pm_1234567890"
+     *               billingCycle:
+     *                 type: string
+     *                 enum: [monthly, yearly]
+     *                 description: Billing cycle preference
+     *                 example: "monthly"
+     *               effectiveDate:
+     *                 type: string
+     *                 enum: [immediate, next_billing_cycle]
+     *                 default: immediate
+     *                 description: When the plan change should take effect
+     *                 example: "immediate"
+     *               prorationPreference:
+     *                 type: string
+     *                 enum: [prorate, credit_forward]
+     *                 default: prorate
+     *                 description: How to handle prorated billing
+     *                 example: "prorate"
+     *     responses:
+     *       200:
+     *         description: Plan changed successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 message:
+     *                   type: string
+     *                   example: "Plan upgrade will take effect immediately"
+     *                 data:
+     *                   type: object
+     *                   description: Updated subscription object
+     *                   properties:
+     *                     id:
+     *                       type: string
+     *                     businessId:
+     *                       type: string
+     *                     planId:
+     *                       type: string
+     *                     status:
+     *                       type: string
+     *                     currentPeriodStart:
+     *                       type: string
+     *                       format: date-time
+     *                     currentPeriodEnd:
+     *                       type: string
+     *                       format: date-time
+     *                     metadata:
+     *                       type: object
+     *                       properties:
+     *                         changeType:
+     *                           type: string
+     *                           enum: [upgrade, downgrade, change]
+     *                         previousPlanId:
+     *                           type: string
+     *                         prorationAmount:
+     *                           type: number
+     *       400:
+     *         description: Bad request - validation error or business rule violation
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: false
+     *                 error:
+     *                   type: string
+     *                   examples:
+     *                     downgrade_violation:
+     *                       value: "Cannot downgrade: You have 5 staff members but the new plan only allows 3"
+     *                     same_plan:
+     *                       value: "Cannot change to the same plan"
+     *                     invalid_plan:
+     *                       value: "Invalid or inactive subscription plan"
+     *       401:
+     *         description: Unauthorized
+     *       403:
+     *         description: Insufficient permissions
+     *       404:
+     *         description: Business or subscription not found
+     */
+    /**
+     * @swagger
+     * /api/v1/businesses/{businessId}/subscription/{subscriptionId}/calculate-change:
+     *   post:
+     *     tags: [Businesses, Subscriptions]
+     *     summary: Calculate plan change preview
+     *     description: Preview the effects of changing subscription plan without actually making the change
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: businessId
+     *         required: true
+     *         schema:
+     *           type: string
+     *       - in: path
+     *         name: subscriptionId
+     *         required: true
+     *         schema:
+     *           type: string
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - newPlanId
+     *             properties:
+     *               newPlanId:
+     *                 type: string
+     *               effectiveDate:
+     *                 type: string
+     *                 enum: [immediate, next_billing_cycle]
+     *                 default: immediate
+     *     responses:
+     *       200:
+     *         description: Plan change calculation successful
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                 data:
+     *                   type: object
+     *                   properties:
+     *                     changeType:
+     *                       type: string
+     *                       enum: [upgrade, downgrade, change]
+     *                     currentPlan:
+     *                       type: object
+     *                     newPlan:
+     *                       type: object
+     *                     prorationAmount:
+     *                       type: number
+     *                     effectiveDate:
+     *                       type: string
+     *                     requiresPayment:
+     *                       type: boolean
+     *                     limitations:
+     *                       type: array
+     *       400:
+     *         description: Invalid request or business rule violation
+     */
+    router.post(
+      '/:businessId/subscription/:subscriptionId/calculate-change',
+      requireAuth,
+      requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
+      requireSpecificBusinessAccess('businessId'),
+      validateBody(z.object({
+        newPlanId: z.string().min(1, 'New plan ID is required'),
+        effectiveDate: z.enum(['immediate', 'next_billing_cycle']).default('immediate')
+      })),
+      withAuth(subscriptionController.calculatePlanChange.bind(subscriptionController))
+    );
+
+    router.post(
+      '/:businessId/subscription/:subscriptionId/change-plan',
+      requireAuth,
+      requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
+      requireSpecificBusinessAccess('businessId'),
+      validateBody(changePlanSchema),
+      withAuth(subscriptionController.changePlan.bind(subscriptionController))
+    );
+
+    /**
+     * @swagger
+     * /api/v1/businesses/{businessId}/payment-methods:
+     *   get:
+     *     tags: [Businesses, Payment Methods]
+     *     summary: Get stored payment methods for a business
+     *     description: Retrieve all stored payment methods for plan changes and subscriptions
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: businessId
+     *         required: true
+     *         schema:
+     *           type: string
+     *     responses:
+     *       200:
+     *         description: Payment methods retrieved successfully
+     */
+    router.get(
+      '/:businessId/payment-methods',
+      requireAuth,
+      requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
+      requireSpecificBusinessAccess('businessId'),
+      withAuth(subscriptionController.getPaymentMethods.bind(subscriptionController))
+    );
+
+    /**
+     * @swagger
+     * /api/v1/businesses/{businessId}/payment-methods:
+     *   post:
+     *     tags: [Businesses, Payment Methods]
+     *     summary: Add a new payment method for a business
+     *     description: Store a new payment method for future plan changes and subscriptions
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: businessId
+     *         required: true
+     *         schema:
+     *           type: string
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - cardHolderName
+     *               - cardNumber
+     *               - expireMonth
+     *               - expireYear
+     *               - cvc
+     *             properties:
+     *               cardHolderName:
+     *                 type: string
+     *                 example: "John Doe"
+     *               cardNumber:
+     *                 type: string
+     *                 example: "5528790000000008"
+     *               expireMonth:
+     *                 type: string
+     *                 example: "12"
+     *               expireYear:
+     *                 type: string
+     *                 example: "2030"
+     *               cvc:
+     *                 type: string
+     *                 example: "123"
+     *               makeDefault:
+     *                 type: boolean
+     *                 default: false
+     *     responses:
+     *       201:
+     *         description: Payment method added successfully
+     *       400:
+     *         description: Invalid card information
+     */
+    router.post(
+      '/:businessId/payment-methods',
+      requireAuth,
+      requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
+      requireSpecificBusinessAccess('businessId'),
+      validateBody(z.object({
+        cardHolderName: z.string().min(1),
+        cardNumber: z.string().regex(/^\d{16}$/),
+        expireMonth: z.string().regex(/^(0[1-9]|1[0-2])$/),
+        expireYear: z.string().regex(/^\d{4}$/),
+        cvc: z.string().regex(/^\d{3,4}$/),
+        makeDefault: z.boolean().default(false)
+      })),
+      withAuth(subscriptionController.addPaymentMethod.bind(subscriptionController))
+    );
+  }
+
+  /**
+   * @swagger
+   * /api/v1/businesses/maintenance/fix-owner-staff:
+   *   post:
+   *     tags: [Businesses, Maintenance]
+   *     summary: Fix missing owner staff records
+   *     description: One-time fix for businesses where owners don't have staff records
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Maintenance completed
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 message:
+   *                   type: string
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     fixed:
+   *                       type: integer
+   *                     errors:
+   *                       type: array
+   *                       items:
+   *                         type: string
+   *       403:
+   *         description: Access denied
+   */
+  router.post(
+    '/maintenance/fix-owner-staff',
+    requireAuth,
+    async (req, res) => {
+      try {
+        // Import the service dynamically to avoid circular dependencies
+        const { BusinessMaintenanceService } = await import('../../services/businessMaintenanceService');
+        const maintenanceService = new BusinessMaintenanceService((req as any).prisma);
+        
+        const result = await maintenanceService.fixMissingOwnerStaffRecords();
+        
+        res.json({
+          success: true,
+          message: `Fixed ${result.fixed} businesses with missing owner staff records`,
+          data: result
+        });
+      } catch (error) {
+        console.error('Maintenance error:', error);
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Maintenance failed'
+        });
+      }
+    }
   );
 
   return router;
