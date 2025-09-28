@@ -8,10 +8,25 @@ import {
   AppointmentStatus
 } from '../types/business';
 import { convertBusinessData, convertBusinessDataArray } from '../utils/prismaTypeHelpers';
-import { createDateTimeInIstanbul, getCurrentTimeInIstanbul } from '../utils/timezoneHelper';
+// Removed timezone helpers - using pure Istanbul local time
 
 export class AppointmentRepository {
   constructor(private prisma: PrismaClient) {}
+
+  // Helper method to get local date string (YYYY-MM-DD) without UTC
+  private getLocalDateString(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // Helper method to convert input time to Istanbul timezone
+  private convertToIstanbulTimezone(dateStr: string, timeStr: string): Date {
+    // Create a date string in Istanbul timezone format
+    const istanbulDateTimeStr = `${dateStr}T${timeStr}:00+03:00`; // Istanbul is UTC+3
+    return new Date(istanbulDateTimeStr);
+  }
 
   // Helper method to check if prices should be hidden based on business settings
   private shouldHidePrice(businessSettings: any, serviceShowPrice: boolean = true): boolean {
@@ -92,13 +107,22 @@ export class AppointmentRepository {
     });
 
     if (!service) {
-      
+
       throw new Error('Service not found');
     }
 
-    const startDateTime = createDateTimeInIstanbul(data.date, data.startTime);
-    const endDateTime = new Date(startDateTime.getTime() + service.duration * 60000);
+    // Ensure staffId is provided - this should be set by the service layer
+    if (!data.staffId) {
+      throw new Error('Staff ID is required for appointment creation');
+    }
+
+    // Convert input to Istanbul timezone explicitly
+    const istanbulStartTime = this.convertToIstanbulTimezone(data.date, data.startTime);
+    const endDateTime = new Date(istanbulStartTime.getTime() + service.duration * 60000);
     const appointmentId = `apt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Parse date as Istanbul timezone
+    const appointmentDate = new Date(`${data.date}T00:00:00+03:00`);
 
     const result = await this.prisma.appointment.create({
       data: {
@@ -107,15 +131,15 @@ export class AppointmentRepository {
         serviceId: data.serviceId,
         staffId: data.staffId,
         customerId,
-        date: createDateTimeInIstanbul(data.date, '00:00'),
-        startTime: startDateTime,
+        date: appointmentDate,
+        startTime: istanbulStartTime,
         endTime: endDateTime,
         duration: service.duration,
         status: AppointmentStatus.CONFIRMED,
         price: service.price as any,
         currency: service.currency,
         customerNotes: data.customerNotes,
-        bookedAt: getCurrentTimeInIstanbul(),
+        bookedAt: new Date(), // Current Istanbul time
         reminderSent: false
       }
     });
@@ -318,7 +342,10 @@ export class AppointmentRepository {
     };
   }
 
-  async findByUserBusinesses(userId: string, filters?: {
+  /**
+   * Find appointments by staff member (for individual staff timeline)
+   */
+  async findByStaffMember(staffId: string, filters?: {
     status?: AppointmentStatus;
     date?: string;
     businessId?: string;
@@ -334,24 +361,9 @@ export class AppointmentRepository {
     const limit = filters?.limit || 50;
     const skip = (page - 1) * limit;
 
-    // Build where clause for appointments in user's businesses
+    // Build where clause for appointments assigned to specific staff member
     const whereClause: any = {
-      OR: [
-        // Businesses owned by user
-        { business: { ownerId: userId } },
-        // Businesses where user is active staff
-        { 
-          business: { 
-            staff: { 
-              some: { 
-                userId, 
-                isActive: true, 
-                leftAt: null 
-              } 
-            } 
-          } 
-        }
-      ]
+      staffId
     };
 
     // Apply filters
@@ -359,12 +371,9 @@ export class AppointmentRepository {
       whereClause.status = filters.status;
     }
     if (filters?.date) {
-      const startOfDay = createDateTimeInIstanbul(filters.date, '00:00');
-      const endOfDay = createDateTimeInIstanbul(filters.date, '23:59');
-      whereClause.date = {
-        gte: startOfDay,
-        lte: endOfDay
-      };
+      // Filter by exact date (YYYY-MM-DD) - Istanbul timezone
+      const filterDate = new Date(`${filters.date}T00:00:00+03:00`);
+      whereClause.date = filterDate;
     }
     if (filters?.businessId) {
       whereClause.businessId = filters.businessId;
@@ -403,8 +412,11 @@ export class AppointmentRepository {
           },
           staff: {
             select: {
+              id: true,
+              role: true,
               user: {
                 select: {
+                  id: true,
                   firstName: true,
                   lastName: true
                 }
@@ -430,7 +442,140 @@ export class AppointmentRepository {
       appointments: appointments.map(apt => {
         const businessSettings = apt.business?.settings as any;
         const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
-        
+
+        return this.filterPriceInfo({
+          ...apt,
+          staff: apt.staff?.user
+        }, shouldHide);
+      }),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit)
+    };
+  }
+
+  /**
+   * Find appointments by user businesses - now for business owners/managers
+   * This returns ALL appointments across multiple staff members
+   */
+  async findByUserBusinesses(userId: string, filters?: {
+    status?: AppointmentStatus;
+    date?: string;
+    businessId?: string;
+    staffId?: string;  // New: Filter by specific staff member
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    appointments: any[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 50;
+    const skip = (page - 1) * limit;
+
+    // Build where clause for appointments in user's businesses
+    const whereClause: any = {
+      OR: [
+        // Businesses owned by user
+        { business: { ownerId: userId } },
+        // Businesses where user is active staff
+        {
+          business: {
+            staff: {
+              some: {
+                userId,
+                isActive: true,
+                leftAt: null
+              }
+            }
+          }
+        }
+      ]
+    };
+
+    // Apply filters
+    if (filters?.status) {
+      whereClause.status = filters.status;
+    }
+    if (filters?.date) {
+      // Filter by exact date (YYYY-MM-DD) - Istanbul timezone
+      const filterDate = new Date(`${filters.date}T00:00:00+03:00`);
+      whereClause.date = filterDate;
+    }
+    if (filters?.businessId) {
+      whereClause.businessId = filters.businessId;
+    }
+    // NEW: Staff-specific filtering
+    if (filters?.staffId) {
+      whereClause.staffId = filters.staffId;
+    }
+
+    const [appointments, total] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          date: true,
+          startTime: true,
+          endTime: true,
+          duration: true,
+          status: true,
+          price: true,
+          currency: true,
+          customerNotes: true,
+          internalNotes: true,
+          business: {
+            select: {
+              id: true,
+              name: true,
+              settings: true
+            }
+          },
+          service: {
+            select: {
+              id: true,
+              name: true,
+              duration: true,
+              price: true,
+              currency: true,
+              showPrice: true
+            }
+          },
+          staff: {
+            select: {
+              id: true,
+              role: true,
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true
+                }
+              }
+            }
+          },
+          customer: {
+            select: {
+              firstName: true,
+              lastName: true,
+              phoneNumber: true
+            }
+          }
+        },
+        orderBy: { startTime: 'asc' },
+        skip,
+        take: limit
+      }),
+      this.prisma.appointment.count({ where: whereClause })
+    ]);
+
+    return {
+      appointments: appointments.map(apt => {
+        const businessSettings = apt.business?.settings as any;
+        const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+
         return this.filterPriceInfo({
           ...apt,
           staff: apt.staff?.user
@@ -587,13 +732,26 @@ export class AppointmentRepository {
     const updateData: any = { ...data };
 
     if (data.date && data.startTime) {
-      const startDateTime = new Date(`${data.date}T${data.startTime}`);
+      // Convert to Istanbul timezone explicitly
+      const startDateTime = this.convertToIstanbulTimezone(data.date, data.startTime);
       updateData.startTime = startDateTime;
-      updateData.date = new Date(data.date);
+      updateData.date = new Date(`${data.date}T00:00:00+03:00`);
 
       // Update end time based on service duration
       const appointment = await this.findById(id);
       if (appointment) {
+        updateData.endTime = new Date(startDateTime.getTime() + appointment.duration * 60000);
+      }
+    } else if (data.date) {
+      // If only date is updated - Istanbul timezone
+      updateData.date = new Date(`${data.date}T00:00:00+03:00`);
+    } else if (data.startTime) {
+      // If only time is updated, need to get existing date
+      const appointment = await this.findById(id);
+      if (appointment) {
+        const existingDateStr = this.getLocalDateString(appointment.date);
+        const startDateTime = this.convertToIstanbulTimezone(existingDateStr, data.startTime);
+        updateData.startTime = startDateTime;
         updateData.endTime = new Date(startDateTime.getTime() + appointment.duration * 60000);
       }
     }
@@ -781,17 +939,13 @@ export class AppointmentRepository {
 
   async findTodaysAppointments(businessId: string): Promise<any[]> {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const todayStr = this.getLocalDateString(today); // Get YYYY-MM-DD format locally
+    const todayDate = new Date(`${todayStr}T00:00:00+03:00`);
 
     const result = await this.prisma.appointment.findMany({
       where: {
         businessId,
-        date: {
-          gte: today,
-          lt: tomorrow
-        }
+        date: todayDate
       },
       orderBy: { startTime: 'asc' },
       select: {
@@ -864,17 +1018,13 @@ export class AppointmentRepository {
 
   async findTodaysAppointmentsForBusinesses(businessIds: string[]): Promise<any[]> {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const todayStr = this.getLocalDateString(today); // Get YYYY-MM-DD format locally
+    const todayDate = new Date(`${todayStr}T00:00:00+03:00`);
 
     const result = await this.prisma.appointment.findMany({
       where: {
         businessId: { in: businessIds },
-        date: {
-          gte: today,
-          lt: tomorrow
-        }
+        date: todayDate
       },
       orderBy: [{ businessId: 'asc' }, { startTime: 'asc' }],
       select: {
@@ -950,11 +1100,16 @@ export class AppointmentRepository {
     date: Date,
     startTime: Date,
     endTime: Date,
+    staffId?: string,  // Now used to check staff-specific conflicts
     excludeAppointmentId?: string
   ): Promise<AppointmentData[]> {
+    // Convert date to proper format for comparison - Istanbul timezone
+    const dateStr = this.getLocalDateString(date);
+    const appointmentDate = new Date(`${dateStr}T00:00:00+03:00`);
+
     const where: any = {
       businessId,
-      date,
+      date: appointmentDate,
       status: { in: [AppointmentStatus.CONFIRMED] },
       OR: [
         {
@@ -977,6 +1132,11 @@ export class AppointmentRepository {
         }
       ]
     };
+
+    // CRITICAL: Staff-specific conflict checking
+    if (staffId) {
+      where.staffId = staffId;
+    }
 
     if (excludeAppointmentId) {
       where.id = { not: excludeAppointmentId };

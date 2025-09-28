@@ -9,15 +9,17 @@ import { convertBusinessData, convertBusinessDataArray } from '../utils/prismaTy
 export class ServiceRepository {
   constructor(private prisma: PrismaClient) {}
 
-  async create(businessId: string, data: CreateServiceRequest): Promise<ServiceData> {
+  async create(businessId: string, staffId: string, data: CreateServiceRequest): Promise<ServiceData> {
     const maxSortOrder = await this.prisma.service.aggregate({
       where: { businessId },
       _max: { sortOrder: true }
     });
 
+    const serviceId = `svc_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
     const result = await this.prisma.service.create({
       data: {
-        id: `svc_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+        id: serviceId,
         businessId,
         name: data.name,
         description: data.description,
@@ -28,7 +30,14 @@ export class ServiceRepository {
         sortOrder: (maxSortOrder._max.sortOrder || 0) + 1,
         bufferTime: data.bufferTime || 0,
         maxAdvanceBooking: data.maxAdvanceBooking || 30,
-        minAdvanceBooking: data.minAdvanceBooking || 0
+        minAdvanceBooking: data.minAdvanceBooking || 0,
+        staff: {
+          create: {
+            id: `ss_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+            staffId: staffId,
+            isActive: true
+          }
+        }
       }
     });
     return convertBusinessData<ServiceData>(result);
@@ -36,7 +45,24 @@ export class ServiceRepository {
 
   async findById(id: string): Promise<ServiceData | null> {
     const result = await this.prisma.service.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        staff: {
+          include: {
+            staff: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     });
     return result ? convertBusinessData<ServiceData>(result) : null;
   }
@@ -44,6 +70,23 @@ export class ServiceRepository {
   async findByBusinessId(businessId: string): Promise<ServiceData[]> {
     const result = await this.prisma.service.findMany({
       where: { businessId },
+      include: {
+        staff: {
+          include: {
+            staff: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       orderBy: [
         { isActive: 'desc' },
         { sortOrder: 'asc' }
@@ -57,6 +100,23 @@ export class ServiceRepository {
       where: {
         businessId,
         isActive: true
+      },
+      include: {
+        staff: {
+          include: {
+            staff: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       orderBy: { sortOrder: 'asc' }
     });
@@ -199,5 +259,181 @@ export class ServiceRepository {
     });
 
     return conflictingAppointments.length === 0;
+  }
+
+  // NEW: Staff-specific methods
+
+  async findByStaffId(staffId: string): Promise<ServiceData[]> {
+    const result = await this.prisma.service.findMany({
+      where: {
+        staff: {
+          some: {
+            staffId: staffId,
+            isActive: true
+          }
+        }
+      },
+      include: {
+        staff: {
+          include: {
+            staff: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: [
+        { isActive: 'desc' },
+        { sortOrder: 'asc' }
+      ]
+    });
+    return convertBusinessDataArray<ServiceData>(result);
+  }
+
+  async findActiveByStaffId(staffId: string): Promise<ServiceData[]> {
+    const result = await this.prisma.service.findMany({
+      where: {
+        isActive: true,
+        staff: {
+          some: {
+            staffId: staffId,
+            isActive: true
+          }
+        }
+      },
+      include: {
+        staff: {
+          include: {
+            staff: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { sortOrder: 'asc' }
+    });
+    return convertBusinessDataArray<ServiceData>(result);
+  }
+
+  async copyServicesFromStaff(
+    sourceStaffId: string,
+    targetStaffId: string,
+    serviceIds?: string[]
+  ): Promise<ServiceData[]> {
+    // Get source services
+    const sourceServices = await this.prisma.service.findMany({
+      where: {
+        staff: {
+          some: {
+            staffId: sourceStaffId,
+            isActive: true
+          }
+        },
+        ...(serviceIds && { id: { in: serviceIds } }),
+        isActive: true
+      }
+    });
+
+    if (sourceServices.length === 0) {
+      return [];
+    }
+
+    // Get target staff info for business context
+    const targetStaff = await this.prisma.businessStaff.findUnique({
+      where: { id: targetStaffId }
+    });
+
+    if (!targetStaff) {
+      throw new Error('Target staff not found');
+    }
+
+    // Copy services
+    const copiedServices = await this.prisma.$transaction(
+      sourceServices.map(service => {
+        const serviceId = `svc_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        return this.prisma.service.create({
+          data: {
+            id: serviceId,
+            businessId: targetStaff.businessId,
+            name: service.name,
+            description: service.description,
+            duration: service.duration,
+            price: service.price,
+            currency: service.currency,
+            image: service.image,
+            isActive: true,
+            showPrice: service.showPrice,
+            pricing: service.pricing as any,
+            bufferTime: service.bufferTime,
+            maxAdvanceBooking: service.maxAdvanceBooking,
+            minAdvanceBooking: service.minAdvanceBooking,
+            sortOrder: service.sortOrder,
+            staff: {
+              create: {
+                id: `ss_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+                staffId: targetStaffId,
+                isActive: true
+              }
+            }
+          }
+        });
+      })
+    );
+
+    return convertBusinessDataArray<ServiceData>(copiedServices);
+  }
+
+  async getOwnerServicesByBusinessId(businessId: string): Promise<ServiceData[]> {
+    const result = await this.prisma.service.findMany({
+      where: {
+        businessId,
+        staff: {
+          some: {
+            staff: {
+              role: 'OWNER'
+            },
+            isActive: true
+          }
+        }
+      },
+      include: {
+        staff: {
+          include: {
+            staff: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: [
+        { isActive: 'desc' },
+        { sortOrder: 'asc' }
+      ]
+    });
+    return convertBusinessDataArray<ServiceData>(result);
   }
 }

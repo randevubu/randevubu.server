@@ -11,7 +11,7 @@ import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec, swaggerUiOptions } from './config/swagger';
 import { errorHandler, notFoundHandler } from './middleware/error';
-import { logger } from './utils/logger';
+import { logger, loggers } from './utils/logger';
 import { gracefulShutdown, setServicesForShutdown } from './utils/gracefulShutdown';
 import { createRoutes } from './routes';
 import { ControllerContainer } from './controllers';
@@ -19,9 +19,13 @@ import prisma from './lib/prisma';
 import { RepositoryContainer } from './repositories';
 import { ServiceContainer } from './services';
 import { initializeBusinessContextMiddleware } from './middleware/attachBusinessContext';
+import { metricsMiddleware, getMetrics } from './utils/metrics';
 
 const app: Express = express();
 const PORT = config.PORT;
+
+// Trust proxy headers when running behind reverse proxy (e.g., Render, Heroku, etc.)
+app.set('trust proxy', 1);
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -64,6 +68,9 @@ app.use(limiter);
 app.use(morgan('combined', { stream: { write: (message: string) => logger.info(message.trim()) } }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Metrics collection middleware (before route handlers)
+app.use(metricsMiddleware);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   (req as any).startTime = Date.now();
@@ -122,36 +129,115 @@ app.get('/', (req: Request, res: Response) => {
  *   get:
  *     tags: [System]
  *     summary: Health check endpoint
- *     description: Returns server health status and performance metrics
+ *     description: Returns comprehensive server health status including database connectivity
  *     responses:
  *       200:
- *         description: Server health information
+ *         description: Server is healthy
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/HealthCheckResponse'
  *       503:
- *         description: Server unhealthy
+ *         description: Server is unhealthy
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/HealthCheckResponse'
  */
-app.get('/health', (req: Request, res: Response) => {
-  const healthData = {
-    status: 'healthy',
-    uptime: Math.floor(process.uptime()),
-    timestamp: new Date().toISOString(),
-    version: config.API_VERSION,
-    environment: config.NODE_ENV,
-    memory: {
-      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
-      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024)
+app.get('/health', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  let status = 'healthy';
+  let httpStatus = 200;
+  const checks: any = {};
+
+  try {
+    // Database connectivity check
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      checks.database = {
+        status: 'healthy',
+        responseTime: Date.now() - startTime + 'ms'
+      };
+    } catch (error) {
+      checks.database = {
+        status: 'unhealthy',
+        error: 'Database connection failed',
+        responseTime: Date.now() - startTime + 'ms'
+      };
+      status = 'unhealthy';
+      httpStatus = 503;
     }
-  };
-  
-  res.json(healthData);
+
+    // Memory and system metrics
+    const memUsage = process.memoryUsage();
+    checks.memory = {
+      status: memUsage.heapUsed / memUsage.heapTotal < 0.9 ? 'healthy' : 'warning',
+      used: Math.round(memUsage.heapUsed / 1024 / 1024),
+      total: Math.round(memUsage.heapTotal / 1024 / 1024),
+      external: Math.round(memUsage.external / 1024 / 1024),
+      rss: Math.round(memUsage.rss / 1024 / 1024)
+    };
+
+    // CPU load (basic check)
+    const cpuUsage = process.cpuUsage();
+    checks.cpu = {
+      status: 'healthy',
+      user: cpuUsage.user,
+      system: cpuUsage.system
+    };
+
+    // Service availability checks
+    checks.services = {
+      subscriptionScheduler: services.subscriptionSchedulerService ? 'available' : 'unavailable',
+      appointmentScheduler: services.appointmentSchedulerService ? 'available' : 'unavailable',
+      appointmentReminder: services.appointmentReminderService ? 'available' : 'unavailable',
+      notification: services.notificationService ? 'available' : 'unavailable',
+      payment: services.paymentService ? 'available' : 'unavailable'
+    };
+
+    const healthData = {
+      status,
+      uptime: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      version: config.API_VERSION,
+      environment: config.NODE_ENV,
+      responseTime: Date.now() - startTime + 'ms',
+      checks
+    };
+
+    res.status(httpStatus).json(healthData);
+  } catch (error) {
+    const healthData = {
+      status: 'unhealthy',
+      uptime: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      version: config.API_VERSION,
+      environment: config.NODE_ENV,
+      responseTime: Date.now() - startTime + 'ms',
+      error: 'Health check failed',
+      checks
+    };
+
+    res.status(503).json(healthData);
+  }
 });
+
+/**
+ * @swagger
+ * /metrics:
+ *   get:
+ *     tags: [System]
+ *     summary: Prometheus metrics endpoint
+ *     description: Returns application metrics in Prometheus format
+ *     responses:
+ *       200:
+ *         description: Metrics data in Prometheus format
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ */
+app.get('/metrics', getMetrics);
 
 // API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
@@ -180,6 +266,9 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 const server = app.listen(PORT, () => {
+  // Use structured logging for startup
+  loggers.system.startup(PORT);
+
   logger.info(`🚀 Server is running on port ${PORT}`);
   logger.info(`📱 Health check: http://localhost:${PORT}/health`);
   logger.info(`📚 API Documentation: http://localhost:${PORT}/api-docs`);

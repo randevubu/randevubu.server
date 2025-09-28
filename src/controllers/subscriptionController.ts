@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { SubscriptionService } from '../services/subscriptionService';
-import { subscribeBusinessSchema } from '../schemas/business.schemas';
+import { subscribeBusinessSchema, changePlanSchema } from '../schemas/business.schemas';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { SubscriptionStatus } from '../types/business';
 
@@ -298,6 +298,223 @@ export class SubscriptionController {
       res.status(400).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to convert trial'
+      });
+    }
+  }
+
+  async calculatePlanChange(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const { businessId, subscriptionId } = req.params;
+      const { newPlanId, effectiveDate = 'immediate' } = req.body;
+      const userId = req.user.id;
+
+      // Get current subscription
+      const currentSubscription = await this.subscriptionService.getBusinessSubscription(userId, businessId);
+      if (!currentSubscription) {
+        res.status(404).json({
+          success: false,
+          error: 'No active subscription found'
+        });
+        return;
+      }
+
+      // Get plans
+      const [currentPlan, newPlan] = await Promise.all([
+        this.subscriptionService.getPlanById(currentSubscription.planId),
+        this.subscriptionService.getPlanById(newPlanId)
+      ]);
+
+      if (!newPlan) {
+        res.status(400).json({
+          success: false,
+          error: 'Invalid plan ID'
+        });
+        return;
+      }
+
+      // Determine change type
+      const isUpgrade = newPlan.price > currentPlan!.price;
+      const isDowngrade = newPlan.price < currentPlan!.price;
+      const changeType = isUpgrade ? 'upgrade' : isDowngrade ? 'downgrade' : 'change';
+
+      // Calculate proration if upgrade
+      let prorationAmount = 0;
+      if (isUpgrade && effectiveDate === 'immediate') {
+        const proration = await this.subscriptionService.calculateUpgradeProration(
+          currentSubscription.planId,
+          newPlanId,
+          currentSubscription.currentPeriodEnd
+        );
+        prorationAmount = proration.proratedAmount;
+      }
+
+      // Check for downgrade limitations
+      const limitations = [];
+      if (isDowngrade) {
+        const validation = await this.subscriptionService.validatePlanLimits(businessId, newPlanId);
+        if (!validation.isValid) {
+          limitations.push(...validation.violations);
+        }
+      }
+
+      // Determine if payment is required
+      const requiresPayment = isUpgrade && prorationAmount > 0;
+
+      // Determine actual effective date (downgrades always next cycle)
+      const actualEffectiveDate = isDowngrade ? 'next_billing_cycle' : effectiveDate;
+
+      // Get stored payment methods for upgrades
+      let storedPaymentMethods = [];
+      if (requiresPayment) {
+        const paymentMethodsResult = await this.subscriptionService.getStoredPaymentMethods(userId, businessId);
+        if (paymentMethodsResult.success) {
+          storedPaymentMethods = paymentMethodsResult.paymentMethods || [];
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          changeType,
+          currentPlan: {
+            id: currentPlan!.id,
+            name: currentPlan!.name,
+            price: currentPlan!.price
+          },
+          newPlan: {
+            id: newPlan.id,
+            name: newPlan.name,
+            price: newPlan.price
+          },
+          prorationAmount,
+          effectiveDate: actualEffectiveDate,
+          requiresPayment,
+          limitations,
+          hasPaymentMethod: !!currentSubscription.paymentMethodId,
+          storedPaymentMethods,
+          canProceed: limitations.length === 0 && (!requiresPayment || storedPaymentMethods.length > 0)
+        }
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to calculate plan change'
+      });
+    }
+  }
+
+  async getPaymentMethods(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const userId = req.user.id;
+
+      const result = await this.subscriptionService.getStoredPaymentMethods(userId, businessId);
+
+      if (result.success) {
+        res.json({
+          success: true,
+          data: result.paymentMethods || []
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          error: result.error
+        });
+      }
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get payment methods'
+      });
+    }
+  }
+
+  async addPaymentMethod(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const { cardHolderName, cardNumber, expireMonth, expireYear, cvc, makeDefault } = req.body;
+      const userId = req.user.id;
+
+      const cardData = {
+        cardHolderName,
+        cardNumber,
+        expireMonth,
+        expireYear,
+        cvc
+      };
+
+      const result = await this.subscriptionService.addPaymentMethodForPlanChange(
+        userId,
+        businessId,
+        cardData,
+        makeDefault
+      );
+
+      if (result.success) {
+        res.status(201).json({
+          success: true,
+          data: {
+            paymentMethodId: result.paymentMethodId
+          },
+          message: 'Payment method added successfully'
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          error: result.error
+        });
+      }
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to add payment method'
+      });
+    }
+  }
+
+  async changePlan(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const { businessId, subscriptionId } = req.params;
+      const validatedData = changePlanSchema.parse(req.body);
+      const userId = req.user.id;
+
+      const subscription = await this.subscriptionService.changePlan(
+        userId,
+        businessId,
+        validatedData.newPlanId,
+        {
+          effectiveDate: validatedData.effectiveDate,
+          prorationPreference: validatedData.prorationPreference,
+          paymentMethodId: validatedData.paymentMethodId
+        }
+      );
+
+      const changeType = subscription.metadata?.changeType || 'change';
+      const effectiveDate = validatedData.effectiveDate === 'next_billing_cycle'
+        ? 'at the end of your current billing period'
+        : 'immediately';
+
+      let message = `Plan ${changeType} will take effect ${effectiveDate}`;
+
+      // Add payment information to the message if payment was processed
+      if (subscription.metadata?.paymentProcessed && subscription.metadata?.paymentAmount) {
+        message += `. Payment of $${subscription.metadata.paymentAmount.toFixed(2)} has been processed successfully.`;
+      }
+
+      res.json({
+        success: true,
+        data: subscription,
+        message,
+        paymentInfo: subscription.metadata?.paymentProcessed ? {
+          paymentId: subscription.metadata.paymentId,
+          amount: subscription.metadata.paymentAmount,
+          processed: true
+        } : null
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to change plan'
       });
     }
   }

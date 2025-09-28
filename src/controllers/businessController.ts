@@ -1576,7 +1576,7 @@ export class BusinessController {
       const testTime = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
 
       const testAppointment = {
-        id: `test-${Date.now()}`,
+        id: `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         businessId,
         customerId: userId, // Use current user as customer
         date: testTime,
@@ -1678,6 +1678,121 @@ export class BusinessController {
           }
         },
         message: `Test reminder completed: ${successCount} successful, ${failureCount} failed`
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async getNotificationAnalytics(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const days = parseInt(req.query.days as string) || 30;
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      const appointments = await this.businessService['prisma'].appointment.findMany({
+        where: {
+          businessId,
+          createdAt: { gte: startDate }
+        },
+        select: {
+          id: true,
+          status: true,
+          reminderSent: true,
+          reminderSentAt: true,
+          startTime: true,
+          createdAt: true
+        }
+      });
+
+      const pushNotifications = await this.businessService['prisma'].pushNotification.findMany({
+        where: {
+          businessId,
+          createdAt: { gte: startDate }
+        },
+        select: {
+          status: true,
+          createdAt: true,
+          sentAt: true,
+          deliveredAt: true,
+          readAt: true,
+          appointmentId: true
+        }
+      });
+
+      const totalAppointments = appointments.length;
+      const remindedAppointments = appointments.filter(a => a.reminderSent).length;
+      const noShowAppointments = appointments.filter(a => a.status === 'NO_SHOW').length;
+      const completedAppointments = appointments.filter(a => a.status === 'COMPLETED').length;
+
+      const channelStats = {
+        PUSH: {
+          sent: pushNotifications.filter(n => n.status === 'SENT').length,
+          delivered: pushNotifications.filter(n => n.deliveredAt).length,
+          read: pushNotifications.filter(n => n.readAt).length,
+          failed: pushNotifications.filter(n => n.status === 'FAILED').length
+        }
+      };
+
+      const noShowRate = totalAppointments > 0 ? (noShowAppointments / totalAppointments) * 100 : 0;
+      const completionRate = totalAppointments > 0 ? (completedAppointments / totalAppointments) * 100 : 0;
+      const reminderCoverage = totalAppointments > 0 ? (remindedAppointments / totalAppointments) * 100 : 0;
+
+      const appointmentsByReminderStatus = {
+        withReminder: {
+          total: remindedAppointments,
+          noShow: appointments.filter(a => a.reminderSent && a.status === 'NO_SHOW').length,
+          completed: appointments.filter(a => a.reminderSent && a.status === 'COMPLETED').length
+        },
+        withoutReminder: {
+          total: totalAppointments - remindedAppointments,
+          noShow: appointments.filter(a => !a.reminderSent && a.status === 'NO_SHOW').length,
+          completed: appointments.filter(a => !a.reminderSent && a.status === 'COMPLETED').length
+        }
+      };
+
+      res.status(200).json({
+        success: true,
+        data: {
+          period: {
+            days,
+            startDate: startDate.toISOString(),
+            endDate: new Date().toISOString()
+          },
+          summary: {
+            totalAppointments,
+            remindedAppointments,
+            reminderCoverage: Math.round(reminderCoverage * 100) / 100,
+            noShowRate: Math.round(noShowRate * 100) / 100,
+            completionRate: Math.round(completionRate * 100) / 100
+          },
+          channelPerformance: channelStats,
+          reminderEffectiveness: {
+            withReminder: {
+              ...appointmentsByReminderStatus.withReminder,
+              noShowRate: appointmentsByReminderStatus.withReminder.total > 0
+                ? Math.round((appointmentsByReminderStatus.withReminder.noShow / appointmentsByReminderStatus.withReminder.total) * 10000) / 100
+                : 0
+            },
+            withoutReminder: {
+              ...appointmentsByReminderStatus.withoutReminder,
+              noShowRate: appointmentsByReminderStatus.withoutReminder.total > 0
+                ? Math.round((appointmentsByReminderStatus.withoutReminder.noShow / appointmentsByReminderStatus.withoutReminder.total) * 10000) / 100
+                : 0
+            }
+          }
+        },
+        message: 'Notification analytics retrieved successfully'
       });
     } catch (error) {
       handleRouteError(error, req, res);

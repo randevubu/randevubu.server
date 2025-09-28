@@ -1121,4 +1121,49 @@ export class BusinessRepository {
       galleryImages: result.galleryImages || []
     };
   }
+
+  // NEW: Staff-related methods
+  async findStaffByUserAndBusiness(userId: string, businessId: string): Promise<{
+    id: string;
+    businessId: string;
+    userId: string;
+    role: string;
+    isActive: boolean;
+  } | null> {
+    const result = await this.prisma.businessStaff.findFirst({
+      where: {
+        userId,
+        businessId,
+        isActive: true,
+        leftAt: null
+      },
+      select: {
+        id: true,
+        businessId: true,
+        userId: true,
+        role: true,
+        isActive: true
+      }
+    });
+
+    return result;
+  }
+
+  // Helper method to get staff record for external services
+  async findStaffRecord(staffId: string): Promise<any> {
+    return await this.prisma.businessStaff.findUnique({
+      where: { id: staffId }
+    });
+  }
+
+  // Helper method to find owner staff record by business
+  async findOwnerStaff(businessId: string): Promise<any> {
+    return await this.prisma.businessStaff.findFirst({
+      where: {
+        businessId,
+        role: 'OWNER',
+        isActive: true
+      }
+    });
+  }
 }

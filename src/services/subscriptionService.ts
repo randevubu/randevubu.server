@@ -6,12 +6,14 @@ import {
 } from '../types/business';
 import { SubscriptionRepository } from '../repositories/subscriptionRepository';
 import { RBACService } from './rbacService';
+import { PaymentService } from './paymentService';
 import { PermissionName } from '../types/auth';
 
 export class SubscriptionService {
   constructor(
     private subscriptionRepository: SubscriptionRepository,
-    private rbacService: RBACService
+    private rbacService: RBACService,
+    private paymentService: PaymentService
   ) {}
 
   // Subscription Plans
@@ -185,6 +187,171 @@ export class SubscriptionService {
       currentSubscription.id,
       newPlanId,
       newPeriodEnd
+    );
+  }
+
+  async changePlan(
+    userId: string,
+    businessId: string,
+    newPlanId: string,
+    options: {
+      effectiveDate?: 'immediate' | 'next_billing_cycle';
+      prorationPreference?: 'prorate' | 'credit_forward';
+      paymentMethodId?: string;
+    } = {}
+  ): Promise<BusinessSubscriptionData> {
+    // Check permissions to manage business subscription
+    const [resource, action] = PermissionName.MANAGE_ALL_SUBSCRIPTIONS.split(':');
+    const hasGlobalSubscription = await this.rbacService.hasPermission(userId, resource, action);
+
+    if (!hasGlobalSubscription) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.MANAGE_OWN_SUBSCRIPTION,
+        { businessId }
+      );
+    }
+
+    const currentSubscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
+    if (!currentSubscription) {
+      throw new Error('No active subscription found');
+    }
+
+    const newPlan = await this.subscriptionRepository.findPlanById(newPlanId);
+    if (!newPlan || !newPlan.isActive) {
+      throw new Error('Invalid or inactive subscription plan');
+    }
+
+    const currentPlan = await this.subscriptionRepository.findPlanById(currentSubscription.planId);
+    if (!currentPlan) {
+      throw new Error('Current subscription plan not found');
+    }
+
+    // Don't allow changing to the same plan
+    if (currentSubscription.planId === newPlanId) {
+      throw new Error('Cannot change to the same plan');
+    }
+
+    // Determine if this is an upgrade or downgrade
+    const isUpgrade = newPlan.price > currentPlan.price;
+    const isDowngrade = newPlan.price < currentPlan.price;
+
+    // For downgrades, validate against current usage
+    if (isDowngrade) {
+      const limits = await this.subscriptionRepository.checkSubscriptionLimits(businessId);
+
+      if (newPlan.maxBusinesses !== -1 && limits.usage.currentBusinesses > newPlan.maxBusinesses) {
+        throw new Error(`Cannot downgrade: You have ${limits.usage.currentBusinesses} businesses but the new plan only allows ${newPlan.maxBusinesses}`);
+      }
+
+      if (newPlan.maxStaffPerBusiness !== -1 && limits.usage.currentStaff > newPlan.maxStaffPerBusiness) {
+        throw new Error(`Cannot downgrade: You have ${limits.usage.currentStaff} staff members but the new plan only allows ${newPlan.maxStaffPerBusiness}`);
+      }
+    }
+
+    // Calculate new period end based on effective date and billing cycle
+    const now = new Date();
+    let effectiveDate = now;
+    let newPeriodEnd = new Date(currentSubscription.currentPeriodEnd);
+
+    if (options.effectiveDate === 'next_billing_cycle') {
+      // Change takes effect at the end of current billing period
+      effectiveDate = new Date(currentSubscription.currentPeriodEnd);
+
+      // Calculate new period end from the effective date
+      if (newPlan.billingInterval === 'monthly') {
+        newPeriodEnd = new Date(effectiveDate);
+        newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
+      } else if (newPlan.billingInterval === 'yearly') {
+        newPeriodEnd = new Date(effectiveDate);
+        newPeriodEnd.setFullYear(newPeriodEnd.getFullYear() + 1);
+      }
+    } else {
+      // Immediate change
+      if (newPlan.billingInterval !== currentPlan.billingInterval) {
+        // If switching billing intervals, reset the period
+        if (newPlan.billingInterval === 'yearly') {
+          newPeriodEnd.setFullYear(now.getFullYear() + 1);
+        } else {
+          newPeriodEnd.setMonth(now.getMonth() + 1);
+        }
+      }
+    }
+
+    // For immediate upgrades, apply proration and process payment
+    let prorationAmount = 0;
+    let paymentResult = null;
+
+    if (options.effectiveDate !== 'next_billing_cycle' && isUpgrade) {
+      const proration = await this.calculateUpgradeProration(
+        currentSubscription.planId,
+        newPlanId,
+        currentSubscription.currentPeriodEnd
+      );
+      prorationAmount = proration.proratedAmount;
+
+      // Process payment for the prorated amount if > 0
+      if (prorationAmount > 0) {
+        const paymentMethodId = options.paymentMethodId || currentSubscription.paymentMethodId;
+
+        if (!paymentMethodId) {
+          throw new Error('Payment method required for plan upgrade. Please add a payment method to continue.');
+        }
+
+        // Process payment using real Iyzico integration
+        paymentResult = await this.paymentService.createProrationPayment(
+          businessId,
+          currentSubscription.id,
+          prorationAmount,
+          paymentMethodId,
+          {
+            previousPlanId: currentSubscription.planId,
+            newPlanId,
+            changeType: isUpgrade ? 'upgrade' : isDowngrade ? 'downgrade' : 'change'
+          }
+        );
+
+        if (!paymentResult.success) {
+          throw new Error(`Payment failed: ${paymentResult.error || 'Unable to process payment'}`);
+        }
+      }
+    }
+
+    // For downgrades, always apply at next billing cycle (customer-friendly)
+    if (isDowngrade && options.effectiveDate === 'immediate') {
+      options.effectiveDate = 'next_billing_cycle';
+    }
+
+    // Create subscription change record with proper metadata
+    const metadata = {
+      previousPlanId: currentSubscription.planId,
+      changeType: isUpgrade ? 'upgrade' : isDowngrade ? 'downgrade' : 'change',
+      effectiveDate: options.effectiveDate || 'immediate',
+      prorationPreference: options.prorationPreference || 'prorate',
+      prorationAmount,
+      paymentProcessed: paymentResult?.success || false,
+      paymentId: paymentResult?.paymentId,
+      iyzicoPaymentId: paymentResult?.iyzicoPaymentId,
+      paymentAmount: prorationAmount,
+      changedBy: userId,
+      changedAt: now.toISOString()
+    };
+
+    // Update payment method if provided
+    const updateData: any = {
+      planId: newPlanId,
+      currentPeriodEnd: newPeriodEnd,
+      nextBillingDate: newPeriodEnd,
+      metadata: { ...currentSubscription.metadata, ...metadata }
+    };
+
+    if (options.paymentMethodId) {
+      updateData.paymentMethodId = options.paymentMethodId;
+    }
+
+    return await this.subscriptionRepository.updateSubscriptionSettings(
+      currentSubscription.id,
+      updateData
     );
   }
 
@@ -769,5 +936,70 @@ export class SubscriptionService {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     return await this.subscriptionRepository.findSubscriptionsForRenewal(tomorrow);
+  }
+
+  // Payment method management for plan changes
+  async getStoredPaymentMethods(
+    userId: string,
+    businessId: string
+  ): Promise<{
+    success: boolean;
+    paymentMethods?: any[];
+    error?: string;
+  }> {
+    try {
+      // Check permissions
+      const [resource, action] = PermissionName.VIEW_ALL_SUBSCRIPTIONS.split(':');
+      const hasGlobalView = await this.rbacService.hasPermission(userId, resource, action);
+
+      if (!hasGlobalView) {
+        await this.rbacService.requirePermission(
+          userId,
+          PermissionName.VIEW_OWN_SUBSCRIPTION,
+          { businessId }
+        );
+      }
+
+      // Get stored payment methods using the payment service
+      return await this.paymentService.getStoredPaymentMethods(businessId);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get payment methods'
+      };
+    }
+  }
+
+  async addPaymentMethodForPlanChange(
+    userId: string,
+    businessId: string,
+    cardData: any,
+    makeDefault: boolean = false
+  ): Promise<{
+    success: boolean;
+    paymentMethodId?: string;
+    error?: string;
+  }> {
+    try {
+      // Check permissions to manage business subscription
+      const [resource, action] = PermissionName.MANAGE_ALL_SUBSCRIPTIONS.split(':');
+      const hasGlobalSubscription = await this.rbacService.hasPermission(userId, resource, action);
+
+      if (!hasGlobalSubscription) {
+        await this.rbacService.requirePermission(
+          userId,
+          PermissionName.MANAGE_OWN_SUBSCRIPTION,
+          { businessId }
+        );
+      }
+
+      // Store payment method using the payment service
+      return await this.paymentService.storePaymentMethod(businessId, cardData, makeDefault);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to add payment method'
+      };
+    }
   }
 }
