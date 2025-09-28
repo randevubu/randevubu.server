@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { UsageService } from '../services/usageService';
 import { BusinessContextRequest } from './businessContext';
 import { sendAppErrorResponse, BusinessErrors } from '../utils/errorResponse';
+import { InternalError } from '../types/errorResponse';
 import { ERROR_CODES } from '../constants/errorCodes';
 import { createErrorContext } from '../utils/errorResponse';
 
@@ -18,7 +19,7 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
      */
     enforceSmsLimits: async (req: BusinessContextRequest, res: Response, next: NextFunction) => {
       try {
-        const businessId = req.params.businessId || req.businessContext?.businessId;
+        const businessId = req.params.businessId || req.businessContext?.primaryBusinessId;
 
         if (!businessId) {
           const context = createErrorContext(req);
@@ -30,19 +31,14 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
 
         if (!check.allowed) {
           const context = createErrorContext(req, businessId);
-          const error = {
-            code: ERROR_CODES.SMS_QUOTA_EXCEEDED,
-            message: check.reason || 'SMS quota exceeded',
-            context,
-            httpStatus: 403
-          };
+          const error = new InternalError('EXTERNAL_SERVICE_ERROR', { reason: check.reason || 'SMS quota exceeded' }, context);
           return sendAppErrorResponse(res, error);
         }
 
         next();
       } catch (error) {
         const context = createErrorContext(req);
-        const appError = BusinessErrors.internalError('Failed to check SMS limits', context);
+        const appError = new InternalError('INTERNAL_SERVER_ERROR', { message: 'Failed to check SMS limits' }, context);
         return sendAppErrorResponse(res, appError);
       }
     },
@@ -52,7 +48,7 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
      */
     enforceStaffLimits: async (req: BusinessContextRequest, res: Response, next: NextFunction) => {
       try {
-        const businessId = req.params.businessId || req.businessContext?.businessId;
+        const businessId = req.params.businessId || req.businessContext?.primaryBusinessId;
 
         if (!businessId) {
           const context = createErrorContext(req);
@@ -64,19 +60,14 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
 
         if (!check.allowed) {
           const context = createErrorContext(req, businessId);
-          const error = {
-            code: ERROR_CODES.STAFF_LIMIT_EXCEEDED,
-            message: check.reason || 'Staff member limit reached',
-            context,
-            httpStatus: 403
-          };
+          const error = new InternalError('EXTERNAL_SERVICE_ERROR', { reason: check.reason || 'Staff member limit reached' }, context);
           return sendAppErrorResponse(res, error);
         }
 
         next();
       } catch (error) {
         const context = createErrorContext(req);
-        const appError = BusinessErrors.internalError('Failed to check staff limits', context);
+        const appError = new InternalError('INTERNAL_SERVER_ERROR', { message: 'Failed to check staff limits' }, context);
         return sendAppErrorResponse(res, appError);
       }
     },
@@ -86,7 +77,7 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
      */
     enforceServiceLimits: async (req: BusinessContextRequest, res: Response, next: NextFunction) => {
       try {
-        const businessId = req.params.businessId || req.businessContext?.businessId;
+        const businessId = req.params.businessId || req.businessContext?.primaryBusinessId;
 
         if (!businessId) {
           const context = createErrorContext(req);
@@ -98,19 +89,14 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
 
         if (!check.allowed) {
           const context = createErrorContext(req, businessId);
-          const error = {
-            code: ERROR_CODES.SERVICE_LIMIT_EXCEEDED,
-            message: check.reason || 'Service limit reached',
-            context,
-            httpStatus: 403
-          };
+          const error = new InternalError('EXTERNAL_SERVICE_ERROR', { reason: check.reason || 'Service limit reached' }, context);
           return sendAppErrorResponse(res, error);
         }
 
         next();
       } catch (error) {
         const context = createErrorContext(req);
-        const appError = BusinessErrors.internalError('Failed to check service limits', context);
+        const appError = new InternalError('INTERNAL_SERVER_ERROR', { message: 'Failed to check service limits' }, context);
         return sendAppErrorResponse(res, appError);
       }
     },
@@ -120,7 +106,7 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
      */
     enforceCustomerLimits: async (req: BusinessContextRequest, res: Response, next: NextFunction) => {
       try {
-        const businessId = req.params.businessId || req.businessContext?.businessId;
+        const businessId = req.params.businessId || req.businessContext?.primaryBusinessId;
 
         if (!businessId) {
           const context = createErrorContext(req);
@@ -132,19 +118,14 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
 
         if (!check.allowed) {
           const context = createErrorContext(req, businessId);
-          const error = {
-            code: ERROR_CODES.CUSTOMER_LIMIT_EXCEEDED,
-            message: check.reason || 'Customer limit reached',
-            context,
-            httpStatus: 403
-          };
+          const error = new InternalError('EXTERNAL_SERVICE_ERROR', { reason: check.reason || 'Customer limit reached' }, context);
           return sendAppErrorResponse(res, error);
         }
 
         next();
       } catch (error) {
         const context = createErrorContext(req);
-        const appError = BusinessErrors.internalError('Failed to check customer limits', context);
+        const appError = new InternalError('INTERNAL_SERVER_ERROR', { message: 'Failed to check customer limits' }, context);
         return sendAppErrorResponse(res, appError);
       }
     }
