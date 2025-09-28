@@ -185,25 +185,16 @@ export class AuthController {
       res.cookie('refreshToken', result.tokens.refreshToken, {
         httpOnly: true,           // Prevents JavaScript access (XSS protection)
         secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // Allow cross-origin in production
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // None for cross-origin in production
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         path: '/' // Allow cookie to be sent to all endpoints
       });
 
-      // Set access token as cookie (for frontend convenience)
-      res.cookie('accessToken', result.tokens.accessToken, {
-        httpOnly: false,          // Frontend needs to read this
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-        maxAge: 60 * 60 * 1000, // 1 hour (same as token expiry)
-        path: '/'
-      });
-
-      // Set hasAuth cookie for frontend auth state detection (Industry Standard)
+      // Set hasAuth cookie for frontend auth state detection
       res.cookie('hasAuth', '1', {
         httpOnly: false,          // Frontend can read this
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // Allow cross-origin in production
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // None for cross-origin in production
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
 
@@ -226,11 +217,7 @@ export class AuthController {
             effectiveLevel: (result.user as any).effectiveLevel || 0,
           },
           tokens: {
-            accessToken: result.tokens.accessToken,
-            expiresIn: result.tokens.expiresIn,
-            // Don't return refresh token in body for web security
-            // Mobile apps can still use it if needed
-            ...(process.env.NODE_ENV === 'development' && { refreshToken: result.tokens.refreshToken })
+            accessToken: result.tokens.accessToken
           },
           isNewUser: result.isNewUser,
         }
@@ -352,15 +339,6 @@ export class AuthController {
           path: '/'
         });
 
-        // Update access token cookie on successful refresh
-        res.cookie('accessToken', tokens.accessToken, {
-          httpOnly: false,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-          maxAge: 60 * 60 * 1000, // 1 hour
-          path: '/'
-        });
-
         // Renew hasAuth cookie on successful refresh
         res.cookie('hasAuth', '1', {
           httpOnly: false,
@@ -376,12 +354,9 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      this.sendSuccessResponse(res, 'Token refreshed successfully', { 
+      this.sendSuccessResponse(res, 'Token refreshed successfully', {
         tokens: {
-          accessToken: tokens.accessToken,
-          expiresIn: tokens.expiresIn,
-          // Only return refresh token in body if it wasn't from cookie (mobile apps)
-          ...(!cookieRefreshToken && { refreshToken: tokens.refreshToken })
+          accessToken: tokens.accessToken
         }
       });
 
@@ -423,7 +398,7 @@ export class AuthController {
 
       // Clear refresh token cookie
       res.clearCookie('refreshToken', {
-        path: '/api/v1/auth/refresh'
+        path: '/'
       });
 
       // Clear hasAuth cookie (Industry Standard)
