@@ -86,14 +86,14 @@ export async function ensureEssentialData(prisma: PrismaClient): Promise<void> {
       logger.info(`📊 Existing roles: ${allRoles.map(r => r.name).join(', ')}`);
     }
 
-    // Ensure at least one subscription plan exists
+    // Ensure all 3 subscription plans exist
     const planCount = await prisma.subscriptionPlan.count();
 
-    if (planCount === 0) {
-      logger.info('⚠️  No subscription plans found, creating starter plan...');
+    if (planCount < 3) {
+      logger.info(`⚠️  Found ${planCount} subscription plans, creating missing plans...`);
 
-      await prisma.subscriptionPlan.create({
-        data: {
+      const plansToCreate = [
+        {
           id: 'plan_starter_monthly',
           name: 'starter',
           displayName: 'Starter Plan',
@@ -122,12 +122,94 @@ export async function ensureEssentialData(prisma: PrismaClient): Promise<void> {
           },
           isActive: true,
           sortOrder: 1
+        },
+        {
+          id: 'plan_professional_monthly',
+          name: 'professional',
+          displayName: 'Professional Plan',
+          description: 'Ideal for growing businesses with multiple staff',
+          price: 1500.00,
+          currency: 'TRY',
+          billingInterval: 'MONTHLY',
+          maxBusinesses: 1,
+          maxStaffPerBusiness: 5,
+          maxAppointmentsPerDay: 0, // Unlimited
+          features: {
+            appointmentBooking: true,
+            staffManagement: true,
+            basicReports: true,
+            emailNotifications: true,
+            smsNotifications: true,
+            customBranding: true,
+            advancedReports: true,
+            apiAccess: false,
+            multiLocation: false,
+            prioritySupport: true,
+            integrations: ['whatsapp', 'calendar', 'google', 'stripe'],
+            maxServices: 0, // Unlimited
+            maxCustomers: 0, // Unlimited
+            smsQuota: 2500
+          },
+          isActive: true,
+          sortOrder: 2
+        },
+        {
+          id: 'plan_enterprise_monthly',
+          name: 'enterprise',
+          displayName: 'Enterprise Plan',
+          description: 'For large businesses with advanced needs',
+          price: 3000.00,
+          currency: 'TRY',
+          billingInterval: 'MONTHLY',
+          maxBusinesses: 5,
+          maxStaffPerBusiness: 0, // Unlimited
+          maxAppointmentsPerDay: 0, // Unlimited
+          features: {
+            appointmentBooking: true,
+            staffManagement: true,
+            basicReports: true,
+            emailNotifications: true,
+            smsNotifications: true,
+            customBranding: true,
+            advancedReports: true,
+            apiAccess: true,
+            multiLocation: true,
+            prioritySupport: true,
+            integrations: ['whatsapp', 'calendar', 'google', 'stripe', 'zapier'],
+            maxServices: 0, // Unlimited
+            maxCustomers: 0, // Unlimited
+            smsQuota: 5000
+          },
+          isActive: true,
+          sortOrder: 3
         }
-      });
+      ];
 
-      logger.info('✅ Starter subscription plan created');
+      // Create each plan using upsert to avoid duplicates
+      for (const plan of plansToCreate) {
+        try {
+          await prisma.subscriptionPlan.upsert({
+            where: { name: plan.name },
+            update: {}, // Don't update if exists
+            create: plan
+          });
+          logger.info(`✅ Created/verified ${plan.displayName}`);
+        } catch (error) {
+          logger.warn(`⚠️  Failed to create ${plan.displayName}:`, error);
+        }
+      }
+
+      // Verify final count
+      const finalPlanCount = await prisma.subscriptionPlan.count();
+      logger.info(`📊 Total subscription plans: ${finalPlanCount}`);
     } else {
-      logger.info('✅ Subscription plans already exist');
+      logger.info('✅ All subscription plans already exist');
+
+      // Log existing plans for verification
+      const allPlans = await prisma.subscriptionPlan.findMany({
+        select: { name: true, displayName: true, price: true }
+      });
+      logger.info(`📊 Existing plans: ${allPlans.map(p => `${p.displayName} (${p.price} TRY)`).join(', ')}`);
     }
 
     // Check for users without roles and assign CUSTOMER role
