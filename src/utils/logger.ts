@@ -21,14 +21,9 @@ const developmentFormat = winston.format.combine(
 const transports: winston.transport[] = [];
 
 if (config.NODE_ENV === 'production') {
+  // In production, use console logging for cloud platforms
   transports.push(
-    new winston.transports.File({
-      filename: 'logs/error.log',
-      level: 'error',
-      format: logFormat,
-    }),
-    new winston.transports.File({
-      filename: 'logs/combined.log',
+    new winston.transports.Console({
       format: logFormat,
     })
   );
