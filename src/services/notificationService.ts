@@ -306,7 +306,7 @@ export class NotificationService {
       const result = await smsService.sendSMS({
         phoneNumber: customer.phoneNumber,
         message,
-        context: { requestId: `closure-${closureData.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` }
+        context: { requestId: `closure-${closureData.id}` }
       });
 
       // Record SMS usage after successful sending
@@ -921,119 +921,10 @@ export class NotificationService {
     return results;
   }
 
-  async sendAppointmentBookedNotification(appointment: {
-    id: string;
-    businessId: string;
-    customerId: string;
-    startTime: Date;
-    service: { name: string };
-    customer: { firstName?: string; lastName?: string; phoneNumber: string };
-  }): Promise<NotificationResult[]> {
-    try {
-      const business = await this.prisma.business.findUnique({
-        where: { id: appointment.businessId },
-        include: {
-          owner: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              phoneNumber: true,
-              language: true
-            }
-          },
-          staff: {
-            where: {
-              isActive: true,
-              role: { in: ['OWNER', 'MANAGER'] }
-            },
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  phoneNumber: true,
-                  language: true
-                }
-              }
-            }
-          }
-        }
-      });
-
-      if (!business) {
-        return [{
-          success: false,
-          error: 'Business not found',
-          channel: NotificationChannel.PUSH,
-          status: NotificationStatus.FAILED
-        }];
-      }
-
-      const customerName = `${appointment.customer.firstName || ''} ${appointment.customer.lastName || ''}`.trim() || 'Customer';
-      const appointmentTime = appointment.startTime.toLocaleString('tr-TR', {
-        timeZone: business.timezone,
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-
-      const notificationRecipients = [
-        business.owner,
-        ...business.staff.map(s => s.user)
-      ].filter((user, index, self) =>
-        user && self.findIndex(u => u.id === user.id) === index
-      );
-
-      const results: NotificationResult[] = [];
-
-      for (const recipient of notificationRecipients) {
-        const language = recipient.language || 'tr';
-        const title = language === 'tr' ? 'Yeni Randevu' : 'New Appointment';
-        const body = language === 'tr'
-          ? `${customerName} tarafından ${appointment.service.name} hizmeti için ${appointmentTime} tarihinde randevu alındı.`
-          : `New appointment booked by ${customerName} for ${appointment.service.name} at ${appointmentTime}.`;
-
-        const pushResults = await this.sendPushNotification({
-          userId: recipient.id,
-          appointmentId: appointment.id,
-          businessId: appointment.businessId,
-          title,
-          body,
-          icon: undefined,
-          badge: undefined,
-          data: {
-            appointmentId: appointment.id,
-            customerId: appointment.customerId,
-            customerName,
-            serviceName: appointment.service.name,
-            appointmentTime: appointment.startTime.toISOString(),
-            type: 'APPOINTMENT_BOOKED'
-          },
-          url: `/appointments/${appointment.id}`
-        });
-
-        results.push(...pushResults);
-      }
-
-      return results;
-    } catch (error) {
-      console.error('Error sending appointment booked notification:', error);
-      return [{
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to send appointment booked notification',
-        channel: NotificationChannel.PUSH,
-        status: NotificationStatus.FAILED
-      }];
-    }
-  }
-
   async sendAppointmentReminder(appointment: UpcomingAppointment): Promise<NotificationResult[]> {
+    // Check user's notification preferences
     const preferences = await this.getNotificationPreferences(appointment.customerId);
-
+    
     if (preferences && !preferences.enableAppointmentReminders) {
       return [{
         success: false,
@@ -1043,6 +934,7 @@ export class NotificationService {
       }];
     }
 
+    // Check quiet hours
     if (preferences?.quietHours && this.isInQuietHours(new Date(), preferences.quietHours, preferences.timezone)) {
       return [{
         success: false,
@@ -1052,18 +944,20 @@ export class NotificationService {
       }];
     }
 
+    // Get user's language preference (default to Turkish)
     const userLanguage = preferences?.timezone?.includes('Istanbul') ? 'tr' : 'en';
-
+    
+    // Generate translated notification
     const translationKey = getNotificationTranslationKey('APPOINTMENT_REMINDER');
     const translationParams: NotificationTranslationParams = {
       serviceName: appointment.service.name,
       businessName: appointment.business.name,
       time: formatTimeForLanguage(appointment.startTime, userLanguage)
     };
-
+    
     const title = userLanguage === 'tr' ? 'Randevu Hatırlatması' : 'Appointment Reminder';
     const body = translateNotification(translationKey, translationParams, userLanguage);
-
+    
     const appointmentData = {
       appointmentId: appointment.id,
       businessId: appointment.businessId,
@@ -1145,7 +1039,7 @@ export class NotificationService {
       const result = await smsService.sendSMS({
         phoneNumber: appointment.customer.phoneNumber,
         message,
-        context: { requestId: `reminder-${appointment.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` }
+        context: { requestId: `reminder-${appointment.id}` }
       });
 
       // Record SMS usage after successful sending

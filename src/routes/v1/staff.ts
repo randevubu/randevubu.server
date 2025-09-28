@@ -6,7 +6,6 @@ import { AuthMiddleware, rateLimitByUser } from '../../middleware/auth';
 import { validateBody, validateQuery, validateParams } from '../../middleware/validation';
 import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { attachBusinessContext } from '../../middleware/attachBusinessContext';
-import { createUsageEnforcement } from '../../middleware/usageEnforcement';
 import { PermissionName } from '../../types/auth';
 import {
   inviteStaffSchema,
@@ -27,7 +26,6 @@ const repositories = new RepositoryContainer(prisma);
 const services = new ServiceContainer(repositories, prisma);
 const controllers = new ControllerContainer(repositories, services);
 const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
-const usageEnforcement = createUsageEnforcement({ usageService: services.usageService });
 
 export function createStaffRoutes(): Router {
   const router = Router();
@@ -88,8 +86,6 @@ export function createStaffRoutes(): Router {
   router.post('/invite',
     rateLimitByUser(5, 60),
     validateBody(inviteStaffSchema),
-    attachBusinessContext,
-    usageEnforcement.enforceStaffLimits,
     controllers.staffController.inviteStaff.bind(controllers.staffController)
   );
 

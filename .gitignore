@@ -9,12 +9,3 @@ dist/
 build/
 coverage/
 /src/generated/prisma
-.env.production
-.env.development
-.env.test
-.env.test.local
-.env.staging
-.env.local
-.env.development.local
-.env.test.local
-.env.staging.local

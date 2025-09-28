@@ -11,7 +11,6 @@ import { AuthError } from '../types/errorResponse';
 import { ERROR_CODES } from '../constants/errorCodes';
 import { logger } from '../utils/logger';
 import { isValidPhoneNumber, parsePhoneNumber } from 'libphonenumber-js';
-import { WorkingHoursService } from './workingHoursService';
 
 export interface InviteStaffRequest {
   businessId: string;
@@ -39,16 +38,12 @@ export interface StaffInvitationResult {
 }
 
 export class StaffService {
-  private workingHoursService: WorkingHoursService;
-
   constructor(
     private repositories: RepositoryContainer,
     private phoneVerificationService: PhoneVerificationService,
     private rbacService: RBACService,
     private usageService: UsageService
-  ) {
-    this.workingHoursService = new WorkingHoursService(this.repositories.prismaClient);
-  }
+  ) {}
 
   /**
    * Step 1: Owner initiates staff invitation by entering phone number
@@ -59,6 +54,12 @@ export class StaffService {
     request: InviteStaffRequest,
     context?: ErrorContext
   ): Promise<{ success: boolean; message: string }> {
+    // Check if business can add more staff members
+    const canAddStaff = await this.usageService.canAddStaffMember(request.businessId);
+    if (!canAddStaff.allowed) {
+      throw new Error(`Cannot invite staff member: ${canAddStaff.reason}`);
+    }
+
     logger.info('Staff invitation initiated', {
       ownerId,
       businessId: request.businessId,
@@ -224,19 +225,7 @@ export class StaffService {
       } else {
         // Reactivate existing inactive staff member
         const updatedStaff = await this.repositories.staffRepository.activate(existingStaff.id);
-
-        // Note: No need to assign global STAFF role - the BusinessStaff record is sufficient
-        // The getUserRoles method in roleRepository already converts BusinessStaff roles to role data
-        logger.info('Staff member reactivated - role will be available via BusinessStaff record', {
-          userId: staffUser!.id,
-          businessId: request.businessId,
-          role: request.role,
-          requestId: context?.requestId,
-        });
-
-        // Clear RBAC cache for the staff user so their new role appears immediately
-        this.rbacService.clearUserCache(staffUser!.id);
-
+        
         logger.info('Existing staff member reactivated', {
           staffId: existingStaff.id,
           userId: staffUser!.id,
@@ -247,7 +236,7 @@ export class StaffService {
 
         // Get full staff info with user details
         const staffWithUser = await this.getStaffById(existingStaff.id);
-
+        
         return {
           success: true,
           message: 'Staff member successfully added to business',
@@ -264,32 +253,8 @@ export class StaffService {
       permissions: request.permissions,
     });
 
-    // Note: No need to assign global STAFF role - the BusinessStaff record is sufficient
-    // The getUserRoles method in roleRepository already converts BusinessStaff roles to role data
-    logger.info('Staff member added to business - role will be available via BusinessStaff record', {
-      userId: staffUser!.id,
-      businessId: request.businessId,
-      role: request.role,
-      requestId: context?.requestId,
-    });
-
-    // Clear RBAC cache for the staff user so their new role appears immediately
-    this.rbacService.clearUserCache(staffUser!.id);
-
     // Update staff usage tracking
     await this.usageService.updateStaffUsage(request.businessId);
-
-    // Create default working hours for the new staff member
-    try {
-      await this.workingHoursService.createDefaultStaffHours(request.businessId, newStaff.id);
-    } catch (error) {
-      logger.error('Failed to create default working hours for staff', {
-        staffId: newStaff.id,
-        businessId: request.businessId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      // Don't fail staff creation if working hours creation fails
-    }
 
     logger.info('New staff member added to business', {
       staffId: newStaff.id,

@@ -1,128 +1,51 @@
 /**
- * Scalable timezone utility functions for multi-timezone support
+ * Timezone utility functions for handling Istanbul timezone
  */
-
-import { getBusinessTimezone, isTimezoneSupported } from '../config/timezone';
 
 const ISTANBUL_TIMEZONE = 'Europe/Istanbul';
 
 /**
- * Convert a date and time string to a specific timezone
+ * Convert a date and time string to Istanbul timezone
  * @param dateStr - Date string in YYYY-MM-DD format
  * @param timeStr - Time string in HH:MM format
- * @param timezone - Target timezone (defaults to Istanbul)
- * @returns Date object representing the time in the specified timezone
- */
-export function createDateTimeInTimezone(dateStr: string, timeStr: string, timezone: string = ISTANBUL_TIMEZONE): Date {
-  // Parse the date and time components
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const [hour, minute] = timeStr.split(':').map(Number);
-  
-  // For Istanbul timezone, create the date directly without complex offset calculations
-  if (timezone === ISTANBUL_TIMEZONE) {
-    return new Date(year, month - 1, day, hour, minute, 0);
-  }
-  
-  // For other timezones, use proper timezone handling
-  const dateTimeString = `${dateStr}T${timeStr}:00`;
-  const date = new Date(dateTimeString);
-  
-  // Get timezone offset for the specific date
-  const offset = getTimezoneOffset(date, timezone);
-  
-  // Adjust for timezone offset
-  return new Date(date.getTime() - (offset * 60 * 1000));
-}
-
-/**
- * Convert a date and time string to Istanbul timezone (backward compatibility)
- * @param dateStr - Date string in YYYY-MM-DD format
- * @param timeStr - Time string in HH:MM format
- * @returns Date object representing the time in Istanbul timezone
+ * @returns Date object representing the time in Istanbul, stored as UTC
  */
 export function createDateTimeInIstanbul(dateStr: string, timeStr: string): Date {
-  // Parse the date and time components
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const [hour, minute] = timeStr.split(':').map(Number);
-  
-  // Create date directly in Istanbul timezone (no complex calculations)
-  return new Date(year, month - 1, day, hour, minute, 0);
-}
+  // Parse the input as if it's in Istanbul timezone
+  const inputDateTime = `${dateStr}T${timeStr}:00`;
 
-/**
- * Get current time in a specific timezone
- * @param timezone - Target timezone (defaults to Istanbul)
- * @returns Date object representing current time in the specified timezone
- */
-export function getCurrentTimeInTimezone(timezone: string = ISTANBUL_TIMEZONE): Date {
-  // For Istanbul timezone, return current time directly
-  if (timezone === ISTANBUL_TIMEZONE) {
-    return new Date();
-  }
-  
-  // For other timezones, use proper timezone conversion
+  // Create a date assuming it's local time
+  const localDate = new Date(inputDateTime);
+
+  // Get what this time would be in Istanbul
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ISTANBUL_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  // Get current offset between local time and Istanbul
   const now = new Date();
-  return new Date(now.toLocaleString("en-US", { timeZone: timezone }));
+  const nowInIstanbul = new Date(now.toLocaleString('en-US', { timeZone: ISTANBUL_TIMEZONE }));
+  const nowLocal = new Date(now.toLocaleString('en-US'));
+  const offsetMs = nowInIstanbul.getTime() - nowLocal.getTime();
+
+  // Apply the offset to convert from "local" interpretation to Istanbul time
+  return new Date(localDate.getTime() - offsetMs);
 }
 
 /**
- * Get current time in Istanbul timezone (backward compatibility)
+ * Get current time in Istanbul timezone
  * @returns Date object representing current time in Istanbul
  */
 export function getCurrentTimeInIstanbul(): Date {
-  // Return current time directly (no complex timezone calculations)
-  return new Date();
-}
-
-/**
- * Get timezone offset for a specific date and timezone
- * @param date - Date to get offset for
- * @param timezone - Target timezone
- * @returns Offset in minutes
- */
-export function getTimezoneOffset(date: Date, timezone: string): number {
-  const utcTime = new Date(date.toLocaleString("en-US", { timeZone: "UTC" }));
-  const timezoneTime = new Date(date.toLocaleString("en-US", { timeZone: timezone }));
-  return (timezoneTime.getTime() - utcTime.getTime()) / (1000 * 60);
-}
-
-/**
- * Create appointment datetime in business timezone
- * @param dateStr - Date string in YYYY-MM-DD format
- * @param timeStr - Time string in HH:MM format
- * @param businessId - Business ID to get timezone for
- * @returns Date object in business timezone
- */
-export function createAppointmentDateTime(dateStr: string, timeStr: string, businessId: string): Date {
-  // For now, always use Istanbul timezone since that's the default
-  // This avoids complex timezone calculations that might cause issues
-  return createDateTimeInIstanbul(dateStr, timeStr);
-}
-
-/**
- * Get current time in business timezone
- * @param businessId - Business ID to get timezone for
- * @returns Date object in business timezone
- */
-export function getCurrentBusinessTime(businessId: string): Date {
-  // For now, always use Istanbul timezone since that's the default
-  // This avoids complex timezone calculations that might cause issues
-  return getCurrentTimeInIstanbul();
-}
-
-/**
- * Convert time between timezones
- * @param date - Date to convert
- * @param fromTimezone - Source timezone
- * @param toTimezone - Target timezone
- * @returns Date in target timezone
- */
-export function convertBetweenTimezones(date: Date, fromTimezone: string, toTimezone: string): Date {
-  const fromOffset = getTimezoneOffset(date, fromTimezone);
-  const toOffset = getTimezoneOffset(date, toTimezone);
-  const offsetDifference = toOffset - fromOffset;
-  
-  return new Date(date.getTime() + (offsetDifference * 60 * 1000));
+  const now = new Date();
+  return new Date(now.toLocaleString("en-US", { timeZone: ISTANBUL_TIMEZONE }));
 }
 
 /**

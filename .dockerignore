@@ -11,13 +11,9 @@ build
 # Environment files
 .env
 .env.local
-.env.development
 .env.development.local
-.env.test
 .env.test.local
 .env.production.local
-.env.staging
-!.env.production
 
 # IDE files
 .vscode
@@ -99,59 +95,3 @@ jspm_packages/
 # Temporary folders
 tmp/
 temp/
-
-# SECURITY ADDITIONS
-# Scripts that might contain secrets or dev tools
-scripts/dev-*
-scripts/test-*
-scripts/local-*
-
-# CI/CD files (may contain secrets)
-.github/
-.gitlab-ci.yml
-.travis.yml
-.circleci/
-jenkins/
-.drone.yml
-
-# Security scan results and configs
-.trivyignore
-security-scan-results/
-vulnerability-reports/
-.snyk
-
-# Backup files that might contain sensitive data
-*.bak
-*.backup
-*.old
-*.orig
-
-# Database files that shouldn't be in containers
-*.sqlite
-*.sqlite3
-*.db
-
-# Certificate and key files (use volume mounts instead)
-*.pem
-*.key
-*.crt
-*.cert
-*.p12
-*.pfx
-nginx/ssl/*.pem
-!nginx/ssl/README.md
-
-# Local development configurations
-docker-compose.override.yml
-docker-compose.local.yml
-
-# Package manager cache (security: avoid cached vulnerabilities)
-.yarn/
-.pnpm-store/
-
-# User-specific configuration that might contain secrets
-.npmrc
-.yarnrc
-.profile
-.bashrc
-.zshrc
