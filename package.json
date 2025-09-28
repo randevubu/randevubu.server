@@ -17,7 +17,8 @@
     "db:seed-business": "ts-node prisma/seed-business.ts",
     "db:seed-customers": "ts-node prisma/seed-customers-appointments.ts",
     "db:reset": "prisma migrate reset && npm run db:seed",
-    "validate:production": "node scripts/validate-production.js"
+    "validate:production": "node scripts/validate-production.js",
+    "init:production": "node scripts/init-production.js"
   },
   "keywords": [],
   "author": "",
