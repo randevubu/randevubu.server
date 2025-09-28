@@ -339,6 +339,7 @@ export interface CreateBusinessRequest {
   timezone?: string;
   primaryColor?: string;
   tags?: string[];
+  galleryImages?: string[];
 }
 
 export interface UpdateBusinessRequest {
