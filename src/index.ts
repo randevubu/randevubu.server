@@ -22,9 +22,15 @@ import prisma from './lib/prisma';
 import { RepositoryContainer } from './repositories';
 import { ServiceContainer } from './services';
 import { initializeBusinessContextMiddleware } from './middleware/attachBusinessContext';
+import { ensureEssentialData } from './utils/ensureEssentialData';
 
 const app: Express = express();
 const PORT = config.PORT;
+
+// Trust proxy for rate limiting when behind reverse proxy (like Render)
+if (config.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -152,8 +158,18 @@ app.get('/health', (req: Request, res: Response) => {
       total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024)
     }
   };
-  
+
   res.json(healthData);
+});
+
+// Special endpoint to manually trigger database initialization (for debugging)
+app.post('/init-db', async (req: Request, res: Response) => {
+  try {
+    await ensureEssentialData(prisma);
+    res.json({ success: true, message: 'Database initialization completed' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : String(error) });
+  }
 });
 
 // API Documentation
@@ -182,8 +198,11 @@ app.use('/api', createRoutes(controllers, services));
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   logger.info(`🚀 Server is running on port ${PORT}`);
+
+  // Ensure essential database data exists (roles, starter plan)
+  await ensureEssentialData(prisma);
   logger.info(`📱 Health check: http://localhost:${PORT}/health`);
   logger.info(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
   logger.info(`📋 API Spec JSON: http://localhost:${PORT}/api-docs.json`);

@@ -185,7 +185,7 @@ export class AuthController {
       res.cookie('refreshToken', result.tokens.refreshToken, {
         httpOnly: true,           // Prevents JavaScript access (XSS protection)
         secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        sameSite: 'strict',       // CSRF protection
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // Allow cross-origin in production
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         path: '/api/v1/auth/refresh' // Limit cookie scope
       });
@@ -194,7 +194,7 @@ export class AuthController {
       res.cookie('hasAuth', '1', {
         httpOnly: false,          // Frontend can read this
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // Allow cross-origin in production
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
 
@@ -213,6 +213,8 @@ export class AuthController {
             isVerified: result.user.isVerified,
             createdAt: result.user.createdAt,
             lastLoginAt: result.user.lastLoginAt,
+            roles: (result.user as any).roles || [],
+            effectiveLevel: (result.user as any).effectiveLevel || 0,
           },
           tokens: {
             accessToken: result.tokens.accessToken,
