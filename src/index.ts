@@ -24,6 +24,9 @@ import { metricsMiddleware, getMetrics } from './utils/metrics';
 const app: Express = express();
 const PORT = config.PORT;
 
+// Trust proxy headers when running behind reverse proxy (e.g., Render, Heroku, etc.)
+app.set('trust proxy', 1);
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: config.NODE_ENV === 'development' ? 1000 : 100, // Much higher limit in dev
