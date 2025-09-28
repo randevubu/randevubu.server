@@ -17,25 +17,21 @@ export class AppointmentController {
   constructor(private appointmentService: AppointmentService) {}
 
   /**
-   * Get user's appointments - staff see only their own, owners/managers see all (with optional staff filter)
+   * Get user's appointments from their businesses
    * GET /api/v1/appointments/my-appointments
-   * Query params:
-   *   - staffId: (owners/managers only) Filter by specific staff member
-   *   - status, date, businessId: Standard filters
    */
   async getMyAppointments(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
-
+      
       // Business access validation is now handled by middleware
 
-      const { status, date, businessId, staffId, page, limit } = req.query;
+      const { status, date, businessId, page, limit } = req.query;
 
       const filters = {
         status: status as AppointmentStatus,
         date: date as string,
         businessId: businessId as string,
-        staffId: staffId as string,  // NEW: Support staff filtering for owners/managers
         page: page ? parseInt(page as string) : undefined,
         limit: limit ? parseInt(limit as string) : undefined
       };
@@ -158,48 +154,10 @@ export class AppointmentController {
     }
   }
 
-  /**
-   * Get appointments for a specific staff member (for owners/managers)
-   * GET /api/v1/appointments/staff/:staffId
-   */
-  async getStaffAppointments(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { staffId } = req.params;
-      const userId = req.user!.id;
-      const { status, date, page, limit } = req.query;
-
-      const filters = {
-        status: status as AppointmentStatus,
-        date: date as string,
-        page: parseInt(page as string) || 1,
-        limit: parseInt(limit as string) || 20
-      };
-
-      const result = await this.appointmentService.getStaffAppointments(userId, staffId, filters);
-
-      res.json({
-        success: true,
-        data: result.appointments,
-        meta: {
-          total: result.total,
-          page: result.page,
-          totalPages: result.totalPages,
-          staffId
-        }
-      });
-    } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
-    }
-  }
-
   async getBusinessAppointments(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const userId = req.user!.id;
-      const { staffId } = req.query;  // NEW: Optional staff filter
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
 
@@ -207,8 +165,7 @@ export class AppointmentController {
         userId,
         businessId,
         page,
-        limit,
-        staffId as string  // Pass staff filter
+        limit
       );
 
       res.json({
@@ -219,8 +176,7 @@ export class AppointmentController {
           page: result.page,
           totalPages: result.totalPages,
           limit,
-          businessId,
-          ...(staffId && { staffId })  // Include staffId in meta if filtered
+          businessId
         }
       });
     } catch (error) {

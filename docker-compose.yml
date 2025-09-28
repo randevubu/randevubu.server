@@ -6,33 +6,24 @@ services:
       target: development
     container_name: randevubu-server
     ports:
-      - "3001:3001"  # API server
-      - "5555:5555"  # Prisma Studio
-      - "9229:9229"  # Node.js debugging
+      - "3001:3001"
+      - "5555:5555"
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/randevubu?schema=public
-      - REDIS_URL=redis://redis:6379
     env_file:
       - .env
     volumes:
       - .:/app
       - /app/node_modules
       - /app/dist
-      # Development logs
-      - dev_logs:/var/log/randevubu
     command: sh -c "npx prisma generate && npm run dev"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - randevubu-network
     restart: unless-stopped
-    # Development debugging
-    stdin_open: true
-    tty: true
 
   # PostgreSQL Database
   postgres:
@@ -56,50 +47,8 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Redis Cache (Development)
-  redis:
-    image: redis:7-alpine
-    container_name: randevubu-redis-dev
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - randevubu-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-
-  # Development Tools Container
-  dev-tools:
-    image: node:20-alpine
-    container_name: randevubu-dev-tools
-    ports:
-      - "8080:8080"  # Development metrics/monitoring
-    volumes:
-      - .:/app
-    working_dir: /app
-    networks:
-      - randevubu-network
-    profiles:
-      - tools
-    command: >
-      sh -c "
-        npm install -g @prometheus/prometheus &&
-        echo 'Development tools container ready' &&
-        tail -f /dev/null
-      "
-
 volumes:
   postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-  dev_logs:
     driver: local
 
 networks:

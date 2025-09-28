@@ -21,8 +21,7 @@ export class ServiceService {
   async createService(
     userId: string,
     businessId: string,
-    data: CreateServiceRequest,
-    staffId?: string
+    data: CreateServiceRequest
   ): Promise<ServiceData> {
     // Check if business can add more services
     const canAddService = await this.usageService.canAddService(businessId);
@@ -42,17 +41,7 @@ export class ServiceService {
       );
     }
 
-    // Determine staffId - if not provided, find the user's staff record for this business
-    let targetStaffId = staffId;
-    if (!targetStaffId) {
-      const staffRecord = await this.businessRepository.findStaffByUserAndBusiness(userId, businessId);
-      if (!staffRecord) {
-        throw new Error('User is not a staff member of this business');
-      }
-      targetStaffId = staffRecord.id;
-    }
-
-    const service = await this.serviceRepository.create(businessId, targetStaffId, data);
+    const service = await this.serviceRepository.create(businessId, data);
 
     // Update service usage tracking
     await this.usageService.updateServiceUsage(businessId);
@@ -362,19 +351,13 @@ export class ServiceService {
     // Check permissions to manage services for this business
     const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-
+    
     if (!hasGlobalService) {
       await this.rbacService.requirePermission(
         userId,
         PermissionName.MANAGE_OWN_SERVICES,
         { businessId: originalService.businessId }
       );
-    }
-
-    // Find the user's staff record for this business
-    const staffRecord = await this.businessRepository.findStaffByUserAndBusiness(userId, originalService.businessId);
-    if (!staffRecord) {
-      throw new Error('User is not a staff member of this business');
     }
 
     const duplicateData: CreateServiceRequest = {
@@ -388,7 +371,7 @@ export class ServiceService {
       minAdvanceBooking: originalService.minAdvanceBooking
     };
 
-    return await this.serviceRepository.create(originalService.businessId, staffRecord.id, duplicateData);
+    return await this.serviceRepository.create(originalService.businessId, duplicateData);
   }
 
   // Batch operations
@@ -512,91 +495,6 @@ export class ServiceService {
     } catch {
       return false;
     }
-  }
-
-  // NEW: Staff-specific methods
-
-  async getServicesByStaffId(
-    userId: string,
-    staffId: string,
-    activeOnly = false
-  ): Promise<ServiceData[]> {
-    // First get the staff record to check business access
-    const staffRecord = await this.businessRepository.findStaffRecord(staffId);
-
-    if (!staffRecord) {
-      throw new Error('Staff not found');
-    }
-
-    // Check permissions to view services for this business
-    const [resource, action] = PermissionName.VIEW_ALL_SERVICES.split(':');
-    const hasGlobalView = await this.rbacService.hasPermission(userId, resource, action);
-
-    if (!hasGlobalView) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_SERVICES,
-        { businessId: staffRecord.businessId }
-      );
-    }
-
-    if (activeOnly) {
-      return await this.serviceRepository.findActiveByStaffId(staffId);
-    }
-
-    return await this.serviceRepository.findByStaffId(staffId);
-  }
-
-  async copyOwnerServicesToStaff(
-    userId: string,
-    businessId: string,
-    targetStaffId: string,
-    serviceIds?: string[]
-  ): Promise<ServiceData[]> {
-    // Check permissions to manage services for this business
-    const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
-    const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-
-    if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId }
-      );
-    }
-
-    // Find the owner's staff record
-    const ownerStaffRecord = await this.businessRepository.findOwnerStaff(businessId);
-
-    if (!ownerStaffRecord) {
-      throw new Error('Business owner not found');
-    }
-
-    // Copy services from owner to target staff
-    return await this.serviceRepository.copyServicesFromStaff(
-      ownerStaffRecord.id,
-      targetStaffId,
-      serviceIds
-    );
-  }
-
-  async getOwnerServices(
-    userId: string,
-    businessId: string
-  ): Promise<ServiceData[]> {
-    // Check permissions to view services for this business
-    const [resource, action] = PermissionName.VIEW_ALL_SERVICES.split(':');
-    const hasGlobalView = await this.rbacService.hasPermission(userId, resource, action);
-
-    if (!hasGlobalView) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_SERVICES,
-        { businessId }
-      );
-    }
-
-    return await this.serviceRepository.getOwnerServicesByBusinessId(businessId);
   }
 
 }

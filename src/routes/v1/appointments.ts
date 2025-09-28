@@ -50,11 +50,6 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
    *           type: string
    *         description: Filter by specific business
    *       - in: query
-   *         name: staffId
-   *         schema:
-   *           type: string
-   *         description: Filter by specific staff member (owners/managers only)
-   *       - in: query
    *         name: page
    *         schema:
    *           type: integer
@@ -1253,7 +1248,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
       authorizationMiddleware.requirePermission({ resource: 'appointment', action: 'view_all' }),
       authorizationMiddleware.requirePermission({ resource: 'appointment', action: 'view_own' })
     ),
-    appointmentController.getStaffAppointments.bind(appointmentController)
+    appointmentController.getAppointmentsByStaff.bind(appointmentController)
   );
 
   // Search appointments

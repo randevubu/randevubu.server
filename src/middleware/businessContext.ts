@@ -6,7 +6,6 @@ import {
   sendAppErrorResponse,
   BusinessErrors
 } from '../utils/errorResponse';
-import { RoleRepository } from '../repositories/roleRepository';
 
 export interface BusinessContext {
   businessIds: string[];
@@ -26,11 +25,7 @@ export interface GuaranteedBusinessContextRequest extends GuaranteedAuthRequest 
 }
 
 export class BusinessContextMiddleware {
-  private roleRepository: RoleRepository;
-  
-  constructor(private prisma: PrismaClient) {
-    this.roleRepository = new RoleRepository(prisma);
-  }
+  constructor(private prisma: PrismaClient) {}
 
   async attachBusinessContext(req: BusinessContextRequest, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -42,8 +37,20 @@ export class BusinessContextMiddleware {
       
       // Fetch fresh user roles from database to ensure we have the latest roles
       // This is important after business creation when roles might have changed
-      // Use the roleRepository to get both global and business staff roles
-      const userRoles = await this.roleRepository.getUserRoles(userId);
+      const freshUserRoles = await this.prisma.userRole.findMany({
+        where: {
+          userId: userId,
+          isActive: true,
+          role: {
+            isActive: true
+          }
+        },
+        include: {
+          role: true
+        }
+      });
+
+      const userRoles = freshUserRoles.map(ur => ur.role);
       
       const isOwner = userRoles.some(role => role.name === 'OWNER');
       const isStaff = userRoles.some(role => role.name === 'STAFF');
