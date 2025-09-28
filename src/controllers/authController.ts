@@ -187,7 +187,7 @@ export class AuthController {
         secure: process.env.NODE_ENV === 'production', // HTTPS only in production
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // Allow cross-origin in production
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        path: '/api/v1/auth/refresh' // Limit cookie scope
+        path: '/' // Allow cookie to be sent to all endpoints
       });
 
       // Set hasAuth cookie for frontend auth state detection (Industry Standard)
@@ -338,16 +338,16 @@ export class AuthController {
         res.cookie('refreshToken', tokens.refreshToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-          path: '/api/v1/auth/refresh'
+          path: '/'
         });
 
         // Renew hasAuth cookie on successful refresh
         res.cookie('hasAuth', '1', {
           httpOnly: false,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
           maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
       }
