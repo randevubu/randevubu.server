@@ -190,6 +190,15 @@ export class AuthController {
         path: '/' // Allow cookie to be sent to all endpoints
       });
 
+      // Set access token as cookie (for frontend convenience)
+      res.cookie('accessToken', result.tokens.accessToken, {
+        httpOnly: false,          // Frontend needs to read this
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+        maxAge: 60 * 60 * 1000, // 1 hour (same as token expiry)
+        path: '/'
+      });
+
       // Set hasAuth cookie for frontend auth state detection (Industry Standard)
       res.cookie('hasAuth', '1', {
         httpOnly: false,          // Frontend can read this
@@ -340,6 +349,15 @@ export class AuthController {
           secure: process.env.NODE_ENV === 'production',
           sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+          path: '/'
+        });
+
+        // Update access token cookie on successful refresh
+        res.cookie('accessToken', tokens.accessToken, {
+          httpOnly: false,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+          maxAge: 60 * 60 * 1000, // 1 hour
           path: '/'
         });
 
