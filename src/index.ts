@@ -1,73 +1,89 @@
 // Load environment variables first
-import { config } from './config/environment';
+import { config } from "./config/environment";
 
-import express, { Express, Request, Response, NextFunction } from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
-import compression from 'compression';
-import cookieParser from 'cookie-parser';
-import swaggerUi from 'swagger-ui-express';
-import { swaggerSpec, swaggerUiOptions } from './config/swagger';
-import { errorHandler, notFoundHandler } from './middleware/error';
-import { logger, loggers } from './utils/logger';
-import { gracefulShutdown, setServicesForShutdown } from './utils/gracefulShutdown';
-import { createRoutes } from './routes';
-import { ControllerContainer } from './controllers';
-import prisma from './lib/prisma';
-import { RepositoryContainer } from './repositories';
-import { ServiceContainer } from './services';
-import { initializeBusinessContextMiddleware } from './middleware/attachBusinessContext';
-import { metricsMiddleware, getMetrics } from './utils/metrics';
+import compression from "compression";
+import cookieParser from "cookie-parser";
+import cors from "cors";
+import express, { Express, NextFunction, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import morgan from "morgan";
+import swaggerUi from "swagger-ui-express";
+import { swaggerSpec, swaggerUiOptions } from "./config/swagger";
+import { ControllerContainer } from "./controllers";
+import prisma from "./lib/prisma";
+import { initializeBusinessContextMiddleware } from "./middleware/attachBusinessContext";
+import { errorHandler, notFoundHandler } from "./middleware/error";
+import { RepositoryContainer } from "./repositories";
+import { createRoutes } from "./routes";
+import { ServiceContainer } from "./services";
+import { logger, loggers } from "./utils/Logger/logger";
+import {
+  gracefulShutdown,
+  setServicesForShutdown,
+} from "./utils/gracefulShutdown";
+import { getMetrics, metricsMiddleware } from "./utils/metrics";
 
 const app: Express = express();
 const PORT = config.PORT;
 
 // Trust proxy headers when running behind reverse proxy (e.g., Render, Heroku, etc.)
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: config.NODE_ENV === 'development' ? 1000 : 100, // Much higher limit in dev
+  max: config.NODE_ENV === "development" ? 1000 : 100, // Much higher limit in dev
   message: {
-    error: 'Too many requests from this IP, please try again later.',
-    retryAfter: '15 minutes'
+    error: "Too many requests from this IP, please try again later.",
+    retryAfter: "15 minutes",
   },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      imgSrc: ["'self'", 'data:', 'https:'],
-      fontSrc: ["'self'", 'https:', 'data:'],
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        fontSrc: ["'self'", "https:", "data:"],
+      },
     },
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true
-  }
-}));
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+  })
+);
 
-app.use(cors({
-  origin: config.CORS_ORIGINS,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-role-update']
-}));
+app.use(
+  cors({
+    origin: config.CORS_ORIGINS,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "x-role-update",
+    ],
+  })
+);
 
 app.use(compression());
 app.use(cookieParser()); // Parse cookies for authentication
 app.use(limiter);
-app.use(morgan('combined', { stream: { write: (message: string) => logger.info(message.trim()) } }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(
+  morgan("combined", {
+    stream: { write: (message: string) => logger.info(message.trim()) },
+  })
+);
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Metrics collection middleware (before route handlers)
 app.use(metricsMiddleware);
@@ -111,15 +127,15 @@ app.use((req: Request, res: Response, next: NextFunction) => {
  *                   type: string
  *                   example: "5ms"
  */
-app.get('/', (req: Request, res: Response) => {
+app.get("/", (req: Request, res: Response) => {
   const responseTime = Date.now() - (req as any).startTime;
-  res.json({ 
-    message: 'Welcome to RandevuBu Server!',
-    status: 'running',
+  res.json({
+    message: "Welcome to RandevuBu Server!",
+    status: "running",
     version: config.API_VERSION,
     environment: config.NODE_ENV,
     timestamp: new Date().toISOString(),
-    responseTime: `${responseTime}ms`
+    responseTime: `${responseTime}ms`,
   });
 });
 
@@ -144,9 +160,9 @@ app.get('/', (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/HealthCheckResponse'
  */
-app.get('/health', async (req: Request, res: Response) => {
+app.get("/health", async (req: Request, res: Response) => {
   const startTime = Date.now();
-  let status = 'healthy';
+  let status = "healthy";
   let httpStatus = 200;
   const checks: any = {};
 
@@ -155,44 +171,51 @@ app.get('/health', async (req: Request, res: Response) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
       checks.database = {
-        status: 'healthy',
-        responseTime: Date.now() - startTime + 'ms'
+        status: "healthy",
+        responseTime: Date.now() - startTime + "ms",
       };
     } catch (error) {
       checks.database = {
-        status: 'unhealthy',
-        error: 'Database connection failed',
-        responseTime: Date.now() - startTime + 'ms'
+        status: "unhealthy",
+        error: "Database connection failed",
+        responseTime: Date.now() - startTime + "ms",
       };
-      status = 'unhealthy';
+      status = "unhealthy";
       httpStatus = 503;
     }
 
     // Memory and system metrics
     const memUsage = process.memoryUsage();
     checks.memory = {
-      status: memUsage.heapUsed / memUsage.heapTotal < 0.9 ? 'healthy' : 'warning',
+      status:
+        memUsage.heapUsed / memUsage.heapTotal < 0.9 ? "healthy" : "warning",
       used: Math.round(memUsage.heapUsed / 1024 / 1024),
       total: Math.round(memUsage.heapTotal / 1024 / 1024),
       external: Math.round(memUsage.external / 1024 / 1024),
-      rss: Math.round(memUsage.rss / 1024 / 1024)
+      rss: Math.round(memUsage.rss / 1024 / 1024),
     };
 
     // CPU load (basic check)
     const cpuUsage = process.cpuUsage();
     checks.cpu = {
-      status: 'healthy',
+      status: "healthy",
       user: cpuUsage.user,
-      system: cpuUsage.system
+      system: cpuUsage.system,
     };
 
     // Service availability checks
     checks.services = {
-      subscriptionScheduler: services.subscriptionSchedulerService ? 'available' : 'unavailable',
-      appointmentScheduler: services.appointmentSchedulerService ? 'available' : 'unavailable',
-      appointmentReminder: services.appointmentReminderService ? 'available' : 'unavailable',
-      notification: services.notificationService ? 'available' : 'unavailable',
-      payment: services.paymentService ? 'available' : 'unavailable'
+      subscriptionScheduler: services.subscriptionSchedulerService
+        ? "available"
+        : "unavailable",
+      appointmentScheduler: services.appointmentSchedulerService
+        ? "available"
+        : "unavailable",
+      appointmentReminder: services.appointmentReminderService
+        ? "available"
+        : "unavailable",
+      notification: services.notificationService ? "available" : "unavailable",
+      payment: services.paymentService ? "available" : "unavailable",
     };
 
     const healthData = {
@@ -201,21 +224,21 @@ app.get('/health', async (req: Request, res: Response) => {
       timestamp: new Date().toISOString(),
       version: config.API_VERSION,
       environment: config.NODE_ENV,
-      responseTime: Date.now() - startTime + 'ms',
-      checks
+      responseTime: Date.now() - startTime + "ms",
+      checks,
     };
 
     res.status(httpStatus).json(healthData);
   } catch (error) {
     const healthData = {
-      status: 'unhealthy',
+      status: "unhealthy",
       uptime: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
       version: config.API_VERSION,
       environment: config.NODE_ENV,
-      responseTime: Date.now() - startTime + 'ms',
-      error: 'Health check failed',
-      checks
+      responseTime: Date.now() - startTime + "ms",
+      error: "Health check failed",
+      checks,
     };
 
     res.status(503).json(healthData);
@@ -237,14 +260,18 @@ app.get('/health', async (req: Request, res: Response) => {
  *             schema:
  *               type: string
  */
-app.get('/metrics', getMetrics);
+app.get("/metrics", getMetrics);
 
 // API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, swaggerUiOptions)
+);
 
 // API JSON specification
-app.get('/api-docs.json', (req: Request, res: Response) => {
-  res.setHeader('Content-Type', 'application/json');
+app.get("/api-docs.json", (req: Request, res: Response) => {
+  res.setHeader("Content-Type", "application/json");
   res.send(swaggerSpec);
 });
 
@@ -260,7 +287,7 @@ initializeBusinessContextMiddleware(repositories);
 setServicesForShutdown(services);
 
 // Mount API routes
-app.use('/api', createRoutes(controllers, services));
+app.use("/api", createRoutes(controllers, services));
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -275,35 +302,43 @@ const server = app.listen(PORT, () => {
   logger.info(`📋 API Spec JSON: http://localhost:${PORT}/api-docs.json`);
   logger.info(`🌐 Environment: ${config.NODE_ENV}`);
   logger.info(`📊 API Version: ${config.API_VERSION}`);
-  
+
   // Start subscription scheduler
-  if (config.NODE_ENV === 'production' || config.NODE_ENV === 'staging') {
+  if (config.NODE_ENV === "production" || config.NODE_ENV === "staging") {
     services.subscriptionSchedulerService.start();
     logger.info(`📅 Subscription scheduler started in ${config.NODE_ENV} mode`);
-  } else if (config.NODE_ENV === 'development') {
+  } else if (config.NODE_ENV === "development") {
     // Enable scheduler in development with accelerated testing schedules
     services.subscriptionSchedulerService.start();
-    logger.info(`📅 Subscription scheduler started in DEVELOPMENT mode with accelerated schedules`);
+    logger.info(
+      `📅 Subscription scheduler started in DEVELOPMENT mode with accelerated schedules`
+    );
   } else {
-    logger.info(`📅 Subscription scheduler disabled in ${config.NODE_ENV} mode`);
+    logger.info(
+      `📅 Subscription scheduler disabled in ${config.NODE_ENV} mode`
+    );
   }
 
   // Start appointment scheduler
-  if (config.NODE_ENV !== 'test') {
+  if (config.NODE_ENV !== "test") {
     services.appointmentSchedulerService.start();
-    logger.info(`📅 Appointment auto-completion scheduler started in ${config.NODE_ENV} mode`);
+    logger.info(
+      `📅 Appointment auto-completion scheduler started in ${config.NODE_ENV} mode`
+    );
   }
 
   // Start appointment reminder service
-  if (config.NODE_ENV !== 'test') {
+  if (config.NODE_ENV !== "test") {
     services.appointmentReminderService.start();
-    logger.info(`📅 Appointment reminder service started (checks every minute)`);
+    logger.info(
+      `📅 Appointment reminder service started (checks every minute)`
+    );
   } else {
     logger.info(`📅 Appointment reminder service disabled in test mode`);
   }
 });
 
-process.on('SIGTERM', () => gracefulShutdown(server));
-process.on('SIGINT', () => gracefulShutdown(server));
+process.on("SIGTERM", () => gracefulShutdown(server));
+process.on("SIGINT", () => gracefulShutdown(server));
 
 export default app;

@@ -1,11 +1,11 @@
-import { RepositoryContainer } from '../repositories';
-import { logger } from '../utils/logger';
-import { 
-  ForbiddenError, 
-  ValidationError, 
-  UserNotFoundError, 
-  ErrorContext 
-} from '../types/errors';
+import { RepositoryContainer } from "../repositories";
+import {
+  ErrorContext,
+  ForbiddenError,
+  UserNotFoundError,
+  ValidationError,
+} from "../types/errors";
+import { logger } from "../utils/Logger/logger";
 
 export interface Permission {
   id: string;
@@ -45,9 +45,12 @@ export class RBACService {
 
   constructor(private repositories: RepositoryContainer) {}
 
-  async getUserPermissions(userId: string, useCache = true): Promise<UserPermissions> {
+  async getUserPermissions(
+    userId: string,
+    useCache = true
+  ): Promise<UserPermissions> {
     const cacheKey = `user:${userId}`;
-    
+
     if (useCache && this.permissionCache.has(cacheKey)) {
       const expiry = this.cacheExpiry.get(cacheKey) || 0;
       if (Date.now() < expiry) {
@@ -57,8 +60,10 @@ export class RBACService {
 
     try {
       // Get user roles through repository
-      const userRoles = await this.repositories.roleRepository.getUserRoles(userId);
-      
+      const userRoles = await this.repositories.roleRepository.getUserRoles(
+        userId
+      );
+
       // Build roles and permissions
       const roles: Role[] = [];
       const allPermissions: Permission[] = [];
@@ -68,14 +73,15 @@ export class RBACService {
         if (!role.isActive) continue;
 
         // Get role permissions through repository
-        const rolePermissions = await this.repositories.roleRepository.getRolePermissions(role.id);
-        
+        const rolePermissions =
+          await this.repositories.roleRepository.getRolePermissions(role.id);
+
         const permissions: Permission[] = rolePermissions.map((permission) => ({
           id: permission.id,
           name: permission.name,
           resource: permission.resource,
           action: permission.action,
-          conditions: permission.conditions
+          conditions: permission.conditions,
         }));
 
         roles.push({
@@ -83,7 +89,7 @@ export class RBACService {
           name: role.name,
           displayName: role.displayName,
           level: role.level,
-          permissions
+          permissions,
         });
 
         allPermissions.push(...permissions);
@@ -91,15 +97,16 @@ export class RBACService {
       }
 
       // Remove duplicate permissions
-      const uniquePermissions = allPermissions.filter((permission, index, self) =>
-        index === self.findIndex(p => p.name === permission.name)
+      const uniquePermissions = allPermissions.filter(
+        (permission, index, self) =>
+          index === self.findIndex((p) => p.name === permission.name)
       );
 
       const userPermissions: UserPermissions = {
         userId,
         roles,
         permissions: uniquePermissions,
-        effectiveLevel: maxLevel
+        effectiveLevel: maxLevel,
       };
 
       // Cache the result
@@ -108,26 +115,26 @@ export class RBACService {
 
       return userPermissions;
     } catch (error) {
-      logger.error('Failed to get user permissions', {
+      logger.error("Failed to get user permissions", {
         userId,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
   }
 
   async hasPermission(
-    userId: string, 
-    resource: string, 
-    action: string, 
+    userId: string,
+    resource: string,
+    action: string,
     context?: any
   ): Promise<boolean> {
     try {
       const userPermissions = await this.getUserPermissions(userId);
-      
+
       // Check for exact permission match
-      const permission = userPermissions.permissions.find(p => 
-        p.resource === resource && p.action === action
+      const permission = userPermissions.permissions.find(
+        (p) => p.resource === resource && p.action === action
       );
 
       if (!permission) {
@@ -136,16 +143,20 @@ export class RBACService {
 
       // Evaluate permission conditions if they exist
       if (permission.conditions) {
-        return this.evaluateConditions(permission.conditions, context, userPermissions);
+        return await this.evaluateConditions(
+          permission.conditions,
+          context,
+          userPermissions
+        );
       }
 
       return true;
     } catch (error) {
-      logger.error('Permission check failed', {
+      logger.error("Permission check failed", {
         userId,
         resource,
         action,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       return false;
     }
@@ -156,26 +167,32 @@ export class RBACService {
     const cacheKey = `user:${userId}`;
     this.permissionCache.delete(cacheKey);
     this.cacheExpiry.delete(cacheKey);
-    
-    // ENTERPRISE PATTERN: Force immediate cache invalidation 
+
+    // ENTERPRISE PATTERN: Force immediate cache invalidation
     // This prevents any race conditions with concurrent reads
     const immediateKey = `user:${userId}:immediate`;
     this.permissionCache.delete(immediateKey);
     this.cacheExpiry.delete(immediateKey);
-    
-    logger.info('Cleared RBAC cache for user with immediate invalidation', { userId });
+
+    logger.info("Cleared RBAC cache for user with immediate invalidation", {
+      userId,
+    });
   }
 
   // Enterprise-grade method: Aggressive cache clearing for critical operations
   forceInvalidateUser(userId: string): void {
     // Clear all possible cache keys for this user
-    const patterns = [`user:${userId}`, `user:${userId}:immediate`, `perms:${userId}`];
-    
-    patterns.forEach(pattern => {
+    const patterns = [
+      `user:${userId}`,
+      `user:${userId}:immediate`,
+      `perms:${userId}`,
+    ];
+
+    patterns.forEach((pattern) => {
       this.permissionCache.delete(pattern);
       this.cacheExpiry.delete(pattern);
     });
-    
+
     // Also clear any cached business context for this user (if exists)
     for (const [key] of this.permissionCache.entries()) {
       if (key.includes(userId)) {
@@ -183,15 +200,15 @@ export class RBACService {
         this.cacheExpiry.delete(key);
       }
     }
-    
-    logger.info('Force invalidated all cache entries for user', { userId });
+
+    logger.info("Force invalidated all cache entries for user", { userId });
   }
 
   // Clear all cache (useful for system-wide changes)
   clearAllCache(): void {
     this.permissionCache.clear();
     this.cacheExpiry.clear();
-    logger.info('Cleared all RBAC cache');
+    logger.info("Cleared all RBAC cache");
   }
 
   async requirePermission(
@@ -200,9 +217,14 @@ export class RBACService {
     context?: any,
     errorContext?: ErrorContext
   ): Promise<void> {
-    const [resource, action] = permission.split(':');
-    const hasPermission = await this.hasPermission(userId, resource, action, context);
-    
+    const [resource, action] = permission.split(":");
+    const hasPermission = await this.hasPermission(
+      userId,
+      resource,
+      action,
+      context
+    );
+
     if (!hasPermission) {
       throw new ForbiddenError(
         `Permission denied: ${permission}`,
@@ -218,15 +240,20 @@ export class RBACService {
     errorContext?: ErrorContext
   ): Promise<void> {
     for (const permission of permissions) {
-      const [resource, action] = permission.split(':');
-      const hasPermission = await this.hasPermission(userId, resource, action, context);
+      const [resource, action] = permission.split(":");
+      const hasPermission = await this.hasPermission(
+        userId,
+        resource,
+        action,
+        context
+      );
       if (hasPermission) {
         return; // User has at least one required permission
       }
     }
-    
+
     throw new ForbiddenError(
-      `Permission denied: requires one of [${permissions.join(', ')}]`,
+      `Permission denied: requires one of [${permissions.join(", ")}]`,
       errorContext || { userId, timestamp: new Date() }
     );
   }
@@ -234,24 +261,24 @@ export class RBACService {
   async hasRole(userId: string, roleName: string): Promise<boolean> {
     try {
       const userPermissions = await this.getUserPermissions(userId);
-      return userPermissions.roles.some(role => role.name === roleName);
+      return userPermissions.roles.some((role) => role.name === roleName);
     } catch (error) {
-      logger.error('Role check failed', {
+      logger.error("Role check failed", {
         userId,
         roleName,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       return false;
     }
   }
 
   async requireRole(
-    userId: string, 
-    roleName: string, 
+    userId: string,
+    roleName: string,
     errorContext?: ErrorContext
   ): Promise<void> {
     const hasRole = await this.hasRole(userId, roleName);
-    
+
     if (!hasRole) {
       throw new ForbiddenError(
         `Role required: ${roleName}`,
@@ -261,13 +288,13 @@ export class RBACService {
   }
 
   async requireMinLevel(
-    userId: string, 
-    minLevel: number, 
+    userId: string,
+    minLevel: number,
     errorContext?: ErrorContext
   ): Promise<void> {
     try {
       const userPermissions = await this.getUserPermissions(userId);
-      
+
       if (userPermissions.effectiveLevel < minLevel) {
         throw new ForbiddenError(
           `Insufficient role level. Required: ${minLevel}, Current: ${userPermissions.effectiveLevel}`,
@@ -278,13 +305,13 @@ export class RBACService {
       if (error instanceof ForbiddenError) {
         throw error;
       }
-      logger.error('Level check failed', {
+      logger.error("Level check failed", {
         userId,
         minLevel,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw new ForbiddenError(
-        'Access denied',
+        "Access denied",
         errorContext || { userId, timestamp: new Date() }
       );
     }
@@ -299,23 +326,27 @@ export class RBACService {
   ): Promise<void> {
     try {
       // First try to get role by name, then by ID
-      let role = await this.repositories.roleRepository.getRoleByName(roleNameOrId);
-      
+      let role = await this.repositories.roleRepository.getRoleByName(
+        roleNameOrId
+      );
+
       if (!role) {
         // If not found by name, try by ID
         role = await this.repositories.roleRepository.getRoleById(roleNameOrId);
       }
 
       if (!role || !role.isActive) {
-        throw new UserNotFoundError('Role not found or inactive');
+        throw new UserNotFoundError("Role not found or inactive");
       }
 
       // Check if user already has this role by getting current user roles
-      const userRoles = await this.repositories.roleRepository.getUserRoles(userId);
-      const hasRole = userRoles.some(ur => ur.id === role.id);
+      const userRoles = await this.repositories.roleRepository.getUserRoles(
+        userId
+      );
+      const hasRole = userRoles.some((ur) => ur.id === role.id);
 
       if (hasRole) {
-        throw new ValidationError('User already has this role');
+        throw new ValidationError("User already has this role");
       }
 
       // Assign role to user through repository using the role ID
@@ -330,32 +361,38 @@ export class RBACService {
       // Clear cache
       this.clearUserCache(userId);
 
-      logger.info('Role assigned', {
+      logger.info("Role assigned", {
         userId,
         roleId: role.id,
         roleName: role.name,
         grantedBy,
-        expiresAt
+        expiresAt,
       });
     } catch (error) {
-      logger.error('Failed to assign role', {
+      logger.error("Failed to assign role", {
         userId,
         roleNameOrId: roleNameOrId,
         grantedBy,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
   }
 
-  async revokeRole(userId: string, roleId: string, revokedBy: string): Promise<void> {
+  async revokeRole(
+    userId: string,
+    roleId: string,
+    revokedBy: string
+  ): Promise<void> {
     try {
       // Check if user has the role before attempting to revoke
-      const userRoles = await this.repositories.roleRepository.getUserRoles(userId);
-      const hasRole = userRoles.some(ur => ur.id === roleId);
+      const userRoles = await this.repositories.roleRepository.getUserRoles(
+        userId
+      );
+      const hasRole = userRoles.some((ur) => ur.id === roleId);
 
       if (!hasRole) {
-        throw new UserNotFoundError('User role assignment not found');
+        throw new UserNotFoundError("User role assignment not found");
       }
 
       // Revoke role through repository
@@ -364,17 +401,17 @@ export class RBACService {
       // Clear cache
       this.clearUserCache(userId);
 
-      logger.info('Role revoked', {
-        userId,
-        roleId,
-        revokedBy
-      });
-    } catch (error) {
-      logger.error('Failed to revoke role', {
+      logger.info("Role revoked", {
         userId,
         roleId,
         revokedBy,
-        error: error instanceof Error ? error.message : String(error)
+      });
+    } catch (error) {
+      logger.error("Failed to revoke role", {
+        userId,
+        roleId,
+        revokedBy,
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -385,14 +422,14 @@ export class RBACService {
     return userPermissions.roles;
   }
 
-  private evaluateConditions(
-    conditions: any, 
-    context: any, 
+  private async evaluateConditions(
+    conditions: any,
+    context: any,
     userPermissions: UserPermissions
-  ): boolean {
+  ): Promise<boolean> {
     try {
       // Basic condition evaluation
-      if (!conditions || typeof conditions !== 'object') {
+      if (!conditions || typeof conditions !== "object") {
         return true;
       }
 
@@ -402,17 +439,35 @@ export class RBACService {
         if (context?.ownerId) {
           return context.ownerId === userPermissions.userId;
         }
-        
+
         // Handle business context - check if user owns the business
         if (context?.businessId) {
-          // For now, return true - business ownership will be verified by the business service
-          // This allows the permission check to pass, and actual ownership is verified separately
-          return true;
+          // Actually verify business ownership
+          try {
+            const business =
+              await this.repositories.businessRepository.findById(
+                context.businessId
+              );
+            if (!business || business.ownerId !== userPermissions.userId) {
+              return false;
+            }
+            return true;
+          } catch (error) {
+            logger.warn("Business ownership verification failed in RBAC", {
+              userId: userPermissions.userId,
+              businessId: context.businessId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return false;
+          }
         }
       }
 
       // Level-based access
-      if (conditions.minLevel && userPermissions.effectiveLevel < conditions.minLevel) {
+      if (
+        conditions.minLevel &&
+        userPermissions.effectiveLevel < conditions.minLevel
+      ) {
         return false;
       }
 
@@ -420,7 +475,7 @@ export class RBACService {
       if (conditions.timeRestrictions) {
         const now = new Date();
         const { startTime, endTime } = conditions.timeRestrictions;
-        
+
         if (startTime && now < new Date(startTime)) return false;
         if (endTime && now > new Date(endTime)) return false;
       }
@@ -429,15 +484,13 @@ export class RBACService {
       // For now, return true if no conditions block access
       return true;
     } catch (error) {
-      logger.warn('Condition evaluation failed', {
+      logger.warn("Condition evaluation failed", {
         conditions,
         context,
         userId: userPermissions.userId,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       return false;
     }
   }
-
-
 }

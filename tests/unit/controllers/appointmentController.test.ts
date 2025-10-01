@@ -3,7 +3,7 @@ import { AppointmentController } from "../../../src/controllers/appointmentContr
 import { BusinessContextRequest } from "../../../src/middleware/businessContext";
 import { AuthenticatedRequest } from "../../../src/types/auth";
 import { AppointmentStatus } from "../../../src/types/business";
-import { sendSuccessResponse } from "../../../src/utils/errorResponse";
+import { sendSuccessResponse } from "../../../src/utils/responseUtils";
 import { TestHelpers } from "../../utils/testHelpers";
 
 // Mock dependencies

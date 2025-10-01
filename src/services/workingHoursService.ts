@@ -1,5 +1,5 @@
-import { PrismaClient } from '@prisma/client';
-import { logger } from '../utils/logger';
+import { PrismaClient } from "@prisma/client";
+import { logger } from "../utils/Logger/logger";
 
 export interface BusinessHoursJSON {
   monday?: DayHours;
@@ -31,7 +31,7 @@ export class WorkingHoursService {
     thursday: 4,
     friday: 5,
     saturday: 6,
-    sunday: 0
+    sunday: 0,
   };
 
   constructor(private prisma: PrismaClient) {}
@@ -41,23 +41,26 @@ export class WorkingHoursService {
    */
   async createDefaultBusinessHours(businessId: string): Promise<void> {
     const defaultHours = {
-      monday: { isOpen: true, openTime: '09:00', closeTime: '18:00' },
-      tuesday: { isOpen: true, openTime: '09:00', closeTime: '18:00' },
-      wednesday: { isOpen: true, openTime: '09:00', closeTime: '18:00' },
-      thursday: { isOpen: true, openTime: '09:00', closeTime: '18:00' },
-      friday: { isOpen: true, openTime: '09:00', closeTime: '18:00' },
-      saturday: { isOpen: false, openTime: '10:00', closeTime: '16:00' },
-      sunday: { isOpen: false, openTime: '10:00', closeTime: '16:00' }
+      monday: { isOpen: true, openTime: "09:00", closeTime: "18:00" },
+      tuesday: { isOpen: true, openTime: "09:00", closeTime: "18:00" },
+      wednesday: { isOpen: true, openTime: "09:00", closeTime: "18:00" },
+      thursday: { isOpen: true, openTime: "09:00", closeTime: "18:00" },
+      friday: { isOpen: true, openTime: "09:00", closeTime: "18:00" },
+      saturday: { isOpen: false, openTime: "10:00", closeTime: "16:00" },
+      sunday: { isOpen: false, openTime: "10:00", closeTime: "16:00" },
     };
 
     await this.createWorkingHoursFromJSON(businessId, defaultHours);
-    logger.info('Created default business working hours', { businessId });
+    logger.info("Created default business working hours", { businessId });
   }
 
   /**
    * Create default working hours for a staff member (same as business hours)
    */
-  async createDefaultStaffHours(businessId: string, staffId: string): Promise<void> {
+  async createDefaultStaffHours(
+    businessId: string,
+    staffId: string
+  ): Promise<void> {
     // Get business working hours first
     const businessHours = await this.getBusinessWorkingHours(businessId);
 
@@ -66,24 +69,33 @@ export class WorkingHoursService {
       await this.createDefaultBusinessHours(businessId);
       // Then get them again
       const newBusinessHours = await this.getBusinessWorkingHours(businessId);
-      await this.copyBusinessHoursToStaff(businessId, staffId, newBusinessHours);
+      await this.copyBusinessHoursToStaff(
+        businessId,
+        staffId,
+        newBusinessHours
+      );
     } else {
       await this.copyBusinessHoursToStaff(businessId, staffId, businessHours);
     }
 
-    logger.info('Created default staff working hours', { businessId, staffId });
+    logger.info("Created default staff working hours", { businessId, staffId });
   }
 
   /**
    * Convert JSON business hours to WorkingHours records
    */
-  async createWorkingHoursFromJSON(businessId: string, hoursJSON: BusinessHoursJSON, staffId?: string): Promise<void> {
+  async createWorkingHoursFromJSON(
+    businessId: string,
+    hoursJSON: BusinessHoursJSON,
+    staffId?: string
+  ): Promise<void> {
     const workingHoursData = [];
 
     for (const [dayName, dayHours] of Object.entries(hoursJSON)) {
       if (!dayHours || !this.DAY_OF_WEEK_MAP.hasOwnProperty(dayName)) continue;
 
-      const dayOfWeek = this.DAY_OF_WEEK_MAP[dayName as keyof typeof this.DAY_OF_WEEK_MAP];
+      const dayOfWeek =
+        this.DAY_OF_WEEK_MAP[dayName as keyof typeof this.DAY_OF_WEEK_MAP];
 
       // Only create records for days that are open
       if (dayHours.isOpen && dayHours.openTime && dayHours.closeTime) {
@@ -95,7 +107,7 @@ export class WorkingHoursService {
           startTime: dayHours.openTime,
           endTime: dayHours.closeTime,
           isActive: true,
-          breaks: dayHours.breaks || undefined
+          breaks: dayHours.breaks || undefined,
         });
       }
     }
@@ -103,7 +115,7 @@ export class WorkingHoursService {
     if (workingHoursData.length > 0) {
       await this.prisma.workingHours.createMany({
         data: workingHoursData,
-        skipDuplicates: true
+        skipDuplicates: true,
       });
     }
   }
@@ -116,17 +128,21 @@ export class WorkingHoursService {
       where: {
         businessId,
         staffId: null,
-        isActive: true
+        isActive: true,
       },
-      orderBy: { dayOfWeek: 'asc' }
+      orderBy: { dayOfWeek: "asc" },
     });
   }
 
   /**
    * Copy business hours to a staff member
    */
-  private async copyBusinessHoursToStaff(businessId: string, staffId: string, businessHours: any[]) {
-    const staffHoursData = businessHours.map(bh => ({
+  private async copyBusinessHoursToStaff(
+    businessId: string,
+    staffId: string,
+    businessHours: any[]
+  ) {
+    const staffHoursData = businessHours.map((bh) => ({
       id: `wh_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
       businessId,
       staffId,
@@ -134,13 +150,13 @@ export class WorkingHoursService {
       startTime: bh.startTime,
       endTime: bh.endTime,
       isActive: true,
-      breaks: bh.breaks || undefined
+      breaks: bh.breaks || undefined,
     }));
 
     if (staffHoursData.length > 0) {
       await this.prisma.workingHours.createMany({
         data: staffHoursData,
-        skipDuplicates: true
+        skipDuplicates: true,
       });
     }
   }
@@ -151,11 +167,13 @@ export class WorkingHoursService {
   async migrateBusinessFromJSON(businessId: string): Promise<void> {
     const business = await this.prisma.business.findUnique({
       where: { id: businessId },
-      select: { businessHours: true }
+      select: { businessHours: true },
     });
 
     if (!business?.businessHours) {
-      logger.warn('Business has no JSON businessHours to migrate', { businessId });
+      logger.warn("Business has no JSON businessHours to migrate", {
+        businessId,
+      });
       return;
     }
 
@@ -163,17 +181,22 @@ export class WorkingHoursService {
     const existingHours = await this.prisma.workingHours.findFirst({
       where: {
         businessId,
-        staffId: null
-      }
+        staffId: null,
+      },
     });
 
     if (existingHours) {
-      logger.info('Business already has working hours records', { businessId });
+      logger.info("Business already has working hours records", { businessId });
       return;
     }
 
-    await this.createWorkingHoursFromJSON(businessId, business.businessHours as BusinessHoursJSON);
-    logger.info('Migrated business from JSON to WorkingHours table', { businessId });
+    await this.createWorkingHoursFromJSON(
+      businessId,
+      business.businessHours as BusinessHoursJSON
+    );
+    logger.info("Migrated business from JSON to WorkingHours table", {
+      businessId,
+    });
   }
 
   /**
@@ -184,17 +207,25 @@ export class WorkingHoursService {
       where: {
         businessId,
         staffId: staffId || null,
-        isActive: true
+        isActive: true,
       },
-      orderBy: { dayOfWeek: 'asc' }
+      orderBy: { dayOfWeek: "asc" },
     });
 
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayNames = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ];
 
-    return hours.map(h => ({
+    return hours.map((h) => ({
       ...h,
       dayName: dayNames[h.dayOfWeek],
-      breaks: h.breaks ? JSON.parse(h.breaks as string) : []
+      breaks: h.breaks ? JSON.parse(h.breaks as string) : [],
     }));
   }
 }

@@ -26,7 +26,7 @@ import {
   BusinessErrors,
   AppointmentErrors,
   handleRouteError
-} from '../utils/errorResponse';
+} from '../utils/responseUtils';
 ```
 
 ### 2. Use Quick Error Shortcuts

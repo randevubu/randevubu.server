@@ -1,7 +1,7 @@
-import { Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
-import { ValidationError, ErrorContext } from '../types/errors';
-import { logger } from '../utils/logger';
+import { NextFunction, Request, Response } from "express";
+import { z } from "zod";
+import { ErrorContext, ValidationError } from "../types/errors";
+import { logger } from "../utils/Logger/logger";
 
 export interface ValidationOptions {
   body?: z.ZodSchema;
@@ -15,7 +15,7 @@ export const validateRequest = (schemas: ValidationOptions) => {
     try {
       const context: ErrorContext = {
         ipAddress: req.ip,
-        userAgent: req.get('user-agent'),
+        userAgent: req.get("user-agent"),
         requestId: Math.random().toString(36).substring(7),
         timestamp: new Date(),
         endpoint: req.path,
@@ -31,7 +31,7 @@ export const validateRequest = (schemas: ValidationOptions) => {
             const firstError = error.errors[0];
             throw new ValidationError(
               `Body validation failed: ${firstError.message}`,
-              firstError.path.join('.'),
+              firstError.path.join("."),
               firstError.code,
               context
             );
@@ -49,7 +49,7 @@ export const validateRequest = (schemas: ValidationOptions) => {
             const firstError = error.errors[0];
             throw new ValidationError(
               `Query validation failed: ${firstError.message}`,
-              firstError.path.join('.'),
+              firstError.path.join("."),
               firstError.code,
               context
             );
@@ -67,7 +67,7 @@ export const validateRequest = (schemas: ValidationOptions) => {
             const firstError = error.errors[0];
             throw new ValidationError(
               `Params validation failed: ${firstError.message}`,
-              firstError.path.join('.'),
+              firstError.path.join("."),
               firstError.code,
               context
             );
@@ -87,7 +87,7 @@ export const validateRequest = (schemas: ValidationOptions) => {
             const firstError = error.errors[0];
             throw new ValidationError(
               `Headers validation failed: ${firstError.message}`,
-              firstError.path.join('.'),
+              firstError.path.join("."),
               firstError.code,
               context
             );
@@ -98,13 +98,13 @@ export const validateRequest = (schemas: ValidationOptions) => {
 
       next();
     } catch (error) {
-      logger.warn('Request validation failed', {
+      logger.warn("Request validation failed", {
         error: error instanceof Error ? error.message : String(error),
         path: req.path,
         method: req.method,
         ip: req.ip,
       });
-      
+
       next(error);
     }
   };
@@ -140,7 +140,7 @@ export const validateCustom = <T>(
     } catch (error) {
       const context: ErrorContext = {
         ipAddress: req.ip,
-        userAgent: req.get('user-agent'),
+        userAgent: req.get("user-agent"),
         requestId: Math.random().toString(36).substring(7),
         timestamp: new Date(),
         endpoint: req.path,
@@ -148,7 +148,9 @@ export const validateCustom = <T>(
       };
 
       throw new ValidationError(
-        errorMessage || (error instanceof Error ? error.message : String(error)) || 'Custom validation failed',
+        errorMessage ||
+          (error instanceof Error ? error.message : String(error)) ||
+          "Custom validation failed",
         undefined,
         undefined,
         context
@@ -177,17 +179,17 @@ export const validateRateLimit = (
 
     if (window.count >= maxRequests) {
       const resetIn = Math.ceil((window.resetTime - now) / 1000);
-      
+
       const context: ErrorContext = {
         ipAddress: req.ip,
-        userAgent: req.get('user-agent'),
+        userAgent: req.get("user-agent"),
         requestId: Math.random().toString(36).substring(7),
         timestamp: new Date(),
         endpoint: req.path,
         method: req.method,
       };
 
-      logger.warn('Rate limit exceeded', {
+      logger.warn("Rate limit exceeded", {
         key,
         count: window.count,
         resetIn,
@@ -198,7 +200,7 @@ export const validateRateLimit = (
       res.status(429).json({
         success: false,
         error: {
-          message: 'Too many requests',
+          message: "Too many requests",
           retryAfter: resetIn,
         },
       });

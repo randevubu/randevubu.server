@@ -1,10 +1,7 @@
-import { VerificationPurpose } from '@prisma/client';
-import { isValidPhoneNumber, parsePhoneNumber } from 'libphonenumber-js';
-import { RepositoryContainer } from '../repositories';
-import {
-  VerificationResult,
-  VerificationStats
-} from '../types/auth';
+import { VerificationPurpose } from "@prisma/client";
+import { isValidPhoneNumber, parsePhoneNumber } from "libphonenumber-js";
+import { RepositoryContainer } from "../repositories";
+import { VerificationResult, VerificationStats } from "../types/auth";
 import {
   CooldownActiveError,
   DailyLimitExceededError,
@@ -12,11 +9,11 @@ import {
   InvalidPhoneNumberError,
   VerificationCodeExpiredError,
   VerificationCodeInvalidError,
-  VerificationMaxAttemptsError
-} from '../types/errors';
-import { logger } from '../utils/logger';
-import { TokenService } from './tokenService';
-import { SMSService } from './smsService';
+  VerificationMaxAttemptsError,
+} from "../types/errors";
+import { logger } from "../utils/Logger/logger";
+import { SMSService } from "./smsService";
+import { TokenService } from "./tokenService";
 
 export interface SendVerificationOptions {
   phoneNumber: string;
@@ -29,9 +26,12 @@ export interface SendVerificationOptions {
 export class PhoneVerificationService {
   private static readonly CODE_EXPIRY_MINUTES = 10;
   private static readonly MAX_ATTEMPTS = 3;
-  private static readonly COOLDOWN_MINUTES = process.env.NODE_ENV === 'development' ? 0.1 : 5; // Almost no cooldown in dev
-  private static readonly DAILY_LIMIT = process.env.NODE_ENV === 'development' ? 1000 : 10; // Much higher in dev
-  private static readonly IP_DAILY_LIMIT = process.env.NODE_ENV === 'development' ? 5000 : 50; // Much higher in dev
+  private static readonly COOLDOWN_MINUTES =
+    process.env.NODE_ENV === "development" ? 0.1 : 5; // Almost no cooldown in dev
+  private static readonly DAILY_LIMIT =
+    process.env.NODE_ENV === "development" ? 1000 : 10; // Much higher in dev
+  private static readonly IP_DAILY_LIMIT =
+    process.env.NODE_ENV === "development" ? 5000 : 50; // Much higher in dev
 
   private smsService: SMSService;
 
@@ -60,28 +60,35 @@ export class PhoneVerificationService {
     await this.repositories.phoneVerificationRepository.cleanup();
 
     // Check for existing active code
-    const existingCode = await this.repositories.phoneVerificationRepository.findLatest(
-      normalizedPhone, 
-      purpose
-    );
+    const existingCode =
+      await this.repositories.phoneVerificationRepository.findLatest(
+        normalizedPhone,
+        purpose
+      );
 
     if (existingCode) {
       const timeSinceCreation = Date.now() - existingCode.createdAt.getTime();
       const cooldownMs = PhoneVerificationService.COOLDOWN_MINUTES * 60 * 1000;
-      
+
       if (timeSinceCreation < cooldownMs) {
-        const remainingCooldown = Math.ceil((cooldownMs - timeSinceCreation) / 1000);
+        const remainingCooldown = Math.ceil(
+          (cooldownMs - timeSinceCreation) / 1000
+        );
         throw new CooldownActiveError(remainingCooldown, context);
       }
 
       // Invalidate existing code
-      await this.repositories.phoneVerificationRepository.markAsUsed(existingCode.id);
+      await this.repositories.phoneVerificationRepository.markAsUsed(
+        existingCode.id
+      );
     }
 
     // Generate new verification code
     const code = this.tokenService.generateSecureCode(6);
     const hashedCode = this.tokenService.hashCode(code);
-    const expiresAt = new Date(Date.now() + PhoneVerificationService.CODE_EXPIRY_MINUTES * 60 * 1000);
+    const expiresAt = new Date(
+      Date.now() + PhoneVerificationService.CODE_EXPIRY_MINUTES * 60 * 1000
+    );
 
     // Store verification code
     await this.repositories.phoneVerificationRepository.create({
@@ -98,18 +105,18 @@ export class PhoneVerificationService {
     // Log verification attempt
     await this.repositories.auditLogRepository.create({
       userId,
-      action: 'PHONE_VERIFY',
-      entity: 'PhoneVerification',
+      action: "PHONE_VERIFY",
+      entity: "PhoneVerification",
       details: {
         phoneNumber: this.maskPhoneNumber(normalizedPhone),
         purpose,
-        action: 'code_sent'
+        action: "code_sent",
       },
       ipAddress: ipAddress || undefined,
       userAgent: userAgent || undefined,
     });
 
-    logger.info('Verification code sent', {
+    logger.info("Verification code sent", {
       phoneNumber: this.maskPhoneNumber(normalizedPhone),
       purpose,
       userId,
@@ -121,7 +128,7 @@ export class PhoneVerificationService {
 
     return {
       success: true,
-      message: 'Verification code sent successfully',
+      message: "Verification code sent successfully",
     };
   }
 
@@ -136,26 +143,29 @@ export class PhoneVerificationService {
       throw new InvalidPhoneNumberError(phoneNumber, context);
     }
 
-    const verification = await this.repositories.phoneVerificationRepository.findLatest(
-      normalizedPhone,
-      purpose
-    );
+    const verification =
+      await this.repositories.phoneVerificationRepository.findLatest(
+        normalizedPhone,
+        purpose
+      );
 
     if (!verification) {
-      logger.warn('Verification code not found or expired', {
+      logger.warn("Verification code not found or expired", {
         phoneNumber: this.maskPhoneNumber(normalizedPhone),
         purpose,
         requestId: context?.requestId,
       });
-      
+
       throw new VerificationCodeExpiredError(context);
     }
 
     // Check if max attempts exceeded
     if (verification.attempts >= verification.maxAttempts) {
-      await this.repositories.phoneVerificationRepository.markAsUsed(verification.id);
+      await this.repositories.phoneVerificationRepository.markAsUsed(
+        verification.id
+      );
 
-      logger.warn('Max verification attempts exceeded', {
+      logger.warn("Max verification attempts exceeded", {
         phoneNumber: this.maskPhoneNumber(normalizedPhone),
         purpose,
         attempts: verification.attempts,
@@ -169,12 +179,15 @@ export class PhoneVerificationService {
     const isValidCode = this.tokenService.verifyCode(code, verification.code);
 
     // Update attempt count
-    const newAttempts = await this.repositories.phoneVerificationRepository.incrementAttempts(verification.id);
+    const newAttempts =
+      await this.repositories.phoneVerificationRepository.incrementAttempts(
+        verification.id
+      );
 
     if (!isValidCode) {
       const attemptsRemaining = verification.maxAttempts - newAttempts;
-      
-      logger.warn('Invalid verification code attempt', {
+
+      logger.warn("Invalid verification code attempt", {
         phoneNumber: this.maskPhoneNumber(normalizedPhone),
         purpose,
         attempts: newAttempts,
@@ -185,22 +198,24 @@ export class PhoneVerificationService {
       // Log failed verification attempt
       await this.repositories.auditLogRepository.create({
         userId: verification.userId || undefined,
-        action: 'PHONE_VERIFY',
-        entity: 'PhoneVerification',
+        action: "PHONE_VERIFY",
+        entity: "PhoneVerification",
         entityId: verification.id,
         details: {
           phoneNumber: this.maskPhoneNumber(normalizedPhone),
           purpose,
-          action: 'code_failed',
+          action: "code_failed",
           attempts: newAttempts,
-          attemptsRemaining
+          attemptsRemaining,
         },
         ipAddress: context?.ipAddress || undefined,
         userAgent: context?.userAgent || undefined,
       });
 
       if (attemptsRemaining <= 0) {
-        await this.repositories.phoneVerificationRepository.markAsUsed(verification.id);
+        await this.repositories.phoneVerificationRepository.markAsUsed(
+          verification.id
+        );
         throw new VerificationMaxAttemptsError(undefined, context);
       }
 
@@ -208,25 +223,27 @@ export class PhoneVerificationService {
     }
 
     // Mark as used on successful verification
-    await this.repositories.phoneVerificationRepository.markAsUsed(verification.id);
+    await this.repositories.phoneVerificationRepository.markAsUsed(
+      verification.id
+    );
 
     // Log successful verification
     await this.repositories.auditLogRepository.create({
       userId: verification.userId || undefined,
-      action: 'PHONE_VERIFY',
-      entity: 'PhoneVerification',
+      action: "PHONE_VERIFY",
+      entity: "PhoneVerification",
       entityId: verification.id,
       details: {
         phoneNumber: this.maskPhoneNumber(normalizedPhone),
         purpose,
-        action: 'code_verified',
-        attempts: newAttempts
+        action: "code_verified",
+        attempts: newAttempts,
       },
       ipAddress: context?.ipAddress || undefined,
       userAgent: context?.userAgent || undefined,
     });
 
-    logger.info('Phone verification successful', {
+    logger.info("Phone verification successful", {
       phoneNumber: this.maskPhoneNumber(normalizedPhone),
       purpose,
       userId: verification.userId,
@@ -236,19 +253,22 @@ export class PhoneVerificationService {
 
     return {
       success: true,
-      message: 'Phone number verified successfully',
+      message: "Phone number verified successfully",
     };
   }
 
   async getVerificationStats(
-    phoneNumber?: string, 
+    phoneNumber?: string,
     purpose?: VerificationPurpose,
     context?: ErrorContext
   ): Promise<VerificationStats> {
     try {
-      return await this.repositories.phoneVerificationRepository.getStats(phoneNumber, purpose);
+      return await this.repositories.phoneVerificationRepository.getStats(
+        phoneNumber,
+        purpose
+      );
     } catch (error) {
-      logger.error('Failed to get verification stats', {
+      logger.error("Failed to get verification stats", {
         error: error instanceof Error ? error.message : String(error),
         requestId: context?.requestId,
       });
@@ -256,42 +276,50 @@ export class PhoneVerificationService {
     }
   }
 
-  async invalidateUserVerifications(userId: string, context?: ErrorContext): Promise<void> {
-    await this.repositories.phoneVerificationRepository.invalidateUserVerifications(userId);
+  async invalidateUserVerifications(
+    userId: string,
+    context?: ErrorContext
+  ): Promise<void> {
+    await this.repositories.phoneVerificationRepository.invalidateUserVerifications(
+      userId
+    );
 
-    logger.info('All user verification codes invalidated', {
+    logger.info("All user verification codes invalidated", {
       userId,
       requestId: context?.requestId,
     });
   }
 
   private async checkRateLimits(
-    phoneNumber: string, 
+    phoneNumber: string,
     ipAddress?: string,
     context?: ErrorContext
   ): Promise<void> {
-    const { phoneCount, ipCount } = await this.repositories.phoneVerificationRepository
-      .countDailyRequests(phoneNumber, ipAddress);
+    const { phoneCount, ipCount } =
+      await this.repositories.phoneVerificationRepository.countDailyRequests(
+        phoneNumber,
+        ipAddress
+      );
 
     if (phoneCount >= PhoneVerificationService.DAILY_LIMIT) {
-      logger.warn('Daily phone verification limit exceeded', {
+      logger.warn("Daily phone verification limit exceeded", {
         phoneNumber: this.maskPhoneNumber(phoneNumber),
         count: phoneCount,
         limit: PhoneVerificationService.DAILY_LIMIT,
         requestId: context?.requestId,
       });
-      
+
       throw new DailyLimitExceededError(context);
     }
 
     if (ipAddress && ipCount >= PhoneVerificationService.IP_DAILY_LIMIT) {
-      logger.warn('Daily IP verification limit exceeded', {
+      logger.warn("Daily IP verification limit exceeded", {
         ipAddress,
         count: ipCount,
         limit: PhoneVerificationService.IP_DAILY_LIMIT,
         requestId: context?.requestId,
       });
-      
+
       throw new DailyLimitExceededError(context);
     }
   }
@@ -303,11 +331,11 @@ export class PhoneVerificationService {
       }
 
       const parsed = parsePhoneNumber(phoneNumber);
-      return parsed?.format('E.164') || null;
+      return parsed?.format("E.164") || null;
     } catch (error) {
-      logger.warn('Phone number parsing failed', { 
-        phoneNumber: this.maskPhoneNumber(phoneNumber), 
-        error: error instanceof Error ? error.message : String(error)
+      logger.warn("Phone number parsing failed", {
+        phoneNumber: this.maskPhoneNumber(phoneNumber),
+        error: error instanceof Error ? error.message : String(error),
       });
       return null;
     }
@@ -315,24 +343,31 @@ export class PhoneVerificationService {
 
   private maskPhoneNumber(phoneNumber: string): string {
     if (phoneNumber.length < 4) {
-      return '*'.repeat(phoneNumber.length);
+      return "*".repeat(phoneNumber.length);
     }
-    
+
     const visibleDigits = 3;
-    const maskedPart = '*'.repeat(phoneNumber.length - visibleDigits);
+    const maskedPart = "*".repeat(phoneNumber.length - visibleDigits);
     return maskedPart + phoneNumber.slice(-visibleDigits);
   }
 
   private async sendSMSCode(
-    phoneNumber: string, 
-    code: string, 
+    phoneNumber: string,
+    code: string,
     context?: ErrorContext
   ): Promise<void> {
-    
     // Show verification code in terminal
-    console.log(`🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(phoneNumber)}`);
-    logger.info(`🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(phoneNumber)}`);
-    
+    console.log(
+      `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
+        phoneNumber
+      )}`
+    );
+    logger.info(
+      `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
+        phoneNumber
+      )}`
+    );
+
     // Send the working test message via SMS
     const testMessage = `RandevuBu SMS servisi test mesajıdır. Bu mesaj İleti Merkezi API entegrasyonunu test etmek için gönderilmiştir.`;
 
@@ -344,20 +379,20 @@ export class PhoneVerificationService {
       });
 
       if (result.success) {
-        logger.info('SMS test message sent successfully', {
+        logger.info("SMS test message sent successfully", {
           phoneNumber: this.maskPhoneNumber(phoneNumber),
           messageId: result.messageId,
           requestId: context?.requestId,
         });
       } else {
-        logger.warn('SMS test message failed, but continuing', {
+        logger.warn("SMS test message failed, but continuing", {
           phoneNumber: this.maskPhoneNumber(phoneNumber),
           error: result.error,
           requestId: context?.requestId,
         });
       }
     } catch (error) {
-      logger.warn('SMS sending error, but continuing', {
+      logger.warn("SMS sending error, but continuing", {
         error: error instanceof Error ? error.message : String(error),
         phoneNumber: this.maskPhoneNumber(phoneNumber),
         requestId: context?.requestId,
@@ -368,11 +403,11 @@ export class PhoneVerificationService {
   // Cleanup expired verifications (call this periodically)
   async cleanupExpiredVerifications(): Promise<number> {
     const count = await this.repositories.phoneVerificationRepository.cleanup();
-    
+
     if (count > 0) {
-      logger.info('Cleaned up expired verification codes', { count });
+      logger.info("Cleaned up expired verification codes", { count });
     }
-    
+
     return count;
   }
 }

@@ -1,5 +1,5 @@
-import { VerificationPurpose, AuditAction } from '@prisma/client';
-import { Request } from 'express';
+import { AuditAction, VerificationPurpose } from "@prisma/client";
+import { Request } from "express";
 
 // Declare global Express namespace for Multer
 declare global {
@@ -36,9 +36,9 @@ export interface UserProfile {
   updatedAt: Date;
   lastLoginAt?: Date | null;
   roles?: Array<{
-    name: string;        // Role identifier for logic (e.g., "ADMIN", "OWNER")
+    name: string; // Role identifier for logic (e.g., "ADMIN", "OWNER")
     displayName: string; // Human-readable name for UI
-    level: number;       // Role hierarchy level
+    level: number; // Role hierarchy level
   }>;
   effectiveLevel?: number;
 }
@@ -58,7 +58,7 @@ export interface DeviceInfo {
 export interface JWTPayload {
   userId: string;
   phoneNumber: string;
-  type: 'access' | 'refresh';
+  type: "access" | "refresh";
   iat?: number;
   exp?: number;
   tokenValue?: string;
@@ -132,7 +132,9 @@ export interface LoginResult {
 
 // Repository Layer Types
 export interface UserRepository {
-  findByPhoneNumber(phoneNumber: string): Promise<(UserProfile & UserSecurity) | null>;
+  findByPhoneNumber(
+    phoneNumber: string
+  ): Promise<(UserProfile & UserSecurity) | null>;
   findById(id: string): Promise<UserProfile | null>;
   create(data: CreateUserData): Promise<UserProfile>;
   update(id: string, data: Partial<UpdateUserData>): Promise<UserProfile>;
@@ -142,18 +144,37 @@ export interface UserRepository {
 }
 
 export interface PhoneVerificationRepository {
-  create(data: Omit<PhoneVerificationData, 'id' | 'createdAt'>): Promise<PhoneVerificationData>;
-  findLatest(phoneNumber: string, purpose: VerificationPurpose): Promise<PhoneVerificationData | null>;
-  update(id: string, data: Partial<Pick<PhoneVerificationData, 'attempts' | 'isUsed'>>): Promise<void>;
+  create(
+    data: Omit<PhoneVerificationData, "id" | "createdAt">
+  ): Promise<PhoneVerificationData>;
+  findLatest(
+    phoneNumber: string,
+    purpose: VerificationPurpose
+  ): Promise<PhoneVerificationData | null>;
+  update(
+    id: string,
+    data: Partial<Pick<PhoneVerificationData, "attempts" | "isUsed">>
+  ): Promise<void>;
   cleanup(): Promise<number>;
-  getStats(phoneNumber?: string, purpose?: VerificationPurpose): Promise<VerificationStats>;
-  countDailyRequests(phoneNumber: string, ipAddress?: string): Promise<{ phoneCount: number; ipCount: number }>;
+  getStats(
+    phoneNumber?: string,
+    purpose?: VerificationPurpose
+  ): Promise<VerificationStats>;
+  countDailyRequests(
+    phoneNumber: string,
+    ipAddress?: string
+  ): Promise<{ phoneCount: number; ipCount: number }>;
 }
 
 export interface RefreshTokenRepository {
-  create(data: Omit<RefreshTokenData, 'id' | 'createdAt' | 'lastUsedAt'>): Promise<RefreshTokenData>;
+  create(
+    data: Omit<RefreshTokenData, "id" | "createdAt" | "lastUsedAt">
+  ): Promise<RefreshTokenData>;
   findByToken(token: string): Promise<RefreshTokenData | null>;
-  update(id: string, data: Partial<Pick<RefreshTokenData, 'isRevoked' | 'lastUsedAt'>>): Promise<void>;
+  update(
+    id: string,
+    data: Partial<Pick<RefreshTokenData, "isRevoked" | "lastUsedAt">>
+  ): Promise<void>;
   revokeByToken(token: string): Promise<void>;
   revokeAllByUserId(userId: string): Promise<void>;
   cleanup(): Promise<number>;
@@ -412,79 +433,90 @@ export interface GuaranteedAuthRequest extends Request {
   token: JWTPayload;
 }
 
+// Business ownership request - includes validated business data
+export interface BusinessOwnershipRequest extends AuthenticatedRequest {
+  business: {
+    id: string;
+    name: string;
+    ownerId: string;
+    isActive: boolean;
+    slug?: string;
+  };
+}
+
 // Business Permission Names
 export enum PermissionName {
   // Business Management
-  CREATE_BUSINESS = 'business:create',
-  VIEW_ALL_BUSINESSES = 'business:view_all',
-  VIEW_OWN_BUSINESS = 'business:view_own',
-  EDIT_ALL_BUSINESSES = 'business:edit_all',
-  EDIT_OWN_BUSINESS = 'business:edit_own',
-  DELETE_ALL_BUSINESSES = 'business:delete_all',
-  DELETE_OWN_BUSINESS = 'business:delete_own',
-  VERIFY_BUSINESS = 'business:verify',
-  CLOSE_ALL_BUSINESSES = 'business:close_all',
-  CLOSE_OWN_BUSINESS = 'business:close_own',
+  CREATE_BUSINESS = "business:create",
+  VIEW_ALL_BUSINESSES = "business:view_all",
+  VIEW_OWN_BUSINESS = "business:view_own",
+  EDIT_ALL_BUSINESSES = "business:edit_all",
+  EDIT_OWN_BUSINESS = "business:edit_own",
+  DELETE_ALL_BUSINESSES = "business:delete_all",
+  DELETE_OWN_BUSINESS = "business:delete_own",
+  VERIFY_BUSINESS = "business:verify",
+  CLOSE_ALL_BUSINESSES = "business:close_all",
+  CLOSE_OWN_BUSINESS = "business:close_own",
 
   // Service Management
-  MANAGE_ALL_SERVICES = 'service:manage_all',
-  MANAGE_OWN_SERVICES = 'service:manage_own',
-  VIEW_ALL_SERVICES = 'service:view_all',
-  VIEW_OWN_SERVICES = 'service:view_own',
+  MANAGE_ALL_SERVICES = "service:manage_all",
+  MANAGE_OWN_SERVICES = "service:manage_own",
+  VIEW_ALL_SERVICES = "service:view_all",
+  VIEW_OWN_SERVICES = "service:view_own",
 
   // Appointment Management
-  VIEW_ALL_APPOINTMENTS = 'appointment:view_all',
-  VIEW_OWN_APPOINTMENTS = 'appointment:view_own',
-  EDIT_ALL_APPOINTMENTS = 'appointment:edit_all',
-  EDIT_OWN_APPOINTMENTS = 'appointment:edit_own',
-  CANCEL_ALL_APPOINTMENTS = 'appointment:cancel_all',
-  CANCEL_OWN_APPOINTMENTS = 'appointment:cancel_own',
-  CONFIRM_APPOINTMENTS = 'appointment:confirm',
-  COMPLETE_APPOINTMENTS = 'appointment:complete',
-  MARK_NO_SHOW = 'appointment:mark_no_show',
+  VIEW_ALL_APPOINTMENTS = "appointment:view_all",
+  VIEW_OWN_APPOINTMENTS = "appointment:view_own",
+  EDIT_ALL_APPOINTMENTS = "appointment:edit_all",
+  EDIT_OWN_APPOINTMENTS = "appointment:edit_own",
+  CANCEL_ALL_APPOINTMENTS = "appointment:cancel_all",
+  CANCEL_OWN_APPOINTMENTS = "appointment:cancel_own",
+  CONFIRM_APPOINTMENTS = "appointment:confirm",
+  COMPLETE_APPOINTMENTS = "appointment:complete",
+  MARK_NO_SHOW = "appointment:mark_no_show",
 
   // Staff Management
-  MANAGE_ALL_STAFF = 'staff:manage_all',
-  MANAGE_OWN_STAFF = 'staff:manage_own',
+  MANAGE_ALL_STAFF = "staff:manage_all",
+  MANAGE_OWN_STAFF = "staff:manage_own",
 
   // Analytics
-  VIEW_ALL_ANALYTICS = 'analytics:view_all',
-  VIEW_OWN_ANALYTICS = 'analytics:view_own',
+  VIEW_ALL_ANALYTICS = "analytics:view_all",
+  VIEW_OWN_ANALYTICS = "analytics:view_own",
 
   // User Behavior Management
-  VIEW_USER_BEHAVIOR = 'user_behavior:view',
-  MANAGE_USER_BEHAVIOR = 'user_behavior:manage',
-  MANAGE_STRIKES = 'user_behavior:manage_strikes',
-  BAN_USERS = 'user_behavior:ban',
-  FLAG_USERS = 'user_behavior:flag',
-  VIEW_OWN_CUSTOMERS = 'customer:view_own',
+  VIEW_USER_BEHAVIOR = "user_behavior:view",
+  MANAGE_USER_BEHAVIOR = "user_behavior:manage",
+  MANAGE_STRIKES = "user_behavior:manage_strikes",
+  BAN_USERS = "user_behavior:ban",
+  FLAG_USERS = "user_behavior:flag",
+  VIEW_OWN_CUSTOMERS = "customer:view_own",
 
   // Business Closure Management
-  MANAGE_ALL_CLOSURES = 'closure:manage_all',
-  MANAGE_OWN_CLOSURES = 'closure:manage_own',
-  VIEW_ALL_CLOSURES = 'closure:view_all',
-  VIEW_OWN_CLOSURES = 'closure:view_own',
+  MANAGE_ALL_CLOSURES = "closure:manage_all",
+  MANAGE_OWN_CLOSURES = "closure:manage_own",
+  VIEW_ALL_CLOSURES = "closure:view_all",
+  VIEW_OWN_CLOSURES = "closure:view_own",
 
   // Subscription Management
-  MANAGE_ALL_SUBSCRIPTIONS = 'subscription:manage_all',
-  MANAGE_OWN_SUBSCRIPTION = 'subscription:manage_own',
-  VIEW_ALL_SUBSCRIPTIONS = 'subscription:view_all',
-  VIEW_OWN_SUBSCRIPTION = 'subscription:view_own',
-  CANCEL_OWN_SUBSCRIPTION = 'subscription:cancel_own',
+  MANAGE_ALL_SUBSCRIPTIONS = "subscription:manage_all",
+  MANAGE_OWN_SUBSCRIPTION = "subscription:manage_own",
+  VIEW_ALL_SUBSCRIPTIONS = "subscription:view_all",
+  VIEW_OWN_SUBSCRIPTION = "subscription:view_own",
+  CANCEL_OWN_SUBSCRIPTION = "subscription:cancel_own",
 
   // Role Management
-  MANAGE_ROLES = 'role:manage',
-  VIEW_ROLES = 'role:view',
-  VIEW_OWN_PROFILE = 'user:view_own_profile',
+  MANAGE_ROLES = "role:manage",
+  VIEW_ROLES = "role:view",
+  VIEW_OWN_PROFILE = "user:view_own_profile",
   // Notification Management
-  SEND_NOTIFICATIONS = 'notification:send',
-  MANAGE_NOTIFICATIONS = 'notification:manage'
+  SEND_NOTIFICATIONS = "notification:send",
+  MANAGE_NOTIFICATIONS = "notification:manage",
 }
 
 // Standard Role Names
 export enum RoleName {
-  ADMIN = 'ADMIN',
-  OWNER = 'OWNER', 
-  STAFF = 'STAFF',
-  CUSTOMER = 'CUSTOMER'
+  ADMIN = "ADMIN",
+  OWNER = "OWNER",
+  STAFF = "STAFF",
+  CUSTOMER = "CUSTOMER",
 }

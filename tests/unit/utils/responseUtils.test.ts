@@ -4,7 +4,7 @@ import {
   createSuccessResponse,
 } from "../../../src/utils/responseUtils";
 
-describe("Error Response Utilities", () => {
+describe("Response Utilities", () => {
   describe("createSuccessResponse", () => {
     it("should create success response with data", () => {
       const data = { id: "123", name: "Test" };
