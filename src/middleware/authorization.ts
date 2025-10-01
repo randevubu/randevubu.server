@@ -1,8 +1,8 @@
-import { Request, Response, NextFunction } from 'express';
-import { RBACService } from '../services/rbacService';
-import { ForbiddenError, ErrorContext } from '../types/errors';
-import { AuthenticatedRequest } from './auth';
-import { logger } from '../utils/logger';
+import { NextFunction, Request, Response } from "express";
+import { RBACService } from "../services/rbacService";
+import { ErrorContext, ForbiddenError } from "../types/errors";
+import { logger } from "../utils/Logger/logger";
+import { AuthenticatedRequest } from "./auth";
 
 export interface AuthorizationOptions {
   resource: string;
@@ -27,7 +27,7 @@ export class AuthorizationMiddleware {
     return {
       userId,
       ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
+      userAgent: req.get("user-agent"),
       requestId: Math.random().toString(36).substring(7),
       timestamp: new Date(),
       endpoint: req.path,
@@ -49,17 +49,17 @@ export class AuthorizationMiddleware {
           if (options.skipIfNoUser) {
             return next();
           }
-          throw new ForbiddenError('Authentication required', context);
+          throw new ForbiddenError("Authentication required", context);
         }
 
         // Get context for permission evaluation
-        const permissionContext = options.contextProvider 
-          ? options.contextProvider(req) 
-          : { 
+        const permissionContext = options.contextProvider
+          ? options.contextProvider(req)
+          : {
               resourceId: req.params.id,
               ownerId: req.user.id,
               ...req.body,
-              ...req.query
+              ...req.query,
             };
 
         await this.rbacService.requirePermission(
@@ -69,21 +69,21 @@ export class AuthorizationMiddleware {
           context
         );
 
-        logger.debug('Permission granted', {
+        logger.debug("Permission granted", {
           userId: req.user.id,
           resource: options.resource,
           action: options.action,
-          endpoint: req.path
+          endpoint: req.path,
         });
 
         next();
       } catch (error) {
-        logger.warn('Authorization failed', {
+        logger.warn("Authorization failed", {
           userId: req.user?.id,
           resource: options.resource,
           action: options.action,
           endpoint: req.path,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
         });
         next(error);
       }
@@ -101,40 +101,40 @@ export class AuthorizationMiddleware {
         const context = this.createErrorContext(req, req.user?.id);
 
         if (!req.user) {
-          throw new ForbiddenError('Authentication required', context);
+          throw new ForbiddenError("Authentication required", context);
         }
 
         const userRoles = await this.rbacService.getUserRoles(req.user.id);
-        const userRoleNames = userRoles.map(role => role.name);
+        const userRoleNames = userRoles.map((role) => role.name);
 
         const hasRequiredRoles = requirement.requireAll
-          ? requirement.roles.every(role => userRoleNames.includes(role))
-          : requirement.roles.some(role => userRoleNames.includes(role));
+          ? requirement.roles.every((role) => userRoleNames.includes(role))
+          : requirement.roles.some((role) => userRoleNames.includes(role));
 
         if (!hasRequiredRoles) {
-          const requiredRolesStr = requirement.requireAll 
-            ? requirement.roles.join(' AND ') 
-            : requirement.roles.join(' OR ');
-          
+          const requiredRolesStr = requirement.requireAll
+            ? requirement.roles.join(" AND ")
+            : requirement.roles.join(" OR ");
+
           throw new ForbiddenError(
             `Required role(s): ${requiredRolesStr}`,
             context
           );
         }
 
-        logger.debug('Role authorization passed', {
+        logger.debug("Role authorization passed", {
           userId: req.user.id,
           userRoles: userRoleNames,
           requiredRoles: requirement.roles,
-          requireAll: requirement.requireAll
+          requireAll: requirement.requireAll,
         });
 
         next();
       } catch (error) {
-        logger.warn('Role authorization failed', {
+        logger.warn("Role authorization failed", {
           userId: req.user?.id,
           requiredRoles: requirement.roles,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
         });
         next(error);
       }
@@ -152,7 +152,7 @@ export class AuthorizationMiddleware {
         const context = this.createErrorContext(req, req.user?.id);
 
         if (!req.user) {
-          throw new ForbiddenError('Authentication required', context);
+          throw new ForbiddenError("Authentication required", context);
         }
 
         await this.rbacService.requireMinLevel(
@@ -161,17 +161,17 @@ export class AuthorizationMiddleware {
           context
         );
 
-        logger.debug('Level authorization passed', {
+        logger.debug("Level authorization passed", {
           userId: req.user.id,
-          requiredLevel: requirement.minLevel
+          requiredLevel: requirement.minLevel,
         });
 
         next();
       } catch (error) {
-        logger.warn('Level authorization failed', {
+        logger.warn("Level authorization failed", {
           userId: req.user?.id,
           requiredLevel: requirement.minLevel,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
         });
         next(error);
       }
@@ -179,11 +179,13 @@ export class AuthorizationMiddleware {
   }
 
   // Resource ownership check
-  requireOwnership(options: {
-    resourceIdParam?: string;
-    userIdField?: string;
-    customCheck?: (req: AuthenticatedRequest) => Promise<boolean>;
-  } = {}) {
+  requireOwnership(
+    options: {
+      resourceIdParam?: string;
+      userIdField?: string;
+      customCheck?: (req: AuthenticatedRequest) => Promise<boolean>;
+    } = {}
+  ) {
     return async (
       req: AuthenticatedRequest,
       res: Response,
@@ -193,7 +195,7 @@ export class AuthorizationMiddleware {
         const context = this.createErrorContext(req, req.user?.id);
 
         if (!req.user) {
-          throw new ForbiddenError('Authentication required', context);
+          throw new ForbiddenError("Authentication required", context);
         }
 
         let isOwner = false;
@@ -201,11 +203,11 @@ export class AuthorizationMiddleware {
         if (options.customCheck) {
           isOwner = await options.customCheck(req);
         } else {
-          const resourceIdParam = options.resourceIdParam || 'id';
-          const userIdField = options.userIdField || 'userId';
-          
+          const resourceIdParam = options.resourceIdParam || "id";
+          const userIdField = options.userIdField || "userId";
+
           const resourceId = req.params[resourceIdParam];
-          
+
           if (resourceId === req.user.id) {
             isOwner = true;
           } else if (req.body && req.body[userIdField] === req.user.id) {
@@ -214,15 +216,18 @@ export class AuthorizationMiddleware {
         }
 
         if (!isOwner) {
-          throw new ForbiddenError('Resource access denied - ownership required', context);
+          throw new ForbiddenError(
+            "Resource access denied - ownership required",
+            context
+          );
         }
 
         next();
       } catch (error) {
-        logger.warn('Ownership check failed', {
+        logger.warn("Ownership check failed", {
           userId: req.user?.id,
           endpoint: req.path,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
         });
         next(error);
       }
@@ -230,7 +235,15 @@ export class AuthorizationMiddleware {
   }
 
   // Combined authorization (OR logic - pass if ANY condition is met)
-  requireAny(...middlewares: Array<(req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>>) {
+  requireAny(
+    ...middlewares: Array<
+      (
+        req: AuthenticatedRequest,
+        res: Response,
+        next: NextFunction
+      ) => Promise<void>
+    >
+  ) {
     return async (
       req: AuthenticatedRequest,
       res: Response,
@@ -246,55 +259,60 @@ export class AuthorizationMiddleware {
               else resolve();
             });
           });
-          
+
           // If we get here, authorization passed
           return next();
         } catch (error) {
-          errors.push(error instanceof Error ? error : new Error(String(error)));
+          errors.push(
+            error instanceof Error ? error : new Error(String(error))
+          );
         }
       }
 
       // All authorization methods failed
       const context = this.createErrorContext(req, req.user?.id);
-      logger.warn('All authorization methods failed', {
+      logger.warn("All authorization methods failed", {
         userId: req.user?.id,
         endpoint: req.path,
-        errorCount: errors.length
+        errorCount: errors.length,
       });
 
-      next(new ForbiddenError('Access denied', context));
+      next(new ForbiddenError("Access denied", context));
     };
   }
 
   // Admin-only access
   requireAdmin() {
-    return this.requireRole({ roles: ['ADMIN'] });
+    return this.requireRole({ roles: ["ADMIN"] });
   }
 
   // Owner or Admin access
   requireOwnerOrAdmin() {
-    return this.requireRole({ roles: ['ADMIN', 'OWNER'] });
+    return this.requireRole({ roles: ["ADMIN", "OWNER"] });
   }
 
   // Staff, Owner or Admin access
   requireStaffOrAbove() {
-    return this.requireRole({ roles: ['ADMIN', 'OWNER', 'STAFF'] });
+    return this.requireRole({ roles: ["ADMIN", "OWNER", "STAFF"] });
   }
 }
 
 // Utility functions for common authorization patterns
-export const createOwnershipCheck = (resourceService: any, userIdField = 'userId') => {
+export const createOwnershipCheck = (
+  resourceService: any,
+  userIdField = "userId"
+) => {
   return async (req: AuthenticatedRequest): Promise<boolean> => {
     try {
       const resourceId = req.params.id;
       const resource = await resourceService.findById(resourceId);
-      
+
       return resource && resource[userIdField] === req.user?.id;
     } catch (error) {
-      logger.error('Ownership check error', {
+      logger.error("Ownership check error", {
         resourceId: req.params.id,
         userId: req.user?.id,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       return false;
     }
@@ -307,7 +325,7 @@ export const contextProviders = {
   userProfile: (req: AuthenticatedRequest) => ({
     resourceId: req.params.userId || req.params.id,
     ownerId: req.params.userId || req.params.id,
-    targetUserId: req.params.userId || req.params.id
+    targetUserId: req.params.userId || req.params.id,
   }),
 
   // For resource with explicit owner field
@@ -315,7 +333,7 @@ export const contextProviders = {
     resourceId: req.params.id,
     ownerId: req.body?.userId || req.query?.userId,
     ...req.body,
-    ...req.query
+    ...req.query,
   }),
 
   // For admin operations
@@ -323,6 +341,6 @@ export const contextProviders = {
     adminUserId: req.user?.id,
     targetResourceId: req.params.id,
     actionType: req.method,
-    ...req.body
-  })
+    ...req.body,
+  }),
 };
