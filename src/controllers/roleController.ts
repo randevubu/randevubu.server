@@ -8,7 +8,7 @@ import {
   UpdatePermissionRequest,
   UpdateRoleRequest,
 } from "../types/auth";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 
 export class RoleController {
   constructor(private roleService: RoleService) {}

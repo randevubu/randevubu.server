@@ -18,6 +18,7 @@ import {
   logSuccess,
 } from "../utils/Logger/loggerHelper";
 import { CustomError } from "../utils/errors/customError";
+import { sendSuccessResponse } from "../utils/responseUtils";
 
 export class AppointmentController {
   constructor(private appointmentService: AppointmentService) {}
@@ -29,7 +30,7 @@ export class AppointmentController {
    *   - staffId: (owners/managers only) Filter by specific staff member
    *   - status, date, businessId: Standard filters
    */
-  //.
+  //checked
   async getMyAppointments(
     req: BusinessContextRequest,
     res: Response,
@@ -90,12 +91,6 @@ export class AppointmentController {
         ),
       };
 
-      const response = {
-        status: "success",
-        message: `Successfully fetched ${cleanedResult.appointments.length} appointments`,
-        data: cleanedResult,
-      };
-
       logSuccess(`Successfully fetched appointments`, {
         requestId: (req as any).requestId || "unknown",
         userId: userId,
@@ -103,7 +98,12 @@ export class AppointmentController {
         requestDetails: extractRequestDetails(req),
       });
 
-      res.status(200).json(response);
+      sendSuccessResponse(
+        res,
+        `Successfully fetched ${cleanedResult.appointments.length} appointments`,
+        cleanedResult,
+        200
+      );
     } catch (error) {
       if (
         error instanceof z.ZodError ||

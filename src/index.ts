@@ -14,10 +14,11 @@ import { ControllerContainer } from "./controllers";
 import prisma from "./lib/prisma";
 import { initializeBusinessContextMiddleware } from "./middleware/attachBusinessContext";
 import { errorHandler, notFoundHandler } from "./middleware/error";
+import { requestIdMiddleware } from "./middleware/requestId";
 import { RepositoryContainer } from "./repositories";
 import { createRoutes } from "./routes";
 import { ServiceContainer } from "./services";
-import { logger, loggers } from "./utils/Logger/logger";
+import logger, loggers   from "./utils/Logger/logger";
 import {
   gracefulShutdown,
   setServicesForShutdown,
@@ -84,6 +85,9 @@ app.use(
 );
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// Request ID middleware (should be early in the chain)
+app.use(requestIdMiddleware);
 
 // Metrics collection middleware (before route handlers)
 app.use(metricsMiddleware);

@@ -1,16 +1,15 @@
-import { Request, Response } from 'express';
-import { BusinessController } from '../../../src/controllers/businessController';
-import { BusinessService } from '../../../src/services/businessService';
-import { TestHelpers } from '../../utils/testHelpers';
-import { AuthenticatedRequest } from '../../../src/types/auth';
-import { BusinessContextRequest } from '../../../src/middleware/businessContext';
+import { Response } from "express";
+import { BusinessController } from "../../../src/controllers/businessController";
+import { BusinessContextRequest } from "../../../src/middleware/businessContext";
+import { AuthenticatedRequest } from "../../../src/types/auth";
+import { TestHelpers } from "../../utils/testHelpers";
 
 // Mock dependencies
-jest.mock('../../../src/services/businessService');
-jest.mock('../../../src/utils/errorResponse');
-jest.mock('../../../src/utils/logger');
+jest.mock("../../../src/services/businessService");
+jest.mock("../../../src/utils/errorResponse");
+jest.mock("../../../src/utils/logger");
 
-describe('BusinessController', () => {
+describe("BusinessController", () => {
   let businessController: BusinessController;
   let mockBusinessService: any;
   let mockRequest: AuthenticatedRequest;
@@ -28,6 +27,7 @@ describe('BusinessController', () => {
       createBusiness: jest.fn(),
       getBusinessById: jest.fn(),
       getBusinessBySlug: jest.fn(),
+      getBusinessBySlugWithServices: jest.fn(),
       getUserBusinesses: jest.fn(),
       updateBusiness: jest.fn(),
       updateMyBusiness: jest.fn(),
@@ -66,7 +66,7 @@ describe('BusinessController', () => {
       updateNotificationSettings: jest.fn(),
       testReminder: jest.fn(),
       getStaffPrivacySettings: jest.fn(),
-      updateStaffPrivacySettings: jest.fn()
+      updateStaffPrivacySettings: jest.fn(),
     };
 
     // Create BusinessController instance
@@ -74,84 +74,117 @@ describe('BusinessController', () => {
 
     // Create mock request and response
     mockRequest = TestHelpers.createMockRequest() as AuthenticatedRequest;
-    mockRequest.user = { id: 'user-123', phoneNumber: '+905551234567', isVerified: true, isActive: true };
+    mockRequest.user = {
+      id: "user-123",
+      phoneNumber: "+905551234567",
+      isVerified: true,
+      isActive: true,
+    };
 
-    mockBusinessContextRequest = TestHelpers.createMockRequest() as BusinessContextRequest;
-    mockBusinessContextRequest.user = { id: 'user-123', phoneNumber: '+905551234567', isVerified: true, isActive: true };
-    mockBusinessContextRequest.business = { id: 'business-123', name: 'Test Business' };
+    mockBusinessContextRequest =
+      TestHelpers.createMockRequest() as BusinessContextRequest;
+    mockBusinessContextRequest.user = {
+      id: "user-123",
+      phoneNumber: "+905551234567",
+      isVerified: true,
+      isActive: true,
+    };
+    mockBusinessContextRequest.businessContext = {
+      businessIds: ["business-123"],
+      primaryBusinessId: "business-123",
+      isOwner: true,
+      isStaff: false,
+      isCustomer: false,
+    };
 
     mockResponse = TestHelpers.createMockResponse();
   });
 
-  describe('constructor', () => {
-    it('should create BusinessController instance', () => {
+  describe("constructor", () => {
+    it("should create BusinessController instance", () => {
       expect(businessController).toBeInstanceOf(BusinessController);
     });
   });
 
-  describe('getMyBusiness', () => {
-    it('should get my business successfully', async () => {
+  describe("getMyBusiness", () => {
+    it("should get my business successfully", async () => {
       // Arrange
       const mockBusiness = {
-        id: 'business-123',
-        name: 'Test Business',
-        description: 'A test business',
-        address: '123 Test St'
+        id: "business-123",
+        name: "Test Business",
+        description: "A test business",
+        address: "123 Test St",
       };
 
       mockBusinessService.getMyBusiness.mockResolvedValue(mockBusiness);
 
       // Act
-      await businessController.getMyBusiness(mockBusinessContextRequest, mockResponse);
+      await businessController.getMyBusiness(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.getMyBusiness).toHaveBeenCalledWith('user-123', 'business-123');
+      expect(mockBusinessService.getMyBusiness).toHaveBeenCalledWith(
+        "user-123"
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockBusiness
+        data: mockBusiness,
       });
     });
   });
 
-  describe('getMyServices', () => {
-    it('should get my services successfully', async () => {
+  describe("getMyServices", () => {
+    it("should get my services successfully", async () => {
       // Arrange
       const mockServices = [
-        { id: 'service-1', name: 'Haircut', price: 50 },
-        { id: 'service-2', name: 'Styling', price: 75 }
+        { id: "service-1", name: "Haircut", price: 50 },
+        { id: "service-2", name: "Styling", price: 75 },
       ];
 
       mockBusinessService.getMyServices.mockResolvedValue(mockServices);
 
       // Act
-      await businessController.getMyServices(mockBusinessContextRequest, mockResponse);
+      await businessController.getMyServices(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.getMyServices).toHaveBeenCalledWith('user-123', 'business-123');
+      expect(mockBusinessService.getMyServices).toHaveBeenCalledWith(
+        "user-123",
+        {
+          active: undefined,
+          businessId: undefined,
+          limit: 50,
+          page: 1,
+        }
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockServices
+        data: mockServices,
       });
     });
   });
 
-  describe('createBusiness', () => {
-    it('should create business successfully', async () => {
+  describe("createBusiness", () => {
+    it("should create business successfully", async () => {
       // Arrange
       const businessData = {
-        name: 'New Business',
-        description: 'A new business',
-        address: '456 New St',
-        phone: '+905559876543',
-        businessTypeId: 'type-123'
+        name: "New Business",
+        description: "A new business",
+        address: "456 New St",
+        phone: "+905559876543",
+        businessTypeId: "type-123",
       };
 
       mockRequest.body = businessData;
 
       const mockCreatedBusiness = {
-        id: 'business-456',
+        id: "business-456",
         ...businessData,
-        ownerId: 'user-123'
+        ownerId: "user-123",
       };
 
       mockBusinessService.createBusiness.mockResolvedValue(mockCreatedBusiness);
@@ -160,25 +193,29 @@ describe('BusinessController', () => {
       await businessController.createBusiness(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.createBusiness).toHaveBeenCalledWith('user-123', businessData);
+      expect(mockBusinessService.createBusiness).toHaveBeenCalledWith(
+        "user-123",
+        businessData
+      );
       expect(mockResponse.status).toHaveBeenCalledWith(201);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockCreatedBusiness
+        data: mockCreatedBusiness,
+        message: "Business created successfully",
       });
     });
   });
 
-  describe('getBusinessById', () => {
-    it('should get business by id successfully', async () => {
+  describe("getBusinessById", () => {
+    it("should get business by id successfully", async () => {
       // Arrange
-      const businessId = 'business-123';
+      const businessId = "business-123";
       mockRequest.params = { id: businessId };
 
       const mockBusiness = {
         id: businessId,
-        name: 'Test Business',
-        description: 'A test business'
+        name: "Test Business",
+        description: "A test business",
       };
 
       mockBusinessService.getBusinessById.mockResolvedValue(mockBusiness);
@@ -187,69 +224,85 @@ describe('BusinessController', () => {
       await businessController.getBusinessById(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.getBusinessById).toHaveBeenCalledWith('user-123', businessId);
+      expect(mockBusinessService.getBusinessById).toHaveBeenCalledWith(
+        "user-123",
+        businessId,
+        false
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockBusiness
+        data: mockBusiness,
       });
     });
   });
 
-  describe('getBusinessBySlug', () => {
-    it('should get business by slug successfully', async () => {
+  describe("getBusinessBySlug", () => {
+    it("should get business by slug successfully", async () => {
       // Arrange
-      const slug = 'test-business';
+      const slug = "test-business";
       mockRequest.params = { slug };
 
       const mockBusiness = {
-        id: 'business-123',
-        name: 'Test Business',
-        slug: 'test-business'
+        id: "business-123",
+        name: "Test Business",
+        slug: "test-business",
       };
 
-      mockBusinessService.getBusinessBySlug.mockResolvedValue(mockBusiness);
+      mockBusinessService.getBusinessBySlugWithServices = jest
+        .fn()
+        .mockResolvedValue(mockBusiness);
 
       // Act
       await businessController.getBusinessBySlug(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.getBusinessBySlug).toHaveBeenCalledWith(slug);
+      expect(
+        mockBusinessService.getBusinessBySlugWithServices
+      ).toHaveBeenCalledWith(slug);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockBusiness
+        data: mockBusiness,
       });
     });
   });
 
-  describe('getUserBusinesses', () => {
-    it('should get user businesses successfully', async () => {
+  describe("getUserBusinesses", () => {
+    it("should get user businesses successfully", async () => {
       // Arrange
       const mockBusinesses = [
-        { id: 'business-1', name: 'Business 1' },
-        { id: 'business-2', name: 'Business 2' }
+        { id: "business-1", name: "Business 1" },
+        { id: "business-2", name: "Business 2" },
       ];
 
-      mockBusinessService.getUserBusinesses.mockResolvedValue(mockBusinesses);
+      mockBusinessService.getBusinessesByOwner = jest
+        .fn()
+        .mockResolvedValue(mockBusinesses);
 
       // Act
       await businessController.getUserBusinesses(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.getUserBusinesses).toHaveBeenCalledWith('user-123');
+      expect(mockBusinessService.getBusinessesByOwner).toHaveBeenCalledWith(
+        "user-123",
+        "user-123"
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockBusinesses
+        data: mockBusinesses,
+        meta: {
+          total: mockBusinesses.length,
+        },
       });
     });
   });
 
-  describe('updateBusiness', () => {
-    it('should update business successfully', async () => {
+  describe("updateBusiness", () => {
+    it("should update business successfully", async () => {
       // Arrange
-      const businessId = 'business-123';
+      const businessId = "business-123";
       const updateData = {
-        name: 'Updated Business',
-        description: 'Updated description'
+        name: "Updated Business",
+        description: "Updated description",
       };
 
       mockRequest.params = { id: businessId };
@@ -257,7 +310,7 @@ describe('BusinessController', () => {
 
       const mockUpdatedBusiness = {
         id: businessId,
-        ...updateData
+        ...updateData,
       };
 
       mockBusinessService.updateBusiness.mockResolvedValue(mockUpdatedBusiness);
@@ -266,100 +319,128 @@ describe('BusinessController', () => {
       await businessController.updateBusiness(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.updateBusiness).toHaveBeenCalledWith('user-123', businessId, updateData);
+      expect(mockBusinessService.updateBusiness).toHaveBeenCalledWith(
+        "user-123",
+        businessId,
+        updateData
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUpdatedBusiness
+        data: mockUpdatedBusiness,
       });
     });
   });
 
-  describe('updateMyBusiness', () => {
-    it('should update my business successfully', async () => {
+  describe("updateMyBusiness", () => {
+    it("should update my business successfully", async () => {
       // Arrange
       const updateData = {
-        name: 'Updated Business',
-        description: 'Updated description'
+        name: "Updated Business",
+        description: "Updated description",
       };
 
       mockBusinessContextRequest.body = updateData;
 
       const mockUpdatedBusiness = {
-        id: 'business-123',
-        ...updateData
+        id: "business-123",
+        ...updateData,
       };
 
-      mockBusinessService.updateMyBusiness.mockResolvedValue(mockUpdatedBusiness);
+      mockBusinessService.updateMyBusiness.mockResolvedValue(
+        mockUpdatedBusiness
+      );
 
       // Act
-      await businessController.updateMyBusiness(mockBusinessContextRequest, mockResponse);
+      await businessController.updateMyBusiness(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.updateMyBusiness).toHaveBeenCalledWith('user-123', 'business-123', updateData);
+      expect(mockBusinessService.updateMyBusiness).toHaveBeenCalledWith(
+        "user-123",
+        "business-123",
+        updateData
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUpdatedBusiness
+        data: mockUpdatedBusiness,
       });
     });
   });
 
-  describe('updatePriceSettings', () => {
-    it('should update price settings successfully', async () => {
+  describe("updatePriceSettings", () => {
+    it("should update price settings successfully", async () => {
       // Arrange
       const priceSettings = {
-        currency: 'TRY',
+        currency: "TRY",
         showPrices: true,
-        hideAllPrices: false
+        hideAllPrices: false,
       };
 
       mockBusinessContextRequest.body = priceSettings;
 
       const mockUpdatedSettings = {
-        id: 'business-123',
-        ...priceSettings
+        id: "business-123",
+        ...priceSettings,
       };
 
-      mockBusinessService.updatePriceSettings.mockResolvedValue(mockUpdatedSettings);
+      mockBusinessService.updatePriceSettings.mockResolvedValue(
+        mockUpdatedSettings
+      );
 
       // Act
-      await businessController.updatePriceSettings(mockBusinessContextRequest, mockResponse);
+      await businessController.updatePriceSettings(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.updatePriceSettings).toHaveBeenCalledWith('user-123', 'business-123', priceSettings);
+      expect(mockBusinessService.updatePriceSettings).toHaveBeenCalledWith(
+        "user-123",
+        "business-123",
+        priceSettings
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUpdatedSettings
+        data: mockUpdatedSettings,
       });
     });
   });
 
-  describe('getPriceSettings', () => {
-    it('should get price settings successfully', async () => {
+  describe("getPriceSettings", () => {
+    it("should get price settings successfully", async () => {
       // Arrange
       const mockPriceSettings = {
-        currency: 'TRY',
+        currency: "TRY",
         showPrices: true,
-        hideAllPrices: false
+        hideAllPrices: false,
       };
 
       mockBusinessService.getPriceSettings.mockResolvedValue(mockPriceSettings);
 
       // Act
-      await businessController.getPriceSettings(mockBusinessContextRequest, mockResponse);
+      await businessController.getPriceSettings(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.getPriceSettings).toHaveBeenCalledWith('user-123', 'business-123');
+      expect(mockBusinessService.getPriceSettings).toHaveBeenCalledWith(
+        "user-123",
+        "business-123"
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockPriceSettings
+        data: mockPriceSettings,
       });
     });
   });
 
-  describe('deleteBusiness', () => {
-    it('should delete business successfully', async () => {
+  describe("deleteBusiness", () => {
+    it("should delete business successfully", async () => {
       // Arrange
-      const businessId = 'business-123';
+      const businessId = "business-123";
       mockRequest.params = { id: businessId };
 
       mockBusinessService.deleteBusiness.mockResolvedValue(undefined);
@@ -368,31 +449,34 @@ describe('BusinessController', () => {
       await businessController.deleteBusiness(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.deleteBusiness).toHaveBeenCalledWith('user-123', businessId);
+      expect(mockBusinessService.deleteBusiness).toHaveBeenCalledWith(
+        "user-123",
+        businessId
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Business deleted successfully'
+        message: "Business deleted successfully",
       });
     });
   });
 
-  describe('searchBusinesses', () => {
-    it('should search businesses successfully', async () => {
+  describe("searchBusinesses", () => {
+    it("should search businesses successfully", async () => {
       // Arrange
-      const searchQuery = 'hair salon';
-      const location = 'Istanbul';
-      const businessType = 'beauty';
+      const searchQuery = "hair salon";
+      const location = "Istanbul";
+      const businessType = "beauty";
 
       mockRequest.query = { q: searchQuery, location, businessType };
 
       const mockSearchResults = {
         businesses: [
-          { id: 'business-1', name: 'Hair Salon 1' },
-          { id: 'business-2', name: 'Hair Salon 2' }
+          { id: "business-1", name: "Hair Salon 1" },
+          { id: "business-2", name: "Hair Salon 2" },
         ],
         total: 2,
         page: 1,
-        totalPages: 1
+        totalPages: 1,
       };
 
       mockBusinessService.searchBusinesses.mockResolvedValue(mockSearchResults);
@@ -401,97 +485,123 @@ describe('BusinessController', () => {
       await businessController.searchBusinesses(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.searchBusinesses).toHaveBeenCalledWith(searchQuery, location, businessType, 1, 20);
+      expect(mockBusinessService.searchBusinesses).toHaveBeenCalledWith(
+        searchQuery,
+        location,
+        businessType,
+        1,
+        20
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockSearchResults
+        data: mockSearchResults,
       });
     });
   });
 
-  describe('getNearbyBusinesses', () => {
-    it('should get nearby businesses successfully', async () => {
+  describe("getNearbyBusinesses", () => {
+    it("should get nearby businesses successfully", async () => {
       // Arrange
       const latitude = 41.0082;
       const longitude = 28.9784;
       const radius = 5;
 
-      mockRequest.query = { lat: latitude.toString(), lng: longitude.toString(), radius: radius.toString() };
+      mockRequest.query = {
+        lat: latitude.toString(),
+        lng: longitude.toString(),
+        radius: radius.toString(),
+      };
 
       const mockNearbyBusinesses = [
-        { id: 'business-1', name: 'Nearby Business 1', distance: 1.2 },
-        { id: 'business-2', name: 'Nearby Business 2', distance: 2.5 }
+        { id: "business-1", name: "Nearby Business 1", distance: 1.2 },
+        { id: "business-2", name: "Nearby Business 2", distance: 2.5 },
       ];
 
-      mockBusinessService.getNearbyBusinesses.mockResolvedValue(mockNearbyBusinesses);
+      mockBusinessService.getNearbyBusinesses.mockResolvedValue(
+        mockNearbyBusinesses
+      );
 
       // Act
       await businessController.getNearbyBusinesses(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.getNearbyBusinesses).toHaveBeenCalledWith(latitude, longitude, radius);
+      expect(mockBusinessService.getNearbyBusinesses).toHaveBeenCalledWith(
+        latitude,
+        longitude,
+        radius
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockNearbyBusinesses
+        data: mockNearbyBusinesses,
       });
     });
   });
 
-  describe('verifyBusiness', () => {
-    it('should verify business successfully', async () => {
+  describe("verifyBusiness", () => {
+    it("should verify business successfully", async () => {
       // Arrange
-      const businessId = 'business-123';
+      const businessId = "business-123";
       mockRequest.params = { id: businessId };
 
       const mockVerifiedBusiness = {
         id: businessId,
-        isVerified: true
+        isVerified: true,
       };
 
-      mockBusinessService.verifyBusiness.mockResolvedValue(mockVerifiedBusiness);
+      mockBusinessService.verifyBusiness.mockResolvedValue(
+        mockVerifiedBusiness
+      );
 
       // Act
       await businessController.verifyBusiness(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.verifyBusiness).toHaveBeenCalledWith('user-123', businessId);
+      expect(mockBusinessService.verifyBusiness).toHaveBeenCalledWith(
+        "user-123",
+        businessId
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockVerifiedBusiness
+        data: mockVerifiedBusiness,
       });
     });
   });
 
-  describe('unverifyBusiness', () => {
-    it('should unverify business successfully', async () => {
+  describe("unverifyBusiness", () => {
+    it("should unverify business successfully", async () => {
       // Arrange
-      const businessId = 'business-123';
+      const businessId = "business-123";
       mockRequest.params = { id: businessId };
 
       const mockUnverifiedBusiness = {
         id: businessId,
-        isVerified: false
+        isVerified: false,
       };
 
-      mockBusinessService.unverifyBusiness.mockResolvedValue(mockUnverifiedBusiness);
+      mockBusinessService.unverifyBusiness.mockResolvedValue(
+        mockUnverifiedBusiness
+      );
 
       // Act
       await businessController.unverifyBusiness(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.unverifyBusiness).toHaveBeenCalledWith('user-123', businessId);
+      expect(mockBusinessService.unverifyBusiness).toHaveBeenCalledWith(
+        "user-123",
+        businessId
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUnverifiedBusiness
+        data: mockUnverifiedBusiness,
       });
     });
   });
 
-  describe('closeBusiness', () => {
-    it('should close business successfully', async () => {
+  describe("closeBusiness", () => {
+    it("should close business successfully", async () => {
       // Arrange
-      const businessId = 'business-123';
-      const reason = 'Temporary closure';
+      const businessId = "business-123";
+      const reason = "Temporary closure";
 
       mockRequest.params = { id: businessId };
       mockRequest.body = { reason };
@@ -499,7 +609,7 @@ describe('BusinessController', () => {
       const mockClosedBusiness = {
         id: businessId,
         isClosed: true,
-        closureReason: reason
+        closureReason: reason,
       };
 
       mockBusinessService.closeBusiness.mockResolvedValue(mockClosedBusiness);
@@ -508,103 +618,124 @@ describe('BusinessController', () => {
       await businessController.closeBusiness(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.closeBusiness).toHaveBeenCalledWith('user-123', businessId, reason);
+      expect(mockBusinessService.closeBusiness).toHaveBeenCalledWith(
+        "user-123",
+        businessId,
+        reason
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockClosedBusiness
+        data: mockClosedBusiness,
       });
     });
   });
 
-  describe('reopenBusiness', () => {
-    it('should reopen business successfully', async () => {
+  describe("reopenBusiness", () => {
+    it("should reopen business successfully", async () => {
       // Arrange
-      const businessId = 'business-123';
+      const businessId = "business-123";
       mockRequest.params = { id: businessId };
 
       const mockReopenedBusiness = {
         id: businessId,
-        isClosed: false
+        isClosed: false,
       };
 
-      mockBusinessService.reopenBusiness.mockResolvedValue(mockReopenedBusiness);
+      mockBusinessService.reopenBusiness.mockResolvedValue(
+        mockReopenedBusiness
+      );
 
       // Act
       await businessController.reopenBusiness(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.reopenBusiness).toHaveBeenCalledWith('user-123', businessId);
+      expect(mockBusinessService.reopenBusiness).toHaveBeenCalledWith(
+        "user-123",
+        businessId
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockReopenedBusiness
+        data: mockReopenedBusiness,
       });
     });
   });
 
-  describe('getBusinessStats', () => {
-    it('should get business statistics successfully', async () => {
+  describe("getBusinessStats", () => {
+    it("should get business statistics successfully", async () => {
       // Arrange
       const mockStats = {
         totalAppointments: 100,
         totalRevenue: 5000,
         totalCustomers: 50,
-        averageRating: 4.5
+        averageRating: 4.5,
       };
 
       mockBusinessService.getBusinessStats.mockResolvedValue(mockStats);
 
       // Act
-      await businessController.getBusinessStats(mockBusinessContextRequest, mockResponse);
+      await businessController.getBusinessStats(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.getBusinessStats).toHaveBeenCalledWith('user-123', 'business-123');
+      expect(mockBusinessService.getBusinessStats).toHaveBeenCalledWith(
+        "user-123",
+        "business-123"
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockStats
+        data: mockStats,
       });
     });
   });
 
-  describe('updateBusinessHours', () => {
-    it('should update business hours successfully', async () => {
+  describe("updateBusinessHours", () => {
+    it("should update business hours successfully", async () => {
       // Arrange
-      const businessId = 'business-123';
+      const businessId = "business-123";
       const businessHours = {
-        monday: { open: '09:00', close: '18:00', isOpen: true },
-        tuesday: { open: '09:00', close: '18:00', isOpen: true }
+        monday: { open: "09:00", close: "18:00", isOpen: true },
+        tuesday: { open: "09:00", close: "18:00", isOpen: true },
       };
 
       mockRequest.params = { id: businessId };
       mockRequest.body = { businessHours };
 
       const mockUpdatedHours = {
-        id: 'business-123',
-        businessHours
+        id: "business-123",
+        businessHours,
       };
 
-      mockBusinessService.updateBusinessHours.mockResolvedValue(mockUpdatedHours);
+      mockBusinessService.updateBusinessHours.mockResolvedValue(
+        mockUpdatedHours
+      );
 
       // Act
       await businessController.updateBusinessHours(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.updateBusinessHours).toHaveBeenCalledWith('user-123', businessId, businessHours);
+      expect(mockBusinessService.updateBusinessHours).toHaveBeenCalledWith(
+        "user-123",
+        businessId,
+        businessHours
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUpdatedHours
+        data: mockUpdatedHours,
       });
     });
   });
 
-  describe('getBusinessHours', () => {
-    it('should get business hours successfully', async () => {
+  describe("getBusinessHours", () => {
+    it("should get business hours successfully", async () => {
       // Arrange
-      const businessId = 'business-123';
+      const businessId = "business-123";
       mockRequest.params = { id: businessId };
 
       const mockBusinessHours = {
-        monday: { open: '09:00', close: '18:00', isOpen: true },
-        tuesday: { open: '09:00', close: '18:00', isOpen: true }
+        monday: { open: "09:00", close: "18:00", isOpen: true },
+        tuesday: { open: "09:00", close: "18:00", isOpen: true },
       };
 
       mockBusinessService.getBusinessHours.mockResolvedValue(mockBusinessHours);
@@ -613,71 +744,83 @@ describe('BusinessController', () => {
       await businessController.getBusinessHours(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.getBusinessHours).toHaveBeenCalledWith('user-123', businessId);
+      expect(mockBusinessService.getBusinessHours).toHaveBeenCalledWith(
+        "user-123",
+        businessId
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockBusinessHours
+        data: mockBusinessHours,
       });
     });
   });
 
-  describe('getBusinessHoursStatus', () => {
-    it('should get business hours status successfully', async () => {
+  describe("getBusinessHoursStatus", () => {
+    it("should get business hours status successfully", async () => {
       // Arrange
-      const businessId = 'business-123';
+      const businessId = "business-123";
       mockRequest.params = { id: businessId };
 
       const mockStatus = {
         isOpen: true,
-        nextOpenTime: '2024-01-16T09:00:00Z',
-        currentDay: 'monday'
+        nextOpenTime: "2024-01-16T09:00:00Z",
+        currentDay: "monday",
       };
 
       mockBusinessService.getBusinessHoursStatus.mockResolvedValue(mockStatus);
 
       // Act
-      await businessController.getBusinessHoursStatus(mockRequest, mockResponse);
+      await businessController.getBusinessHoursStatus(
+        mockRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.getBusinessHoursStatus).toHaveBeenCalledWith(businessId);
+      expect(mockBusinessService.getBusinessHoursStatus).toHaveBeenCalledWith(
+        businessId
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockStatus
+        data: mockStatus,
       });
     });
   });
 
-  describe('checkSlugAvailability', () => {
-    it('should check slug availability successfully', async () => {
+  describe("checkSlugAvailability", () => {
+    it("should check slug availability successfully", async () => {
       // Arrange
-      const slug = 'test-business';
+      const slug = "test-business";
       mockRequest.query = { slug };
 
       const mockAvailability = {
         slug,
-        isAvailable: true
+        isAvailable: true,
       };
 
-      mockBusinessService.checkSlugAvailability.mockResolvedValue(mockAvailability);
+      mockBusinessService.checkSlugAvailability.mockResolvedValue(
+        mockAvailability
+      );
 
       // Act
       await businessController.checkSlugAvailability(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.checkSlugAvailability).toHaveBeenCalledWith(slug);
+      expect(mockBusinessService.checkSlugAvailability).toHaveBeenCalledWith(
+        slug
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockAvailability
+        data: mockAvailability,
       });
     });
   });
 
-  describe('getAllBusinesses', () => {
-    it('should get all businesses successfully', async () => {
+  describe("getAllBusinesses", () => {
+    it("should get all businesses successfully", async () => {
       // Arrange
       const mockBusinesses = [
-        { id: 'business-1', name: 'Business 1' },
-        { id: 'business-2', name: 'Business 2' }
+        { id: "business-1", name: "Business 1" },
+        { id: "business-2", name: "Business 2" },
       ];
 
       mockBusinessService.getAllBusinesses.mockResolvedValue(mockBusinesses);
@@ -686,23 +829,25 @@ describe('BusinessController', () => {
       await businessController.getAllBusinesses(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.getAllBusinesses).toHaveBeenCalledWith('user-123');
+      expect(mockBusinessService.getAllBusinesses).toHaveBeenCalledWith(
+        "user-123"
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockBusinesses
+        data: mockBusinesses,
       });
     });
   });
 
-  describe('getBusinessesByType', () => {
-    it('should get businesses by type successfully', async () => {
+  describe("getBusinessesByType", () => {
+    it("should get businesses by type successfully", async () => {
       // Arrange
-      const businessTypeId = 'type-123';
+      const businessTypeId = "type-123";
       mockRequest.params = { typeId: businessTypeId };
 
       const mockBusinesses = [
-        { id: 'business-1', name: 'Business 1', businessTypeId },
-        { id: 'business-2', name: 'Business 2', businessTypeId }
+        { id: "business-1", name: "Business 1", businessTypeId },
+        { id: "business-2", name: "Business 2", businessTypeId },
       ];
 
       mockBusinessService.getBusinessesByType.mockResolvedValue(mockBusinesses);
@@ -711,27 +856,29 @@ describe('BusinessController', () => {
       await businessController.getBusinessesByType(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.getBusinessesByType).toHaveBeenCalledWith(businessTypeId);
+      expect(mockBusinessService.getBusinessesByType).toHaveBeenCalledWith(
+        businessTypeId
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockBusinesses
+        data: mockBusinesses,
       });
     });
   });
 
-  describe('batchVerifyBusinesses', () => {
-    it('should batch verify businesses successfully', async () => {
+  describe("batchVerifyBusinesses", () => {
+    it("should batch verify businesses successfully", async () => {
       // Arrange
-      const businessIds = ['business-1', 'business-2'];
+      const businessIds = ["business-1", "business-2"];
       mockRequest.body = { businessIds };
 
       const mockResult = {
         verified: 2,
         failed: 0,
         results: [
-          { id: 'business-1', success: true },
-          { id: 'business-2', success: true }
-        ]
+          { id: "business-1", success: true },
+          { id: "business-2", success: true },
+        ],
       };
 
       mockBusinessService.batchVerifyBusinesses.mockResolvedValue(mockResult);
@@ -740,28 +887,31 @@ describe('BusinessController', () => {
       await businessController.batchVerifyBusinesses(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.batchVerifyBusinesses).toHaveBeenCalledWith('user-123', businessIds);
+      expect(mockBusinessService.batchVerifyBusinesses).toHaveBeenCalledWith(
+        "user-123",
+        businessIds
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        data: mockResult,
       });
     });
   });
 
-  describe('batchCloseBusinesses', () => {
-    it('should batch close businesses successfully', async () => {
+  describe("batchCloseBusinesses", () => {
+    it("should batch close businesses successfully", async () => {
       // Arrange
-      const businessIds = ['business-1', 'business-2'];
-      const reason = 'Maintenance';
+      const businessIds = ["business-1", "business-2"];
+      const reason = "Maintenance";
       mockRequest.body = { businessIds, reason };
 
       const mockResult = {
         closed: 2,
         failed: 0,
         results: [
-          { id: 'business-1', success: true },
-          { id: 'business-2', success: true }
-        ]
+          { id: "business-1", success: true },
+          { id: "business-2", success: true },
+        ],
       };
 
       mockBusinessService.batchCloseBusinesses.mockResolvedValue(mockResult);
@@ -770,72 +920,89 @@ describe('BusinessController', () => {
       await businessController.batchCloseBusinesses(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.batchCloseBusinesses).toHaveBeenCalledWith('user-123', businessIds, reason);
+      expect(mockBusinessService.batchCloseBusinesses).toHaveBeenCalledWith(
+        "user-123",
+        businessIds,
+        reason
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        data: mockResult,
       });
     });
   });
 
-  describe('getAllBusinessesMinimalDetails', () => {
-    it('should get all businesses with minimal details successfully', async () => {
+  describe("getAllBusinessesMinimalDetails", () => {
+    it("should get all businesses with minimal details successfully", async () => {
       // Arrange
       const mockBusinesses = [
-        { id: 'business-1', name: 'Business 1', slug: 'business-1' },
-        { id: 'business-2', name: 'Business 2', slug: 'business-2' }
+        { id: "business-1", name: "Business 1", slug: "business-1" },
+        { id: "business-2", name: "Business 2", slug: "business-2" },
       ];
 
-      mockBusinessService.getAllBusinessesMinimalDetails.mockResolvedValue(mockBusinesses);
+      mockBusinessService.getAllBusinessesMinimalDetails.mockResolvedValue(
+        mockBusinesses
+      );
 
       // Act
-      await businessController.getAllBusinessesMinimalDetails(mockRequest, mockResponse);
+      await businessController.getAllBusinessesMinimalDetails(
+        mockRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.getAllBusinessesMinimalDetails).toHaveBeenCalled();
+      expect(
+        mockBusinessService.getAllBusinessesMinimalDetails
+      ).toHaveBeenCalled();
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockBusinesses
+        data: mockBusinesses,
       });
     });
   });
 
-  describe('getBusinessStaff', () => {
-    it('should get business staff successfully', async () => {
+  describe("getBusinessStaff", () => {
+    it("should get business staff successfully", async () => {
       // Arrange
       const mockStaff = [
-        { id: 'staff-1', name: 'Staff Member 1', role: 'STAFF' },
-        { id: 'staff-2', name: 'Staff Member 2', role: 'MANAGER' }
+        { id: "staff-1", name: "Staff Member 1", role: "STAFF" },
+        { id: "staff-2", name: "Staff Member 2", role: "MANAGER" },
       ];
 
       mockBusinessService.getBusinessStaff.mockResolvedValue(mockStaff);
 
       // Act
-      await businessController.getBusinessStaff(mockBusinessContextRequest, mockResponse);
+      await businessController.getBusinessStaff(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.getBusinessStaff).toHaveBeenCalledWith('user-123', 'business-123');
+      expect(mockBusinessService.getBusinessStaff).toHaveBeenCalledWith(
+        "user-123",
+        "business-123"
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockStaff
+        data: mockStaff,
       });
     });
   });
 
-  describe('inviteStaff', () => {
-    it('should invite staff successfully', async () => {
+  describe("inviteStaff", () => {
+    it("should invite staff successfully", async () => {
       // Arrange
       const inviteData = {
-        businessId: 'business-123',
-        phoneNumber: '+905559876543',
-        role: 'STAFF'
+        businessId: "business-123",
+        phoneNumber: "+905559876543",
+        role: "STAFF",
       };
 
       mockRequest.body = inviteData;
 
       const mockResult = {
         success: true,
-        message: 'Staff invitation sent successfully'
+        message: "Staff invitation sent successfully",
       };
 
       mockBusinessService.inviteStaff.mockResolvedValue(mockResult);
@@ -844,30 +1011,33 @@ describe('BusinessController', () => {
       await businessController.inviteStaff(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.inviteStaff).toHaveBeenCalledWith('user-123', inviteData);
+      expect(mockBusinessService.inviteStaff).toHaveBeenCalledWith(
+        "user-123",
+        inviteData
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        data: mockResult,
       });
     });
   });
 
-  describe('verifyStaffInvitation', () => {
-    it('should verify staff invitation successfully', async () => {
+  describe("verifyStaffInvitation", () => {
+    it("should verify staff invitation successfully", async () => {
       // Arrange
       const verificationData = {
-        businessId: 'business-123',
-        phoneNumber: '+905559876543',
-        verificationCode: '123456',
-        role: 'STAFF'
+        businessId: "business-123",
+        phoneNumber: "+905559876543",
+        verificationCode: "123456",
+        role: "STAFF",
       };
 
       mockRequest.body = verificationData;
 
       const mockResult = {
         success: true,
-        message: 'Staff invitation verified successfully',
-        staffMember: { id: 'staff-123', role: 'STAFF' }
+        message: "Staff invitation verified successfully",
+        staffMember: { id: "staff-123", role: "STAFF" },
       };
 
       mockBusinessService.verifyStaffInvitation.mockResolvedValue(mockResult);
@@ -876,138 +1046,177 @@ describe('BusinessController', () => {
       await businessController.verifyStaffInvitation(mockRequest, mockResponse);
 
       // Assert
-      expect(mockBusinessService.verifyStaffInvitation).toHaveBeenCalledWith('user-123', verificationData);
+      expect(mockBusinessService.verifyStaffInvitation).toHaveBeenCalledWith(
+        "user-123",
+        verificationData
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        data: mockResult,
       });
     });
   });
 
-  describe('getNotificationSettings', () => {
-    it('should get notification settings successfully', async () => {
+  describe("getNotificationSettings", () => {
+    it("should get notification settings successfully", async () => {
       // Arrange
       const mockSettings = {
         appointmentReminders: true,
         smsNotifications: true,
-        emailNotifications: false
+        emailNotifications: false,
       };
 
-      mockBusinessService.getNotificationSettings.mockResolvedValue(mockSettings);
+      mockBusinessService.getNotificationSettings.mockResolvedValue(
+        mockSettings
+      );
 
       // Act
-      await businessController.getNotificationSettings(mockBusinessContextRequest, mockResponse);
+      await businessController.getNotificationSettings(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.getNotificationSettings).toHaveBeenCalledWith('user-123', 'business-123');
+      expect(mockBusinessService.getNotificationSettings).toHaveBeenCalledWith(
+        "user-123",
+        "business-123"
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockSettings
+        data: mockSettings,
       });
     });
   });
 
-  describe('updateNotificationSettings', () => {
-    it('should update notification settings successfully', async () => {
+  describe("updateNotificationSettings", () => {
+    it("should update notification settings successfully", async () => {
       // Arrange
       const settings = {
         appointmentReminders: true,
         smsNotifications: false,
-        emailNotifications: true
+        emailNotifications: true,
       };
 
       mockBusinessContextRequest.body = settings;
 
       const mockUpdatedSettings = {
-        id: 'business-123',
-        ...settings
+        id: "business-123",
+        ...settings,
       };
 
-      mockBusinessService.updateNotificationSettings.mockResolvedValue(mockUpdatedSettings);
+      mockBusinessService.updateNotificationSettings.mockResolvedValue(
+        mockUpdatedSettings
+      );
 
       // Act
-      await businessController.updateNotificationSettings(mockBusinessContextRequest, mockResponse);
+      await businessController.updateNotificationSettings(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.updateNotificationSettings).toHaveBeenCalledWith('user-123', 'business-123', settings);
+      expect(
+        mockBusinessService.updateNotificationSettings
+      ).toHaveBeenCalledWith("user-123", "business-123", settings);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUpdatedSettings
+        data: mockUpdatedSettings,
       });
     });
   });
 
-  describe('testReminder', () => {
-    it('should test reminder successfully', async () => {
+  describe("testReminder", () => {
+    it("should test reminder successfully", async () => {
       // Arrange
       const mockResult = {
         success: true,
-        message: 'Test reminder sent successfully'
+        message: "Test reminder sent successfully",
       };
 
       mockBusinessService.testReminder.mockResolvedValue(mockResult);
 
       // Act
-      await businessController.testReminder(mockBusinessContextRequest, mockResponse);
+      await businessController.testReminder(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.testReminder).toHaveBeenCalledWith('user-123', 'business-123');
+      expect(mockBusinessService.testReminder).toHaveBeenCalledWith(
+        "user-123",
+        "business-123"
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        data: mockResult,
       });
     });
   });
 
-  describe('getStaffPrivacySettings', () => {
-    it('should get staff privacy settings successfully', async () => {
+  describe("getStaffPrivacySettings", () => {
+    it("should get staff privacy settings successfully", async () => {
       // Arrange
       const mockSettings = {
         showStaffNames: true,
         showStaffPhotos: false,
-        allowStaffBooking: true
+        allowStaffBooking: true,
       };
 
-      mockBusinessService.getStaffPrivacySettings.mockResolvedValue(mockSettings);
+      mockBusinessService.getStaffPrivacySettings.mockResolvedValue(
+        mockSettings
+      );
 
       // Act
-      await businessController.getStaffPrivacySettings(mockBusinessContextRequest, mockResponse);
+      await businessController.getStaffPrivacySettings(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.getStaffPrivacySettings).toHaveBeenCalledWith('user-123', 'business-123');
+      expect(mockBusinessService.getStaffPrivacySettings).toHaveBeenCalledWith(
+        "user-123",
+        "business-123"
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockSettings
+        data: mockSettings,
       });
     });
   });
 
-  describe('updateStaffPrivacySettings', () => {
-    it('should update staff privacy settings successfully', async () => {
+  describe("updateStaffPrivacySettings", () => {
+    it("should update staff privacy settings successfully", async () => {
       // Arrange
       const settings = {
         showStaffNames: false,
         showStaffPhotos: true,
-        allowStaffBooking: false
+        allowStaffBooking: false,
       };
 
       mockBusinessContextRequest.body = settings;
 
       const mockUpdatedSettings = {
-        id: 'business-123',
-        ...settings
+        id: "business-123",
+        ...settings,
       };
 
-      mockBusinessService.updateStaffPrivacySettings.mockResolvedValue(mockUpdatedSettings);
+      mockBusinessService.updateStaffPrivacySettings.mockResolvedValue(
+        mockUpdatedSettings
+      );
 
       // Act
-      await businessController.updateStaffPrivacySettings(mockBusinessContextRequest, mockResponse);
+      await businessController.updateStaffPrivacySettings(
+        mockBusinessContextRequest,
+        mockResponse
+      );
 
       // Assert
-      expect(mockBusinessService.updateStaffPrivacySettings).toHaveBeenCalledWith('user-123', 'business-123', settings);
+      expect(
+        mockBusinessService.updateStaffPrivacySettings
+      ).toHaveBeenCalledWith("user-123", "business-123", settings);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUpdatedSettings
+        data: mockUpdatedSettings,
       });
     });
   });

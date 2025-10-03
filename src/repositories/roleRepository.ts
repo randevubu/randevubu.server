@@ -8,7 +8,7 @@ import {
   UpdateRoleRequest,
   UserRoleData,
 } from "../types/auth";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 
 export class RoleRepository {
   constructor(private prisma: PrismaClient) {}
@@ -491,6 +491,7 @@ export class RoleRepository {
     }
   }
 
+  // checked
   async getUserRoles(userId: string): Promise<RoleData[]> {
     try {
       // Get global roles from UserRole table
@@ -558,6 +559,113 @@ export class RoleRepository {
       return uniqueRoles;
     } catch (error) {
       logger.error("Failed to get user roles", {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  // Optimized method to get user roles with permissions in a single query
+  async getUserRolesWithPermissions(userId: string): Promise<{
+    roles: RoleData[];
+    permissions: PermissionData[];
+    rolePermissions: Array<{ roleId: string; permissionId: string }>;
+  }> {
+    try {
+      // Execute both queries in parallel for maximum speed
+      const [userRolesWithPermissions, businessStaffRoles] = await Promise.all([
+        this.prisma.userRole.findMany({
+          where: {
+            userId,
+            isActive: true,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+            role: { isActive: true },
+          },
+          include: {
+            role: {
+              include: {
+                rolePermissions: {
+                  where: { isActive: true },
+                  include: { permission: true },
+                },
+              },
+            },
+          },
+        }),
+        this.prisma.businessStaff.findMany({
+          where: {
+            userId,
+            isActive: true,
+            business: { isActive: true, deletedAt: null },
+          },
+          select: { role: true, businessId: true },
+        }),
+      ]);
+
+      // Process global roles and permissions
+      const globalRoles: RoleData[] = [];
+      const allPermissions: PermissionData[] = [];
+      const rolePermissions: Array<{ roleId: string; permissionId: string }> =
+        [];
+
+      for (const userRole of userRolesWithPermissions) {
+        const role = userRole.role as RoleData;
+        globalRoles.push(role);
+
+        // Extract permissions from role and maintain associations
+        for (const rp of userRole.role.rolePermissions) {
+          const permission = rp.permission as PermissionData;
+          allPermissions.push(permission);
+          rolePermissions.push({
+            roleId: role.id,
+            permissionId: permission.id,
+          });
+        }
+      }
+
+      // Process business staff roles efficiently
+      const staffRoleMap = new Map<string, RoleData>();
+      for (const staff of businessStaffRoles) {
+        const roleKey = `BUSINESS_${staff.role}`;
+        if (!staffRoleMap.has(roleKey)) {
+          staffRoleMap.set(roleKey, {
+            id: `business_staff_${staff.role.toLowerCase()}`,
+            name: staff.role,
+            displayName: `Business ${staff.role}`,
+            description: `${staff.role} role in business context`,
+            level: this.getStaffRoleLevel(staff.role),
+            isSystem: true,
+            isActive: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as RoleData);
+        }
+      }
+
+      // Combine and deduplicate roles efficiently
+      const allRoles = [...globalRoles, ...staffRoleMap.values()];
+      const uniqueRoles = allRoles.filter(
+        (role, index, self) =>
+          index === self.findIndex((r) => r.name === role.name)
+      );
+
+      // Deduplicate permissions using Map for O(n) performance
+      const permissionMap = new Map<string, PermissionData>();
+      for (const permission of allPermissions) {
+        const key = `${permission.resource}:${permission.action}:${permission.name}`;
+        if (!permissionMap.has(key)) {
+          permissionMap.set(key, permission);
+        }
+      }
+
+      return {
+        roles: uniqueRoles,
+        permissions: Array.from(permissionMap.values()),
+        rolePermissions,
+      };
+    } catch (error) {
+      logger.error("Failed to get user roles with permissions", {
         userId,
         error: error instanceof Error ? error.message : String(error),
       });

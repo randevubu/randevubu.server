@@ -1,19 +1,19 @@
-import { Request, Response } from 'express';
-import { RoleController } from '../../../src/controllers/roleController';
-import { RoleService } from '../../../src/services/roleService';
-import { TestHelpers } from '../../utils/testHelpers';
-import { AuthenticatedRequest } from '../../../src/types/auth';
+import { NextFunction, Response } from "express";
+import { RoleController } from "../../../src/controllers/roleController";
+import { GuaranteedAuthRequest } from "../../../src/types/auth";
+import { TestHelpers } from "../../utils/testHelpers";
 
 // Mock dependencies
-jest.mock('../../../src/services/roleService');
-jest.mock('../../../src/utils/errorResponse');
-jest.mock('../../../src/utils/logger');
+jest.mock("../../../src/services/roleService");
+jest.mock("../../../src/utils/errorResponse");
+jest.mock("../../../src/utils/logger");
 
-describe('RoleController', () => {
+describe("RoleController", () => {
   let roleController: RoleController;
   let mockRoleService: any;
-  let mockRequest: AuthenticatedRequest;
+  let mockRequest: GuaranteedAuthRequest;
   let mockResponse: Response;
+  let mockNext: NextFunction;
 
   beforeEach(() => {
     // Reset all mocks
@@ -22,122 +22,194 @@ describe('RoleController', () => {
     // Create mock RoleService
     mockRoleService = {
       createRole: jest.fn(),
-      getRoleById: jest.fn(),
       getAllRoles: jest.fn(),
+      getRoleById: jest.fn(),
       updateRole: jest.fn(),
       deleteRole: jest.fn(),
-      assignRole: jest.fn(),
-      removeRole: jest.fn(),
-      getUserRoles: jest.fn(),
+      createPermission: jest.fn(),
+      getAllPermissions: jest.fn(),
+      getPermissionsByResource: jest.fn(),
+      getPermissionById: jest.fn(),
+      updatePermission: jest.fn(),
+      assignPermissionsToRole: jest.fn(),
+      revokePermissionFromRole: jest.fn(),
       getRolePermissions: jest.fn(),
-      updateRolePermissions: jest.fn()
+      assignRoleToUser: jest.fn(),
+      revokeRoleFromUser: jest.fn(),
+      getUserPermissionSummary: jest.fn(),
+      getRoleStatistics: jest.fn(),
     };
 
     // Create RoleController instance
     roleController = new RoleController(mockRoleService);
 
     // Create mock request and response
-    mockRequest = TestHelpers.createMockRequest() as AuthenticatedRequest;
-    mockRequest.user = { id: 'user-123', phoneNumber: '+905551234567', isVerified: true, isActive: true };
+    mockRequest = TestHelpers.createMockRequest() as GuaranteedAuthRequest;
+    mockRequest.user = {
+      id: "user-123",
+      phoneNumber: "+905551234567",
+      isVerified: true,
+      isActive: true,
+      roles: [{ id: "user-role", name: "USER", level: 1 }],
+      effectiveLevel: 1,
+    };
+    mockRequest.token = {
+      userId: "user-123",
+      phoneNumber: "+905551234567",
+      type: "access",
+      iat: Date.now(),
+      exp: Date.now() + 3600000,
+    };
 
     mockResponse = TestHelpers.createMockResponse();
+    mockNext = jest.fn();
   });
 
-  describe('constructor', () => {
-    it('should create RoleController instance', () => {
+  describe("constructor", () => {
+    it("should create RoleController instance", () => {
       expect(roleController).toBeInstanceOf(RoleController);
     });
   });
 
-  describe('createRole', () => {
-    it('should create role successfully', async () => {
+  describe("createRole", () => {
+    it("should create role successfully", async () => {
       // Arrange
       const roleData = {
-        name: 'MANAGER',
-        displayName: 'Manager',
+        name: "MANAGER",
+        displayName: "Manager",
+        description: "Manager role",
         level: 20,
-        permissions: ['MANAGE_APPOINTMENTS', 'MANAGE_STAFF']
       };
 
       mockRequest.body = roleData;
 
       const mockRole = {
-        id: 'role-123',
+        id: "role-123",
         ...roleData,
-        createdAt: '2024-01-15T00:00:00Z'
+        isActive: true,
+        createdAt: "2024-01-15T00:00:00Z",
       };
 
       mockRoleService.createRole.mockResolvedValue(mockRole);
 
       // Act
-      await roleController.createRole(mockRequest, mockResponse);
+      await roleController.createRole(mockRequest, mockResponse, mockNext);
 
       // Assert
-      expect(mockRoleService.createRole).toHaveBeenCalledWith('user-123', roleData, undefined);
+      expect(mockRoleService.createRole).toHaveBeenCalledWith(
+        roleData,
+        "user-123",
+        expect.any(Object)
+      );
       expect(mockResponse.status).toHaveBeenCalledWith(201);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockRole
+        message: "Role created successfully",
+        data: {
+          role: {
+            id: mockRole.id,
+            name: mockRole.name,
+            displayName: mockRole.displayName,
+            description: mockRole.description,
+            level: mockRole.level,
+            isActive: mockRole.isActive,
+            createdAt: mockRole.createdAt,
+          },
+        },
       });
     });
   });
 
-  describe('getRoleById', () => {
-    it('should get role by id successfully', async () => {
+  describe("getRoleById", () => {
+    it("should get role by id successfully", async () => {
       // Arrange
-      const roleId = 'role-123';
+      const roleId = "role-123";
       mockRequest.params = { id: roleId };
 
       const mockRole = {
         id: roleId,
-        name: 'MANAGER',
-        displayName: 'Manager',
-        level: 20
+        name: "MANAGER",
+        displayName: "Manager",
+        level: 20,
       };
 
       mockRoleService.getRoleById.mockResolvedValue(mockRole);
 
       // Act
-      await roleController.getRoleById(mockRequest, mockResponse);
+      await roleController.getRoleById(mockRequest, mockResponse, mockNext);
 
       // Assert
-      expect(mockRoleService.getRoleById).toHaveBeenCalledWith('user-123', roleId, undefined);
+      expect(mockRoleService.getRoleById).toHaveBeenCalledWith(roleId, false);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockRole
+        message: "Role retrieved successfully",
+        data: { role: mockRole },
       });
     });
   });
 
-  describe('getAllRoles', () => {
-    it('should get all roles successfully', async () => {
+  describe("getRoles", () => {
+    it("should get all roles successfully", async () => {
       // Arrange
       const mockRoles = [
-        { id: 'role-1', name: 'STAFF', displayName: 'Staff', level: 10 },
-        { id: 'role-2', name: 'MANAGER', displayName: 'Manager', level: 20 }
+        {
+          id: "role-1",
+          name: "STAFF",
+          displayName: "Staff",
+          description: "Staff role",
+          level: 10,
+          isSystem: false,
+          isActive: true,
+          createdAt: "2024-01-15T00:00:00Z",
+          updatedAt: "2024-01-15T00:00:00Z",
+        },
+        {
+          id: "role-2",
+          name: "MANAGER",
+          displayName: "Manager",
+          description: "Manager role",
+          level: 20,
+          isSystem: false,
+          isActive: true,
+          createdAt: "2024-01-15T00:00:00Z",
+          updatedAt: "2024-01-15T00:00:00Z",
+        },
       ];
 
       mockRoleService.getAllRoles.mockResolvedValue(mockRoles);
 
       // Act
-      await roleController.getAllRoles(mockRequest, mockResponse);
+      await roleController.getRoles(mockRequest, mockResponse, mockNext);
 
       // Assert
-      expect(mockRoleService.getRoles).toHaveBeenCalledWith('user-123');
+      expect(mockRoleService.getAllRoles).toHaveBeenCalledWith(false);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockRoles
+        message: "Roles retrieved successfully",
+        data: {
+          roles: mockRoles.map((role) => ({
+            id: role.id,
+            name: role.name,
+            displayName: role.displayName,
+            description: role.description,
+            level: role.level,
+            isSystem: role.isSystem,
+            isActive: role.isActive,
+            createdAt: role.createdAt,
+            updatedAt: role.updatedAt,
+          })),
+        },
       });
     });
   });
 
-  describe('updateRole', () => {
-    it('should update role successfully', async () => {
+  describe("updateRole", () => {
+    it("should update role successfully", async () => {
       // Arrange
-      const roleId = 'role-123';
+      const roleId = "role-123";
       const updateData = {
-        displayName: 'Senior Manager',
-        level: 25
+        displayName: "Senior Manager",
+        level: 25,
       };
 
       mockRequest.params = { id: roleId };
@@ -145,180 +217,212 @@ describe('RoleController', () => {
 
       const mockUpdatedRole = {
         id: roleId,
-        ...updateData
+        ...updateData,
       };
 
       mockRoleService.updateRole.mockResolvedValue(mockUpdatedRole);
 
       // Act
-      await roleController.updateRole(mockRequest, mockResponse);
+      await roleController.updateRole(mockRequest, mockResponse, mockNext);
 
       // Assert
-      expect(mockRoleService.updateRole).toHaveBeenCalledWith('user-123', roleId, updateData, undefined);
+      expect(mockRoleService.updateRole).toHaveBeenCalledWith(
+        roleId,
+        updateData,
+        "user-123",
+        expect.any(Object)
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUpdatedRole
+        message: "Role updated successfully",
+        data: { role: mockUpdatedRole },
       });
     });
   });
 
-  describe('deleteRole', () => {
-    it('should delete role successfully', async () => {
+  describe("deleteRole", () => {
+    it("should delete role successfully", async () => {
       // Arrange
-      const roleId = 'role-123';
+      const roleId = "role-123";
       mockRequest.params = { id: roleId };
 
       mockRoleService.deleteRole.mockResolvedValue(undefined);
 
       // Act
-      await roleController.deleteRole(mockRequest, mockResponse);
+      await roleController.deleteRole(mockRequest, mockResponse, mockNext);
 
       // Assert
-      expect(mockRoleService.deleteRole).toHaveBeenCalledWith('user-123', roleId, undefined);
+      expect(mockRoleService.deleteRole).toHaveBeenCalledWith(
+        roleId,
+        "user-123",
+        expect.any(Object)
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Role deleted successfully'
+        message: "Role deleted successfully",
       });
     });
   });
 
-  describe('assignRole', () => {
-    it('should assign role successfully', async () => {
+  describe("assignRoleToUser", () => {
+    it("should assign role to user successfully", async () => {
       // Arrange
       const assignData = {
-        userId: 'user-456',
-        roleId: 'role-123',
-        businessId: 'business-123'
+        userId: "user-456",
+        roleId: "role-123",
+        businessId: "business-123",
       };
 
       mockRequest.body = assignData;
 
-      const mockResult = {
-        success: true,
-        message: 'Role assigned successfully'
-      };
-
-      mockRoleService.assignRole.mockResolvedValue(mockResult);
+      mockRoleService.assignRoleToUser.mockResolvedValue(undefined);
 
       // Act
-      await roleController.assignRole(mockRequest, mockResponse);
+      await roleController.assignRoleToUser(
+        mockRequest,
+        mockResponse,
+        mockNext
+      );
 
       // Assert
-      // expect(mockRoleService.assignRole).toHaveBeenCalledWith('user-123', assignData);
+      expect(mockRoleService.assignRoleToUser).toHaveBeenCalledWith(
+        assignData,
+        "user-123",
+        expect.any(Object)
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        message: "Role assigned to user successfully",
       });
     });
   });
 
-  describe('removeRole', () => {
-    it('should remove role successfully', async () => {
+  describe("revokeRoleFromUser", () => {
+    it("should revoke role from user successfully", async () => {
       // Arrange
-      const removeData = {
-        userId: 'user-456',
-        roleId: 'role-123',
-        businessId: 'business-123'
-      };
+      const userId = "user-456";
+      const roleId = "role-123";
 
-      mockRequest.body = removeData;
+      mockRequest.params = { userId, roleId };
 
-      const mockResult = {
-        success: true,
-        message: 'Role removed successfully'
-      };
-
-      mockRoleService.removeRole.mockResolvedValue(mockResult);
+      mockRoleService.revokeRoleFromUser.mockResolvedValue(undefined);
 
       // Act
-      await roleController.removeRole(mockRequest, mockResponse);
+      await roleController.revokeRoleFromUser(
+        mockRequest,
+        mockResponse,
+        mockNext
+      );
 
       // Assert
-      // expect(mockRoleService.removeRole).toHaveBeenCalledWith('user-123', removeData);
+      expect(mockRoleService.revokeRoleFromUser).toHaveBeenCalledWith(
+        userId,
+        roleId,
+        expect.any(Object)
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        message: "Role revoked from user successfully",
       });
     });
   });
 
-  describe('getUserRoles', () => {
-    it('should get user roles successfully', async () => {
+  describe("getUserPermissions", () => {
+    it("should get user permissions successfully", async () => {
       // Arrange
-      const userId = 'user-456';
-      const businessId = 'business-123';
+      const userId = "user-456";
 
       mockRequest.params = { userId };
-      mockRequest.query = { businessId };
 
-      const mockUserRoles = [
-        { id: 'role-1', name: 'STAFF', businessId: 'business-123' },
-        { id: 'role-2', name: 'MANAGER', businessId: 'business-123' }
-      ];
+      const mockPermissions = {
+        userId: "user-456",
+        permissions: [
+          { id: "perm-1", name: "MANAGE_APPOINTMENTS" },
+          { id: "perm-2", name: "MANAGE_STAFF" },
+        ],
+      };
 
-      mockRoleService.getUserRoles.mockResolvedValue(mockUserRoles);
+      mockRoleService.getUserPermissionSummary.mockResolvedValue(
+        mockPermissions
+      );
 
       // Act
-      await roleController.getUserRoles(mockRequest, mockResponse);
+      await roleController.getUserPermissions(
+        mockRequest,
+        mockResponse,
+        mockNext
+      );
 
       // Assert
-      // expect(mockRoleService.getUserRoles).toHaveBeenCalledWith('user-123', userId, businessId);
+      expect(mockRoleService.getUserPermissionSummary).toHaveBeenCalledWith(
+        userId
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUserRoles
+        message: "User permissions retrieved successfully",
+        data: { permissions: mockPermissions },
       });
     });
   });
 
-  describe('getRolePermissions', () => {
-    it('should get role permissions successfully', async () => {
+  describe("getRolePermissions", () => {
+    it("should get role permissions successfully", async () => {
       // Arrange
-      const roleId = 'role-123';
-      mockRequest.params = { id: roleId };
+      const roleId = "role-123";
+      mockRequest.params = { roleId };
 
       const mockPermissions = [
-        { id: 'perm-1', name: 'MANAGE_APPOINTMENTS' },
-        { id: 'perm-2', name: 'MANAGE_STAFF' }
+        { id: "perm-1", name: "MANAGE_APPOINTMENTS" },
+        { id: "perm-2", name: "MANAGE_STAFF" },
       ];
 
       mockRoleService.getRolePermissions.mockResolvedValue(mockPermissions);
 
       // Act
-      await roleController.getRolePermissions(mockRequest, mockResponse);
+      await roleController.getRolePermissions(
+        mockRequest,
+        mockResponse,
+        mockNext
+      );
 
       // Assert
-      expect(mockRoleService.getRolePermissions).toHaveBeenCalledWith('user-123', roleId, undefined);
+      expect(mockRoleService.getRolePermissions).toHaveBeenCalledWith(roleId);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockPermissions
+        message: "Role permissions retrieved successfully",
+        data: { permissions: mockPermissions },
       });
     });
   });
 
-  describe('updateRolePermissions', () => {
-    it('should update role permissions successfully', async () => {
+  describe("assignPermissionsToRole", () => {
+    it("should assign permissions to role successfully", async () => {
       // Arrange
-      const roleId = 'role-123';
-      const permissions = ['MANAGE_APPOINTMENTS', 'MANAGE_STAFF', 'VIEW_REPORTS'];
+      const roleId = "role-123";
+      const permissionIds = ["perm-1", "perm-2", "perm-3"];
 
-      mockRequest.params = { id: roleId };
-      mockRequest.body = { permissions };
+      mockRequest.params = { roleId };
+      mockRequest.body = { permissionIds };
 
-      const mockResult = {
-        success: true,
-        message: 'Role permissions updated successfully'
-      };
-
-      mockRoleService.updateRolePermissions.mockResolvedValue(mockResult);
+      mockRoleService.assignPermissionsToRole.mockResolvedValue(undefined);
 
       // Act
-      await roleController.updateRolePermissions(mockRequest, mockResponse);
+      await roleController.assignPermissionsToRole(
+        mockRequest,
+        mockResponse,
+        mockNext
+      );
 
       // Assert
-      // expect(mockRoleService.updateRolePermissions).toHaveBeenCalledWith('user-123', roleId, permissions);
+      expect(mockRoleService.assignPermissionsToRole).toHaveBeenCalledWith(
+        roleId,
+        permissionIds,
+        "user-123",
+        expect.any(Object)
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        message: "Permissions assigned to role successfully",
       });
     });
   });
