@@ -19,7 +19,7 @@ import {
   AuthenticatedRequest,
   AuthenticatedRequestWithFile,
 } from "../types/auth";
-import { AppError } from "../types/errorResponse";
+import { AppError } from "../types/responseTypes";
 import {
   BusinessErrors,
   createErrorContext,

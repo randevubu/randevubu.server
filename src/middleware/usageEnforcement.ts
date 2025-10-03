@@ -1,7 +1,7 @@
 import { NextFunction, Response } from "express";
 import { ERROR_CODES } from "../constants/errorCodes";
 import { UsageService } from "../services/usageService";
-import { AppError, InternalError } from "../types/errorResponse";
+import { AppError, InternalError } from "../types/responseTypes";
 import {
   BusinessErrors,
   createErrorContext,

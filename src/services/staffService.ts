@@ -11,8 +11,8 @@ import {
   BusinessStaffData,
   BusinessStaffPrivacySettings,
 } from "../types/business";
-import { AuthError } from "../types/errorResponse";
 import { ErrorContext } from "../types/errors";
+import { AuthError } from "../types/responseTypes";
 import { logger } from "../utils/Logger/logger";
 import { PhoneVerificationService } from "./phoneVerificationService";
 import { RBACService } from "./rbacService";

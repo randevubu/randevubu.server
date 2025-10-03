@@ -58,7 +58,21 @@ describe('SubscriptionController', () => {
     mockResponse = TestHelpers.createMockResponse();
 
     mockGuaranteedAuthRequest = TestHelpers.createMockRequest() as GuaranteedAuthRequest;
-    mockGuaranteedAuthRequest.user = { id: 'user-123', phoneNumber: '+905551234567' };
+    mockGuaranteedAuthRequest.user = { 
+      id: 'user-123', 
+      phoneNumber: '+905551234567',
+      isVerified: true,
+      isActive: true,
+      roles: [{ id: 'user-role', name: 'USER', level: 1 }],
+      effectiveLevel: 1
+    };
+    mockGuaranteedAuthRequest.token = {
+      userId: 'user-123',
+      phoneNumber: '+905551234567',
+      type: 'access',
+      iat: Date.now(),
+      exp: Date.now() + 3600000
+    };
   });
 
   describe('constructor', () => {
@@ -84,7 +98,10 @@ describe('SubscriptionController', () => {
       expect(mockSubscriptionService.getAllPlans).toHaveBeenCalled();
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockPlans
+        data: mockPlans,
+        meta: {
+          total: mockPlans.length
+        }
       });
     });
   });
@@ -136,7 +153,11 @@ describe('SubscriptionController', () => {
       expect(mockSubscriptionService.getPlansByBillingInterval).toHaveBeenCalledWith(interval);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockPlans
+        data: mockPlans,
+        meta: {
+          total: mockPlans.length,
+          billingInterval: interval
+        }
       });
     });
   });
@@ -144,12 +165,13 @@ describe('SubscriptionController', () => {
   describe('subscribeBusiness', () => {
     it('should subscribe business successfully', async () => {
       // Arrange
+      const businessId = 'business-123';
       const subscriptionData = {
         planId: 'plan-123',
-        businessId: 'business-123',
         paymentMethodId: 'pm_123'
       };
 
+      mockGuaranteedAuthRequest.params = { businessId };
       mockGuaranteedAuthRequest.body = subscriptionData;
 
       const mockSubscription = {
@@ -165,11 +187,12 @@ describe('SubscriptionController', () => {
       await subscriptionController.subscribeBusiness(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.subscribeBusiness).toHaveBeenCalledWith('user-123', subscriptionData);
+      expect(mockSubscriptionService.subscribeBusiness).toHaveBeenCalledWith('user-123', businessId, subscriptionData);
       expect(mockResponse.status).toHaveBeenCalledWith(201);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockSubscription
+        data: mockSubscription,
+        message: 'Business subscribed successfully'
       });
     });
   });
@@ -222,7 +245,11 @@ describe('SubscriptionController', () => {
       expect(mockSubscriptionService.getSubscriptionHistory).toHaveBeenCalledWith('user-123', businessId);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockHistory
+        data: mockHistory,
+        meta: {
+          total: mockHistory.length,
+          businessId
+        }
       });
     });
   });
@@ -230,12 +257,12 @@ describe('SubscriptionController', () => {
   describe('upgradePlan', () => {
     it('should upgrade plan successfully', async () => {
       // Arrange
+      const businessId = 'business-123';
       const upgradeData = {
-        businessId: 'business-123',
-        newPlanId: 'plan-pro',
-        paymentMethodId: 'pm_123'
+        newPlanId: 'plan-pro'
       };
 
+      mockGuaranteedAuthRequest.params = { businessId };
       mockGuaranteedAuthRequest.body = upgradeData;
 
       const mockUpgradedSubscription = {
@@ -251,10 +278,11 @@ describe('SubscriptionController', () => {
       await subscriptionController.upgradePlan(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.upgradePlan).toHaveBeenCalledWith('user-123', upgradeData);
+      expect(mockSubscriptionService.upgradePlan).toHaveBeenCalledWith('user-123', businessId, 'plan-pro');
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUpgradedSubscription
+        data: mockUpgradedSubscription,
+        message: 'Plan upgraded successfully'
       });
     });
   });
@@ -262,11 +290,12 @@ describe('SubscriptionController', () => {
   describe('downgradePlan', () => {
     it('should downgrade plan successfully', async () => {
       // Arrange
+      const businessId = 'business-123';
       const downgradeData = {
-        businessId: 'business-123',
         newPlanId: 'plan-basic'
       };
 
+      mockGuaranteedAuthRequest.params = { businessId };
       mockGuaranteedAuthRequest.body = downgradeData;
 
       const mockDowngradedSubscription = {
@@ -282,10 +311,11 @@ describe('SubscriptionController', () => {
       await subscriptionController.downgradePlan(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.downgradePlan).toHaveBeenCalledWith('user-123', downgradeData);
+      expect(mockSubscriptionService.downgradePlan).toHaveBeenCalledWith('user-123', businessId, 'plan-basic');
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockDowngradedSubscription
+        data: mockDowngradedSubscription,
+        message: 'Plan downgraded successfully'
       });
     });
   });
@@ -293,11 +323,12 @@ describe('SubscriptionController', () => {
   describe('cancelSubscription', () => {
     it('should cancel subscription successfully', async () => {
       // Arrange
+      const businessId = 'business-123';
       const cancelData = {
-        businessId: 'business-123',
-        reason: 'No longer needed'
+        cancelAtPeriodEnd: true
       };
 
+      mockGuaranteedAuthRequest.params = { businessId };
       mockGuaranteedAuthRequest.body = cancelData;
 
       const mockCancelledSubscription = {
@@ -313,10 +344,11 @@ describe('SubscriptionController', () => {
       await subscriptionController.cancelSubscription(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.cancelSubscription).toHaveBeenCalledWith('user-123', cancelData);
+      expect(mockSubscriptionService.cancelSubscription).toHaveBeenCalledWith('user-123', businessId, true);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockCancelledSubscription
+        data: mockCancelledSubscription,
+        message: 'Subscription will be cancelled at period end'
       });
     });
   });
@@ -324,12 +356,9 @@ describe('SubscriptionController', () => {
   describe('reactivateSubscription', () => {
     it('should reactivate subscription successfully', async () => {
       // Arrange
-      const reactivateData = {
-        businessId: 'business-123',
-        paymentMethodId: 'pm_123'
-      };
+      const businessId = 'business-123';
 
-      mockGuaranteedAuthRequest.body = reactivateData;
+      mockGuaranteedAuthRequest.params = { businessId };
 
       const mockReactivatedSubscription = {
         id: 'sub-123',
@@ -343,10 +372,11 @@ describe('SubscriptionController', () => {
       await subscriptionController.reactivateSubscription(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.reactivateSubscription).toHaveBeenCalledWith('user-123', reactivateData);
+      expect(mockSubscriptionService.reactivateSubscription).toHaveBeenCalledWith('user-123', businessId);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockReactivatedSubscription
+        data: mockReactivatedSubscription,
+        message: 'Subscription reactivated successfully'
       });
     });
   });
@@ -354,12 +384,12 @@ describe('SubscriptionController', () => {
   describe('convertTrialToActive', () => {
     it('should convert trial to active successfully', async () => {
       // Arrange
+      const businessId = 'business-123';
       const convertData = {
-        businessId: 'business-123',
-        planId: 'plan-pro',
         paymentMethodId: 'pm_123'
       };
 
+      mockGuaranteedAuthRequest.params = { businessId };
       mockGuaranteedAuthRequest.body = convertData;
 
       const mockActiveSubscription = {
@@ -375,10 +405,11 @@ describe('SubscriptionController', () => {
       await subscriptionController.convertTrialToActive(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.convertTrialToActive).toHaveBeenCalledWith('user-123', convertData);
+      expect(mockSubscriptionService.convertTrialToActive).toHaveBeenCalledWith('user-123', businessId, 'pm_123');
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockActiveSubscription
+        data: mockActiveSubscription,
+        message: 'Trial converted to active subscription'
       });
     });
   });
@@ -412,12 +443,11 @@ describe('SubscriptionController', () => {
   describe('calculateUpgradeProration', () => {
     it('should calculate upgrade proration successfully', async () => {
       // Arrange
-      const prorationData = {
-        businessId: 'business-123',
-        newPlanId: 'plan-pro'
-      };
+      const currentPlanId = 'plan-basic';
+      const newPlanId = 'plan-pro';
+      const currentPeriodEnd = '2024-02-01T00:00:00Z';
 
-      mockGuaranteedAuthRequest.body = prorationData;
+      mockGuaranteedAuthRequest.query = { currentPlanId, newPlanId, currentPeriodEnd };
 
       const mockProration = {
         currentPlanPrice: 29.99,
@@ -432,7 +462,7 @@ describe('SubscriptionController', () => {
       await subscriptionController.calculateUpgradeProration(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.calculateUpgradeProration).toHaveBeenCalledWith('user-123', prorationData);
+      expect(mockSubscriptionService.calculateUpgradeProration).toHaveBeenCalledWith(currentPlanId, newPlanId, new Date(currentPeriodEnd));
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
         data: mockProration
@@ -443,17 +473,10 @@ describe('SubscriptionController', () => {
   describe('validatePlanLimits', () => {
     it('should validate plan limits successfully', async () => {
       // Arrange
-      const validationData = {
-        businessId: 'business-123',
-        planId: 'plan-pro',
-        usage: {
-          appointments: 50,
-          sms: 200,
-          staff: 3
-        }
-      };
+      const businessId = 'business-123';
+      const planId = 'plan-pro';
 
-      mockGuaranteedAuthRequest.body = validationData;
+      mockGuaranteedAuthRequest.params = { businessId, planId };
 
       const mockValidation = {
         isValid: true,
@@ -470,7 +493,7 @@ describe('SubscriptionController', () => {
       await subscriptionController.validatePlanLimits(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.validatePlanLimits).toHaveBeenCalledWith('user-123', validationData);
+      expect(mockSubscriptionService.validatePlanLimits).toHaveBeenCalledWith(businessId, planId);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
         data: mockValidation
@@ -481,21 +504,36 @@ describe('SubscriptionController', () => {
   describe('getAllSubscriptions', () => {
     it('should get all subscriptions successfully', async () => {
       // Arrange
-      const mockSubscriptions = [
-        { id: 'sub-1', businessId: 'business-1', planId: 'plan-1', status: 'ACTIVE' },
-        { id: 'sub-2', businessId: 'business-2', planId: 'plan-2', status: 'TRIAL' }
-      ];
+      const page = 1;
+      const limit = 20;
+      mockGuaranteedAuthRequest.query = { page: page.toString(), limit: limit.toString() };
 
-      mockSubscriptionService.getAllSubscriptions.mockResolvedValue(mockSubscriptions);
+      const mockResult = {
+        subscriptions: [
+          { id: 'sub-1', businessId: 'business-1', planId: 'plan-1', status: 'ACTIVE' },
+          { id: 'sub-2', businessId: 'business-2', planId: 'plan-2', status: 'TRIAL' }
+        ],
+        total: 2,
+        page: 1,
+        totalPages: 1
+      };
+
+      mockSubscriptionService.getAllSubscriptions.mockResolvedValue(mockResult);
 
       // Act
       await subscriptionController.getAllSubscriptions(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.getAllSubscriptions).toHaveBeenCalledWith('user-123');
+      expect(mockSubscriptionService.getAllSubscriptions).toHaveBeenCalledWith('user-123', page, limit);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockSubscriptions
+        data: mockResult.subscriptions,
+        meta: {
+          total: mockResult.total,
+          page: mockResult.page,
+          totalPages: mockResult.totalPages,
+          limit
+        }
       });
     });
   });
@@ -545,7 +583,11 @@ describe('SubscriptionController', () => {
       expect(mockSubscriptionService.getTrialsEndingSoon).toHaveBeenCalledWith('user-123', days);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockTrials
+        data: mockTrials,
+        meta: {
+          total: mockTrials.length,
+          days
+        }
       });
     });
   });
@@ -567,7 +609,10 @@ describe('SubscriptionController', () => {
       expect(mockSubscriptionService.getExpiredSubscriptions).toHaveBeenCalledWith('user-123');
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockExpiredSubscriptions
+        data: mockExpiredSubscriptions,
+        meta: {
+          total: mockExpiredSubscriptions.length
+        }
       });
     });
   });
@@ -575,12 +620,12 @@ describe('SubscriptionController', () => {
   describe('forceUpdateSubscriptionStatus', () => {
     it('should force update subscription status successfully', async () => {
       // Arrange
-      const updateData = {
-        subscriptionId: 'sub-123',
-        status: 'ACTIVE'
-      };
+      const subscriptionId = 'sub-123';
+      const status = 'ACTIVE';
+      const reason = 'Manual update';
 
-      mockGuaranteedAuthRequest.body = updateData;
+      mockGuaranteedAuthRequest.params = { subscriptionId };
+      mockGuaranteedAuthRequest.body = { status, reason };
 
       const mockUpdatedSubscription = {
         id: 'sub-123',
@@ -594,10 +639,11 @@ describe('SubscriptionController', () => {
       await subscriptionController.forceUpdateSubscriptionStatus(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.forceUpdateSubscriptionStatus).toHaveBeenCalledWith('user-123', updateData);
+      expect(mockSubscriptionService.forceUpdateSubscriptionStatus).toHaveBeenCalledWith('user-123', subscriptionId, status, reason);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockUpdatedSubscription
+        data: mockUpdatedSubscription,
+        message: `Subscription status updated to ${status}`
       });
     });
   });
@@ -617,10 +663,11 @@ describe('SubscriptionController', () => {
       await subscriptionController.processExpiredSubscriptions(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.processExpiredSubscriptions).toHaveBeenCalledWith('user-123');
+      expect(mockSubscriptionService.processExpiredSubscriptions).toHaveBeenCalledWith();
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        data: mockResult,
+        message: `Processed ${mockResult.processed} expired subscriptions`
       });
     });
   });
@@ -640,10 +687,11 @@ describe('SubscriptionController', () => {
       await subscriptionController.processSubscriptionRenewals(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.processSubscriptionRenewals).toHaveBeenCalledWith('user-123');
+      expect(mockSubscriptionService.processSubscriptionRenewals).toHaveBeenCalledWith();
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        data: mockResult,
+        message: `Processed ${mockResult.processed} renewals, ${mockResult.renewed} successful, ${mockResult.failed} failed`
       });
     });
   });
@@ -651,10 +699,7 @@ describe('SubscriptionController', () => {
   describe('sendTrialEndingNotifications', () => {
     it('should send trial ending notifications successfully', async () => {
       // Arrange
-      const mockResult = {
-        sent: 5,
-        failed: 0
-      };
+      const mockResult = 5; // The service returns just a number
 
       mockSubscriptionService.sendTrialEndingNotifications.mockResolvedValue(mockResult);
 
@@ -662,10 +707,11 @@ describe('SubscriptionController', () => {
       await subscriptionController.sendTrialEndingNotifications(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.sendTrialEndingNotifications).toHaveBeenCalledWith('user-123');
+      expect(mockSubscriptionService.sendTrialEndingNotifications).toHaveBeenCalledWith();
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockResult
+        data: { notificationsSent: mockResult },
+        message: `Sent ${mockResult} trial ending notifications`
       });
     });
   });
@@ -674,23 +720,16 @@ describe('SubscriptionController', () => {
     it('should get subscriptions by status successfully', async () => {
       // Arrange
       const status = 'ACTIVE';
-      mockGuaranteedAuthRequest.query = { status };
-
-      const mockSubscriptions = [
-        { id: 'sub-1', businessId: 'business-1', status: 'ACTIVE' },
-        { id: 'sub-2', businessId: 'business-2', status: 'ACTIVE' }
-      ];
-
-      mockSubscriptionService.getSubscriptionsByStatus.mockResolvedValue(mockSubscriptions);
+      mockGuaranteedAuthRequest.params = { status };
 
       // Act
       await subscriptionController.getSubscriptionsByStatus(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.getSubscriptionsByStatus).toHaveBeenCalledWith('user-123', status);
+      expect(mockResponse.status).toHaveBeenCalledWith(501);
       expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockSubscriptions
+        success: false,
+        error: 'getSubscriptionsByStatus not implemented'
       });
     });
   });
@@ -699,45 +738,30 @@ describe('SubscriptionController', () => {
     it('should get subscriptions by plan successfully', async () => {
       // Arrange
       const planId = 'plan-pro';
-      mockGuaranteedAuthRequest.query = { planId };
-
-      const mockSubscriptions = [
-        { id: 'sub-1', businessId: 'business-1', planId: 'plan-pro' },
-        { id: 'sub-2', businessId: 'business-2', planId: 'plan-pro' }
-      ];
-
-      mockSubscriptionService.getSubscriptionsByPlan.mockResolvedValue(mockSubscriptions);
+      mockGuaranteedAuthRequest.params = { planId };
 
       // Act
       await subscriptionController.getSubscriptionsByPlan(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.getSubscriptionsByPlan).toHaveBeenCalledWith('user-123', planId);
+      expect(mockResponse.status).toHaveBeenCalledWith(501);
       expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockSubscriptions
+        success: false,
+        error: 'getSubscriptionsByPlan not implemented'
       });
     });
   });
 
   describe('getBusinessesWithoutSubscription', () => {
     it('should get businesses without subscription successfully', async () => {
-      // Arrange
-      const mockBusinesses = [
-        { id: 'business-1', name: 'Business 1', createdAt: '2024-01-01' },
-        { id: 'business-2', name: 'Business 2', createdAt: '2024-01-02' }
-      ];
-
-      mockSubscriptionService.getBusinessesWithoutSubscription.mockResolvedValue(mockBusinesses);
-
       // Act
       await subscriptionController.getBusinessesWithoutSubscription(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.getBusinessesWithoutSubscription).toHaveBeenCalledWith('user-123');
+      expect(mockResponse.status).toHaveBeenCalledWith(501);
       expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockBusinesses
+        success: false,
+        error: 'getBusinessesWithoutSubscription not implemented'
       });
     });
   });
@@ -745,29 +769,18 @@ describe('SubscriptionController', () => {
   describe('getRevenueAnalytics', () => {
     it('should get revenue analytics successfully', async () => {
       // Arrange
-      const period = 'monthly';
-      mockGuaranteedAuthRequest.query = { period };
-
-      const mockAnalytics = {
-        totalRevenue: 15000.00,
-        monthlyRevenue: 5000.00,
-        revenueByPlan: {
-          'plan-basic': 3000.00,
-          'plan-pro': 12000.00
-        },
-        growthRate: 15.5
-      };
-
-      mockSubscriptionService.getRevenueAnalytics.mockResolvedValue(mockAnalytics);
+      const startDate = '2024-01-01';
+      const endDate = '2024-01-31';
+      mockGuaranteedAuthRequest.query = { startDate, endDate };
 
       // Act
       await subscriptionController.getRevenueAnalytics(mockGuaranteedAuthRequest, mockResponse);
 
       // Assert
-      expect(mockSubscriptionService.getRevenueAnalytics).toHaveBeenCalledWith('user-123', period);
+      expect(mockResponse.status).toHaveBeenCalledWith(501);
       expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockAnalytics
+        success: false,
+        error: 'getRevenueAnalytics not implemented'
       });
     });
   });

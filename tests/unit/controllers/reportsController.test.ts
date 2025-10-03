@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { ReportsController } from '../../../src/controllers/reportsController';
 import { ReportsService } from '../../../src/services/reportsService';
 import { TestHelpers } from '../../utils/testHelpers';
-import { BusinessContextRequest, AuthenticatedRequest } from '../../../src/types/auth';
+import { GuaranteedAuthRequest } from '../../../src/types/auth';
 
 // Mock dependencies
 jest.mock('../../../src/services/reportsService');
@@ -12,9 +12,8 @@ jest.mock('../../../src/utils/logger');
 describe('ReportsController', () => {
   let reportsController: ReportsController;
   let mockReportsService: any;
-  let mockRequest: AuthenticatedRequest;
+  let mockRequest: GuaranteedAuthRequest;
   let mockResponse: Response;
-  let mockBusinessContextRequest: BusinessContextRequest;
 
   beforeEach(() => {
     // Reset all mocks
@@ -22,26 +21,43 @@ describe('ReportsController', () => {
 
     // Create mock ReportsService
     mockReportsService = {
-      getAppointmentReport: jest.fn(),
+      getBusinessOverview: jest.fn(),
       getRevenueReport: jest.fn(),
+      getAppointmentReport: jest.fn(),
       getCustomerReport: jest.fn(),
-      getStaffReport: jest.fn(),
-      getBusinessReport: jest.fn(),
-      getServiceReport: jest.fn(),
-      getUsageReport: jest.fn(),
-      getCustomReport: jest.fn()
+      getDashboardReport: jest.fn(),
+      getFinancialReport: jest.fn(),
+      getOperationalReport: jest.fn(),
+      getCustomerAnalyticsReport: jest.fn(),
+      getTrendsAnalysisReport: jest.fn(),
+      getQualityMetricsReport: jest.fn(),
+      getExecutiveSummary: jest.fn(),
+      getRealtimeMetrics: jest.fn(),
+      generateCustomReport: jest.fn(),
+      getReportTemplates: jest.fn(),
+      scheduleReport: jest.fn()
     };
 
     // Create ReportsController instance
     reportsController = new ReportsController(mockReportsService);
 
     // Create mock request and response
-    mockRequest = TestHelpers.createMockRequest() as AuthenticatedRequest;
-    mockRequest.user = { id: 'user-123', phoneNumber: '+905551234567' };
-
-    mockBusinessContextRequest = TestHelpers.createMockRequest() as BusinessContextRequest;
-    mockBusinessContextRequest.user = { id: 'user-123', phoneNumber: '+905551234567' };
-    mockBusinessContextRequest.business = { id: 'business-123', name: 'Test Business' };
+    mockRequest = TestHelpers.createMockRequest() as GuaranteedAuthRequest;
+    mockRequest.user = { 
+      id: 'user-123', 
+      phoneNumber: '+905551234567',
+      isVerified: true,
+      isActive: true,
+      roles: [{ id: 'user-role', name: 'USER', level: 1 }],
+      effectiveLevel: 1
+    };
+    mockRequest.token = {
+      userId: 'user-123',
+      phoneNumber: '+905551234567',
+      type: 'access',
+      iat: Date.now(),
+      exp: Date.now() + 3600000
+    };
 
     mockResponse = TestHelpers.createMockResponse();
   });
@@ -52,33 +68,37 @@ describe('ReportsController', () => {
     });
   });
 
-  describe('getAppointmentReport', () => {
-    it('should get appointment report successfully', async () => {
+  describe('getBusinessOverview', () => {
+    it('should get business overview report successfully', async () => {
       // Arrange
       const businessId = 'business-123';
       const startDate = '2024-01-01';
       const endDate = '2024-01-31';
 
-      mockRequest.params = { businessId };
-      mockRequest.query = { startDate, endDate };
+      mockRequest.query = { businessId, startDate, endDate };
 
       const mockReport = {
+        businessName: 'Test Business',
         totalAppointments: 100,
-        confirmedAppointments: 80,
-        cancelledAppointments: 15,
+        completedAppointments: 80,
+        canceledAppointments: 15,
         noShowAppointments: 5,
-        averageAppointmentsPerDay: 3.2
+        totalRevenue: 5000.00,
+        averageAppointmentValue: 50.00,
+        completionRate: 80.0,
+        totalCustomers: 50
       };
 
-      mockReportsService.getAppointmentReport.mockResolvedValue(mockReport);
+      mockReportsService.getBusinessOverview.mockResolvedValue(mockReport);
 
       // Act
-      await reportsController.getAppointmentReport(mockRequest, mockResponse);
+      await reportsController.getBusinessOverview(mockRequest, mockResponse);
 
       // Assert
-      expect(mockReportsService.getAppointmentReport).toHaveBeenCalledWith('user-123', businessId, startDate, endDate);
+      expect(mockReportsService.getBusinessOverview).toHaveBeenCalledWith('user-123', businessId, new Date(startDate), new Date(endDate));
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
+        message: 'Business overview report retrieved successfully',
         data: mockReport
       });
     });
@@ -91,8 +111,7 @@ describe('ReportsController', () => {
       const startDate = '2024-01-01';
       const endDate = '2024-01-31';
 
-      mockRequest.params = { businessId };
-      mockRequest.query = { startDate, endDate };
+      mockRequest.query = { businessId, startDate, endDate };
 
       const mockReport = {
         totalRevenue: 5000.00,
@@ -112,9 +131,10 @@ describe('ReportsController', () => {
       await reportsController.getRevenueReport(mockRequest, mockResponse);
 
       // Assert
-      expect(mockReportsService.getRevenueReport).toHaveBeenCalledWith('user-123', businessId, startDate, endDate);
+      expect(mockReportsService.getRevenueReport).toHaveBeenCalledWith('user-123', businessId, new Date(startDate), new Date(endDate));
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
+        message: 'Revenue report retrieved successfully',
         data: mockReport
       });
     });
@@ -127,8 +147,7 @@ describe('ReportsController', () => {
       const startDate = '2024-01-01';
       const endDate = '2024-01-31';
 
-      mockRequest.params = { businessId };
-      mockRequest.query = { startDate, endDate };
+      mockRequest.query = { businessId, startDate, endDate };
 
       const mockReport = {
         totalCustomers: 50,
@@ -146,185 +165,203 @@ describe('ReportsController', () => {
       await reportsController.getCustomerReport(mockRequest, mockResponse);
 
       // Assert
-      expect(mockReportsService.getCustomerReport).toHaveBeenCalledWith('user-123', businessId, startDate, endDate);
+      expect(mockReportsService.getCustomerReport).toHaveBeenCalledWith('user-123', businessId, new Date(startDate), new Date(endDate));
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
+        message: 'Customer report retrieved successfully',
         data: mockReport
       });
     });
   });
 
-  describe('getStaffReport', () => {
-    it('should get staff report successfully', async () => {
+  describe('getAppointmentReport', () => {
+    it('should get appointment report successfully', async () => {
       // Arrange
       const businessId = 'business-123';
       const startDate = '2024-01-01';
       const endDate = '2024-01-31';
 
-      mockRequest.params = { businessId };
-      mockRequest.query = { startDate, endDate };
+      mockRequest.query = { businessId, startDate, endDate };
 
       const mockReport = {
-        totalStaff: 5,
-        activeStaff: 4,
-        staffPerformance: [
-          { id: 'staff-1', name: 'Staff Member 1', appointmentsCompleted: 20, revenue: 1000.00 }
-        ],
-        averageAppointmentsPerStaff: 25
+        totalAppointments: 100,
+        confirmedAppointments: 80,
+        cancelledAppointments: 15,
+        noShowAppointments: 5,
+        averageAppointmentsPerDay: 3.2
       };
 
-      mockReportsService.getStaffReport.mockResolvedValue(mockReport);
+      mockReportsService.getAppointmentReport.mockResolvedValue(mockReport);
 
       // Act
-      await reportsController.getStaffReport(mockRequest, mockResponse);
+      await reportsController.getAppointmentReport(mockRequest, mockResponse);
 
       // Assert
-      expect(mockReportsService.getStaffReport).toHaveBeenCalledWith('user-123', businessId, startDate, endDate);
+      expect(mockReportsService.getAppointmentReport).toHaveBeenCalledWith('user-123', businessId, new Date(startDate), new Date(endDate));
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
+        message: 'Appointment report retrieved successfully',
         data: mockReport
       });
     });
   });
 
-  describe('getBusinessReport', () => {
-    it('should get business report successfully', async () => {
+  describe('getDashboardReport', () => {
+    it('should get dashboard report successfully', async () => {
       // Arrange
       const businessId = 'business-123';
       const startDate = '2024-01-01';
       const endDate = '2024-01-31';
 
-      mockRequest.params = { businessId };
-      mockRequest.query = { startDate, endDate };
+      mockRequest.query = { businessId, startDate, endDate };
+
+      const mockOverview = { totalAppointments: 100, totalRevenue: 5000.00 };
+      const mockRevenue = { totalRevenue: 5000.00, averageRevenuePerAppointment: 50.00 };
+      const mockAppointments = { totalAppointments: 100, completedAppointments: 80 };
+      const mockCustomers = { totalCustomers: 50, newCustomers: 10 };
+
+      mockReportsService.getBusinessOverview.mockResolvedValue(mockOverview);
+      mockReportsService.getRevenueReport.mockResolvedValue(mockRevenue);
+      mockReportsService.getAppointmentReport.mockResolvedValue(mockAppointments);
+      mockReportsService.getCustomerReport.mockResolvedValue(mockCustomers);
+
+      // Act
+      await reportsController.getDashboardReport(mockRequest, mockResponse);
+
+      // Assert
+      expect(mockReportsService.getBusinessOverview).toHaveBeenCalledWith('user-123', businessId, new Date(startDate), new Date(endDate));
+      expect(mockReportsService.getRevenueReport).toHaveBeenCalledWith('user-123', businessId, new Date(startDate), new Date(endDate));
+      expect(mockReportsService.getAppointmentReport).toHaveBeenCalledWith('user-123', businessId, new Date(startDate), new Date(endDate));
+      expect(mockReportsService.getCustomerReport).toHaveBeenCalledWith('user-123', businessId, new Date(startDate), new Date(endDate));
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Dashboard report retrieved successfully',
+        data: {
+          overview: mockOverview,
+          revenue: mockRevenue,
+          appointments: mockAppointments,
+          customers: mockCustomers,
+          generatedAt: expect.any(String),
+          dateRange: {
+            startDate: new Date(startDate).toISOString(),
+            endDate: new Date(endDate).toISOString()
+          }
+        }
+      });
+    });
+  });
+
+  describe('exportReport', () => {
+    it('should export report successfully', async () => {
+      // Arrange
+      const reportType = 'overview';
+      const businessId = 'business-123';
+      const startDate = '2024-01-01';
+      const endDate = '2024-01-31';
+
+      mockRequest.params = { reportType };
+      mockRequest.query = { businessId, startDate, endDate, format: 'json' };
 
       const mockReport = {
         businessName: 'Test Business',
         totalAppointments: 100,
+        totalRevenue: 5000.00
+      };
+
+      mockReportsService.getBusinessOverview.mockResolvedValue(mockReport);
+
+      // Act
+      await reportsController.exportReport(mockRequest, mockResponse);
+
+      // Assert
+      expect(mockReportsService.getBusinessOverview).toHaveBeenCalledWith('user-123', businessId, new Date(startDate), new Date(endDate));
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'overview report exported successfully',
+        data: mockReport,
+        exportedAt: expect.any(String)
+      });
+    });
+  });
+
+  describe('getFinancialReport', () => {
+    it('should get financial report successfully', async () => {
+      // Arrange
+      const businessId = 'business-123';
+      const startDate = '2024-01-01';
+      const endDate = '2024-01-31';
+
+      mockRequest.query = { businessId, startDate, endDate };
+
+      const mockReport = {
         totalRevenue: 5000.00,
-        totalCustomers: 50,
-        averageRating: 4.5,
-        businessHours: {
-          monday: { open: '09:00', close: '18:00' }
+        totalExpenses: 2000.00,
+        netProfit: 3000.00,
+        profitMargin: 60.0,
+        revenueByMonth: {
+          'January': 5000.00
         }
       };
 
-      mockReportsService.getBusinessReport.mockResolvedValue(mockReport);
+      mockReportsService.getFinancialReport.mockResolvedValue(mockReport);
 
       // Act
-      await reportsController.getBusinessReport(mockRequest, mockResponse);
+      await reportsController.getFinancialReport(mockRequest, mockResponse);
 
       // Assert
-      expect(mockReportsService.getBusinessReport).toHaveBeenCalledWith('user-123', businessId, startDate, endDate);
+      expect(mockReportsService.getFinancialReport).toHaveBeenCalledWith('user-123', businessId, new Date(startDate), new Date(endDate));
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
+        message: 'Financial report retrieved successfully',
         data: mockReport
       });
     });
   });
 
-  describe('getServiceReport', () => {
-    it('should get service report successfully', async () => {
+  describe('generateCustomReport', () => {
+    it('should generate custom report successfully', async () => {
       // Arrange
-      const businessId = 'business-123';
-      const startDate = '2024-01-01';
-      const endDate = '2024-01-31';
-
-      mockRequest.params = { businessId };
-      mockRequest.query = { startDate, endDate };
-
-      const mockReport = {
-        totalServices: 10,
-        activeServices: 8,
-        servicePerformance: [
-          { id: 'service-1', name: 'Haircut', bookings: 50, revenue: 2500.00 }
-        ],
-        averageBookingsPerService: 12.5
-      };
-
-      mockReportsService.getServiceReport.mockResolvedValue(mockReport);
-
-      // Act
-      await reportsController.getServiceReport(mockRequest, mockResponse);
-
-      // Assert
-      expect(mockReportsService.getServiceReport).toHaveBeenCalledWith('user-123', businessId, startDate, endDate);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockReport
-      });
-    });
-  });
-
-  describe('getUsageReport', () => {
-    it('should get usage report successfully', async () => {
-      // Arrange
-      const businessId = 'business-123';
-      const startDate = '2024-01-01';
-      const endDate = '2024-01-31';
-
-      mockRequest.params = { businessId };
-      mockRequest.query = { startDate, endDate };
-
-      const mockReport = {
-        smsUsage: { used: 100, limit: 500, remaining: 400 },
-        appointmentUsage: { used: 50, limit: 100, remaining: 50 },
-        customerUsage: { used: 25, limit: 50, remaining: 25 },
-        usageTrends: {
-          sms: [10, 15, 20, 25, 30],
-          appointments: [5, 8, 12, 15, 10]
-        }
-      };
-
-      mockReportsService.getUsageReport.mockResolvedValue(mockReport);
-
-      // Act
-      await reportsController.getUsageReport(mockRequest, mockResponse);
-
-      // Assert
-      expect(mockReportsService.getUsageReport).toHaveBeenCalledWith('user-123', businessId, startDate, endDate);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockReport
-      });
-    });
-  });
-
-  describe('getCustomReport', () => {
-    it('should get custom report successfully', async () => {
-      // Arrange
-      const businessId = 'business-123';
-      const reportType = 'custom';
-      const filters = {
+      const customReportData = {
+        reportType: 'overview',
+        businessId: 'business-123',
         startDate: '2024-01-01',
         endDate: '2024-01-31',
+        filters: { status: 'completed' },
+        metrics: ['revenue', 'appointments'],
         groupBy: 'day'
       };
 
-      mockRequest.params = { businessId };
-      mockRequest.query = { reportType, ...filters };
+      mockRequest.body = customReportData;
 
       const mockReport = {
-        reportType: 'custom',
-        data: [
-          { date: '2024-01-01', appointments: 5, revenue: 250.00 },
-          { date: '2024-01-02', appointments: 8, revenue: 400.00 }
-        ],
-        summary: {
-          totalAppointments: 13,
-          totalRevenue: 650.00
-        }
+        businessName: 'Test Business',
+        totalAppointments: 100,
+        totalRevenue: 5000.00
       };
 
-      mockReportsService.getCustomReport.mockResolvedValue(mockReport);
+      mockReportsService.getBusinessOverview.mockResolvedValue(mockReport);
 
       // Act
-      await reportsController.getCustomReport(mockRequest, mockResponse);
+      await reportsController.generateCustomReport(mockRequest, mockResponse);
 
       // Assert
-      expect(mockReportsService.getCustomReport).toHaveBeenCalledWith('user-123', businessId, reportType, filters);
+      expect(mockReportsService.getBusinessOverview).toHaveBeenCalledWith('user-123', customReportData.businessId, new Date(customReportData.startDate), new Date(customReportData.endDate));
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        data: mockReport
+        message: 'Custom report generated successfully',
+        data: {
+          reportType: customReportData.reportType,
+          filters: customReportData.filters,
+          metrics: customReportData.metrics,
+          groupBy: customReportData.groupBy,
+          data: mockReport,
+          generatedAt: expect.any(String),
+          customizations: {
+            appliedFilters: 1,
+            selectedMetrics: 2,
+            groupingLevel: customReportData.groupBy
+          }
+        }
       });
     });
   });

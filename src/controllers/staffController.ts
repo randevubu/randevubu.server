@@ -8,7 +8,7 @@ import {
   VerifyStaffInvitationRequest,
 } from "../services/staffService";
 import { AuthenticatedRequest } from "../types/auth";
-import { AppError } from "../types/errorResponse";
+import { AppError } from "../types/responseTypes";
 import {
   createErrorContext,
   handleRouteError,
