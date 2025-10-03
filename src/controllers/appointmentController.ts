@@ -3,7 +3,6 @@ import { Response } from "express";
 import { z } from "zod";
 import { BusinessContextRequest } from "../middleware/businessContext";
 import {
-  appointmentQuerySchema,
   appointmentSearchSchema,
   createAppointmentSchema,
   updateAppointmentSchema,
@@ -50,7 +49,7 @@ export class AppointmentController {
       const userId = req.user!.id;
 
       // SECURITY: Validate and sanitize all query parameters
-      const validatedQuery = appointmentQuerySchema.parse(req.query);
+      const validatedQuery = appointmentSearchSchema.parse(req.query);
 
       // Log the request for security monitoring
       logger.info("Appointment query request", {
@@ -98,44 +97,7 @@ export class AppointmentController {
       sendSuccessResponse(res, cleanedResult, 'Appointments retrieved successfully');
 
     } catch (error) {
-      if (
-        error instanceof z.ZodError ||
-        error instanceof Prisma.PrismaClientKnownRequestError ||
-        error instanceof CustomError
-      ) {
-        logError(
-          `Validation or known error fetching appointments`,
-          {
-            requestId: (req as any).requestId || "unknown",
-            userId: req.user?.id || "anonymous",
-            source: "AppointmentController.getMyAppointments",
-            requestDetails: extractRequestDetails(req),
-          },
-          error,
-          res,
-          next
-        );
-        next(error);
-      } else {
-        logError(
-          `Unexpected error fetching appointments`,
-          {
-            requestId: (req as any).requestId || "unknown",
-            userId: req.user?.id || "anonymous",
-            source: "AppointmentController.getMyAppointments",
-            requestDetails: extractRequestDetails(req),
-          },
-          error,
-          res,
-          next
-        );
-        res.status(500).json({
-          status: "error",
-          message: "Failed to fetch appointments",
-          requestId: (req as any).requestId || "unknown",
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      handleError(error, req, res, next, "AppointmentController.getMyAppointments");
     }
   }
 
@@ -374,7 +336,7 @@ export class AppointmentController {
         "Business appointments retrieved successfully"
       );
     } catch (error) {
-      handleRouteError(error, req, res);
+      handleError(error, req, res, next, "AppointmentController.getBusinessAppointments");
     }
   }
 
@@ -693,7 +655,7 @@ export class AppointmentController {
         "Today's appointments retrieved successfully"
       );
     } catch (error) {
-      handleRouteError(error, req, res);
+      handleError(error, req, res, next, "AppointmentController.getBusinessAppointments");
     }
   }
 
@@ -1072,7 +1034,7 @@ export class AppointmentController {
         }
       });
     } catch (error) {
-      handleRouteError(error, req, res);
+      handleError(error, req, res, next, "AppointmentController.getBusinessAppointments");
     }
   }
 
@@ -1113,7 +1075,7 @@ export class AppointmentController {
         }
       });
     } catch (error) {
-      handleRouteError(error, req, res);
+      handleError(error, req, res, next, "AppointmentController.getBusinessAppointments");
     }
   }
 }
