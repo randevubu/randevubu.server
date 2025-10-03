@@ -1,36 +1,36 @@
-import { Request, Response } from "express";
-import { requireAuthenticatedUser } from "../middleware/authUtils";
+import { Request, Response } from 'express';
+import { GuaranteedAuthRequest } from '../types/auth';
+import { requireAuthenticatedUser } from '../middleware/authUtils';
 import {
   changePhoneSchema,
   logoutSchema,
   sendVerificationSchema,
   updateProfileSchema,
-  verifyLoginSchema,
-} from "../schemas/auth.schemas";
+  verifyLoginSchema
+} from '../schemas/auth.schemas';
 import {
   AuthService,
   PhoneVerificationService,
-  TokenService,
-} from "../services";
-import { RBACService } from "../services/rbacService";
+  TokenService
+} from '../services';
+import { RBACService } from '../services/rbacService';
 import {
   ApiResponse,
   ChangePhoneRequest,
   DeviceInfo,
-  GuaranteedAuthRequest,
   LogoutRequest,
   SendVerificationRequest,
   UpdateProfileRequest,
-  VerifyLoginRequest,
-} from "../types/auth";
+  VerifyLoginRequest
+} from '../types/auth';
 import {
   BaseError,
   ErrorContext,
-  ForbiddenError,
   InternalServerError,
-  UserNotFoundError,
-} from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+  ForbiddenError,
+  UserNotFoundError
+} from '../types/errors';
+import { logger } from '../utils/logger';
 
 export class AuthController {
   constructor(
@@ -44,7 +44,7 @@ export class AuthController {
     return {
       userId,
       ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
+      userAgent: req.get('user-agent'),
       requestId: Math.random().toString(36).substring(7),
       timestamp: new Date(),
       endpoint: req.path,
@@ -54,16 +54,16 @@ export class AuthController {
 
   private extractDeviceInfo(req: Request): DeviceInfo {
     return {
-      deviceId: req.headers["x-device-id"] as string,
-      userAgent: req.get("user-agent"),
+      deviceId: req.headers['x-device-id'] as string,
+      userAgent: req.get('user-agent'),
       ipAddress: req.ip,
     };
   }
 
   private sendSuccessResponse<T>(
-    res: Response,
-    message: string,
-    data?: T,
+    res: Response, 
+    message: string, 
+    data?: T, 
     statusCode: number = 200
   ): void {
     const response: ApiResponse<T> = {
@@ -94,17 +94,12 @@ export class AuthController {
    */
   sendVerificationCode = async (req: Request, res: Response): Promise<void> => {
     try {
-      const body = sendVerificationSchema.parse(
-        req.body
-      ) as SendVerificationRequest;
+      const body = sendVerificationSchema.parse(req.body) as SendVerificationRequest;
       const deviceInfo = this.extractDeviceInfo(req);
       const context = this.createErrorContext(req);
 
-      logger.info("Verification code request", {
-        phoneNumber: body.phoneNumber.replace(
-          /(\d{3})\d{4}(\d{4})/,
-          "$1****$2"
-        ),
+      logger.info('Verification code request', {
+        phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
         purpose: body.purpose,
         ip: context.ipAddress,
         requestId: context.requestId,
@@ -112,7 +107,7 @@ export class AuthController {
 
       const result = await this.phoneVerificationService.sendVerificationCode({
         phoneNumber: body.phoneNumber,
-        purpose: body.purpose || ("REGISTRATION" as any),
+        purpose: body.purpose || 'REGISTRATION' as any,
         ipAddress: deviceInfo.ipAddress,
         userAgent: deviceInfo.userAgent,
       });
@@ -123,24 +118,20 @@ export class AuthController {
           message: result.message,
           error: {
             message: result.message,
-            ...(result.cooldownSeconds && {
-              retryAfter: result.cooldownSeconds,
-            }),
+            ...(result.cooldownSeconds && { retryAfter: result.cooldownSeconds }),
           },
         });
         return;
       }
 
       this.sendSuccessResponse(res, result.message, {
-        phoneNumber: body.phoneNumber.replace(
-          /(\d{3})\d{4}(\d{4})/,
-          "$1****$2"
-        ),
+        phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
         expiresIn: 600, // 10 minutes
-        purpose: body.purpose || "REGISTRATION",
+        purpose: body.purpose || 'REGISTRATION',
       });
+
     } catch (error) {
-      logger.error("Send verification code error", {
+      logger.error('Send verification code error', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         requestId: this.createErrorContext(req).requestId,
@@ -150,7 +141,7 @@ export class AuthController {
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
-          "Failed to send verification code",
+          'Failed to send verification code',
           error instanceof Error ? error : new Error(String(error)),
           this.createErrorContext(req)
         );
@@ -169,11 +160,8 @@ export class AuthController {
       const deviceInfo = this.extractDeviceInfo(req);
       const context = this.createErrorContext(req);
 
-      logger.info("Login verification attempt", {
-        phoneNumber: body.phoneNumber.replace(
-          /(\d{3})\d{4}(\d{4})/,
-          "$1****$2"
-        ),
+      logger.info('Login verification attempt', {
+        phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
         ip: context.ipAddress,
         requestId: context.requestId,
       });
@@ -185,37 +173,34 @@ export class AuthController {
         context
       );
 
-      logger.info(result.isNewUser ? "User registered" : "User logged in", {
+      logger.info(result.isNewUser ? 'User registered' : 'User logged in', {
         userId: result.user.id,
-        phoneNumber: result.user.phoneNumber.replace(
-          /(\d{3})\d{4}(\d{4})/,
-          "$1****$2"
-        ),
+        phoneNumber: result.user.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
         isNewUser: result.isNewUser,
         ip: context.ipAddress,
         requestId: context.requestId,
       });
 
       // Set refresh token as HttpOnly cookie (web security best practice)
-      res.cookie("refreshToken", result.tokens.refreshToken, {
-        httpOnly: true, // Prevents JavaScript access (XSS protection)
-        secure: process.env.NODE_ENV === "production", // HTTPS only in production
-        sameSite: "strict", // CSRF protection
+      res.cookie('refreshToken', result.tokens.refreshToken, {
+        httpOnly: true,           // Prevents JavaScript access (XSS protection)
+        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // None for cross-origin in production
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        path: "/api/v1/auth/refresh", // Limit cookie scope
+        path: '/' // Allow cookie to be sent to all endpoints
       });
 
-      // Set hasAuth cookie for frontend auth state detection (Industry Standard)
-      res.cookie("hasAuth", "1", {
-        httpOnly: false, // Frontend can read this
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      // Set hasAuth cookie for frontend auth state detection
+      res.cookie('hasAuth', '1', {
+        httpOnly: false,          // Frontend can read this
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // None for cross-origin in production
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
 
       this.sendSuccessResponse(
         res,
-        result.isNewUser ? "Registration successful" : "Login successful",
+        result.isNewUser ? 'Registration successful' : 'Login successful',
         {
           user: {
             id: result.user.id,
@@ -228,26 +213,20 @@ export class AuthController {
             isVerified: result.user.isVerified,
             createdAt: result.user.createdAt,
             lastLoginAt: result.user.lastLoginAt,
+            roles: (result.user as any).roles || [],
+            effectiveLevel: (result.user as any).effectiveLevel || 0,
           },
           tokens: {
-            accessToken: result.tokens.accessToken,
-            expiresIn: result.tokens.expiresIn,
-            // Don't return refresh token in body for web security
-            // Mobile apps can still use it if needed
-            ...(process.env.NODE_ENV === "development" && {
-              refreshToken: result.tokens.refreshToken,
-            }),
+            accessToken: result.tokens.accessToken
           },
           isNewUser: result.isNewUser,
         }
       );
+
     } catch (error) {
-      logger.error("Verify login error", {
+      logger.error('Verify login error', {
         error: error instanceof Error ? error.message : String(error),
-        phoneNumber: req.body.phoneNumber?.replace(
-          /(\d{3})\d{4}(\d{4})/,
-          "$1****$2"
-        ),
+        phoneNumber: req.body.phoneNumber?.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
         requestId: this.createErrorContext(req).requestId,
       });
 
@@ -255,7 +234,7 @@ export class AuthController {
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
-          "Login verification failed",
+          'Login verification failed',
           error instanceof Error ? error : new Error(String(error)),
           this.createErrorContext(req)
         );
@@ -275,7 +254,7 @@ export class AuthController {
       const bodyRefreshToken = req.body?.refreshToken;
       const refreshToken = cookieRefreshToken || bodyRefreshToken;
 
-      logger.debug("Refresh token debug info", {
+      logger.debug('Refresh token debug info', {
         hasCookieToken: !!cookieRefreshToken,
         hasBodyToken: !!bodyRefreshToken,
         cookieTokenLength: cookieRefreshToken?.length,
@@ -289,16 +268,15 @@ export class AuthController {
         res.status(400).json({
           success: false,
           error: {
-            message:
-              "Refresh token is required. Provide it in cookie or request body.",
-            code: "REFRESH_TOKEN_MISSING",
-          },
+            message: 'Refresh token is required. Provide it in cookie or request body.',
+            code: 'REFRESH_TOKEN_MISSING'
+          }
         });
         return;
       }
 
-      if (typeof refreshToken !== "string" || refreshToken.trim() === "") {
-        logger.error("Invalid refresh token type or empty", {
+      if (typeof refreshToken !== 'string' || refreshToken.trim() === '') {
+        logger.error('Invalid refresh token type or empty', {
           tokenType: typeof refreshToken,
           tokenValue: refreshToken,
           requestId: this.createErrorContext(req).requestId,
@@ -306,27 +284,27 @@ export class AuthController {
         res.status(401).json({
           success: false,
           error: {
-            message: "Invalid refresh token format",
-            code: "INVALID_REFRESH_TOKEN_FORMAT",
-          },
+            message: 'Invalid refresh token format',
+            code: 'INVALID_REFRESH_TOKEN_FORMAT'
+          }
         });
         return;
       }
 
       // Basic JWT format validation (should have 3 parts separated by dots)
-      const tokenParts = refreshToken.split(".");
+      const tokenParts = refreshToken.split('.');
       if (tokenParts.length !== 3) {
-        logger.error("Refresh token does not have JWT structure", {
+        logger.error('Refresh token does not have JWT structure', {
           tokenParts: tokenParts.length,
-          token: refreshToken.substring(0, 50) + "...",
+          token: refreshToken.substring(0, 50) + '...',
           requestId: this.createErrorContext(req).requestId,
         });
         res.status(401).json({
           success: false,
           error: {
-            message: "Invalid refresh token format",
-            code: "INVALID_REFRESH_TOKEN_STRUCTURE",
-          },
+            message: 'Invalid refresh token format',
+            code: 'INVALID_REFRESH_TOKEN_STRUCTURE'
+          }
         });
         return;
       }
@@ -334,8 +312,8 @@ export class AuthController {
       const deviceInfo = this.extractDeviceInfo(req);
       const context = this.createErrorContext(req);
 
-      console.log("🚀 About to call tokenService.refreshAccessToken");
-      logger.debug("About to call tokenService.refreshAccessToken", {
+      console.log('🚀 About to call tokenService.refreshAccessToken');
+      logger.debug('About to call tokenService.refreshAccessToken', {
         tokenLength: refreshToken.length,
         requestId: context.requestId,
       });
@@ -346,46 +324,44 @@ export class AuthController {
         context
       );
 
-      logger.debug("TokenService returned successfully", {
+      logger.debug('TokenService returned successfully', {
         hasAccessToken: !!tokens.accessToken,
         requestId: context.requestId,
       });
 
       // Update the refresh token cookie if it was used from cookie
       if (cookieRefreshToken) {
-        res.cookie("refreshToken", tokens.refreshToken, {
+        res.cookie('refreshToken', tokens.refreshToken, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "strict",
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-          path: "/api/v1/auth/refresh",
+          path: '/'
         });
 
         // Renew hasAuth cookie on successful refresh
-        res.cookie("hasAuth", "1", {
+        res.cookie('hasAuth', '1', {
           httpOnly: false,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "strict",
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+          maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
       }
 
-      logger.info("Token refreshed", {
-        source: cookieRefreshToken ? "cookie" : "body",
+      logger.info('Token refreshed', {
+        source: cookieRefreshToken ? 'cookie' : 'body',
         ip: context.ipAddress,
         requestId: context.requestId,
       });
 
-      this.sendSuccessResponse(res, "Token refreshed successfully", {
+      this.sendSuccessResponse(res, 'Token refreshed successfully', {
         tokens: {
-          accessToken: tokens.accessToken,
-          expiresIn: tokens.expiresIn,
-          // Only return refresh token in body if it wasn't from cookie (mobile apps)
-          ...(!cookieRefreshToken && { refreshToken: tokens.refreshToken }),
-        },
+          accessToken: tokens.accessToken
+        }
       });
+
     } catch (error) {
-      logger.error("Refresh token error", {
+      logger.error('Refresh token error', {
         error: error instanceof Error ? error.message : String(error),
         requestId: this.createErrorContext(req).requestId,
       });
@@ -394,7 +370,7 @@ export class AuthController {
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
-          "Token refresh failed",
+          'Token refresh failed',
           error instanceof Error ? error : new Error(String(error)),
           this.createErrorContext(req)
         );
@@ -421,22 +397,23 @@ export class AuthController {
       );
 
       // Clear refresh token cookie
-      res.clearCookie("refreshToken", {
-        path: "/api/v1/auth/refresh",
+      res.clearCookie('refreshToken', {
+        path: '/'
       });
 
       // Clear hasAuth cookie (Industry Standard)
-      res.clearCookie("hasAuth");
+      res.clearCookie('hasAuth');
 
-      logger.info("User logged out", {
+      logger.info('User logged out', {
         userId: requireAuthenticatedUser(req).id,
         ip: context.ipAddress,
         requestId: context.requestId,
       });
 
-      this.sendSuccessResponse(res, "Logged out successfully");
+      this.sendSuccessResponse(res, 'Logged out successfully');
+
     } catch (error) {
-      logger.error("Logout error", {
+      logger.error('Logout error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
         requestId: this.createErrorContext(req, req.user.id).requestId,
@@ -446,7 +423,7 @@ export class AuthController {
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
-          "Logout failed",
+          'Logout failed',
           error instanceof Error ? error : new Error(String(error)),
           this.createErrorContext(req, req.user.id)
         );
@@ -459,46 +436,34 @@ export class AuthController {
    * Get user profile
    * GET /api/v1/auth/profile?includeBusinessSummary=true
    */
-  getProfile = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getProfile = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const context = this.createErrorContext(req, req.user.id);
-      const includeBusinessSummary =
-        req.query.includeBusinessSummary === "true";
-      const forceRefresh = req.headers["x-role-update"] === "true";
+      const includeBusinessSummary = req.query.includeBusinessSummary === 'true';
+      const forceRefresh = req.headers['x-role-update'] === 'true';
 
       // ENTERPRISE PATTERN: If client indicates role update, bypass cache completely
       if (forceRefresh && this.rbacService) {
         this.rbacService.forceInvalidateUser(req.user.id);
-        console.log(
-          "🔄 Profile fetch with forced cache refresh for user:",
-          req.user.id
-        );
+        console.log('🔄 Profile fetch with forced cache refresh for user:', req.user.id);
       }
 
       let profile;
       if (includeBusinessSummary) {
-        profile = await this.authService.getUserProfileWithBusinessSummary(
-          requireAuthenticatedUser(req).id,
-          context
-        );
+        profile = await this.authService.getUserProfileWithBusinessSummary(requireAuthenticatedUser(req).id, context);
       } else {
-        profile = await this.authService.getUserProfile(
-          requireAuthenticatedUser(req).id,
-          context
-        );
+        profile = await this.authService.getUserProfile(requireAuthenticatedUser(req).id, context);
       }
 
-      this.sendSuccessResponse(res, "Profile retrieved successfully", {
+      this.sendSuccessResponse(res, 'Profile retrieved successfully', { 
         user: profile,
         meta: {
-          includesBusinessSummary: includeBusinessSummary,
-        },
+          includesBusinessSummary: includeBusinessSummary
+        }
       });
+
     } catch (error) {
-      logger.error("Get profile error", {
+      logger.error('Get profile error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
         requestId: this.createErrorContext(req, req.user.id).requestId,
@@ -508,7 +473,7 @@ export class AuthController {
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
-          "Failed to retrieve profile",
+          'Failed to retrieve profile',
           error instanceof Error ? error : new Error(String(error)),
           this.createErrorContext(req, req.user.id)
         );
@@ -521,10 +486,7 @@ export class AuthController {
    * Update user profile
    * PATCH /api/v1/auth/profile
    */
-  updateProfile = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  updateProfile = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const body = updateProfileSchema.parse(req.body) as UpdateProfileRequest;
       const deviceInfo = this.extractDeviceInfo(req);
@@ -537,18 +499,17 @@ export class AuthController {
         context
       );
 
-      logger.info("Profile updated", {
+      logger.info('Profile updated', {
         userId: requireAuthenticatedUser(req).id,
         updates: Object.keys(body),
         ip: context.ipAddress,
         requestId: context.requestId,
       });
 
-      this.sendSuccessResponse(res, "Profile updated successfully", {
-        user: profile,
-      });
+      this.sendSuccessResponse(res, 'Profile updated successfully', { user: profile });
+
     } catch (error) {
-      logger.error("Update profile error", {
+      logger.error('Update profile error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
         updates: Object.keys(req.body),
@@ -559,7 +520,7 @@ export class AuthController {
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
-          "Failed to update profile",
+          'Failed to update profile',
           error instanceof Error ? error : new Error(String(error)),
           this.createErrorContext(req, req.user.id)
         );
@@ -572,10 +533,7 @@ export class AuthController {
    * Change phone number
    * POST /api/v1/auth/change-phone
    */
-  changePhone = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  changePhone = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const body = changePhoneSchema.parse(req.body) as ChangePhoneRequest;
       const deviceInfo = this.extractDeviceInfo(req);
@@ -589,28 +547,23 @@ export class AuthController {
         context
       );
 
-      logger.info("Phone number changed", {
+      logger.info('Phone number changed', {
         userId: requireAuthenticatedUser(req).id,
-        newPhone: body.newPhoneNumber.replace(
-          /(\d{3})\d{4}(\d{4})/,
-          "$1****$2"
-        ),
+        newPhone: body.newPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
         ip: context.ipAddress,
         requestId: context.requestId,
       });
 
       this.sendSuccessResponse(
         res,
-        "Phone number changed successfully. Please login again with new number."
+        'Phone number changed successfully. Please login again with new number.'
       );
+
     } catch (error) {
-      logger.error("Change phone error", {
+      logger.error('Change phone error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
-        newPhone: req.body.newPhoneNumber?.replace(
-          /(\d{3})\d{4}(\d{4})/,
-          "$1****$2"
-        ),
+        newPhone: req.body.newPhoneNumber?.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
         requestId: this.createErrorContext(req, req.user.id).requestId,
       });
 
@@ -618,7 +571,7 @@ export class AuthController {
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
-          "Failed to change phone number",
+          'Failed to change phone number',
           error instanceof Error ? error : new Error(String(error)),
           this.createErrorContext(req, req.user.id)
         );
@@ -631,29 +584,23 @@ export class AuthController {
    * Delete user account
    * DELETE /api/v1/auth/account
    */
-  deleteAccount = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  deleteAccount = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const deviceInfo = this.extractDeviceInfo(req);
       const context = this.createErrorContext(req, req.user.id);
 
-      await this.authService.deactivateUser(
-        requireAuthenticatedUser(req).id,
-        deviceInfo,
-        context
-      );
+      await this.authService.deactivateUser(requireAuthenticatedUser(req).id, deviceInfo, context);
 
-      logger.info("Account deactivated", {
+      logger.info('Account deactivated', {
         userId: requireAuthenticatedUser(req).id,
         ip: context.ipAddress,
         requestId: context.requestId,
       });
 
-      this.sendSuccessResponse(res, "Account deactivated successfully");
+      this.sendSuccessResponse(res, 'Account deactivated successfully');
+
     } catch (error) {
-      logger.error("Account deactivation error", {
+      logger.error('Account deactivation error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
         requestId: this.createErrorContext(req, req.user.id).requestId,
@@ -663,7 +610,7 @@ export class AuthController {
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
-          "Failed to deactivate account",
+          'Failed to deactivate account',
           error instanceof Error ? error : new Error(String(error)),
           this.createErrorContext(req, req.user.id)
         );
@@ -676,10 +623,7 @@ export class AuthController {
    * Get user's customers from their businesses
    * GET /api/v1/auth/my-customers
    */
-  getMyCustomers = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getMyCustomers = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = requireAuthenticatedUser(req).id;
       const { search, page, limit, status, sortBy, sortOrder } = req.query;
@@ -690,33 +634,34 @@ export class AuthController {
         limit: limit ? parseInt(limit as string) : undefined,
         status: status as string,
         sortBy: sortBy as string,
-        sortOrder: sortOrder as string,
+        sortOrder: sortOrder as string
       };
 
       const result = await this.authService.getMyCustomers(userId, filters);
 
-      this.sendSuccessResponse(res, "Customers retrieved successfully", result);
+      this.sendSuccessResponse(res, 'Customers retrieved successfully', result);
+
     } catch (error) {
-      logger.error("Get my customers error", {
+      logger.error('Get my customers error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
         requestId: this.createErrorContext(req, req.user.id).requestId,
       });
 
-      if (error instanceof Error && error.message.includes("Access denied")) {
+      if (error instanceof Error && error.message.includes('Access denied')) {
         const response: ApiResponse = {
           success: false,
-          message: "Access denied. Business role required.",
+          message: 'Access denied. Business role required.',
           error: {
-            message: "Access denied. Business role required.",
-            code: "CUSTOMER_ACCESS_DENIED",
+            message: 'Access denied. Business role required.',
+            code: 'CUSTOMER_ACCESS_DENIED',
             requestId: this.createErrorContext(req, req.user.id).requestId,
           },
         };
         res.status(403).json(response);
       } else {
         const internalError = new InternalServerError(
-          "Failed to retrieve customers",
+          'Failed to retrieve customers',
           error instanceof Error ? error : new Error(String(error)),
           this.createErrorContext(req, req.user.id)
         );
@@ -729,44 +674,32 @@ export class AuthController {
    * Get detailed customer information
    * GET /api/v1/users/customers/:customerId/details
    */
-  getCustomerDetails = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getCustomerDetails = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = requireAuthenticatedUser(req).id;
       const { customerId } = req.params;
 
-      const customerDetails = await this.authService.getCustomerDetails(
-        userId,
-        customerId
-      );
+      const customerDetails = await this.authService.getCustomerDetails(userId, customerId);
 
-      this.sendSuccessResponse(
-        res,
-        "Customer details retrieved successfully",
-        customerDetails
-      );
+      this.sendSuccessResponse(res, 'Customer details retrieved successfully', customerDetails);
+
     } catch (error) {
-      logger.error("Get customer details error", {
+      logger.error('Get customer details error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
         customerId: req.params.customerId,
         requestId: this.createErrorContext(req, req.user.id).requestId,
       });
 
-      if (error instanceof Error && error.message.includes("not found")) {
+      if (error instanceof Error && error.message.includes('not found')) {
         const notFoundError = new UserNotFoundError(
-          "Customer not found or not accessible",
+          'Customer not found or not accessible',
           this.createErrorContext(req, req.user.id)
         );
         this.sendErrorResponse(res, notFoundError);
-      } else if (
-        error instanceof Error &&
-        error.message.includes("Access denied")
-      ) {
+      } else if (error instanceof Error && error.message.includes('Access denied')) {
         const accessError = new ForbiddenError(
-          "Access denied. You can only view customers from your own businesses.",
+          'Access denied. You can only view customers from your own businesses.',
           this.createErrorContext(req, req.user.id)
         );
         this.sendErrorResponse(res, accessError);
@@ -774,7 +707,7 @@ export class AuthController {
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
-          "Failed to retrieve customer details",
+          'Failed to retrieve customer details',
           error instanceof Error ? error : undefined,
           this.createErrorContext(req, req.user.id)
         );
@@ -787,18 +720,16 @@ export class AuthController {
    * Get user statistics (admin/analytics)
    * GET /api/v1/auth/stats
    */
-  getStats = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getStats = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const context = this.createErrorContext(req, req.user.id);
 
       const stats = await this.authService.getUserStats(context);
 
-      this.sendSuccessResponse(res, "Stats retrieved successfully", { stats });
+      this.sendSuccessResponse(res, 'Stats retrieved successfully', { stats });
+
     } catch (error) {
-      logger.error("Get stats error", {
+      logger.error('Get stats error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
         requestId: this.createErrorContext(req, req.user.id).requestId,
@@ -808,7 +739,7 @@ export class AuthController {
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
-          "Failed to retrieve stats",
+          'Failed to retrieve stats',
           error instanceof Error ? error : new Error(String(error)),
           this.createErrorContext(req, req.user.id)
         );

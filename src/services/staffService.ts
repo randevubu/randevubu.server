@@ -1,23 +1,16 @@
-import { BusinessStaffRole, VerificationPurpose } from "@prisma/client";
-import { isValidPhoneNumber, parsePhoneNumber } from "libphonenumber-js";
-import { ERROR_CODES } from "../constants/errorCodes";
-import { RepositoryContainer } from "../repositories";
-import {
-  StaffWithUser,
-  UpdateStaffRequest,
-} from "../repositories/staffRepository";
-import { CreateUserData, UpdateUserData } from "../types/auth";
-import {
-  BusinessStaffData,
-  BusinessStaffPrivacySettings,
-} from "../types/business";
-import { ErrorContext } from "../types/errors";
-import { AuthError } from "../types/responseTypes";
-import { logger } from "../utils/Logger/logger";
-import { PhoneVerificationService } from "./phoneVerificationService";
-import { RBACService } from "./rbacService";
-import { UsageService } from "./usageService";
-import { WorkingHoursService } from "./workingHoursService";
+import { VerificationPurpose, BusinessStaffRole } from '@prisma/client';
+import { BusinessStaffData, BusinessStaffPrivacySettings } from '../types/business';
+import { StaffRepository, CreateStaffRequest, UpdateStaffRequest, StaffWithUser } from '../repositories/staffRepository';
+import { RepositoryContainer } from '../repositories';
+import { PhoneVerificationService } from './phoneVerificationService';
+import { RBACService } from './rbacService';
+import { UsageService } from './usageService';
+import { PermissionName, CreateUserData, UpdateUserData } from '../types/auth';
+import { ErrorContext } from '../types/errors';
+import { AuthError } from '../types/errorResponse';
+import { ERROR_CODES } from '../constants/errorCodes';
+import { logger } from '../utils/logger';
+import { isValidPhoneNumber, parsePhoneNumber } from 'libphonenumber-js';
 
 export interface InviteStaffRequest {
   businessId: string;
@@ -45,18 +38,12 @@ export interface StaffInvitationResult {
 }
 
 export class StaffService {
-  private workingHoursService: WorkingHoursService;
-
   constructor(
     private repositories: RepositoryContainer,
     private phoneVerificationService: PhoneVerificationService,
     private rbacService: RBACService,
     private usageService: UsageService
-  ) {
-    this.workingHoursService = new WorkingHoursService(
-      this.repositories.prismaClient
-    );
-  }
+  ) {}
 
   /**
    * Step 1: Owner initiates staff invitation by entering phone number
@@ -67,7 +54,13 @@ export class StaffService {
     request: InviteStaffRequest,
     context?: ErrorContext
   ): Promise<{ success: boolean; message: string }> {
-    logger.info("Staff invitation initiated", {
+    // Check if business can add more staff members
+    const canAddStaff = await this.usageService.canAddStaffMember(request.businessId);
+    if (!canAddStaff.allowed) {
+      throw new Error(`Cannot invite staff member: ${canAddStaff.reason}`);
+    }
+
+    logger.info('Staff invitation initiated', {
       ownerId,
       businessId: request.businessId,
       role: request.role,
@@ -78,7 +71,7 @@ export class StaffService {
     // Validate phone number
     const normalizedPhone = this.normalizePhoneNumber(request.phoneNumber);
     if (!normalizedPhone) {
-      throw new Error("Invalid phone number format");
+      throw new Error('Invalid phone number format');
     }
 
     // Check if owner has permission to manage staff for this business
@@ -94,14 +87,13 @@ export class StaffService {
     }
 
     // Check if user is already staff member of this business
-    const existingStaff =
-      await this.repositories.staffRepository.findByBusinessIdAndUserId(
-        request.businessId,
-        (await this.findUserIdByPhone(normalizedPhone)) || "nonexistent"
-      );
+    const existingStaff = await this.repositories.staffRepository.findByBusinessIdAndUserId(
+      request.businessId,
+      await this.findUserIdByPhone(normalizedPhone) || 'nonexistent'
+    );
 
     if (existingStaff && existingStaff.isActive) {
-      throw new Error("This person is already a staff member of this business");
+      throw new Error('This person is already a staff member of this business');
     }
 
     // Send verification code to staff member's phone
@@ -118,7 +110,7 @@ export class StaffService {
     // Record SMS usage for staff invitation verification
     await this.usageService.recordSmsUsage(request.businessId, 1);
 
-    logger.info("Staff invitation SMS sent and usage recorded", {
+    logger.info('Staff invitation SMS sent and usage recorded', {
       ownerId,
       businessId: request.businessId,
       phoneNumber: this.maskPhoneNumber(normalizedPhone),
@@ -128,8 +120,7 @@ export class StaffService {
 
     return {
       success: true,
-      message:
-        "Verification code sent to staff member. Please enter the code they received.",
+      message: 'Verification code sent to staff member. Please enter the code they received.',
     };
   }
 
@@ -142,7 +133,7 @@ export class StaffService {
     request: VerifyStaffInvitationRequest,
     context?: ErrorContext
   ): Promise<StaffInvitationResult> {
-    logger.info("Staff invitation verification started", {
+    logger.info('Staff invitation verification started', {
       ownerId,
       businessId: request.businessId,
       phoneNumber: this.maskPhoneNumber(request.phoneNumber),
@@ -152,7 +143,7 @@ export class StaffService {
 
     const normalizedPhone = this.normalizePhoneNumber(request.phoneNumber);
     if (!normalizedPhone) {
-      throw new Error("Invalid phone number format");
+      throw new Error('Invalid phone number format');
     }
 
     // Verify the SMS code
@@ -164,7 +155,7 @@ export class StaffService {
     );
 
     if (!verificationResult.success) {
-      logger.warn("Staff invitation verification failed", {
+      logger.warn('Staff invitation verification failed', {
         ownerId,
         businessId: request.businessId,
         phoneNumber: this.maskPhoneNumber(normalizedPhone),
@@ -172,7 +163,7 @@ export class StaffService {
       });
       return {
         success: false,
-        message: "Invalid verification code",
+        message: 'Invalid verification code',
       };
     }
 
@@ -183,8 +174,7 @@ export class StaffService {
     await this.validateStaffLimit(request.businessId);
 
     // Find or create user with this phone number
-    let staffUser: any =
-      await this.repositories.userRepository.findByPhoneNumber(normalizedPhone);
+    let staffUser: any = await this.repositories.userRepository.findByPhoneNumber(normalizedPhone);
 
     if (!staffUser) {
       // Create new user account for staff member
@@ -194,13 +184,13 @@ export class StaffService {
         lastName: request.lastName || undefined,
       };
       staffUser = await this.repositories.userRepository.create(createUserData);
-
+      
       // Mark user as verified since phone was verified through invitation
       await this.repositories.userRepository.update(staffUser!.id, {
         isVerified: true,
       });
 
-      logger.info("New user account created for staff member", {
+      logger.info('New user account created for staff member', {
         userId: staffUser.id,
         phoneNumber: this.maskPhoneNumber(normalizedPhone),
         businessId: request.businessId,
@@ -208,59 +198,35 @@ export class StaffService {
       });
     } else if (request.firstName || request.lastName) {
       // Update user name if provided and user doesn't have names set
-      const shouldUpdate =
-        (!staffUser!.firstName && request.firstName) ||
-        (!staffUser!.lastName && request.lastName);
-
+      const shouldUpdate = (!staffUser!.firstName && request.firstName) || 
+                          (!staffUser!.lastName && request.lastName);
+      
       if (shouldUpdate) {
         const updateData: UpdateUserData = {};
-        if (request.firstName && !staffUser!.firstName)
-          updateData.firstName = request.firstName;
-        if (request.lastName && !staffUser!.lastName)
-          updateData.lastName = request.lastName;
-
-        await this.repositories.userRepository.update(
-          staffUser!.id,
-          updateData
-        );
+        if (request.firstName && !staffUser!.firstName) updateData.firstName = request.firstName;
+        if (request.lastName && !staffUser!.lastName) updateData.lastName = request.lastName;
+        
+        await this.repositories.userRepository.update(staffUser!.id, updateData);
       }
     }
 
     // Check if already staff member (edge case)
-    let existingStaff =
-      await this.repositories.staffRepository.findByBusinessIdAndUserId(
-        request.businessId,
-        staffUser!.id
-      );
+    let existingStaff = await this.repositories.staffRepository.findByBusinessIdAndUserId(
+      request.businessId,
+      staffUser!.id
+    );
 
     if (existingStaff) {
       if (existingStaff.isActive) {
         return {
           success: false,
-          message: "This person is already a staff member of this business",
+          message: 'This person is already a staff member of this business',
         };
       } else {
         // Reactivate existing inactive staff member
-        const updatedStaff = await this.repositories.staffRepository.activate(
-          existingStaff.id
-        );
-
-        // Note: No need to assign global STAFF role - the BusinessStaff record is sufficient
-        // The getUserRoles method in roleRepository already converts BusinessStaff roles to role data
-        logger.info(
-          "Staff member reactivated - role will be available via BusinessStaff record",
-          {
-            userId: staffUser!.id,
-            businessId: request.businessId,
-            role: request.role,
-            requestId: context?.requestId,
-          }
-        );
-
-        // Clear RBAC cache for the staff user so their new role appears immediately
-        this.rbacService.clearUserCache(staffUser!.id);
-
-        logger.info("Existing staff member reactivated", {
+        const updatedStaff = await this.repositories.staffRepository.activate(existingStaff.id);
+        
+        logger.info('Existing staff member reactivated', {
           staffId: existingStaff.id,
           userId: staffUser!.id,
           businessId: request.businessId,
@@ -270,10 +236,10 @@ export class StaffService {
 
         // Get full staff info with user details
         const staffWithUser = await this.getStaffById(existingStaff.id);
-
+        
         return {
           success: true,
-          message: "Staff member successfully added to business",
+          message: 'Staff member successfully added to business',
           staffMember: staffWithUser || undefined,
         };
       }
@@ -287,40 +253,10 @@ export class StaffService {
       permissions: request.permissions,
     });
 
-    // Note: No need to assign global STAFF role - the BusinessStaff record is sufficient
-    // The getUserRoles method in roleRepository already converts BusinessStaff roles to role data
-    logger.info(
-      "Staff member added to business - role will be available via BusinessStaff record",
-      {
-        userId: staffUser!.id,
-        businessId: request.businessId,
-        role: request.role,
-        requestId: context?.requestId,
-      }
-    );
-
-    // Clear RBAC cache for the staff user so their new role appears immediately
-    this.rbacService.clearUserCache(staffUser!.id);
-
     // Update staff usage tracking
     await this.usageService.updateStaffUsage(request.businessId);
 
-    // Create default working hours for the new staff member
-    try {
-      await this.workingHoursService.createDefaultStaffHours(
-        request.businessId,
-        newStaff.id
-      );
-    } catch (error) {
-      logger.error("Failed to create default working hours for staff", {
-        staffId: newStaff.id,
-        businessId: request.businessId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      // Don't fail staff creation if working hours creation fails
-    }
-
-    logger.info("New staff member added to business", {
+    logger.info('New staff member added to business', {
       staffId: newStaff.id,
       userId: staffUser!.id,
       businessId: request.businessId,
@@ -334,7 +270,7 @@ export class StaffService {
 
     return {
       success: true,
-      message: "Staff member successfully added to business",
+      message: 'Staff member successfully added to business',
       staffMember: staffWithUser || undefined,
     };
   }
@@ -345,10 +281,7 @@ export class StaffService {
     includeInactive = false
   ): Promise<StaffWithUser[]> {
     await this.validateBusinessAccess(userId, businessId);
-    return this.repositories.staffRepository.findByBusinessId(
-      businessId,
-      includeInactive
-    );
+    return this.repositories.staffRepository.findByBusinessId(businessId, includeInactive);
   }
 
   async getStaffById(staffId: string): Promise<StaffWithUser | null> {
@@ -356,10 +289,8 @@ export class StaffService {
     if (!staff) return null;
 
     // Get staff with user details
-    const staffList = await this.repositories.staffRepository.findByBusinessId(
-      staff.businessId
-    );
-    return staffList.find((s) => s.id === staffId) || null;
+    const staffList = await this.repositories.staffRepository.findByBusinessId(staff.businessId);
+    return staffList.find(s => s.id === staffId) || null;
   }
 
   async updateStaff(
@@ -369,7 +300,7 @@ export class StaffService {
   ): Promise<BusinessStaffData> {
     const staff = await this.repositories.staffRepository.findById(staffId);
     if (!staff) {
-      throw new Error("Staff member not found");
+      throw new Error('Staff member not found');
     }
 
     await this.validateBusinessOwnerPermission(userId, staff.businessId);
@@ -377,22 +308,25 @@ export class StaffService {
     return this.repositories.staffRepository.update(staffId, updates);
   }
 
-  async removeStaff(userId: string, staffId: string): Promise<void> {
+  async removeStaff(
+    userId: string,
+    staffId: string
+  ): Promise<void> {
     const staff = await this.repositories.staffRepository.findById(staffId);
     if (!staff) {
-      throw new Error("Staff member not found");
+      throw new Error('Staff member not found');
     }
 
     await this.validateBusinessOwnerPermission(userId, staff.businessId);
 
     // Prevent removing business owner
     if (staff.role === BusinessStaffRole.OWNER) {
-      throw new Error("Cannot remove business owner");
+      throw new Error('Cannot remove business owner');
     }
 
     await this.repositories.staffRepository.deactivate(staffId);
 
-    logger.info("Staff member removed", {
+    logger.info('Staff member removed', {
       staffId,
       businessId: staff.businessId,
       removedBy: userId,
@@ -416,8 +350,7 @@ export class StaffService {
       this.repositories.businessRepository.findByIdWithSubscription(businessId),
     ]);
 
-    const subscriptionLimit =
-      business?.subscription?.plan.maxStaffPerBusiness || 1;
+    const subscriptionLimit = business?.subscription?.plan.maxStaffPerBusiness || 1;
     const remainingSlots = Math.max(0, subscriptionLimit - stats.activeStaff);
 
     return {
@@ -427,69 +360,57 @@ export class StaffService {
     };
   }
 
-  private async validateBusinessOwnerPermission(
-    userId: string,
-    businessId: string
-  ): Promise<void> {
+  private async validateBusinessOwnerPermission(userId: string, businessId: string): Promise<void> {
     // Check if user is owner of this business
-    const business = await this.repositories.businessRepository.findById(
-      businessId
-    );
+    const business = await this.repositories.businessRepository.findById(businessId);
     if (!business) {
-      throw new Error("Business not found");
+      throw new Error('Business not found');
     }
 
     if (business.ownerId !== userId) {
       // Also check if user has staff management permissions
       const hasPermission = await this.rbacService.hasPermission(
         userId,
-        "staff",
-        "manage",
+        'staff',
+        'manage',
         { businessId }
       );
-
+      
       if (!hasPermission) {
-        throw new Error("Access denied: Only business owners can manage staff");
+        throw new Error('Access denied: Only business owners can manage staff');
       }
     }
   }
 
-  private async validateBusinessAccess(
-    userId: string,
-    businessId: string
-  ): Promise<void> {
-    const business = await this.repositories.businessRepository.findById(
-      businessId
-    );
+  private async validateBusinessAccess(userId: string, businessId: string): Promise<void> {
+    const business = await this.repositories.businessRepository.findById(businessId);
     if (!business) {
-      throw new Error("Business not found");
+      throw new Error('Business not found');
     }
 
     // Check if user is owner or staff member
     const isOwner = business.ownerId === userId;
-    const isStaffMember =
-      await this.repositories.staffRepository.checkUserExistsInBusiness(
-        businessId,
-        userId
-      );
+    const isStaffMember = await this.repositories.staffRepository.checkUserExistsInBusiness(
+      businessId,
+      userId
+    );
 
     if (!isOwner && !isStaffMember) {
-      throw new AuthError(ERROR_CODES.ACCESS_DENIED, {
-        message: "You do not have access to this business",
-      });
+      throw new AuthError(
+        ERROR_CODES.ACCESS_DENIED,
+        { message: 'You do not have access to this business' }
+      );
     }
   }
 
   private async validateStaffLimit(businessId: string): Promise<void> {
     const [currentStaffCount, business] = await Promise.all([
-      this.repositories.staffRepository.countActiveStaffByBusinessId(
-        businessId
-      ),
+      this.repositories.staffRepository.countActiveStaffByBusinessId(businessId),
       this.repositories.businessRepository.findByIdWithSubscription(businessId),
     ]);
 
     if (!business?.subscription) {
-      throw new Error("Business does not have an active subscription");
+      throw new Error('Business does not have an active subscription');
     }
 
     const maxStaff = business.subscription.plan.maxStaffPerBusiness;
@@ -497,15 +418,13 @@ export class StaffService {
     if (currentStaffCount >= maxStaff) {
       throw new Error(
         `Staff limit reached. Your ${business.subscription.plan.displayName} plan allows ${maxStaff} staff members (including owner). ` +
-          `Current: ${currentStaffCount}/${maxStaff}. Please upgrade your subscription to add more staff.`
+        `Current: ${currentStaffCount}/${maxStaff}. Please upgrade your subscription to add more staff.`
       );
     }
   }
 
   private async findUserIdByPhone(phoneNumber: string): Promise<string | null> {
-    const user = await this.repositories.userRepository.findByPhoneNumber(
-      phoneNumber
-    );
+    const user = await this.repositories.userRepository.findByPhoneNumber(phoneNumber);
     return user?.id || null;
   }
 
@@ -516,9 +435,9 @@ export class StaffService {
       }
 
       const parsed = parsePhoneNumber(phoneNumber);
-      return parsed?.format("E.164") || null;
+      return parsed?.format('E.164') || null;
     } catch (error) {
-      logger.warn("Phone number parsing failed", {
+      logger.warn('Phone number parsing failed', {
         phoneNumber: this.maskPhoneNumber(phoneNumber),
         error: error instanceof Error ? error.message : String(error),
       });
@@ -526,27 +445,25 @@ export class StaffService {
     }
   }
 
-  private maskPhoneNumber(phoneNumber: string): string {
+  private maskPhoneNumber(phoneNumber: string): string { 
     if (phoneNumber.length < 4) {
-      return "*".repeat(phoneNumber.length);
+      return '*'.repeat(phoneNumber.length);
     }
 
     const visibleDigits = 3;
-    const maskedPart = "*".repeat(phoneNumber.length - visibleDigits);
+    const maskedPart = '*'.repeat(phoneNumber.length - visibleDigits);
     return maskedPart + phoneNumber.slice(-visibleDigits);
   }
 
-  private getStaffPrivacySettings(
-    businessSettings: any
-  ): BusinessStaffPrivacySettings {
+  private getStaffPrivacySettings(businessSettings: any): BusinessStaffPrivacySettings {
     const defaultSettings: BusinessStaffPrivacySettings = {
       hideStaffNames: false,
-      staffDisplayMode: "NAMES",
+      staffDisplayMode: 'NAMES',
       customStaffLabels: {
-        owner: "Owner",
-        manager: "Manager",
-        staff: "Staff",
-        receptionist: "Receptionist",
+        owner: 'Owner',
+        manager: 'Manager',
+        staff: 'Staff',
+        receptionist: 'Receptionist',
       },
     };
 
@@ -555,83 +472,58 @@ export class StaffService {
     }
 
     return {
-      hideStaffNames:
-        businessSettings.staffPrivacy.hideStaffNames ??
-        defaultSettings.hideStaffNames,
-      staffDisplayMode:
-        businessSettings.staffPrivacy.staffDisplayMode ??
-        defaultSettings.staffDisplayMode,
+      hideStaffNames: businessSettings.staffPrivacy.hideStaffNames ?? defaultSettings.hideStaffNames,
+      staffDisplayMode: businessSettings.staffPrivacy.staffDisplayMode ?? defaultSettings.staffDisplayMode,
       customStaffLabels: {
-        owner:
-          businessSettings.staffPrivacy.customStaffLabels?.owner ??
-          defaultSettings.customStaffLabels.owner,
-        manager:
-          businessSettings.staffPrivacy.customStaffLabels?.manager ??
-          defaultSettings.customStaffLabels.manager,
-        staff:
-          businessSettings.staffPrivacy.customStaffLabels?.staff ??
-          defaultSettings.customStaffLabels.staff,
-        receptionist:
-          businessSettings.staffPrivacy.customStaffLabels?.receptionist ??
-          defaultSettings.customStaffLabels.receptionist,
+        owner: businessSettings.staffPrivacy.customStaffLabels?.owner ?? defaultSettings.customStaffLabels.owner,
+        manager: businessSettings.staffPrivacy.customStaffLabels?.manager ?? defaultSettings.customStaffLabels.manager,
+        staff: businessSettings.staffPrivacy.customStaffLabels?.staff ?? defaultSettings.customStaffLabels.staff,
+        receptionist: businessSettings.staffPrivacy.customStaffLabels?.receptionist ?? defaultSettings.customStaffLabels.receptionist,
       },
     };
   }
 
-  private getStaffDisplayName(
-    role: BusinessStaffRole,
-    privacySettings: BusinessStaffPrivacySettings
-  ): string {
-    if (privacySettings.staffDisplayMode === "ROLES") {
+  private getStaffDisplayName(role: BusinessStaffRole, privacySettings: BusinessStaffPrivacySettings): string {
+    if (privacySettings.staffDisplayMode === 'ROLES') {
       const roleNames = {
-        [BusinessStaffRole.OWNER]: "Owner",
-        [BusinessStaffRole.MANAGER]: "Manager",
-        [BusinessStaffRole.STAFF]: "Staff Member",
-        [BusinessStaffRole.RECEPTIONIST]: "Receptionist",
+        [BusinessStaffRole.OWNER]: 'Owner',
+        [BusinessStaffRole.MANAGER]: 'Manager',
+        [BusinessStaffRole.STAFF]: 'Staff Member',
+        [BusinessStaffRole.RECEPTIONIST]: 'Receptionist',
       };
-      return roleNames[role] || "Staff";
+      return roleNames[role] || 'Staff';
     }
 
-    if (privacySettings.staffDisplayMode === "GENERIC") {
-      return (
-        privacySettings.customStaffLabels[
-          role.toLowerCase() as keyof typeof privacySettings.customStaffLabels
-        ] || "Staff"
-      );
+    if (privacySettings.staffDisplayMode === 'GENERIC') {
+      return privacySettings.customStaffLabels[role.toLowerCase() as keyof typeof privacySettings.customStaffLabels] || 'Staff';
     }
 
     // Default to NAMES mode (shouldn't reach here if hideStaffNames is true)
-    return "Staff";
+    return 'Staff';
   }
 
-  async getPublicBusinessStaff(businessId: string): Promise<
-    Array<{
+  async getPublicBusinessStaff(businessId: string): Promise<Array<{
+    id: string;
+    role: BusinessStaffRole;
+    user: {
       id: string;
-      role: BusinessStaffRole;
-      user: {
-        id: string;
-        firstName: string | null;
-        lastName: string | null;
-        avatar: string | null;
-      };
-      displayName?: string;
-    }>
-  > {
-    const business = await this.repositories.businessRepository.findById(
-      businessId
-    );
+      firstName: string | null;
+      lastName: string | null;
+      avatar: string | null;
+    };
+    displayName?: string;
+  }>> {
+    const business = await this.repositories.businessRepository.findById(businessId);
     if (!business) {
-      throw new Error("Business not found");
+      throw new Error('Business not found');
     }
 
-    const staff = await this.repositories.staffRepository.findByBusinessId(
-      businessId
-    );
-
+    const staff = await this.repositories.staffRepository.findByBusinessId(businessId);
+    
     // Get privacy settings from business settings
     const privacySettings = this.getStaffPrivacySettings(business.settings);
-
-    return staff.map((member) => {
+    
+    return staff.map(member => {
       const baseStaff = {
         id: member.id,
         role: member.role,
@@ -645,10 +537,7 @@ export class StaffService {
 
       // Apply privacy settings
       if (privacySettings.hideStaffNames) {
-        const displayName = this.getStaffDisplayName(
-          member.role,
-          privacySettings
-        );
+        const displayName = this.getStaffDisplayName(member.role, privacySettings);
         return {
           ...baseStaff,
           user: {
@@ -675,26 +564,15 @@ export class StaffService {
     await this.validateBusinessOwnerPermission(userId, toBusinessId);
 
     // Check staff limits for target business
-    const targetStaffCount =
-      await this.repositories.staffRepository.countActiveStaffByBusinessId(
-        toBusinessId
-      );
-    const targetBusiness =
-      await this.repositories.businessRepository.findByIdWithSubscription(
-        toBusinessId
-      );
-
+    const targetStaffCount = await this.repositories.staffRepository.countActiveStaffByBusinessId(toBusinessId);
+    const targetBusiness = await this.repositories.businessRepository.findByIdWithSubscription(toBusinessId);
+    
     if (!targetBusiness?.subscription) {
-      throw new Error("Target business does not have an active subscription");
+      throw new Error('Target business does not have an active subscription');
     }
 
-    if (
-      targetStaffCount + staffIds.length >
-      targetBusiness.subscription.plan.maxStaffPerBusiness
-    ) {
-      throw new Error(
-        "Target business does not have enough staff slots available"
-      );
+    if (targetStaffCount + staffIds.length > targetBusiness.subscription.plan.maxStaffPerBusiness) {
+      throw new Error('Target business does not have enough staff slots available');
     }
 
     await this.repositories.staffRepository.transferStaffToNewBusiness(
@@ -703,7 +581,7 @@ export class StaffService {
       staffIds
     );
 
-    logger.info("Staff transferred between businesses", {
+    logger.info('Staff transferred between businesses', {
       staffIds,
       fromBusinessId,
       toBusinessId,

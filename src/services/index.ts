@@ -98,17 +98,16 @@ export class ServiceContainer {
       repositories.appointmentRepository,
       this.rbacService
     );
+    this.subscriptionService = new SubscriptionService(repositories.subscriptionRepository, this.rbacService);
+    
     // Create discount code service first
     this.discountCodeService = new DiscountCodeService(
       repositories.discountCodeRepository,
       this.rbacService
     );
-
+    
     // Then create payment service with discount code service dependency
     this.paymentService = new PaymentService(repositories.prismaClient, this.discountCodeService);
-
-    // Create subscription service with payment service dependency
-    this.subscriptionService = new SubscriptionService(repositories.subscriptionRepository, this.rbacService, this.paymentService);
 
     // Enhanced closure services
     this.closureAnalyticsService = new ClosureAnalyticsService(repositories.prismaClient);

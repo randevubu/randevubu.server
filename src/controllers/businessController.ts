@@ -1,32 +1,29 @@
-import { Request, Response } from "express";
-import { ERROR_CODES } from "../constants/errorCodes";
-import { BusinessContextRequest } from "../middleware/businessContext";
+import { Request, Response } from 'express';
+import { BusinessContextRequest } from '../middleware/businessContext';
 import {
   businessSearchSchema,
   createBusinessSchema,
-  deleteGalleryImageSchema,
-  deleteImageSchema,
-  imageUploadSchema,
-  updateBusinessPriceSettingsSchema,
   updateBusinessSchema,
+  updateBusinessPriceSettingsSchema,
   updateBusinessStaffPrivacySettingsSchema,
-} from "../schemas/business.schemas";
-import { BusinessService } from "../services/businessService";
-import { RBACService } from "../services/rbacService";
-import { StaffService } from "../services/staffService";
-import { TokenService } from "../services/tokenService";
-import {
-  AuthenticatedRequest,
-  AuthenticatedRequestWithFile,
-} from "../types/auth";
-import { AppError } from "../types/responseTypes";
+  imageUploadSchema,
+  deleteImageSchema,
+  deleteGalleryImageSchema
+} from '../schemas/business.schemas';
+import { BusinessService } from '../services/businessService';
+import { RBACService } from '../services/rbacService';
+import { TokenService } from '../services/tokenService';
+import { StaffService } from '../services/staffService';
+import { AuthenticatedRequest, AuthenticatedRequestWithFile } from '../types/auth';
 import {
   BusinessErrors,
   createErrorContext,
   handleRouteError,
   sendAppErrorResponse,
-  sendSuccessResponse,
-} from "../utils/responseUtils";
+  sendSuccessResponse
+} from '../utils/errorResponse';
+import { AppError } from '../types/errorResponse';
+import { ERROR_CODES } from '../constants/errorCodes';
 
 export class BusinessController {
   constructor(
@@ -41,71 +38,51 @@ export class BusinessController {
    * GET /api/v1/business/my-business
    * Query params: ?includeSubscription=true to include subscription info
    */
-  async getMyBusiness(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getMyBusiness(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
-      const includeSubscription = req.query.includeSubscription === "true";
-
-      console.log("🔍 DEBUG getMyBusiness:");
-      console.log("  User ID:", userId);
-      console.log(
-        "  User roles:",
-        req.user?.roles?.map((r) => r.name) || "undefined"
-      );
-      console.log("  Business context:", req.businessContext);
-
-      if (
-        !req.businessContext ||
-        req.businessContext.businessIds.length === 0
-      ) {
-        console.log(
-          "  ❌ Returning empty - no business context or empty business IDs"
-        );
-        res.set("Cache-Control", "no-cache, no-store, must-revalidate");
-        res.set("Pragma", "no-cache");
-        res.set("Expires", "0");
+      const includeSubscription = req.query.includeSubscription === 'true';
+      
+      console.log('🔍 DEBUG getMyBusiness:');
+      console.log('  User ID:', userId);
+      console.log('  User roles:', req.user?.roles?.map(r => r.name) || 'undefined');
+      console.log('  Business context:', req.businessContext);
+      
+      if (!req.businessContext || req.businessContext.businessIds.length === 0) {
+        console.log('  ❌ Returning empty - no business context or empty business IDs');
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
         res.json({
           success: true,
-          message: "No businesses found",
-          data: {
-            businesses: [],
-          },
+          message: 'No businesses found',
+          data: { 
+            businesses: [] 
+          }
         });
         return;
       }
 
       let businesses;
-      console.log("DEBUG: includeSubscription =", includeSubscription);
+      console.log('DEBUG: includeSubscription =', includeSubscription);
       if (includeSubscription) {
-        console.log("DEBUG: Calling getMyBusinessesWithSubscription");
-        businesses = await this.businessService.getMyBusinessesWithSubscription(
-          userId
-        );
-        console.log(
-          "DEBUG: Received businesses with subscription:",
-          businesses.length,
-          "businesses"
-        );
-        console.log(
-          "DEBUG: First business subscription:",
-          businesses[0]?.subscription
-        );
+        console.log('DEBUG: Calling getMyBusinessesWithSubscription');
+        businesses = await this.businessService.getMyBusinessesWithSubscription(userId);
+        console.log('DEBUG: Received businesses with subscription:', businesses.length, 'businesses');
+        console.log('DEBUG: First business subscription:', businesses[0]?.subscription);
       } else {
-        console.log("DEBUG: Calling regular getMyBusinesses");
+        console.log('DEBUG: Calling regular getMyBusinesses');
         businesses = await this.businessService.getMyBusinesses(userId);
       }
 
-      res.set("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.set("Pragma", "no-cache");
-      res.set("Expires", "0");
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
       res.json({
         success: true,
-        message: "Business data retrieved successfully",
-        data: {
-          businesses: businesses.map((business) => {
+        message: 'Business data retrieved successfully',
+        data: { 
+          businesses: businesses.map(business => {
             const baseData = {
               id: business.id,
               name: business.name,
@@ -124,23 +101,17 @@ export class BusinessController {
               logoUrl: business.logoUrl,
               businessHours: business.businessHours,
               createdAt: business.createdAt,
-              businessType: business.businessType
-                ? {
-                    id: business.businessType.id,
-                    name: business.businessType.name,
-                    displayName: business.businessType.displayName,
-                    icon: business.businessType.icon,
-                    category: business.businessType.category,
-                  }
-                : null,
+              businessType: business.businessType ? {
+                id: business.businessType.id,
+                name: business.businessType.name,
+                displayName: business.businessType.displayName,
+                icon: business.businessType.icon,
+                category: business.businessType.category
+              } : null
             };
 
             // Add subscription info if requested and available
-            if (
-              includeSubscription &&
-              "subscription" in business &&
-              business.subscription
-            ) {
+            if (includeSubscription && 'subscription' in business && business.subscription) {
               const sub = business.subscription as any;
               return {
                 ...baseData,
@@ -161,11 +132,11 @@ export class BusinessController {
                     features: sub.plan.features,
                     limits: {
                       maxBusinesses: sub.plan.maxBusinesses,
-                      maxStaffPerBusiness: sub.plan.maxStaffPerBusiness,
+                      maxStaffPerBusiness: sub.plan.maxStaffPerBusiness
                     },
-                    isPopular: sub.plan.isPopular,
-                  },
-                },
+                    isPopular: sub.plan.isPopular
+                  }
+                }
               };
             }
 
@@ -174,17 +145,18 @@ export class BusinessController {
           context: {
             primaryBusinessId: req.businessContext.primaryBusinessId,
             totalBusinesses: req.businessContext.businessIds.length,
-            includesSubscriptionInfo: includeSubscription,
-          },
-        },
+            includesSubscriptionInfo: includeSubscription
+          }
+        }
       });
+
     } catch (error) {
       res.status(500).json({
         success: false,
         error: {
-          message: "Failed to retrieve business data",
-          code: "INTERNAL_SERVER_ERROR",
-        },
+          message: 'Failed to retrieve business data',
+          code: 'INTERNAL_SERVER_ERROR'
+        }
       });
     }
   }
@@ -193,20 +165,13 @@ export class BusinessController {
    * Get user's services from their businesses
    * GET /api/v1/businesses/my-services
    */
-  async getMyServices(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getMyServices(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
-
+      
       // Allow users with OWNER role to proceed even without businesses
       // This enables them to create their first business
-      if (
-        !req.businessContext ||
-        (req.businessContext.businessIds.length === 0 &&
-          !req.businessContext.isOwner)
-      ) {
+      if (!req.businessContext || (req.businessContext.businessIds.length === 0 && !req.businessContext.isOwner)) {
         const context = createErrorContext(req, userId);
         const error = BusinessErrors.noAccess(context);
         return sendAppErrorResponse(res, error);
@@ -214,219 +179,165 @@ export class BusinessController {
 
       // If user has no businesses yet, return empty services array
       if (req.businessContext.businessIds.length === 0) {
-        return sendSuccessResponse(
-          res,
-          {
-            services: [],
-            total: 0,
-            page: 1,
-            totalPages: 0,
-          },
-          "No services found - create a business first"
-        );
+        return sendSuccessResponse(res, {
+          services: [],
+          total: 0,
+          page: 1,
+          totalPages: 0
+        }, 'No services found - create a business first');
       }
 
-      const { businessId, active, page = "1", limit = "50" } = req.query;
+      const { businessId, active, page = '1', limit = '50' } = req.query;
       const pageNum = parseInt(page as string, 10);
       const limitNum = parseInt(limit as string, 10);
 
       const services = await this.businessService.getMyServices(userId, {
         businessId: businessId as string,
-        active: active ? active === "true" : undefined,
+        active: active ? active === 'true' : undefined,
         page: pageNum,
-        limit: limitNum,
+        limit: limitNum
       });
 
-      sendSuccessResponse(res, services, "Services retrieved successfully");
+      sendSuccessResponse(res, services, 'Services retrieved successfully');
+
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  async createBusiness(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
-    console.log("🚀 BUSINESS CREATION STARTED - Method called");
-    console.log("🚀 BUSINESS CREATION - Request body:", req.body);
-    console.log("🚀 BUSINESS CREATION - User:", req.user?.id);
-    console.log(
-      "🚀 BUSINESS CREATION - Token service available:",
-      !!this.tokenService
-    );
-    console.log(
-      "🚀 BUSINESS CREATION - RBAC service available:",
-      !!this.rbacService
-    );
+  async createBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
+    console.log('🚀 BUSINESS CREATION STARTED - Method called');
+    console.log('🚀 BUSINESS CREATION - Request body:', req.body);
+    console.log('🚀 BUSINESS CREATION - User:', req.user?.id);
+    console.log('🚀 BUSINESS CREATION - Token service available:', !!this.tokenService);
+    console.log('🚀 BUSINESS CREATION - RBAC service available:', !!this.rbacService);
     try {
       const validatedData = createBusinessSchema.parse(req.body);
       const userId = req.user!.id;
-      console.log("🚀 BUSINESS CREATION - User ID:", userId);
-
+      console.log('🚀 BUSINESS CREATION - User ID:', userId);
+      
       // Get user's roles before business creation
-      const userRolesBefore = req.user?.roles?.map((role) => role.name) || [];
-      console.log(
-        "🔍 DEBUG Business Creation - Roles before:",
-        userRolesBefore
-      );
+      const userRolesBefore = req.user?.roles?.map(role => role.name) || [];
+      console.log('🔍 DEBUG Business Creation - Roles before:', userRolesBefore);
 
       // Create business (transaction will be committed inside the service)
-      const business = await this.businessService.createBusiness(
-        userId,
-        validatedData
-      );
+      const business = await this.businessService.createBusiness(userId, validatedData);
 
       // ENTERPRISE-GRADE SOLUTION: Ensure role propagation with read-after-write consistency
       let tokens = null;
       if (this.rbacService && this.tokenService) {
         // Aggressively clear all cache entries for this user
         this.rbacService.forceInvalidateUser(userId);
-
+        
         // Wait for database consistency (enterprise pattern)
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
         // Get fresh user permissions after role assignment (bypass cache)
-        const userPermissionsAfter = await this.rbacService.getUserPermissions(
-          userId,
-          false
-        );
-        const userRolesAfter = userPermissionsAfter.roles.map(
-          (role) => role.name
-        );
-
+        const userPermissionsAfter = await this.rbacService.getUserPermissions(userId, false);
+        const userRolesAfter = userPermissionsAfter.roles.map(role => role.name);
+        
         // Validate role assignment was successful
-        const ownerWasAdded =
-          !userRolesBefore.includes("OWNER") &&
-          userRolesAfter.includes("OWNER");
-
+        const ownerWasAdded = !userRolesBefore.includes('OWNER') && userRolesAfter.includes('OWNER');
+        
         if (!ownerWasAdded) {
-          console.warn(
-            "⚠️ OWNER role was not found immediately after assignment. Retrying..."
-          );
+          console.warn('⚠️ OWNER role was not found immediately after assignment. Retrying...');
           // Retry with additional cache clearing (handles distributed cache scenarios)
           this.rbacService.forceInvalidateUser(userId);
-          await new Promise((resolve) => setTimeout(resolve, 100));
-
-          const retryPermissions = await this.rbacService.getUserPermissions(
-            userId,
-            false
-          );
-          const retryRoles = retryPermissions.roles.map((role) => role.name);
-
-          if (!retryRoles.includes("OWNER")) {
-            throw new Error(
-              "Role assignment failed: OWNER role not found after business creation"
-            );
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const retryPermissions = await this.rbacService.getUserPermissions(userId, false);
+          const retryRoles = retryPermissions.roles.map(role => role.name);
+          
+          if (!retryRoles.includes('OWNER')) {
+            throw new Error('Role assignment failed: OWNER role not found after business creation');
           }
         }
-
+        
         // Generate new tokens with updated roles
         const tokenPair = await this.tokenService.generateTokenPair(
           userId,
           req.user!.phoneNumber
         );
-
+        
         tokens = {
           accessToken: tokenPair.accessToken,
-          refreshToken: tokenPair.refreshToken,
+          refreshToken: tokenPair.refreshToken
         };
-
-        console.log(
-          "✅ Role propagation validated successfully:",
-          userRolesAfter
-        );
+        
+        console.log('✅ Role propagation validated successfully:', userRolesAfter);
       }
 
       const response: any = {
         success: true,
         data: business,
-        message: "Business created successfully",
+        message: 'Business created successfully'
       };
 
       // Always include new tokens since we guaranteed role assignment
       if (tokens) {
         response.tokens = tokens;
-        response.message =
-          "Business created successfully. You have been upgraded to business owner.";
-
+        response.message = 'Business created successfully. You have been upgraded to business owner.';
+        
         // Set cache control headers to prevent stale profile responses
-        res.set("X-Role-Update", "true");
-        res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.set('X-Role-Update', 'true');
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       } else {
-        console.warn("⚠️ No tokens generated after business creation");
+        console.warn('⚠️ No tokens generated after business creation');
       }
 
       res.status(201).json(response);
     } catch (error) {
-      console.error("❌ BUSINESS CREATION ERROR:", error);
-      console.error(
-        "❌ BUSINESS CREATION ERROR STACK:",
-        error instanceof Error ? error.stack : "No stack trace"
-      );
+      console.error('❌ BUSINESS CREATION ERROR:', error);
+      console.error('❌ BUSINESS CREATION ERROR STACK:', error instanceof Error ? error.stack : 'No stack trace');
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to create business",
+        error: error instanceof Error ? error.message : 'Failed to create business'
       });
     }
   }
 
-  async getBusinessById(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async getBusinessById(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const { includeDetails, includeSubscription } = req.query;
       const userId = req.user!.id;
 
       let business;
-      if (includeSubscription === "true") {
-        business = await this.businessService.getBusinessByIdWithSubscription(
-          userId,
-          id
-        );
+      if (includeSubscription === 'true') {
+        business = await this.businessService.getBusinessByIdWithSubscription(userId, id);
       } else {
         business = await this.businessService.getBusinessById(
-          userId,
-          id,
-          includeDetails === "true"
+          userId, 
+          id, 
+          includeDetails === 'true'
         );
       }
 
       if (!business) {
         res.status(404).json({
           success: false,
-          error: "Business not found",
+          error: 'Business not found'
         });
         return;
       }
 
       // Format response based on what was requested
       let responseData: any = business;
-      if (includeSubscription === "true" && "subscription" in business) {
+      if (includeSubscription === 'true' && 'subscription' in business) {
         const businessWithSub = business as any;
         responseData = {
           ...business,
-          subscription: businessWithSub.subscription
-            ? {
-                ...businessWithSub.subscription,
-                plan: businessWithSub.subscription.plan
-                  ? {
-                      ...businessWithSub.subscription.plan,
-                      limits: {
-                        maxBusinesses:
-                          businessWithSub.subscription.plan.maxBusinesses,
-                        maxStaffPerBusiness:
-                          businessWithSub.subscription.plan.maxStaffPerBusiness,
-                        maxAppointmentsPerDay:
-                          businessWithSub.subscription.plan
-                            .maxAppointmentsPerDay,
-                      },
-                    }
-                  : undefined,
+          subscription: businessWithSub.subscription ? {
+            ...businessWithSub.subscription,
+            plan: businessWithSub.subscription.plan ? {
+              ...businessWithSub.subscription.plan,
+              limits: {
+                maxBusinesses: businessWithSub.subscription.plan.maxBusinesses,
+                maxStaffPerBusiness: businessWithSub.subscription.plan.maxStaffPerBusiness,
+                maxAppointmentsPerDay: businessWithSub.subscription.plan.maxAppointmentsPerDay
               }
-            : null,
+            } : undefined
+          } : null
         };
       }
 
@@ -434,13 +345,13 @@ export class BusinessController {
         success: true,
         data: responseData,
         meta: {
-          includesSubscriptionInfo: includeSubscription === "true",
-        },
+          includesSubscriptionInfo: includeSubscription === 'true'
+        }
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error: error instanceof Error ? error.message : "Access denied",
+        error: error instanceof Error ? error.message : 'Access denied'
       });
     }
   }
@@ -449,336 +360,258 @@ export class BusinessController {
     try {
       const { slug } = req.params;
 
-      const business = await this.businessService.getBusinessBySlugWithServices(
-        slug
-      );
+      const business = await this.businessService.getBusinessBySlugWithServices(slug);
 
       if (!business) {
         res.status(404).json({
           success: false,
-          error: "Business not found",
+          error: 'Business not found'
         });
         return;
       }
 
       res.json({
         success: true,
-        data: business,
+        data: business
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        error: "Internal server error",
+        error: 'Internal server error'
       });
     }
   }
 
-  async getUserBusinesses(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async getUserBusinesses(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { ownerId } = req.params;
       const targetUserId = ownerId || userId;
 
-      const businesses = await this.businessService.getBusinessesByOwner(
-        userId,
-        targetUserId
-      );
+      const businesses = await this.businessService.getBusinessesByOwner(userId, targetUserId);
 
       res.json({
         success: true,
         data: businesses,
         meta: {
-          total: businesses.length,
-        },
+          total: businesses.length
+        }
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error: error instanceof Error ? error.message : "Access denied",
+        error: error instanceof Error ? error.message : 'Access denied'
       });
     }
   }
 
-  async updateBusiness(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async updateBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const validatedData = updateBusinessSchema.parse(req.body);
       const userId = req.user!.id;
 
-      const business = await this.businessService.updateBusiness(
-        userId,
-        id,
-        validatedData
-      );
+      const business = await this.businessService.updateBusiness(userId, id, validatedData);
 
       res.json({
         success: true,
         data: business,
-        message: "Business updated successfully",
+        message: 'Business updated successfully'
       });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("not found")) {
+      if (error instanceof Error && error.message.includes('not found')) {
         res.status(404).json({
           success: false,
           error: {
             message: error.message,
-            code: "BUSINESS_NOT_FOUND",
-          },
+            code: 'BUSINESS_NOT_FOUND'
+          }
         });
-      } else if (
-        error instanceof Error &&
-        error.message.includes("Access denied")
-      ) {
+      } else if (error instanceof Error && error.message.includes('Access denied')) {
         res.status(403).json({
           success: false,
           error: {
             message: error.message,
-            code: "ACCESS_DENIED",
-          },
+            code: 'ACCESS_DENIED'
+          }
         });
       } else {
         res.status(400).json({
           success: false,
           error: {
-            message:
-              error instanceof Error
-                ? error.message
-                : "Failed to update business",
-            code: "UPDATE_FAILED",
-          },
+            message: error instanceof Error ? error.message : 'Failed to update business',
+            code: 'UPDATE_FAILED'
+          }
         });
       }
     }
   }
 
-  async updateMyBusiness(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async updateMyBusiness(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const validatedData = updateBusinessSchema.parse(req.body);
       const userId = req.user!.id;
 
-      if (
-        !req.businessContext ||
-        req.businessContext.businessIds.length === 0
-      ) {
+      if (!req.businessContext || req.businessContext.businessIds.length === 0) {
         res.status(404).json({
           success: false,
           error: {
-            message: "No business found to update",
-            code: "BUSINESS_NOT_FOUND",
-          },
+            message: 'No business found to update',
+            code: 'BUSINESS_NOT_FOUND'
+          }
         });
         return;
       }
 
       // Use the primary business ID or the first business if no primary is set
-      const businessId =
-        req.businessContext.primaryBusinessId ||
-        req.businessContext.businessIds[0];
-
-      const business = await this.businessService.updateBusiness(
-        userId,
-        businessId,
-        validatedData
-      );
+      const businessId = req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
+      
+      const business = await this.businessService.updateBusiness(userId, businessId, validatedData);
 
       res.json({
         success: true,
         data: business,
-        message: "Business updated successfully",
+        message: 'Business updated successfully'
       });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("not found")) {
+      if (error instanceof Error && error.message.includes('not found')) {
         res.status(404).json({
           success: false,
           error: {
             message: error.message,
-            code: "BUSINESS_NOT_FOUND",
-          },
+            code: 'BUSINESS_NOT_FOUND'
+          }
         });
-      } else if (
-        error instanceof Error &&
-        error.message.includes("Access denied")
-      ) {
+      } else if (error instanceof Error && error.message.includes('Access denied')) {
         res.status(403).json({
           success: false,
           error: {
             message: error.message,
-            code: "ACCESS_DENIED",
-          },
+            code: 'ACCESS_DENIED'
+          }
         });
       } else {
         res.status(400).json({
           success: false,
           error: {
-            message:
-              error instanceof Error
-                ? error.message
-                : "Failed to update business",
-            code: "UPDATE_FAILED",
-          },
+            message: error instanceof Error ? error.message : 'Failed to update business',
+            code: 'UPDATE_FAILED'
+          }
         });
       }
     }
   }
 
-  async updatePriceSettings(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async updatePriceSettings(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const validatedData = updateBusinessPriceSettingsSchema.parse(req.body);
       const userId = req.user!.id;
 
-      if (
-        !req.businessContext ||
-        req.businessContext.businessIds.length === 0
-      ) {
+      if (!req.businessContext || req.businessContext.businessIds.length === 0) {
         res.status(404).json({
           success: false,
           error: {
-            message: "No business found to update",
-            code: "BUSINESS_NOT_FOUND",
-          },
+            message: 'No business found to update',
+            code: 'BUSINESS_NOT_FOUND'
+          }
         });
         return;
       }
 
       // Use the primary business ID or the first business if no primary is set
-      const businessId =
-        req.businessContext.primaryBusinessId ||
-        req.businessContext.businessIds[0];
-
-      const updatedBusiness =
-        await this.businessService.updateBusinessPriceSettings(
-          userId,
-          businessId,
-          validatedData
-        );
+      const businessId = req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
+      
+      const updatedBusiness = await this.businessService.updateBusinessPriceSettings(userId, businessId, validatedData);
 
       res.json({
         success: true,
         data: updatedBusiness,
-        message: "Price settings updated successfully",
+        message: 'Price settings updated successfully'
       });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("not found")) {
+      if (error instanceof Error && error.message.includes('not found')) {
         res.status(404).json({
           success: false,
           error: {
             message: error.message,
-            code: "BUSINESS_NOT_FOUND",
-          },
+            code: 'BUSINESS_NOT_FOUND'
+          }
         });
-      } else if (
-        error instanceof Error &&
-        error.message.includes("Access denied")
-      ) {
+      } else if (error instanceof Error && error.message.includes('Access denied')) {
         res.status(403).json({
           success: false,
           error: {
             message: error.message,
-            code: "ACCESS_DENIED",
-          },
+            code: 'ACCESS_DENIED'
+          }
         });
       } else {
         res.status(400).json({
           success: false,
           error: {
-            message:
-              error instanceof Error
-                ? error.message
-                : "Failed to update price settings",
-            code: "UPDATE_FAILED",
-          },
+            message: error instanceof Error ? error.message : 'Failed to update price settings',
+            code: 'UPDATE_FAILED'
+          }
         });
       }
     }
   }
 
-  async getPriceSettings(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getPriceSettings(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
 
-      if (
-        !req.businessContext ||
-        req.businessContext.businessIds.length === 0
-      ) {
+      if (!req.businessContext || req.businessContext.businessIds.length === 0) {
         res.status(404).json({
           success: false,
           error: {
-            message: "No business found",
-            code: "BUSINESS_NOT_FOUND",
-          },
+            message: 'No business found',
+            code: 'BUSINESS_NOT_FOUND'
+          }
         });
         return;
       }
 
       // Use the primary business ID or the first business if no primary is set
-      const businessId =
-        req.businessContext.primaryBusinessId ||
-        req.businessContext.businessIds[0];
-
-      const priceSettings = await this.businessService.getBusinessPriceSettings(
-        userId,
-        businessId
-      );
+      const businessId = req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
+      
+      const priceSettings = await this.businessService.getBusinessPriceSettings(userId, businessId);
 
       res.json({
         success: true,
         data: priceSettings,
-        message: "Price settings retrieved successfully",
+        message: 'Price settings retrieved successfully'
       });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("not found")) {
+      if (error instanceof Error && error.message.includes('not found')) {
         res.status(404).json({
           success: false,
           error: {
             message: error.message,
-            code: "BUSINESS_NOT_FOUND",
-          },
+            code: 'BUSINESS_NOT_FOUND'
+          }
         });
-      } else if (
-        error instanceof Error &&
-        error.message.includes("Access denied")
-      ) {
+      } else if (error instanceof Error && error.message.includes('Access denied')) {
         res.status(403).json({
           success: false,
           error: {
             message: error.message,
-            code: "ACCESS_DENIED",
-          },
+            code: 'ACCESS_DENIED'
+          }
         });
       } else {
         res.status(500).json({
           success: false,
           error: {
-            message:
-              error instanceof Error
-                ? error.message
-                : "Failed to retrieve price settings",
-            code: "RETRIEVAL_FAILED",
-          },
+            message: error instanceof Error ? error.message : 'Failed to retrieve price settings',
+            code: 'RETRIEVAL_FAILED'
+          }
         });
       }
     }
   }
 
-  async deleteBusiness(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async deleteBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const userId = req.user!.id;
@@ -787,13 +620,12 @@ export class BusinessController {
 
       res.json({
         success: true,
-        message: "Business deleted successfully",
+        message: 'Business deleted successfully'
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to delete business",
+        error: error instanceof Error ? error.message : 'Failed to delete business'
       });
     }
   }
@@ -803,10 +635,14 @@ export class BusinessController {
       const validatedQuery = businessSearchSchema.parse(req.query);
       const userId = (req as AuthenticatedRequest).user?.id;
 
-      const { page = 1, limit = 20, ...filters } = validatedQuery;
+      const {
+        page = 1,
+        limit = 20,
+        ...filters
+      } = validatedQuery;
 
       const result = await this.businessService.searchBusinesses(
-        userId || "",
+        userId || '',
         filters,
         page,
         limit
@@ -819,14 +655,13 @@ export class BusinessController {
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
-          limit,
-        },
+          limit
+        }
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error ? error.message : "Invalid search parameters",
+        error: error instanceof Error ? error.message : 'Invalid search parameters'
       });
     }
   }
@@ -838,7 +673,7 @@ export class BusinessController {
       if (!latitude || !longitude) {
         res.status(400).json({
           success: false,
-          error: "Latitude and longitude are required",
+          error: 'Latitude and longitude are required'
         });
         return;
       }
@@ -851,38 +686,30 @@ export class BusinessController {
       if (isNaN(lat) || isNaN(lng) || isNaN(rad)) {
         res.status(400).json({
           success: false,
-          error: "Invalid coordinates or radius",
+          error: 'Invalid coordinates or radius'
         });
         return;
       }
 
-      const businesses = await this.businessService.findNearbyBusinesses(
-        lat,
-        lng,
-        rad,
-        lmt
-      );
+      const businesses = await this.businessService.findNearbyBusinesses(lat, lng, rad, lmt);
 
       res.json({
         success: true,
         data: businesses,
         meta: {
           total: businesses.length,
-          radius: rad,
-        },
+          radius: rad
+        }
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        error: "Internal server error",
+        error: 'Internal server error'
       });
     }
   }
 
-  async verifyBusiness(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async verifyBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const userId = req.user!.id;
@@ -892,21 +719,17 @@ export class BusinessController {
       res.json({
         success: true,
         data: business,
-        message: "Business verified successfully",
+        message: 'Business verified successfully'
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to verify business",
+        error: error instanceof Error ? error.message : 'Failed to verify business'
       });
     }
   }
 
-  async unverifyBusiness(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async unverifyBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const userId = req.user!.id;
@@ -916,15 +739,12 @@ export class BusinessController {
       res.json({
         success: true,
         data: business,
-        message: "Business verification removed successfully",
+        message: 'Business verification removed successfully'
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to unverify business",
+        error: error instanceof Error ? error.message : 'Failed to unverify business'
       });
     }
   }
@@ -945,21 +765,17 @@ export class BusinessController {
       res.json({
         success: true,
         data: business,
-        message: "Business closed successfully",
+        message: 'Business closed successfully'
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to close business",
+        error: error instanceof Error ? error.message : 'Failed to close business'
       });
     }
   }
 
-  async reopenBusiness(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async reopenBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const userId = req.user!.id;
@@ -969,79 +785,62 @@ export class BusinessController {
       res.json({
         success: true,
         data: business,
-        message: "Business reopened successfully",
+        message: 'Business reopened successfully'
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to reopen business",
+        error: error instanceof Error ? error.message : 'Failed to reopen business'
       });
     }
   }
 
-  async getBusinessStats(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getBusinessStats(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const userId = req.user!.id;
 
       // Use context-based stats if no specific business ID provided
-      const businessId = id === "my" ? undefined : id;
-      const stats = await this.businessService.getMyBusinessStats(
-        userId,
-        businessId
-      );
+      const businessId = id === 'my' ? undefined : id;
+      const stats = await this.businessService.getMyBusinessStats(userId, businessId);
 
       res.json({
         success: true,
-        data: stats,
+        data: stats
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error: error instanceof Error ? error.message : "Access denied",
+        error: error instanceof Error ? error.message : 'Access denied'
       });
     }
   }
 
-  async updateBusinessHours(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async updateBusinessHours(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const { businessHours } = req.body;
       const userId = req.user!.id;
 
-      if (!businessHours || typeof businessHours !== "object") {
+      if (!businessHours || typeof businessHours !== 'object') {
         res.status(400).json({
           success: false,
-          error: "Invalid business hours format",
+          error: 'Invalid business hours format'
         });
         return;
       }
 
-      const business = await this.businessService.updateBusinessHours(
-        userId,
-        id,
-        businessHours
-      );
+      const business = await this.businessService.updateBusinessHours(userId, id, businessHours);
 
       res.json({
         success: true,
         data: business,
-        message: "Business hours updated successfully",
+        message: 'Business hours updated successfully'
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update business hours",
+        error: error instanceof Error ? error.message : 'Failed to update business hours'
       });
     }
   }
@@ -1052,31 +851,22 @@ export class BusinessController {
    * Get business hours for a specific business
    * GET /api/v1/businesses/{businessId}/hours
    */
-  async getBusinessHours(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async getBusinessHours(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const userId = req.user!.id;
 
-      const result = await this.businessService.getBusinessHours(
-        userId,
-        businessId
-      );
+      const result = await this.businessService.getBusinessHours(userId, businessId);
 
       res.json({
         success: true,
         data: result,
-        message: "Business hours retrieved successfully",
+        message: 'Business hours retrieved successfully'
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to retrieve business hours",
+        error: error instanceof Error ? error.message : 'Failed to retrieve business hours'
       });
     }
   }
@@ -1099,15 +889,12 @@ export class BusinessController {
       res.json({
         success: true,
         data: result,
-        message: "Business hours status retrieved successfully",
+        message: 'Business hours status retrieved successfully'
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to retrieve business hours status",
+        error: error instanceof Error ? error.message : 'Failed to retrieve business hours status'
       });
     }
   }
@@ -1116,10 +903,7 @@ export class BusinessController {
    * Create business hours override for a specific date
    * POST /api/v1/businesses/{businessId}/hours/overrides
    */
-  async createBusinessHoursOverride(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async createBusinessHoursOverride(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const userId = req.user!.id;
@@ -1134,15 +918,12 @@ export class BusinessController {
       res.status(201).json({
         success: true,
         data: result,
-        message: "Business hours override created successfully",
+        message: 'Business hours override created successfully'
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to create business hours override",
+        error: error instanceof Error ? error.message : 'Failed to create business hours override'
       });
     }
   }
@@ -1151,10 +932,7 @@ export class BusinessController {
    * Update business hours override for a specific date
    * PUT /api/v1/businesses/{businessId}/hours/overrides/{date}
    */
-  async updateBusinessHoursOverride(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async updateBusinessHoursOverride(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { businessId, date } = req.params;
       const userId = req.user!.id;
@@ -1170,15 +948,12 @@ export class BusinessController {
       res.json({
         success: true,
         data: result,
-        message: "Business hours override updated successfully",
+        message: 'Business hours override updated successfully'
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update business hours override",
+        error: error instanceof Error ? error.message : 'Failed to update business hours override'
       });
     }
   }
@@ -1187,31 +962,21 @@ export class BusinessController {
    * Delete business hours override for a specific date
    * DELETE /api/v1/businesses/{businessId}/hours/overrides/{date}
    */
-  async deleteBusinessHoursOverride(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async deleteBusinessHoursOverride(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { businessId, date } = req.params;
       const userId = req.user!.id;
 
-      await this.businessService.deleteBusinessHoursOverride(
-        userId,
-        businessId,
-        date
-      );
+      await this.businessService.deleteBusinessHoursOverride(userId, businessId, date);
 
       res.json({
         success: true,
-        message: "Business hours override deleted successfully",
+        message: 'Business hours override deleted successfully'
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to delete business hours override",
+        error: error instanceof Error ? error.message : 'Failed to delete business hours override'
       });
     }
   }
@@ -1220,10 +985,7 @@ export class BusinessController {
    * Get business hours overrides for a date range
    * GET /api/v1/businesses/{businessId}/hours/overrides?startDate=2025-01-01&endDate=2025-01-31
    */
-  async getBusinessHoursOverrides(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async getBusinessHoursOverrides(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
       const { startDate, endDate } = req.query;
@@ -1239,15 +1001,12 @@ export class BusinessController {
       res.json({
         success: true,
         data: result,
-        message: "Business hours overrides retrieved successfully",
+        message: 'Business hours overrides retrieved successfully'
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to retrieve business hours overrides",
+        error: error instanceof Error ? error.message : 'Failed to retrieve business hours overrides'
       });
     }
   }
@@ -1266,32 +1025,25 @@ export class BusinessController {
         success: true,
         data: {
           slug,
-          available: isAvailable,
-        },
+          available: isAvailable
+        }
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        error: "Internal server error",
+        error: 'Internal server error'
       });
     }
   }
 
   // Admin endpoints
-  async getAllBusinesses(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async getAllBusinesses(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
 
-      const result = await this.businessService.getAllBusinesses(
-        userId,
-        page,
-        limit
-      );
+      const result = await this.businessService.getAllBusinesses(userId, page, limit);
 
       res.json({
         success: true,
@@ -1300,13 +1052,13 @@ export class BusinessController {
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
-          limit,
-        },
+          limit
+        }
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error: error instanceof Error ? error.message : "Access denied",
+        error: error instanceof Error ? error.message : 'Access denied'
       });
     }
   }
@@ -1315,30 +1067,25 @@ export class BusinessController {
     try {
       const { businessTypeId } = req.params;
 
-      const businesses = await this.businessService.getBusinessesByType(
-        businessTypeId
-      );
+      const businesses = await this.businessService.getBusinessesByType(businessTypeId);
 
       res.json({
         success: true,
         data: businesses,
         meta: {
           total: businesses.length,
-          businessTypeId,
-        },
+          businessTypeId
+        }
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        error: "Internal server error",
+        error: 'Internal server error'
       });
     }
   }
 
-  async batchVerifyBusinesses(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async batchVerifyBusinesses(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { businessIds } = req.body;
       const userId = req.user!.id;
@@ -1346,7 +1093,7 @@ export class BusinessController {
       if (!Array.isArray(businessIds) || businessIds.length === 0) {
         res.status(400).json({
           success: false,
-          error: "businessIds array is required",
+          error: 'businessIds array is required'
         });
         return;
       }
@@ -1355,23 +1102,17 @@ export class BusinessController {
 
       res.json({
         success: true,
-        message: `${businessIds.length} businesses verified successfully`,
+        message: `${businessIds.length} businesses verified successfully`
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to verify businesses",
+        error: error instanceof Error ? error.message : 'Failed to verify businesses'
       });
     }
   }
 
-  async batchCloseBusinesses(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async batchCloseBusinesses(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { businessIds, reason } = req.body;
       const userId = req.user!.id;
@@ -1379,7 +1120,7 @@ export class BusinessController {
       if (!Array.isArray(businessIds) || businessIds.length === 0) {
         res.status(400).json({
           success: false,
-          error: "businessIds array is required",
+          error: 'businessIds array is required'
         });
         return;
       }
@@ -1387,42 +1128,31 @@ export class BusinessController {
       if (!reason || reason.trim().length < 5) {
         res.status(400).json({
           success: false,
-          error: "Reason must be at least 5 characters long",
+          error: 'Reason must be at least 5 characters long'
         });
         return;
       }
 
-      await this.businessService.batchCloseBusinesses(
-        userId,
-        businessIds,
-        reason
-      );
+      await this.businessService.batchCloseBusinesses(userId, businessIds, reason);
 
       res.json({
         success: true,
-        message: `${businessIds.length} businesses closed successfully`,
+        message: `${businessIds.length} businesses closed successfully`
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to close businesses",
+        error: error instanceof Error ? error.message : 'Failed to close businesses'
       });
     }
   }
 
-  async getAllBusinessesMinimalDetails(
-    req: Request,
-    res: Response
-  ): Promise<void> {
+  async getAllBusinessesMinimalDetails(req: Request, res: Response): Promise<void> {
     try {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
 
-      const result = await this.businessService.getAllBusinessesMinimalDetails(
-        page,
-        limit
-      );
+      const result = await this.businessService.getAllBusinessesMinimalDetails(page, limit);
 
       res.json({
         success: true,
@@ -1431,16 +1161,13 @@ export class BusinessController {
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
-          limit,
-        },
+          limit
+        }
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to retrieve businesses",
+        error: error instanceof Error ? error.message : 'Failed to retrieve businesses'
       });
     }
   }
@@ -1449,17 +1176,14 @@ export class BusinessController {
    * Get all staff for a business
    * GET /api/v1/businesses/{businessId}/staff
    */
-  async getBusinessStaff(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getBusinessStaff(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
-      const includeInactive = req.query.includeInactive === "true";
+      const includeInactive = req.query.includeInactive === 'true';
 
       if (!this.staffService) {
-        throw new Error("Staff service not available");
+        throw new Error('Staff service not available');
       }
 
       const staff = await this.staffService.getBusinessStaff(
@@ -1485,10 +1209,10 @@ export class BusinessController {
       const { phoneNumber, role, permissions, firstName, lastName } = req.body;
 
       if (!this.staffService) {
-        throw new Error("Staff service not available");
+        throw new Error('Staff service not available');
       }
 
-      const context = createErrorContext(req, "STAFF_INVITATION");
+      const context = createErrorContext(req, 'STAFF_INVITATION');
 
       const result = await this.staffService.inviteStaff(
         userId,
@@ -1513,10 +1237,7 @@ export class BusinessController {
    * Complete staff invitation with SMS verification
    * POST /api/v1/businesses/{businessId}/staff/verify-invitation
    */
-  async verifyStaffInvitation(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async verifyStaffInvitation(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
@@ -1530,10 +1251,10 @@ export class BusinessController {
       } = req.body;
 
       if (!this.staffService) {
-        throw new Error("Staff service not available");
+        throw new Error('Staff service not available');
       }
 
-      const context = createErrorContext(req, "STAFF_VERIFICATION");
+      const context = createErrorContext(req, 'STAFF_VERIFICATION');
 
       const result = await this.staffService.verifyStaffInvitation(
         userId,
@@ -1569,40 +1290,32 @@ export class BusinessController {
    * Upload business image (logo, cover, profile, gallery)
    * POST /api/v1/businesses/{businessId}/images/upload
    */
-  async uploadImage(
-    req: AuthenticatedRequestWithFile,
-    res: Response
-  ): Promise<void> {
+  async uploadImage(req: AuthenticatedRequestWithFile, res: Response): Promise<void> {
     try {
-      console.log("🔍 Upload Image - Starting");
+      console.log('🔍 Upload Image - Starting');
       const userId = req.user!.id;
       const { businessId } = req.params;
-
-      console.log("🔍 Upload Image - User ID:", userId);
-      console.log("🔍 Upload Image - Business ID:", businessId);
-      console.log("🔍 Upload Image - Request body:", req.body);
-      console.log(
-        "🔍 Upload Image - File info:",
-        req.file
-          ? {
-              fieldname: req.file.fieldname,
-              originalname: req.file.originalname,
-              mimetype: req.file.mimetype,
-              size: req.file.size,
-            }
-          : "No file"
-      );
-
+      
+      console.log('🔍 Upload Image - User ID:', userId);
+      console.log('🔍 Upload Image - Business ID:', businessId);
+      console.log('🔍 Upload Image - Request body:', req.body);
+      console.log('🔍 Upload Image - File info:', req.file ? {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size
+      } : 'No file');
+      
       // Validate request body
       const validatedData = imageUploadSchema.parse(req.body);
-      console.log("🔍 Upload Image - Validated data:", validatedData);
-
+      console.log('🔍 Upload Image - Validated data:', validatedData);
+      
       // Check if file was uploaded
       if (!req.file) {
         const error = new AppError(
           ERROR_CODES.VALIDATION_ERROR,
-          { message: "No image file provided" },
-          createErrorContext(req, "IMAGE_UPLOAD"),
+          { message: 'No image file provided' },
+          createErrorContext(req, 'IMAGE_UPLOAD'),
           400
         );
         sendAppErrorResponse(res, error);
@@ -1612,7 +1325,7 @@ export class BusinessController {
       const { imageType } = validatedData;
       const file = req.file;
 
-      console.log("🔍 Upload Image - Calling business service...");
+      console.log('🔍 Upload Image - Calling business service...');
       const result = await this.businessService.uploadBusinessImage(
         userId,
         businessId,
@@ -1622,14 +1335,14 @@ export class BusinessController {
         file.mimetype
       );
 
-      console.log("🔍 Upload Image - Success:", result.imageUrl);
+      console.log('🔍 Upload Image - Success:', result.imageUrl);
       sendSuccessResponse(res, {
         message: `${imageType} image uploaded successfully`,
         imageUrl: result.imageUrl,
-        business: result.business,
+        business: result.business
       });
     } catch (error) {
-      console.error("🚨 Upload Image Error:", error);
+      console.error('🚨 Upload Image Error:', error);
       handleRouteError(error, req, res);
     }
   }
@@ -1642,7 +1355,7 @@ export class BusinessController {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
-
+      
       // Validate image type
       const validatedData = deleteImageSchema.parse(req.params);
       const { imageType } = validatedData;
@@ -1655,7 +1368,7 @@ export class BusinessController {
 
       sendSuccessResponse(res, {
         message: `${imageType} image deleted successfully`,
-        business,
+        business
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1666,14 +1379,11 @@ export class BusinessController {
    * Delete gallery image
    * DELETE /api/v1/businesses/{businessId}/images/gallery
    */
-  async deleteGalleryImage(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async deleteGalleryImage(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
-
+      
       // Validate request body
       const validatedData = deleteGalleryImageSchema.parse(req.body);
       const { imageUrl } = validatedData;
@@ -1685,8 +1395,8 @@ export class BusinessController {
       );
 
       sendSuccessResponse(res, {
-        message: "Gallery image deleted successfully",
-        business,
+        message: 'Gallery image deleted successfully',
+        business
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1697,22 +1407,16 @@ export class BusinessController {
    * Get business images
    * GET /api/v1/businesses/{businessId}/images
    */
-  async getBusinessImages(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async getBusinessImages(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
 
-      const images = await this.businessService.getBusinessImages(
-        userId,
-        businessId
-      );
+      const images = await this.businessService.getBusinessImages(userId, businessId);
 
       sendSuccessResponse(res, {
-        message: "Business images retrieved successfully",
-        images,
+        message: 'Business images retrieved successfully',
+        images
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1723,10 +1427,7 @@ export class BusinessController {
    * Update gallery images order
    * PUT /api/v1/businesses/{businessId}/images/gallery
    */
-  async updateGalleryImages(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async updateGalleryImages(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
@@ -1735,8 +1436,8 @@ export class BusinessController {
       if (!Array.isArray(imageUrls)) {
         const error = new AppError(
           ERROR_CODES.VALIDATION_ERROR,
-          { message: "imageUrls must be an array" },
-          createErrorContext(req, "IMAGE_UPDATE"),
+          { message: 'imageUrls must be an array' },
+          createErrorContext(req, 'IMAGE_UPDATE'),
           400
         );
         sendAppErrorResponse(res, error);
@@ -1750,8 +1451,8 @@ export class BusinessController {
       );
 
       sendSuccessResponse(res, {
-        message: "Gallery images updated successfully",
-        business,
+        message: 'Gallery images updated successfully',
+        business
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1760,10 +1461,7 @@ export class BusinessController {
 
   // Business Notification Settings Methods
 
-  async getNotificationSettings(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getNotificationSettings(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const businessId = req.businessContext?.primaryBusinessId;
@@ -1771,35 +1469,31 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: "Business context is required",
+          error: 'Business context is required'
         });
         return;
       }
 
-      const settings =
-        await this.businessService.getBusinessNotificationSettings(
-          userId,
-          businessId
-        );
+      const settings = await this.businessService.getBusinessNotificationSettings(userId, businessId);
 
       if (!settings) {
         // Return default settings if none exist
         res.status(200).json({
           success: true,
           data: {
-            id: "",
+            id: '',
             businessId,
             enableAppointmentReminders: true,
-            reminderChannels: ["PUSH"],
+            reminderChannels: ['PUSH'],
             reminderTiming: [60, 1440], // 1 hour and 24 hours
             smsEnabled: false,
             pushEnabled: true,
             emailEnabled: false,
-            timezone: "Europe/Istanbul",
+            timezone: 'Europe/Istanbul',
             createdAt: new Date(),
-            updatedAt: new Date(),
+            updatedAt: new Date()
           },
-          message: "Default notification settings (not yet configured)",
+          message: 'Default notification settings (not yet configured)'
         });
         return;
       }
@@ -1807,17 +1501,14 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: settings,
-        message: "Notification settings retrieved successfully",
+        message: 'Notification settings retrieved successfully'
       });
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  async updateNotificationSettings(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async updateNotificationSettings(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const businessId = req.businessContext?.primaryBusinessId;
@@ -1825,32 +1516,28 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: "Business context is required",
+          error: 'Business context is required'
         });
         return;
       }
 
-      const settings =
-        await this.businessService.updateBusinessNotificationSettings(
-          userId,
-          businessId,
-          req.body
-        );
+      const settings = await this.businessService.updateBusinessNotificationSettings(
+        userId,
+        businessId,
+        req.body
+      );
 
       res.status(200).json({
         success: true,
         data: settings,
-        message: "Notification settings updated successfully",
+        message: 'Notification settings updated successfully'
       });
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  async testReminder(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async testReminder(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const businessId = req.businessContext?.primaryBusinessId;
@@ -1858,155 +1545,125 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: "Business context is required",
+          error: 'Business context is required'
         });
         return;
       }
 
       // Import the services dynamically to avoid circular dependencies
-      const { NotificationService } = await import(
-        "../services/notificationService"
-      );
-      const { UsageService } = await import("../services/usageService");
-      const { UsageRepository } = await import(
-        "../repositories/usageRepository"
-      );
+      const { NotificationService } = await import('../services/notificationService');
+      const { UsageService } = await import('../services/usageService');
+      const { UsageRepository } = await import('../repositories/usageRepository');
 
       // Create usage service for SMS tracking
-      const usageRepository = new UsageRepository(
-        this.businessService["prisma"]
-      );
-
+      const usageRepository = new UsageRepository(this.businessService['prisma']);
+      
       if (!this.rbacService) {
-        throw new Error("RBAC service not available");
+        throw new Error('RBAC service not available');
       }
+      
+      const usageService = new UsageService(usageRepository, this.rbacService, this.businessService['prisma']);
 
-      const usageService = new UsageService(
-        usageRepository,
-        this.rbacService,
-        this.businessService["prisma"]
-      );
-
-      const notificationService = new NotificationService(
-        this.businessService["prisma"],
-        usageService
-      );
+      const notificationService = new NotificationService(this.businessService['prisma'], usageService);
 
       const testData = req.body || {};
 
       // Get business notification settings
-      const businessSettings =
-        await this.businessService.getOrCreateBusinessNotificationSettings(
-          businessId
-        );
+      const businessSettings = await this.businessService.getOrCreateBusinessNotificationSettings(businessId);
 
       // Create a mock appointment for testing
       const now = new Date();
       const testTime = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
 
       const testAppointment = {
-        id: `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `test-${Date.now()}`,
         businessId,
         customerId: userId, // Use current user as customer
         date: testTime,
         startTime: testTime,
         endTime: new Date(testTime.getTime() + 60 * 60 * 1000), // 1 hour duration
-        status: "CONFIRMED" as any,
+        status: 'CONFIRMED' as any,
         service: {
-          id: "test-service",
-          name: "Test Service",
-          duration: 60,
+          id: 'test-service',
+          name: 'Test Service',
+          duration: 60
         },
         business: {
           id: businessId,
-          name: "Test Business",
-          timezone: businessSettings.timezone,
+          name: 'Test Business',
+          timezone: businessSettings.timezone
         },
         customer: {
           id: userId,
-          firstName: "Test",
-          lastName: "User",
-          phoneNumber: req.user!.phoneNumber,
-        },
+          firstName: 'Test',
+          lastName: 'User',
+          phoneNumber: req.user!.phoneNumber
+        }
       };
 
       // Determine channels to test
-      const channelsToTest =
-        testData.channels || businessSettings.reminderChannels;
+      const channelsToTest = testData.channels || businessSettings.reminderChannels;
       const results = [];
 
       // Test push notification if enabled and requested
-      if (channelsToTest.includes("PUSH") && businessSettings.pushEnabled) {
-        const pushResults = await notificationService.sendAppointmentReminder(
-          testAppointment
-        );
+      if (channelsToTest.includes('PUSH') && businessSettings.pushEnabled) {
+        const pushResults = await notificationService.sendAppointmentReminder(testAppointment);
         results.push(...pushResults);
       }
 
       // Test SMS if enabled and requested with rate limiting
-      if (channelsToTest.includes("SMS") && businessSettings.smsEnabled) {
+      if (channelsToTest.includes('SMS') && businessSettings.smsEnabled) {
         // Check SMS rate limiting (5 minutes between SMS tests per user)
         const SMS_RATE_LIMIT_MINUTES = 5;
-        const lastSmsTest = await this.businessService[
-          "prisma"
-        ].auditLog.findFirst({
+        const lastSmsTest = await this.businessService['prisma'].auditLog.findFirst({
           where: {
             userId,
-            entity: "SMS_TEST",
+            entity: 'SMS_TEST',
             createdAt: {
-              gte: new Date(Date.now() - SMS_RATE_LIMIT_MINUTES * 60 * 1000),
-            },
+              gte: new Date(Date.now() - SMS_RATE_LIMIT_MINUTES * 60 * 1000)
+            }
           },
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: 'desc' }
         });
 
         if (lastSmsTest) {
-          const timeRemaining = Math.ceil(
-            (lastSmsTest.createdAt.getTime() +
-              SMS_RATE_LIMIT_MINUTES * 60 * 1000 -
-              Date.now()) /
-              1000 /
-              60
-          );
+          const timeRemaining = Math.ceil((lastSmsTest.createdAt.getTime() + SMS_RATE_LIMIT_MINUTES * 60 * 1000 - Date.now()) / 1000 / 60);
           results.push({
             success: false,
             error: `SMS test rate limited. Please wait ${timeRemaining} more minute(s) before testing SMS again.`,
-            channel: "SMS",
-            status: "RATE_LIMITED",
+            channel: 'SMS',
+            status: 'RATE_LIMITED'
           });
         } else {
-          const smsResults =
-            await notificationService.sendSMSAppointmentReminder(
-              testAppointment
-            );
+          const smsResults = await notificationService.sendSMSAppointmentReminder(testAppointment);
           results.push(...smsResults);
 
           // Log SMS test activity for rate limiting
-          await this.businessService["prisma"].auditLog.create({
+          await this.businessService['prisma'].auditLog.create({
             data: {
               id: `sms-test-${Date.now()}`,
-              action: "USER_UPDATE",
-              entity: "SMS_TEST",
+              action: 'USER_UPDATE',
+              entity: 'SMS_TEST',
               entityId: testAppointment.id,
               userId,
-              details: { businessId, testId: testAppointment.id },
-            },
+              details: { businessId, testId: testAppointment.id }
+            }
           });
         }
       }
 
       // Test email if enabled and requested (placeholder for now)
-      if (channelsToTest.includes("EMAIL") && businessSettings.emailEnabled) {
+      if (channelsToTest.includes('EMAIL') && businessSettings.emailEnabled) {
         results.push({
           success: true,
           messageId: `test-email-${Date.now()}`,
-          channel: "EMAIL",
-          status: "SENT",
+          channel: 'EMAIL',
+          status: 'SENT'
         });
       }
 
-      const successCount = results.filter((r) => r.success).length;
-      const failureCount = results.filter((r) => !r.success).length;
+      const successCount = results.filter(r => r.success).length;
+      const failureCount = results.filter(r => !r.success).length;
 
       res.status(200).json({
         success: true,
@@ -2017,175 +1674,17 @@ export class BusinessController {
             successful: successCount,
             failed: failureCount,
             channels: channelsToTest,
-            testMessage: testData.customMessage || "Test reminder sent",
-          },
+            testMessage: testData.customMessage || 'Test reminder sent'
+          }
         },
-        message: `Test reminder completed: ${successCount} successful, ${failureCount} failed`,
+        message: `Test reminder completed: ${successCount} successful, ${failureCount} failed`
       });
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  async getNotificationAnalytics(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
-    try {
-      const businessId = req.businessContext?.primaryBusinessId;
-
-      if (!businessId) {
-        res.status(400).json({
-          success: false,
-          error: "Business context is required",
-        });
-        return;
-      }
-
-      const days = parseInt(req.query.days as string) || 30;
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-
-      const appointments = await this.businessService[
-        "prisma"
-      ].appointment.findMany({
-        where: {
-          businessId,
-          createdAt: { gte: startDate },
-        },
-        select: {
-          id: true,
-          status: true,
-          reminderSent: true,
-          reminderSentAt: true,
-          startTime: true,
-          createdAt: true,
-        },
-      });
-
-      const pushNotifications = await this.businessService[
-        "prisma"
-      ].pushNotification.findMany({
-        where: {
-          businessId,
-          createdAt: { gte: startDate },
-        },
-        select: {
-          status: true,
-          createdAt: true,
-          sentAt: true,
-          deliveredAt: true,
-          readAt: true,
-          appointmentId: true,
-        },
-      });
-
-      const totalAppointments = appointments.length;
-      const remindedAppointments = appointments.filter(
-        (a) => a.reminderSent
-      ).length;
-      const noShowAppointments = appointments.filter(
-        (a) => a.status === "NO_SHOW"
-      ).length;
-      const completedAppointments = appointments.filter(
-        (a) => a.status === "COMPLETED"
-      ).length;
-
-      const channelStats = {
-        PUSH: {
-          sent: pushNotifications.filter((n) => n.status === "SENT").length,
-          delivered: pushNotifications.filter((n) => n.deliveredAt).length,
-          read: pushNotifications.filter((n) => n.readAt).length,
-          failed: pushNotifications.filter((n) => n.status === "FAILED").length,
-        },
-      };
-
-      const noShowRate =
-        totalAppointments > 0
-          ? (noShowAppointments / totalAppointments) * 100
-          : 0;
-      const completionRate =
-        totalAppointments > 0
-          ? (completedAppointments / totalAppointments) * 100
-          : 0;
-      const reminderCoverage =
-        totalAppointments > 0
-          ? (remindedAppointments / totalAppointments) * 100
-          : 0;
-
-      const appointmentsByReminderStatus = {
-        withReminder: {
-          total: remindedAppointments,
-          noShow: appointments.filter(
-            (a) => a.reminderSent && a.status === "NO_SHOW"
-          ).length,
-          completed: appointments.filter(
-            (a) => a.reminderSent && a.status === "COMPLETED"
-          ).length,
-        },
-        withoutReminder: {
-          total: totalAppointments - remindedAppointments,
-          noShow: appointments.filter(
-            (a) => !a.reminderSent && a.status === "NO_SHOW"
-          ).length,
-          completed: appointments.filter(
-            (a) => !a.reminderSent && a.status === "COMPLETED"
-          ).length,
-        },
-      };
-
-      res.status(200).json({
-        success: true,
-        data: {
-          period: {
-            days,
-            startDate: startDate.toISOString(),
-            endDate: new Date().toISOString(),
-          },
-          summary: {
-            totalAppointments,
-            remindedAppointments,
-            reminderCoverage: Math.round(reminderCoverage * 100) / 100,
-            noShowRate: Math.round(noShowRate * 100) / 100,
-            completionRate: Math.round(completionRate * 100) / 100,
-          },
-          channelPerformance: channelStats,
-          reminderEffectiveness: {
-            withReminder: {
-              ...appointmentsByReminderStatus.withReminder,
-              noShowRate:
-                appointmentsByReminderStatus.withReminder.total > 0
-                  ? Math.round(
-                      (appointmentsByReminderStatus.withReminder.noShow /
-                        appointmentsByReminderStatus.withReminder.total) *
-                        10000
-                    ) / 100
-                  : 0,
-            },
-            withoutReminder: {
-              ...appointmentsByReminderStatus.withoutReminder,
-              noShowRate:
-                appointmentsByReminderStatus.withoutReminder.total > 0
-                  ? Math.round(
-                      (appointmentsByReminderStatus.withoutReminder.noShow /
-                        appointmentsByReminderStatus.withoutReminder.total) *
-                        10000
-                    ) / 100
-                  : 0,
-            },
-          },
-        },
-        message: "Notification analytics retrieved successfully",
-      });
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
-  }
-
-  async getStaffPrivacySettings(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getStaffPrivacySettings(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const businessId = req.businessContext?.primaryBusinessId;
@@ -2193,30 +1692,24 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: "Business context is required",
+          error: 'Business context is required'
         });
         return;
       }
 
-      const settings = await this.businessService.getStaffPrivacySettings(
-        userId,
-        businessId
-      );
+      const settings = await this.businessService.getStaffPrivacySettings(userId, businessId);
 
       res.status(200).json({
         success: true,
         data: settings,
-        message: "Staff privacy settings retrieved successfully",
+        message: 'Staff privacy settings retrieved successfully'
       });
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  async updateStaffPrivacySettings(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async updateStaffPrivacySettings(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const businessId = req.businessContext?.primaryBusinessId;
@@ -2224,15 +1717,13 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: "Business context is required",
+          error: 'Business context is required'
         });
         return;
       }
 
-      const validatedData = updateBusinessStaffPrivacySettingsSchema.parse(
-        req.body
-      );
-
+      const validatedData = updateBusinessStaffPrivacySettingsSchema.parse(req.body);
+      
       const settings = await this.businessService.updateStaffPrivacySettings(
         userId,
         businessId,
@@ -2242,7 +1733,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: settings,
-        message: "Staff privacy settings updated successfully",
+        message: 'Staff privacy settings updated successfully'
       });
     } catch (error) {
       handleRouteError(error, req, res);

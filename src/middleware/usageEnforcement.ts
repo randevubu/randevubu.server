@@ -1,13 +1,10 @@
-import { NextFunction, Response } from "express";
-import { ERROR_CODES } from "../constants/errorCodes";
-import { UsageService } from "../services/usageService";
-import { AppError, InternalError } from "../types/responseTypes";
-import {
-  BusinessErrors,
-  createErrorContext,
-  sendAppErrorResponse,
-} from "../utils/responseUtils";
-import { BusinessContextRequest } from "./businessContext";
+import { Request, Response, NextFunction } from 'express';
+import { UsageService } from '../services/usageService';
+import { BusinessContextRequest } from './businessContext';
+import { sendAppErrorResponse, BusinessErrors } from '../utils/errorResponse';
+import { InternalError } from '../types/errorResponse';
+import { ERROR_CODES } from '../constants/errorCodes';
+import { createErrorContext } from '../utils/errorResponse';
 
 export interface UsageEnforcementOptions {
   usageService: UsageService;
@@ -20,21 +17,13 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
     /**
      * Enforce SMS sending limits
      */
-    enforceSmsLimits: async (
-      req: BusinessContextRequest,
-      res: Response,
-      next: NextFunction
-    ) => {
+    enforceSmsLimits: async (req: BusinessContextRequest, res: Response, next: NextFunction) => {
       try {
-        const businessId =
-          req.params.businessId || req.businessContext?.primaryBusinessId;
+        const businessId = req.params.businessId || req.businessContext?.primaryBusinessId;
 
         if (!businessId) {
           const context = createErrorContext(req);
-          const error = BusinessErrors.notFound(
-            "Business ID not found",
-            context
-          );
+          const error = BusinessErrors.notFound('Business ID not found', context);
           return sendAppErrorResponse(res, error);
         }
 
@@ -42,23 +31,14 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
 
         if (!check.allowed) {
           const context = createErrorContext(req, businessId);
-          const error = new AppError(
-            ERROR_CODES.SMS_QUOTA_EXCEEDED,
-            { reason: check.reason || "SMS quota exceeded" },
-            context,
-            403
-          );
+          const error = new InternalError('EXTERNAL_SERVICE_ERROR', { reason: check.reason || 'SMS quota exceeded' }, context);
           return sendAppErrorResponse(res, error);
         }
 
         next();
       } catch (error) {
         const context = createErrorContext(req);
-        const appError = new InternalError(
-          "INTERNAL_SERVER_ERROR",
-          { message: "Failed to check SMS limits" },
-          context
-        );
+        const appError = new InternalError('INTERNAL_SERVER_ERROR', { message: 'Failed to check SMS limits' }, context);
         return sendAppErrorResponse(res, appError);
       }
     },
@@ -66,21 +46,13 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
     /**
      * Enforce staff member limits
      */
-    enforceStaffLimits: async (
-      req: BusinessContextRequest,
-      res: Response,
-      next: NextFunction
-    ) => {
+    enforceStaffLimits: async (req: BusinessContextRequest, res: Response, next: NextFunction) => {
       try {
-        const businessId =
-          req.params.businessId || req.businessContext?.primaryBusinessId;
+        const businessId = req.params.businessId || req.businessContext?.primaryBusinessId;
 
         if (!businessId) {
           const context = createErrorContext(req);
-          const error = BusinessErrors.notFound(
-            "Business ID not found",
-            context
-          );
+          const error = BusinessErrors.notFound('Business ID not found', context);
           return sendAppErrorResponse(res, error);
         }
 
@@ -88,23 +60,14 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
 
         if (!check.allowed) {
           const context = createErrorContext(req, businessId);
-          const error = new AppError(
-            ERROR_CODES.STAFF_LIMIT_EXCEEDED,
-            { reason: check.reason || "Staff member limit reached" },
-            context,
-            403
-          );
+          const error = new InternalError('EXTERNAL_SERVICE_ERROR', { reason: check.reason || 'Staff member limit reached' }, context);
           return sendAppErrorResponse(res, error);
         }
 
         next();
       } catch (error) {
         const context = createErrorContext(req);
-        const appError = new InternalError(
-          "INTERNAL_SERVER_ERROR",
-          { message: "Failed to check staff limits" },
-          context
-        );
+        const appError = new InternalError('INTERNAL_SERVER_ERROR', { message: 'Failed to check staff limits' }, context);
         return sendAppErrorResponse(res, appError);
       }
     },
@@ -112,21 +75,13 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
     /**
      * Enforce service limits
      */
-    enforceServiceLimits: async (
-      req: BusinessContextRequest,
-      res: Response,
-      next: NextFunction
-    ) => {
+    enforceServiceLimits: async (req: BusinessContextRequest, res: Response, next: NextFunction) => {
       try {
-        const businessId =
-          req.params.businessId || req.businessContext?.primaryBusinessId;
+        const businessId = req.params.businessId || req.businessContext?.primaryBusinessId;
 
         if (!businessId) {
           const context = createErrorContext(req);
-          const error = BusinessErrors.notFound(
-            "Business ID not found",
-            context
-          );
+          const error = BusinessErrors.notFound('Business ID not found', context);
           return sendAppErrorResponse(res, error);
         }
 
@@ -134,23 +89,14 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
 
         if (!check.allowed) {
           const context = createErrorContext(req, businessId);
-          const error = new AppError(
-            ERROR_CODES.SERVICE_LIMIT_EXCEEDED,
-            { reason: check.reason || "Service limit reached" },
-            context,
-            403
-          );
+          const error = new InternalError('EXTERNAL_SERVICE_ERROR', { reason: check.reason || 'Service limit reached' }, context);
           return sendAppErrorResponse(res, error);
         }
 
         next();
       } catch (error) {
         const context = createErrorContext(req);
-        const appError = new InternalError(
-          "INTERNAL_SERVER_ERROR",
-          { message: "Failed to check service limits" },
-          context
-        );
+        const appError = new InternalError('INTERNAL_SERVER_ERROR', { message: 'Failed to check service limits' }, context);
         return sendAppErrorResponse(res, appError);
       }
     },
@@ -158,21 +104,13 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
     /**
      * Enforce customer limits
      */
-    enforceCustomerLimits: async (
-      req: BusinessContextRequest,
-      res: Response,
-      next: NextFunction
-    ) => {
+    enforceCustomerLimits: async (req: BusinessContextRequest, res: Response, next: NextFunction) => {
       try {
-        const businessId =
-          req.params.businessId || req.businessContext?.primaryBusinessId;
+        const businessId = req.params.businessId || req.businessContext?.primaryBusinessId;
 
         if (!businessId) {
           const context = createErrorContext(req);
-          const error = BusinessErrors.notFound(
-            "Business ID not found",
-            context
-          );
+          const error = BusinessErrors.notFound('Business ID not found', context);
           return sendAppErrorResponse(res, error);
         }
 
@@ -180,25 +118,16 @@ export function createUsageEnforcement(options: UsageEnforcementOptions) {
 
         if (!check.allowed) {
           const context = createErrorContext(req, businessId);
-          const error = new AppError(
-            ERROR_CODES.CUSTOMER_LIMIT_EXCEEDED,
-            { reason: check.reason || "Customer limit reached" },
-            context,
-            403
-          );
+          const error = new InternalError('EXTERNAL_SERVICE_ERROR', { reason: check.reason || 'Customer limit reached' }, context);
           return sendAppErrorResponse(res, error);
         }
 
         next();
       } catch (error) {
         const context = createErrorContext(req);
-        const appError = new InternalError(
-          "INTERNAL_SERVER_ERROR",
-          { message: "Failed to check customer limits" },
-          context
-        );
+        const appError = new InternalError('INTERNAL_SERVER_ERROR', { message: 'Failed to check customer limits' }, context);
         return sendAppErrorResponse(res, appError);
       }
-    },
+    }
   };
 }
