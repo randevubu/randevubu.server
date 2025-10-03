@@ -1,18 +1,17 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { RepositoryContainer } from '../../repositories';
-import { ServiceContainer } from '../../services';
 import { AuthController } from '../../controllers/authController';
-import { AuthMiddleware, rateLimitByUser } from '../../middleware/auth';
+import prisma from '../../lib/prisma';
+import { AuthMiddleware } from '../../middleware/auth';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { validateBody } from '../../middleware/validation';
-import { 
+import { RepositoryContainer } from '../../repositories';
+import {
+  logoutSchema,
   sendVerificationSchema,
-  verifyLoginSchema,
-  refreshTokenSchema,
-  logoutSchema
+  verifyLoginSchema
 } from '../../schemas/auth.schemas';
-import prisma from '../../lib/prisma';
+import { ServiceContainer } from '../../services';
 
 // Initialize dependencies
 const repositories = new RepositoryContainer(prisma);
@@ -46,7 +45,7 @@ const authRateLimit = rateLimit({
 
 const verificationRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: isDevelopment ? 50 : 3, // Much higher limit in dev for testing
+  max: isDevelopment ? 50 : 10, // Increased from 3 to 10 in production
   message: {
     success: false,
     error: {

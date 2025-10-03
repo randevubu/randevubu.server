@@ -1070,32 +1070,53 @@ export class NotificationService {
     failed: number;
     results: NotificationResult[];
   }> {
+    // Industry Standard: Batch processing with concurrency control
+    const BATCH_SIZE = 50;
+    const MAX_CONCURRENT = 10;
     const allResults: NotificationResult[] = [];
     let successful = 0;
     let failed = 0;
 
-    for (const userId of userIds) {
-      try {
-        const results = await this.sendPushNotification({
+    // Process in batches to avoid overwhelming the system
+    for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
+      const batch = userIds.slice(i, i + BATCH_SIZE);
+      
+      // Process batch with concurrency control
+      const batchPromises = batch.map(userId => 
+        this.sendPushNotification({
           userId,
           ...notification
-        });
-        
-        allResults.push(...results);
-        
-        const successCount = results.filter(r => r.success).length;
-        const failCount = results.filter(r => !r.success).length;
-        
-        successful += successCount;
-        failed += failCount;
-      } catch (error) {
-        failed++;
-        allResults.push({
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          channel: NotificationChannel.PUSH,
-          status: NotificationStatus.FAILED
-        });
+        })
+      );
+
+      // Use Promise.allSettled to handle individual failures
+      const batchResults = await Promise.allSettled(batchPromises);
+      
+      // Process results
+      batchResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          const notificationResults = result.value;
+          allResults.push(...notificationResults);
+          
+          const successCount = notificationResults.filter(r => r.success).length;
+          const failCount = notificationResults.filter(r => !r.success).length;
+          
+          successful += successCount;
+          failed += failCount;
+        } else {
+          failed++;
+          allResults.push({
+            success: false,
+            error: result.reason instanceof Error ? result.reason.message : 'Unknown error',
+            channel: NotificationChannel.PUSH,
+            status: NotificationStatus.FAILED
+          });
+        }
+      });
+
+      // Add small delay between batches to prevent overwhelming external services
+      if (i + BATCH_SIZE < userIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 

@@ -1792,4 +1792,136 @@ export class BusinessService {
       updatedAt: settings.updatedAt
     };
   }
+
+  /**
+   * Get stored payment methods for a business
+   */
+  async getPaymentMethods(businessId: string, userId: string): Promise<any[]> {
+    // Verify user has access to this business
+    const business = await this.prisma.business.findFirst({
+      where: {
+        id: businessId,
+        ownerId: userId,
+        isActive: true,
+        deletedAt: null
+      }
+    });
+
+    if (!business) {
+      throw new Error('Business not found or access denied');
+    }
+
+    // Get stored payment methods for the business
+    const paymentMethods = await this.prisma.storedPaymentMethod.findMany({
+      where: {
+        businessId: businessId
+      },
+      select: {
+        id: true,
+        cardHolderName: true,
+        lastFourDigits: true,
+        cardBrand: true,
+        isDefault: true,
+        createdAt: true
+      },
+      orderBy: [
+        { isDefault: 'desc' }, // Default payment method first
+        { createdAt: 'desc' }   // Then by newest
+      ]
+    });
+
+    return paymentMethods;
+  }
+
+  /**
+   * Add a new payment method for a business
+   */
+  async addPaymentMethod(businessId: string, userId: string, paymentData: any): Promise<any> {
+    // Verify user has access to this business
+    const business = await this.prisma.business.findFirst({
+      where: {
+        id: businessId,
+        ownerId: userId,
+        isActive: true,
+        deletedAt: null
+      }
+    });
+
+    if (!business) {
+      throw new Error('Business not found or access denied');
+    }
+
+    // Extract payment method data
+    const { cardHolderName, cardNumber, expireMonth, expireYear, cvc, isDefault = false } = paymentData;
+
+    // Validate required fields
+    if (!cardHolderName || !cardNumber || !expireMonth || !expireYear || !cvc) {
+      throw new Error('Missing required payment method fields');
+    }
+
+    // Get last 4 digits and detect card brand
+    const lastFourDigits = cardNumber.slice(-4);
+    const cardBrand = this.detectCardBrand(cardNumber);
+
+    // Generate a unique ID for the payment method
+    const paymentMethodId = `pm_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    // If this is set as default, unset other default payment methods
+    if (isDefault) {
+      await this.prisma.storedPaymentMethod.updateMany({
+        where: {
+          businessId: businessId,
+          isDefault: true
+        },
+        data: {
+          isDefault: false
+        }
+      });
+    }
+
+    // Create the stored payment method
+    const storedPaymentMethod = await this.prisma.storedPaymentMethod.create({
+      data: {
+        id: paymentMethodId,
+        businessId: businessId,
+        cardHolderName: cardHolderName,
+        lastFourDigits: lastFourDigits,
+        cardBrand: cardBrand,
+        expiryMonth: expireMonth,
+        expiryYear: expireYear,
+        isDefault: isDefault,
+        // Note: We don't store sensitive card data like full number or CVC
+        // These should be tokenized by a payment processor
+      },
+      select: {
+        id: true,
+        cardHolderName: true,
+        lastFourDigits: true,
+        cardBrand: true,
+        isDefault: true,
+        createdAt: true
+      }
+    });
+
+    return storedPaymentMethod;
+  }
+
+  /**
+   * Detect card brand from card number
+   */
+  private detectCardBrand(cardNumber: string): string {
+    const number = cardNumber.replace(/\s+/g, '');
+
+    if (number.startsWith('4')) {
+      return 'VISA';
+    } else if (number.startsWith('5') || (number.length >= 2 && parseInt(number.substring(0, 2)) >= 51 && parseInt(number.substring(0, 2)) <= 55)) {
+      return 'MASTERCARD';
+    } else if (number.startsWith('34') || number.startsWith('37')) {
+      return 'AMEX';
+    } else if (number.startsWith('6011') || number.startsWith('65')) {
+      return 'DISCOVER';
+    }
+
+    return 'UNKNOWN';
+  }
 }

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { BusinessController } from '../../controllers/businessController';
+import { SubscriptionController } from '../../controllers/subscriptionController';
 import {
   allowEmptyBusinessContext,
   attachBusinessContext,
@@ -24,7 +25,7 @@ import {
 } from '../../schemas/staff.schemas';
 import { AuthenticatedRequest, PermissionName } from '../../types/auth';
 
-export function createBusinessRoutes(businessController: BusinessController): Router {
+export function createBusinessRoutes(businessController: BusinessController, subscriptionController: SubscriptionController): Router {
   const router = Router();
 
   // Public routes (no authentication required)
@@ -244,6 +245,19 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
   // Protected routes (authentication required) - MUST come before catch-all route
   router.use(requireAuth);
   router.use(attachBusinessContext);
+
+  // Debug middleware to track route matching
+  router.use((req, res, next) => {
+    if (req.method === 'GET' && req.path.includes('biz_')) {
+      console.log('🔍 DEBUG: Route matching attempt:', {
+        method: req.method,
+        path: req.path,
+        params: req.params,
+        originalUrl: req.originalUrl
+      });
+    }
+    next();
+  });
 
   // User's business access
   /**
@@ -1897,35 +1911,330 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
     businessController.batchCloseBusinesses.bind(businessController)
   );
 
-  // Add a catch-all route that tries slug first, then ID if slug doesn't work
-  // MUST be last to avoid conflicting with specific routes
+  // Subscription management endpoints
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/subscription/{subscriptionId}/calculate-change:
+   *   post:
+   *     tags: [Businesses, Subscriptions]
+   *     summary: Calculate subscription plan change
+   *     description: Calculate the cost and effects of changing a subscription plan
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *       - in: path
+   *         name: subscriptionId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Subscription ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - newPlanId
+   *             properties:
+   *               newPlanId:
+   *                 type: string
+   *                 description: ID of the new subscription plan
+   *     responses:
+   *       200:
+   *         description: Plan change calculation completed successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     currentPlan:
+   *                       type: object
+   *                       description: Current subscription plan details
+   *                     newPlan:
+   *                       type: object
+   *                       description: New subscription plan details
+   *                     proratedAmount:
+   *                       type: number
+   *                       description: Prorated amount for the change
+   *                     creditAmount:
+   *                       type: number
+   *                       description: Credit from current plan
+   *                     upgradeAmount:
+   *                       type: number
+   *                       description: Amount for new plan
+   *                     changeType:
+   *                       type: string
+   *                       enum: [upgrade, downgrade, same]
+   *                       description: Type of plan change
+   *                     effectiveDate:
+   *                       type: string
+   *                       format: date-time
+   *                       description: When the change will take effect
+   *                     description:
+   *                       type: string
+   *                       description: Human-readable description of the change
+   *       400:
+   *         description: Invalid request data
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Insufficient permissions
+   *       404:
+   *         description: Business or subscription not found
+   */
+  router.post(
+    '/:businessId/subscription/:subscriptionId/calculate-change',
+    requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
+    requireSpecificBusinessAccess('businessId'),
+    withAuth(subscriptionController.calculateSubscriptionChange.bind(subscriptionController))
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/subscription/{subscriptionId}/change-plan:
+   *   post:
+   *     tags: [Businesses, Subscriptions]
+   *     summary: Change subscription plan
+   *     description: Execute a subscription plan change with payment processing
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *       - in: path
+   *         name: subscriptionId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Subscription ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - newPlanId
+   *               - effectiveDate
+   *               - prorationPreference
+   *               - paymentMethodId
+   *             properties:
+   *               newPlanId:
+   *                 type: string
+   *                 example: "plan_pro_monthly"
+   *               effectiveDate:
+   *                 type: string
+   *                 enum: [immediate, next_billing_cycle]
+   *                 example: "immediate"
+   *               prorationPreference:
+   *                 type: string
+   *                 enum: [prorate, full_charge]
+   *                 example: "prorate"
+   *               paymentMethodId:
+   *                 type: string
+   *                 example: "pm_1759222318670_zx6blga"
+   *     responses:
+   *       200:
+   *         description: Plan change executed successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     subscription:
+   *                       type: object
+   *                       description: Updated subscription details
+   *                     payment:
+   *                       type: object
+   *                       description: Payment transaction details
+   *                     effectiveDate:
+   *                       type: string
+   *                       format: date-time
+   *       400:
+   *         description: Invalid request data
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Insufficient permissions
+   *       404:
+   *         description: Business or subscription not found
+   */
+  router.post(
+    '/:businessId/subscription/:subscriptionId/change-plan',
+    requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
+    requireSpecificBusinessAccess('businessId'),
+    withAuth(subscriptionController.changeSubscriptionPlan.bind(subscriptionController))
+  );
+
+  // Payment Methods Management Routes
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/payment-methods:
+   *   get:
+   *     tags: [Businesses, Payment Methods]
+   *     summary: Get stored payment methods for business
+   *     description: Retrieve all stored payment methods for a specific business
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *     responses:
+   *       200:
+   *         description: Payment methods retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id:
+   *                         type: string
+   *                         example: "pm_1234567890"
+   *                       cardHolderName:
+   *                         type: string
+   *                         example: "John Doe"
+   *                       lastFourDigits:
+   *                         type: string
+   *                         example: "4242"
+   *                       cardBrand:
+   *                         type: string
+   *                         example: "VISA"
+   *                       isDefault:
+   *                         type: boolean
+   *                         example: true
+   *                       createdAt:
+   *                         type: string
+   *                         format: date-time
+   *       403:
+   *         description: Insufficient permissions
+   *       404:
+   *         description: Business not found
+   */
   router.get(
-    '/:slugOrId',
-    async (req, res, next) => {
-      try {
-        // First try as a slug (public access) - includes services
-        const business = await businessController['businessService'].getBusinessBySlugWithServices(req.params.slugOrId);
-        if (business) {
-          return res.json({
-            success: true,
-            data: business
-          });
-        }
-        
-        // If slug doesn't work and user is authenticated, try as ID
-        if ((req as any).user) {
-          return withAuth((authReq, authRes) => businessController.getBusinessById(authReq, authRes))(req, res);
-        }
-        
-        // Not found
-        res.status(404).json({
-          success: false,
-          error: 'Business not found'
-        });
-      } catch (error) {
-        next(error);
-      }
-    }
+    '/:businessId/payment-methods',
+    requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
+    requireSpecificBusinessAccess('businessId'),
+    businessController.getPaymentMethods.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/{businessId}/payment-methods:
+   *   post:
+   *     tags: [Businesses, Payment Methods]
+   *     summary: Add a new payment method for business
+   *     description: Store a new payment method for a specific business
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - cardHolderName
+   *               - cardNumber
+   *               - expireMonth
+   *               - expireYear
+   *               - cvc
+   *             properties:
+   *               cardHolderName:
+   *                 type: string
+   *                 example: "John Doe"
+   *               cardNumber:
+   *                 type: string
+   *                 example: "5528790000000008"
+   *               expireMonth:
+   *                 type: string
+   *                 example: "12"
+   *               expireYear:
+   *                 type: string
+   *                 example: "2030"
+   *               cvc:
+   *                 type: string
+   *                 example: "123"
+   *               isDefault:
+   *                 type: boolean
+   *                 example: false
+   *     responses:
+   *       201:
+   *         description: Payment method added successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     id:
+   *                       type: string
+   *                     cardHolderName:
+   *                       type: string
+   *                     lastFourDigits:
+   *                       type: string
+   *                     cardBrand:
+   *                       type: string
+   *                     isDefault:
+   *                       type: boolean
+   *       400:
+   *         description: Invalid payment method data
+   *       403:
+   *         description: Insufficient permissions
+   *       404:
+   *         description: Business not found
+   */
+  router.post(
+    '/:businessId/payment-methods',
+    requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
+    requireSpecificBusinessAccess('businessId'),
+    businessController.addPaymentMethod.bind(businessController)
   );
 
   // Staff Management Routes
@@ -2342,6 +2651,73 @@ export function createBusinessRoutes(businessController: BusinessController): Ro
     '/:businessId/images/gallery',
     requireAuth,
     businessController.updateGalleryImages.bind(businessController)
+  );
+
+  // Add a catch-all route that tries slug first, then ID if slug doesn't work
+  // MUST be last to avoid conflicting with specific routes
+  router.get(
+    '/:slugOrId',
+    async (req, res, next) => {
+      try {
+        const slugOrId = req.params.slugOrId;
+        console.log('🔍 Catch-all route hit with slugOrId:', slugOrId);
+
+        // First try as a slug (public access) - includes services
+        const business = await businessController['businessService'].getBusinessBySlugWithServices(slugOrId);
+        if (business) {
+          console.log('✅ Found business by slug:', business.id);
+          return res.json({
+            success: true,
+            data: business
+          });
+        }
+
+        console.log('❌ Not found as slug, trying as ID...');
+        console.log('🔍 User authenticated:', !!(req as AuthenticatedRequest).user);
+
+        // If slug doesn't work and user is authenticated, try as ID
+        if ((req as AuthenticatedRequest).user) {
+          const authReq = req as AuthenticatedRequest;
+          const userId = authReq.user!.id;
+          const { includeDetails, includeSubscription } = req.query;
+
+          console.log('🔍 Fetching business by ID:', slugOrId, 'for user:', userId);
+
+          // Call service directly instead of going through controller
+          let businessById;
+          if (includeSubscription === 'true') {
+            businessById = await businessController['businessService'].getBusinessByIdWithSubscription(userId, slugOrId);
+          } else {
+            businessById = await businessController['businessService'].getBusinessById(
+              userId,
+              slugOrId,
+              includeDetails === 'true'
+            );
+          }
+
+          if (!businessById) {
+            return res.status(404).json({
+              success: false,
+              error: 'Business not found'
+            });
+          }
+
+          return res.json({
+            success: true,
+            data: businessById
+          });
+        }
+
+        // Not found
+        return res.status(404).json({
+          success: false,
+          error: 'Business not found'
+        });
+      } catch (error) {
+        console.error('❌ Catch-all route error:', error);
+        return next(error);
+      }
+    }
   );
 
   return router;

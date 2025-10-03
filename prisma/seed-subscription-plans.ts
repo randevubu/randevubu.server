@@ -383,6 +383,28 @@ async function displaySubscriptionSummary() {
   console.log('✅ Payment Status Tracking');
   console.log('✅ Refund & Cancellation Support');
 
+  // Successful Test Cards:
+
+  // Card Number: 5528790000000008
+  // Expiry: 12/30yi
+  // CVC: 123
+  // Cardholder: Test User
+
+  // Card Number: 4766620000000001
+  // Expiry: 12/30
+  // CVC: 123
+  // Cardholder: Test User
+
+  // Card Number: 4603450000000000
+  // Expiry: 12/30
+  // CVC: 123
+  // Cardholder: Test User
+
+  // Failed Payment Test Cards:
+
+  // Card Number: 5406670000000009 (Insufficient funds)
+  // Card Number: 4111111111111129 (Invalid card)
+  
   // Show usage example
   console.log('\n💡 USAGE EXAMPLE');
   console.log('========================================');

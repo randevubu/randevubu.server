@@ -594,6 +594,85 @@ export class SubscriptionService {
     };
   }
 
+  async calculateSubscriptionChange(
+    userId: string,
+    businessId: string,
+    subscriptionId: string,
+    newPlanId: string
+  ): Promise<{
+    currentPlan: SubscriptionPlanData;
+    newPlan: SubscriptionPlanData;
+    proratedAmount: number;
+    creditAmount: number;
+    upgradeAmount: number;
+    changeType: 'upgrade' | 'downgrade' | 'same';
+    effectiveDate: Date;
+    description: string;
+  }> {
+    // Check permissions
+    const [resource, action] = PermissionName.MANAGE_ALL_SUBSCRIPTIONS.split(':');
+    const hasGlobalSubscription = await this.rbacService.hasPermission(userId, resource, action);
+
+    if (!hasGlobalSubscription) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.MANAGE_OWN_SUBSCRIPTION,
+        { businessId }
+      );
+    }
+
+    // Get current subscription
+    const subscription = await this.subscriptionRepository.findSubscriptionById(subscriptionId);
+    if (!subscription) {
+      throw new Error('Subscription not found');
+    }
+
+    if (subscription.businessId !== businessId) {
+      throw new Error('Subscription does not belong to this business');
+    }
+
+    const currentPlan = await this.subscriptionRepository.findPlanById(subscription.planId);
+    const newPlan = await this.subscriptionRepository.findPlanById(newPlanId);
+
+    if (!currentPlan || !newPlan) {
+      throw new Error('Plan not found');
+    }
+
+    // Determine change type
+    let changeType: 'upgrade' | 'downgrade' | 'same';
+    if (newPlan.price > currentPlan.price) {
+      changeType = 'upgrade';
+    } else if (newPlan.price < currentPlan.price) {
+      changeType = 'downgrade';
+    } else {
+      changeType = 'same';
+    }
+
+    // Calculate proration
+    const proration = await this.calculateUpgradeProration(
+      currentPlan.id,
+      newPlan.id,
+      subscription.currentPeriodEnd
+    );
+
+    const description = changeType === 'upgrade'
+      ? `Upgrading from ${currentPlan.name} to ${newPlan.name}`
+      : changeType === 'downgrade'
+      ? `Downgrading from ${currentPlan.name} to ${newPlan.name}`
+      : `Changing from ${currentPlan.name} to ${newPlan.name}`;
+
+    return {
+      currentPlan,
+      newPlan,
+      proratedAmount: proration.proratedAmount,
+      creditAmount: proration.creditAmount,
+      upgradeAmount: proration.upgradeAmount,
+      changeType,
+      effectiveDate: new Date(),
+      description
+    };
+  }
+
   // Auto-renewal management methods
   async updateAutoRenewal(
     userId: string,
@@ -769,5 +848,99 @@ export class SubscriptionService {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     return await this.subscriptionRepository.findSubscriptionsForRenewal(tomorrow);
+  }
+
+  /**
+   * Change subscription plan with payment processing
+   */
+  async changeSubscriptionPlan(
+    userId: string,
+    businessId: string,
+    subscriptionId: string,
+    changeData: {
+      newPlanId: string;
+      effectiveDate: string;
+      prorationPreference: string;
+      paymentMethodId: string;
+    }
+  ): Promise<any> {
+    // First validate access and get current subscription
+    const subscription = await this.subscriptionRepository.findSubscriptionById(subscriptionId);
+
+    if (!subscription || subscription.businessId !== businessId) {
+      throw new Error('Subscription not found');
+    }
+
+    // Verify user has permission (reuse existing permission check)
+    const [resource, action] = PermissionName.MANAGE_ALL_SUBSCRIPTIONS.split(':');
+    const hasGlobalSubscription = await this.rbacService.hasPermission(userId, resource, action);
+
+    if (!hasGlobalSubscription) {
+      await this.rbacService.requirePermission(
+        userId,
+        PermissionName.MANAGE_OWN_SUBSCRIPTION,
+        { businessId }
+      );
+    }
+
+    // Get the new plan details
+    const newPlan = await this.subscriptionRepository.findPlanById(changeData.newPlanId);
+    if (!newPlan) {
+      throw new Error('New plan not found');
+    }
+
+    // Calculate the change (reuse existing logic)
+    const calculation = await this.calculateSubscriptionChange(
+      userId,
+      businessId,
+      subscriptionId,
+      changeData.newPlanId
+    );
+
+    // Validate payment method exists
+    const paymentMethod = await this.subscriptionRepository.getPaymentMethod(changeData.paymentMethodId);
+    if (!paymentMethod) {
+      throw new Error('Payment method not found');
+    }
+
+    // Calculate the change and update subscription
+    const effectiveDate = changeData.effectiveDate === 'immediate' ? new Date() : subscription.currentPeriodEnd;
+
+    // For immediate changes, use the upgrade logic
+    let updatedSubscription;
+    if (changeData.effectiveDate === 'immediate' && calculation.changeType === 'upgrade') {
+      const newPeriodEnd = new Date();
+      if (newPlan.billingInterval === 'monthly') {
+        newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
+      } else if (newPlan.billingInterval === 'yearly') {
+        newPeriodEnd.setFullYear(newPeriodEnd.getFullYear() + 1);
+      }
+
+      updatedSubscription = await this.subscriptionRepository.upgradeSubscription(
+        subscriptionId,
+        changeData.newPlanId,
+        newPeriodEnd
+      );
+    } else {
+      // For downgrades or period-end changes, update at the end of current period
+      updatedSubscription = await this.subscriptionRepository.upgradeSubscription(
+        subscriptionId,
+        changeData.newPlanId,
+        subscription.currentPeriodEnd
+      );
+    }
+
+    // Update payment method
+    await this.subscriptionRepository.updateSubscriptionSettings(subscriptionId, {
+      paymentMethodId: changeData.paymentMethodId,
+      updatedAt: new Date()
+    });
+
+    return {
+      subscription: updatedSubscription,
+      payment: null, // Payment integration to be implemented
+      effectiveDate: effectiveDate,
+      calculation: calculation
+    };
   }
 }
