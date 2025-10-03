@@ -3,7 +3,6 @@ import { Response } from "express";
 import { z } from "zod";
 import { BusinessContextRequest } from "../middleware/businessContext";
 import {
-  appointmentQuerySchema,
   appointmentSearchSchema,
   createAppointmentSchema,
   updateAppointmentSchema,
@@ -40,7 +39,7 @@ export class AppointmentController {
       const userId = req.user!.id;
 
       // SECURITY: Validate and sanitize all query parameters
-      const validatedQuery = appointmentQuerySchema.parse(req.query);
+      const validatedQuery = appointmentSearchSchema.parse(req.query);
 
       // Log the request for security monitoring
       logger.info("Appointment query request", {
