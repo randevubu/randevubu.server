@@ -643,4 +643,76 @@ export class SubscriptionController {
       });
     }
   }
+
+  async calculateSubscriptionChange(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const { businessId, subscriptionId } = req.params;
+      const { newPlanId } = req.body;
+      const userId = req.user.id;
+
+      if (!newPlanId || typeof newPlanId !== 'string') {
+        res.status(400).json({
+          success: false,
+          error: 'newPlanId is required'
+        });
+        return;
+      }
+
+      const calculation = await this.subscriptionService.calculateSubscriptionChange(
+        userId,
+        businessId,
+        subscriptionId,
+        newPlanId
+      );
+
+      res.json({
+        success: true,
+        data: calculation
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to calculate subscription change'
+      });
+    }
+  }
+
+  async changeSubscriptionPlan(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const { businessId, subscriptionId } = req.params;
+      const { newPlanId, effectiveDate, prorationPreference, paymentMethodId } = req.body;
+      const userId = req.user.id;
+
+      if (!newPlanId || !effectiveDate || !prorationPreference || !paymentMethodId) {
+        res.status(400).json({
+          success: false,
+          error: 'newPlanId, effectiveDate, prorationPreference, and paymentMethodId are required'
+        });
+        return;
+      }
+
+      const result = await this.subscriptionService.changeSubscriptionPlan(
+        userId,
+        businessId,
+        subscriptionId,
+        {
+          newPlanId,
+          effectiveDate,
+          prorationPreference,
+          paymentMethodId
+        }
+      );
+
+      res.json({
+        success: true,
+        data: result,
+        message: 'Subscription plan changed successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to change subscription plan'
+      });
+    }
+  }
 }

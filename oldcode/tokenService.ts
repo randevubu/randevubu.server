@@ -1,26 +1,26 @@
-import crypto from "crypto";
-import * as jwt from "jsonwebtoken";
-import { config } from "../config/environment";
-import { RepositoryContainer } from "../repositories";
-import {
-  DeviceInfo,
+import * as jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { config } from '../config/environment';
+import { RepositoryContainer } from '../repositories';
+import { 
   JWTPayload,
   TokenPair,
-  TokenServiceConfig,
-} from "../types/auth";
+  DeviceInfo,
+  TokenServiceConfig
+} from '../types/auth';
 import {
-  ConfigurationError,
   ErrorContext,
-  InvalidTokenError,
   TokenExpiredError,
+  InvalidTokenError,
   UnauthorizedError,
-} from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+  ConfigurationError
+} from '../types/errors';
+import { logger } from '../utils/logger';
 
 export class TokenService {
   private static readonly DEFAULT_CONFIG: TokenServiceConfig = {
-    accessTokenExpiry: "15m",
-    refreshTokenExpiry: "30d",
+    accessTokenExpiry: '15m',
+    refreshTokenExpiry: '30d',
     accessTokenExpirySeconds: 15 * 60,
     refreshTokenExpirySeconds: 30 * 24 * 60 * 60,
   };
@@ -38,26 +38,22 @@ export class TokenService {
   ): Promise<TokenPair> {
     const accessSecret = config.JWT_ACCESS_SECRET || config.JWT_SECRET;
     const refreshSecret = config.JWT_REFRESH_SECRET || config.JWT_SECRET;
-
+    
     if (!accessSecret || !refreshSecret) {
-      throw new ConfigurationError(
-        "JWT_SECRET",
-        "JWT secrets are not configured",
-        context
-      );
+      throw new ConfigurationError('JWT_SECRET', 'JWT secrets are not configured', context);
     }
 
     const accessTokenPayload: JWTPayload = {
       userId,
       phoneNumber,
-      type: "access",
+      type: 'access',
     };
 
     const refreshTokenValue = this.generateSecureToken();
     const refreshTokenPayload: JWTPayload = {
       userId,
       phoneNumber,
-      type: "refresh",
+      type: 'refresh',
       tokenValue: refreshTokenValue,
     };
 
@@ -65,36 +61,26 @@ export class TokenService {
       // Generate JWT tokens with separate secrets
       const signOptions: jwt.SignOptions = {
         expiresIn: this.tokenConfig.accessTokenExpirySeconds,
-        issuer: "randevubu-server",
-        audience: "randevubu-client",
-        algorithm: "HS256",
+        issuer: 'randevubu-server',
+        audience: 'randevubu-client',
+        algorithm: 'HS256',
       };
-      const accessToken = jwt.sign(
-        accessTokenPayload,
-        accessSecret,
-        signOptions
-      );
+      const accessToken = jwt.sign(accessTokenPayload, accessSecret, signOptions);
 
       const refreshSignOptions: jwt.SignOptions = {
         expiresIn: this.tokenConfig.refreshTokenExpirySeconds,
-        issuer: "randevubu-server",
-        audience: "randevubu-client",
-        algorithm: "HS256",
+        issuer: 'randevubu-server',
+        audience: 'randevubu-client',
+        algorithm: 'HS256',
       };
-      const refreshToken = jwt.sign(
-        refreshTokenPayload,
-        refreshSecret,
-        refreshSignOptions
-      );
+      const refreshToken = jwt.sign(refreshTokenPayload, refreshSecret, refreshSignOptions);
 
       // Store refresh token in database
       await this.repositories.refreshTokenRepository.create({
         userId,
         token: refreshTokenValue,
         isRevoked: false,
-        expiresAt: new Date(
-          Date.now() + this.tokenConfig.refreshTokenExpirySeconds * 1000
-        ),
+        expiresAt: new Date(Date.now() + this.tokenConfig.refreshTokenExpirySeconds * 1000),
         deviceId: deviceInfo?.deviceId,
         userAgent: deviceInfo?.userAgent,
         ipAddress: deviceInfo?.ipAddress,
@@ -103,17 +89,17 @@ export class TokenService {
       // Log token generation
       await this.repositories.auditLogRepository.create({
         userId,
-        action: "TOKEN_REFRESH",
-        entity: "RefreshToken",
+        action: 'TOKEN_REFRESH',
+        entity: 'RefreshToken',
         details: {
-          action: "token_generated",
+          action: 'token_generated',
           deviceInfo: this.sanitizeDeviceInfo(deviceInfo),
         },
         ipAddress: context?.ipAddress,
         userAgent: context?.userAgent,
       });
 
-      logger.info("Token pair generated", {
+      logger.info('Token pair generated', {
         userId,
         hasDeviceId: !!deviceInfo?.deviceId,
         requestId: context?.requestId,
@@ -125,8 +111,9 @@ export class TokenService {
         expiresIn: this.tokenConfig.accessTokenExpirySeconds,
         refreshExpiresIn: this.tokenConfig.refreshTokenExpirySeconds,
       };
+
     } catch (error) {
-      logger.error("Token generation failed", {
+      logger.error('Token generation failed', {
         error: error instanceof Error ? error.message : String(error),
         userId,
         requestId: context?.requestId,
@@ -135,41 +122,35 @@ export class TokenService {
     }
   }
 
-  async verifyAccessToken(
-    token: string,
-    context?: ErrorContext
-  ): Promise<JWTPayload> {
+  async verifyAccessToken(token: string, context?: ErrorContext): Promise<JWTPayload> {
     const accessSecret = config.JWT_ACCESS_SECRET || config.JWT_SECRET;
-
+    
     if (!accessSecret) {
-      throw new ConfigurationError(
-        "JWT_ACCESS_SECRET",
-        "JWT access secret is not configured",
-        context
-      );
+      throw new ConfigurationError('JWT_ACCESS_SECRET', 'JWT access secret is not configured', context);
     }
 
     try {
       const decoded = jwt.verify(token, accessSecret, {
-        issuer: "randevubu-server",
-        audience: "randevubu-client",
-        algorithms: ["HS256"],
+        issuer: 'randevubu-server',
+        audience: 'randevubu-client',
+        algorithms: ['HS256'],
       }) as JWTPayload;
 
-      if (decoded.type !== "access") {
-        throw new InvalidTokenError("Invalid token type", context);
+      if (decoded.type !== 'access') {
+        throw new InvalidTokenError('Invalid token type', context);
       }
 
       return decoded;
+
     } catch (error) {
       if (error instanceof jwt.JsonWebTokenError) {
-        throw new InvalidTokenError("Invalid access token format", context);
+        throw new InvalidTokenError('Invalid access token format', context);
       }
       if (error instanceof jwt.TokenExpiredError) {
-        throw new TokenExpiredError("Access token has expired", context);
+        throw new TokenExpiredError('Access token has expired', context);
       }
       if (error instanceof jwt.NotBeforeError) {
-        throw new InvalidTokenError("Access token not active yet", context);
+        throw new InvalidTokenError('Access token not active yet', context);
       }
       throw error;
     }
@@ -181,17 +162,13 @@ export class TokenService {
     context?: ErrorContext
   ): Promise<TokenPair> {
     const refreshSecret = config.JWT_REFRESH_SECRET || config.JWT_SECRET;
-
+    
     if (!refreshSecret) {
-      throw new ConfigurationError(
-        "JWT_REFRESH_SECRET",
-        "JWT refresh secret is not configured",
-        context
-      );
+      throw new ConfigurationError('JWT_REFRESH_SECRET', 'JWT refresh secret is not configured', context);
     }
 
     try {
-      logger.debug("Attempting JWT verification", {
+      logger.info('Attempting JWT verification', {
         tokenStart: refreshToken.substring(0, 50),
         tokenLength: refreshToken.length,
         hasJwtRefreshSecret: !!refreshSecret,
@@ -201,12 +178,12 @@ export class TokenService {
 
       // Verify refresh token JWT
       const decoded = jwt.verify(refreshToken, refreshSecret, {
-        issuer: "randevubu-server",
-        audience: "randevubu-client",
-        algorithms: ["HS256"],
+        issuer: 'randevubu-server',
+        audience: 'randevubu-client',
+        algorithms: ['HS256'],
       }) as JWTPayload & { tokenValue: string };
 
-      logger.debug("JWT verification successful", {
+      logger.info('JWT verification successful', {
         userId: decoded.userId,
         tokenType: decoded.type,
         hasTokenValue: !!decoded.tokenValue,
@@ -214,15 +191,13 @@ export class TokenService {
         requestId: context?.requestId,
       });
 
-      if (decoded.type !== "refresh") {
-        throw new InvalidTokenError("Invalid refresh token type", context);
+      if (decoded.type !== 'refresh') {
+        throw new InvalidTokenError('Invalid refresh token type', context);
       }
 
       // Check if refresh token exists and is valid in database
-      const storedToken =
-        await this.repositories.refreshTokenRepository.findByTokenWithUser(
-          decoded.tokenValue
-        );
+      const storedToken = await this.repositories.refreshTokenRepository
+        .findByTokenWithUser(decoded.tokenValue);
 
       logger.info('Token lookup result', {
         hasStoredToken: !!storedToken,
@@ -247,22 +222,18 @@ export class TokenService {
       }
 
       if (storedToken.userId !== decoded.userId) {
-        throw new UnauthorizedError("Token user mismatch", context);
+        throw new UnauthorizedError('Token user mismatch', context);
       }
 
       if (!storedToken.user.isActive) {
-        throw new UnauthorizedError("User account is deactivated", context);
+        throw new UnauthorizedError('User account is deactivated', context);
       }
 
       // Update last used timestamp
-      await this.repositories.refreshTokenRepository.updateLastUsed(
-        decoded.tokenValue
-      );
+      await this.repositories.refreshTokenRepository.updateLastUsed(decoded.tokenValue);
 
       // Revoke current refresh token (token rotation)
-      await this.repositories.refreshTokenRepository.revokeByToken(
-        decoded.tokenValue
-      );
+      await this.repositories.refreshTokenRepository.revokeByToken(decoded.tokenValue);
 
       // Generate new token pair
       const newTokenPair = await this.generateTokenPair(
@@ -275,10 +246,10 @@ export class TokenService {
       // Log token refresh
       await this.repositories.auditLogRepository.create({
         userId: decoded.userId,
-        action: "TOKEN_REFRESH",
-        entity: "RefreshToken",
+        action: 'TOKEN_REFRESH',
+        entity: 'RefreshToken',
         details: {
-          action: "token_refreshed",
+          action: 'token_refreshed',
           oldTokenId: storedToken.id,
           deviceInfo: this.sanitizeDeviceInfo(deviceInfo),
         },
@@ -286,13 +257,14 @@ export class TokenService {
         userAgent: context?.userAgent,
       });
 
-      logger.info("Access token refreshed", {
+      logger.info('Access token refreshed', {
         userId: decoded.userId,
         oldTokenId: storedToken.id,
         requestId: context?.requestId,
       });
 
       return newTokenPair;
+
     } catch (error) {
       if (error instanceof jwt.JsonWebTokenError) {
         logger.error('JWT verification failed - JsonWebTokenError', {
@@ -303,7 +275,7 @@ export class TokenService {
           tokenLength: refreshToken.length,
           requestId: context?.requestId,
         });
-        throw new InvalidTokenError("Invalid refresh token format", context);
+        throw new InvalidTokenError('Invalid refresh token format', context);
       }
       if (error instanceof jwt.TokenExpiredError) {
         logger.error('Refresh token expired - TokenExpiredError', {
@@ -312,7 +284,7 @@ export class TokenService {
           expiredAt: (error as any).expiredAt,
           requestId: context?.requestId,
         });
-        throw new TokenExpiredError("Refresh token has expired", context);
+        throw new TokenExpiredError('Refresh token has expired', context);
       }
       if (error instanceof jwt.NotBeforeError) {
         logger.error('Refresh token not active yet - NotBeforeError', {
@@ -320,7 +292,7 @@ export class TokenService {
           errorMessage: error.message,
           requestId: context?.requestId,
         });
-        throw new InvalidTokenError("Refresh token not active yet", context);
+        throw new InvalidTokenError('Refresh token not active yet', context);
       }
 
       logger.error('Token refresh failed - Unknown error', {
@@ -334,66 +306,57 @@ export class TokenService {
     }
   }
 
-  async revokeRefreshToken(
-    token: string,
-    context?: ErrorContext
-  ): Promise<void> {
+  async revokeRefreshToken(token: string, context?: ErrorContext): Promise<void> {
     await this.repositories.refreshTokenRepository.revokeByToken(token);
 
-    logger.info("Refresh token revoked", {
+    logger.info('Refresh token revoked', {
       requestId: context?.requestId,
     });
   }
 
-  async revokeAllUserTokens(
-    userId: string,
-    context?: ErrorContext
-  ): Promise<void> {
+  async revokeAllUserTokens(userId: string, context?: ErrorContext): Promise<void> {
     await this.repositories.refreshTokenRepository.revokeAllByUserId(userId);
 
     // Log security event
     await this.repositories.auditLogRepository.create({
       userId,
-      action: "TOKEN_REFRESH",
-      entity: "RefreshToken",
+      action: 'TOKEN_REFRESH',
+      entity: 'RefreshToken',
       details: {
-        action: "all_tokens_revoked",
-        reason: "security_event",
+        action: 'all_tokens_revoked',
+        reason: 'security_event',
       },
       ipAddress: context?.ipAddress,
       userAgent: context?.userAgent,
     });
 
-    logger.info("All user tokens revoked", {
+    logger.info('All user tokens revoked', {
       userId,
       requestId: context?.requestId,
     });
   }
 
   async revokeDeviceTokens(
-    userId: string,
-    deviceId: string,
+    userId: string, 
+    deviceId: string, 
     context?: ErrorContext
   ): Promise<void> {
-    await this.repositories.refreshTokenRepository.revokeByDevice(
-      userId,
-      deviceId
-    );
+    await this.repositories.refreshTokenRepository.revokeByDevice(userId, deviceId);
 
     // Log security event
     await this.repositories.auditLogRepository.create({
       userId,
-      action: "TOKEN_REFRESH",
-      entity: "RefreshToken",
+      action: 'TOKEN_REFRESH',
+      entity: 'RefreshToken',
       details: {
-        action: "device_tokens_revoked",
+        action: 'device_tokens_revoked',
         deviceId,
       },
       ipAddress: context?.ipAddress,
       userAgent: context?.userAgent,
     });
 
-    logger.info("Device tokens revoked", {
+    logger.info('Device tokens revoked', {
       userId,
       deviceId,
       requestId: context?.requestId,
@@ -404,7 +367,7 @@ export class TokenService {
     const count = await this.repositories.refreshTokenRepository.cleanup();
 
     if (count > 0) {
-      logger.info("Cleaned up expired tokens", {
+      logger.info('Cleaned up expired tokens', { 
         count,
         requestId: context?.requestId,
       });
@@ -415,11 +378,9 @@ export class TokenService {
 
   async getUserTokenStats(userId: string, context?: ErrorContext) {
     try {
-      return await this.repositories.refreshTokenRepository.getTokenStats(
-        userId
-      );
+      return await this.repositories.refreshTokenRepository.getTokenStats(userId);
     } catch (error) {
-      logger.error("Failed to get token stats", {
+      logger.error('Failed to get token stats', {
         error: error instanceof Error ? error.message : String(error),
         userId,
         requestId: context?.requestId,
@@ -429,32 +390,29 @@ export class TokenService {
   }
 
   async limitUserTokens(
-    userId: string,
-    maxTokens: number = 5,
+    userId: string, 
+    maxTokens: number = 5, 
     context?: ErrorContext
   ): Promise<number> {
-    const revokedCount =
-      await this.repositories.refreshTokenRepository.revokeOldTokens(
-        userId,
-        maxTokens
-      );
+    const revokedCount = await this.repositories.refreshTokenRepository
+      .revokeOldTokens(userId, maxTokens);
 
     if (revokedCount > 0) {
       // Log security event
       await this.repositories.auditLogRepository.create({
         userId,
-        action: "TOKEN_REFRESH",
-        entity: "RefreshToken",
+        action: 'TOKEN_REFRESH',
+        entity: 'RefreshToken',
         details: {
-          action: "old_tokens_revoked",
+          action: 'old_tokens_revoked',
           count: revokedCount,
-          reason: "token_limit_enforcement",
+          reason: 'token_limit_enforcement',
         },
         ipAddress: context?.ipAddress,
         userAgent: context?.userAgent,
       });
 
-      logger.info("Old tokens revoked due to limit", {
+      logger.info('Old tokens revoked due to limit', {
         userId,
         revokedCount,
         maxTokens,
@@ -467,34 +425,28 @@ export class TokenService {
 
   // Utility methods for verification codes
   generateSecureCode(length: number = 6): string {
-    const digits = "0123456789";
-    let code = "";
-
+    const digits = '0123456789';
+    let code = '';
+    
     for (let i = 0; i < length; i++) {
       const randomIndex = crypto.randomInt(0, digits.length);
       code += digits[randomIndex];
     }
-
+    
     return code;
   }
 
   hashCode(code: string): string {
-    return crypto.createHash("sha256").update(code).digest("hex");
+    return crypto.createHash('sha256').update(code).digest('hex');
   }
 
   verifyCode(plainCode: string, hashedCode: string): boolean {
-    const hashedPlain = crypto
-      .createHash("sha256")
-      .update(plainCode)
-      .digest("hex");
-    return crypto.timingSafeEqual(
-      Buffer.from(hashedPlain),
-      Buffer.from(hashedCode)
-    );
+    const hashedPlain = crypto.createHash('sha256').update(plainCode).digest('hex');
+    return crypto.timingSafeEqual(Buffer.from(hashedPlain), Buffer.from(hashedCode));
   }
 
   private generateSecureToken(): string {
-    return crypto.randomBytes(64).toString("hex");
+    return crypto.randomBytes(64).toString('hex');
   }
 
   private sanitizeDeviceInfo(deviceInfo?: DeviceInfo): any {
@@ -512,7 +464,7 @@ export class TokenService {
     try {
       const decoded = jwt.decode(token) as JWTPayload;
       if (!decoded || !decoded.exp) return true;
-
+      
       return decoded.exp * 1000 < Date.now();
     } catch {
       return true;
@@ -531,7 +483,7 @@ export class TokenService {
     try {
       const decoded = jwt.decode(token) as JWTPayload;
       if (!decoded || !decoded.exp) return null;
-
+      
       return new Date(decoded.exp * 1000);
     } catch {
       return null;

@@ -4,12 +4,12 @@ import { logger } from '../utils/logger';
 import { config } from '../config/environment';
 import {
   BaseError,
-  ErrorCode,
-  ErrorContext,
+  isOperationalError,
   InternalServerError,
-  createSecureErrorResponse,
-} from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+  ErrorContext,
+  ErrorCode,
+  createSecureErrorResponse
+} from '../types/errors';
 
 class RouteNotFoundError extends BaseError {
   constructor(url: string, context?: ErrorContext) {
@@ -23,11 +23,7 @@ class RouteNotFoundError extends BaseError {
   }
 }
 
-export const notFoundHandler = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
+export const notFoundHandler = (req: Request, res: Response, next: NextFunction): void => {
   const context: ErrorContext = {
     ipAddress: req.ip,
     userAgent: req.get('user-agent'),
@@ -38,7 +34,7 @@ export const notFoundHandler = (
   };
 
   const error = new RouteNotFoundError(req.originalUrl, context);
-
+  
   next(error);
 };
 
@@ -65,14 +61,14 @@ export const errorHandler = (
   } else {
     // Convert unknown errors to InternalServerError
     error = new InternalServerError(
-      config.NODE_ENV === "development" ? err.message : "Internal server error",
+      config.NODE_ENV === 'development' ? err.message : 'Internal server error',
       err,
       context
     );
   }
 
   // Log the error with appropriate level
-  const logLevel = error.statusCode >= 500 ? "error" : "warn";
+  const logLevel = error.statusCode >= 500 ? 'error' : 'warn';
   const logData = {
     requestId: error.context?.requestId || context.requestId,
     statusCode: error.statusCode,
@@ -80,7 +76,7 @@ export const errorHandler = (
     url: req.url,
     method: req.method,
     ip: req.ip,
-    userAgent: req.get("user-agent"),
+    userAgent: req.get('user-agent'),
     userId: (req as any).user?.id,
     // Include error details only for operational errors in development
     ...(config.NODE_ENV === 'development' && error.isOperational && error.details && {

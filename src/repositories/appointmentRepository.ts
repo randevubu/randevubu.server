@@ -8,7 +8,7 @@ import {
   AppointmentStatus
 } from '../types/business';
 import { convertBusinessData, convertBusinessDataArray } from '../utils/prismaTypeHelpers';
-import { createDateTimeInIstanbul, getCurrentTimeInIstanbul } from '../utils/timezoneHelper';
+import { createDateTimeInIstanbul, getCurrentTimeInIstanbul, createDateRangeFilter } from '../utils/timezoneHelper';
 
 export class AppointmentRepository {
   constructor(private prisma: PrismaClient) {}
@@ -527,15 +527,21 @@ export class AppointmentRepository {
     }
 
     if (filters.startDate || filters.endDate) {
-      where.startTime = {};
-      if (filters.startDate) {
-        where.startTime.gte = new Date(filters.startDate);
-      }
-      if (filters.endDate) {
-        // Set to end of day (23:59:59.999) instead of beginning of day (00:00:00)
-        const endDate = new Date(filters.endDate);
-        endDate.setHours(23, 59, 59, 999);
-        where.startTime.lte = endDate;
+      if (filters.startDate && filters.endDate) {
+        // Use timezone-aware date range filter
+        const dateRange = createDateRangeFilter(filters.startDate, filters.endDate);
+        where.startTime = {
+          gte: dateRange.gte,
+          lte: dateRange.lte
+        };
+      } else if (filters.startDate) {
+        where.startTime = {
+          gte: createDateRangeFilter(filters.startDate, filters.startDate).gte
+        };
+      } else if (filters.endDate) {
+        where.startTime = {
+          lte: createDateRangeFilter(filters.endDate, filters.endDate).lte
+        };
       }
     }
 
@@ -644,7 +650,8 @@ export class AppointmentRepository {
   }
 
   async findUpcomingByCustomerId(customerId: string, limit = 10): Promise<AppointmentWithDetails[]> {
-    const now = new Date();
+    const { getCurrentTimeInIstanbul } = require('../utils/timezoneHelper');
+    const now = getCurrentTimeInIstanbul();
     
     const result = await this.prisma.appointment.findMany({
       where: {
@@ -780,7 +787,8 @@ export class AppointmentRepository {
   }
 
   async findTodaysAppointments(businessId: string): Promise<any[]> {
-    const today = new Date();
+    const { getCurrentTimeInIstanbul } = require('../utils/timezoneHelper');
+    const today = getCurrentTimeInIstanbul();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -863,7 +871,8 @@ export class AppointmentRepository {
   }
 
   async findTodaysAppointmentsForBusinesses(businessIds: string[]): Promise<any[]> {
-    const today = new Date();
+    const { getCurrentTimeInIstanbul } = require('../utils/timezoneHelper');
+    const today = getCurrentTimeInIstanbul();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);

@@ -90,6 +90,7 @@ export class ServiceContainer {
       this.businessService,
       this.notificationService,
       this.usageService,
+      this.prisma,
       repositories
     );
     this.userBehaviorService = new UserBehaviorService(repositories.userBehaviorRepository, this.rbacService);

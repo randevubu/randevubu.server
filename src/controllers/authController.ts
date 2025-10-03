@@ -28,7 +28,10 @@ import {
   ErrorContext,
   InternalServerError,
   ForbiddenError,
-  UserNotFoundError
+  UserNotFoundError,
+  UnauthorizedError,
+  InvalidTokenError,
+  TokenExpiredError
 } from '../types/errors';
 import { logger } from '../utils/logger';
 
@@ -86,6 +89,25 @@ export class AuthController {
       },
     };
     res.status(error.statusCode).json(response);
+  }
+
+  private clearAuthCookies(res: Response, context: ErrorContext): void {
+    const cookieDomain = process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost';
+    
+    res.clearCookie('refreshToken', {
+      path: '/',
+      domain: cookieDomain
+    });
+    res.clearCookie('hasAuth', {
+      path: '/',
+      domain: cookieDomain
+    });
+
+    logger.info('Cleared authentication cookies', {
+      clearedCookies: ['refreshToken', 'hasAuth'],
+      domain: cookieDomain,
+      requestId: context.requestId,
+    });
   }
 
   /**
@@ -181,22 +203,30 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      // Set refresh token as HttpOnly cookie (web security best practice)
-      res.cookie('refreshToken', result.tokens.refreshToken, {
-        httpOnly: true,           // Prevents JavaScript access (XSS protection)
-        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // None for cross-origin in production
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        path: '/' // Allow cookie to be sent to all endpoints
-      });
+      // Detect client type: mobile apps send header, web apps use cookies
+      const isMobileClient = req.headers['x-client-type'] === 'mobile';
+      const isSecureProduction = process.env.NODE_ENV === 'production' && req.secure;
 
-      // Set hasAuth cookie for frontend auth state detection
-      res.cookie('hasAuth', '1', {
-        httpOnly: false,          // Frontend can read this
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // None for cross-origin in production
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-      });
+      if (!isMobileClient) {
+        // Web: Set refresh token as HttpOnly cookie (browser-managed)
+        res.cookie('refreshToken', result.tokens.refreshToken, {
+          httpOnly: true,           // JavaScript cannot access (XSS protection)
+          secure: isSecureProduction,
+          sameSite: isSecureProduction ? 'none' : 'lax',
+          maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost',
+          path: '/'
+        });
+
+        // Set hasAuth cookie for frontend auth state detection
+        res.cookie('hasAuth', '1', {
+          httpOnly: false,          // Frontend can read this
+          secure: isSecureProduction,
+          sameSite: isSecureProduction ? 'none' : 'lax',
+          maxAge: 30 * 24 * 60 * 60 * 1000,
+          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost'
+        });
+      }
 
       this.sendSuccessResponse(
         res,
@@ -217,7 +247,10 @@ export class AuthController {
             effectiveLevel: (result.user as any).effectiveLevel || 0,
           },
           tokens: {
-            accessToken: result.tokens.accessToken
+            accessToken: result.tokens.accessToken,
+            refreshToken: isMobileClient ? result.tokens.refreshToken : undefined, // Only for mobile
+            expiresIn: result.tokens.expiresIn,
+            refreshExpiresIn: isMobileClient ? result.tokens.refreshExpiresIn : undefined
           },
           isNewUser: result.isNewUser,
         }
@@ -248,131 +281,173 @@ export class AuthController {
    * POST /api/v1/auth/refresh
    */
   refreshToken = async (req: Request, res: Response): Promise<void> => {
-    try {
-      // Try to get refresh token from cookie first (web app), then from body (mobile app)
-      const cookieRefreshToken = req.cookies?.refreshToken;
-      const bodyRefreshToken = req.body?.refreshToken;
-      const refreshToken = cookieRefreshToken || bodyRefreshToken;
+    // Detect client type: mobile apps send token in body, web apps use cookies
+    const isMobileClient = req.headers['x-client-type'] === 'mobile' || !!req.body?.refreshToken;
+    
+    // Get refresh token from appropriate source
+    const cookieRefreshToken = req.cookies?.refreshToken;
+    const bodyRefreshToken = req.body?.refreshToken;
+    const refreshToken = isMobileClient ? bodyRefreshToken : (cookieRefreshToken || bodyRefreshToken);
 
-      logger.debug('Refresh token debug info', {
-        hasCookieToken: !!cookieRefreshToken,
-        hasBodyToken: !!bodyRefreshToken,
-        cookieTokenLength: cookieRefreshToken?.length,
-        bodyTokenLength: bodyRefreshToken?.length,
-        cookieTokenStart: cookieRefreshToken?.substring(0, 20),
-        bodyTokenStart: bodyRefreshToken?.substring(0, 20),
-        requestId: this.createErrorContext(req).requestId,
+    const deviceInfo = this.extractDeviceInfo(req);
+    const context = this.createErrorContext(req);
+
+    logger.info('Refresh token debug info', {
+      hasCookieToken: !!cookieRefreshToken,
+      hasBodyToken: !!bodyRefreshToken,
+      cookieTokenLength: cookieRefreshToken?.length,
+      cookieTokenStart: cookieRefreshToken?.substring(0, 50),
+      allCookies: Object.keys(req.cookies || {}),
+      requestId: context.requestId,
+    });
+
+    if (!refreshToken) {
+      this.clearAuthCookies(res, context);
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'Refresh token is required. Provide it in cookie or request body.',
+          code: 'REFRESH_TOKEN_MISSING'
+        }
       });
+      return;
+    }
 
-      if (!refreshToken) {
-        res.status(400).json({
-          success: false,
-          error: {
-            message: 'Refresh token is required. Provide it in cookie or request body.',
-            code: 'REFRESH_TOKEN_MISSING'
-          }
-        });
-        return;
-      }
-
-      if (typeof refreshToken !== 'string' || refreshToken.trim() === '') {
-        logger.error('Invalid refresh token type or empty', {
-          tokenType: typeof refreshToken,
-          tokenValue: refreshToken,
-          requestId: this.createErrorContext(req).requestId,
-        });
-        res.status(401).json({
-          success: false,
-          error: {
-            message: 'Invalid refresh token format',
-            code: 'INVALID_REFRESH_TOKEN_FORMAT'
-          }
-        });
-        return;
-      }
-
-      // Basic JWT format validation (should have 3 parts separated by dots)
-      const tokenParts = refreshToken.split('.');
-      if (tokenParts.length !== 3) {
-        logger.error('Refresh token does not have JWT structure', {
-          tokenParts: tokenParts.length,
-          token: refreshToken.substring(0, 50) + '...',
-          requestId: this.createErrorContext(req).requestId,
-        });
-        res.status(401).json({
-          success: false,
-          error: {
-            message: 'Invalid refresh token format',
-            code: 'INVALID_REFRESH_TOKEN_STRUCTURE'
-          }
-        });
-        return;
-      }
-
-      const deviceInfo = this.extractDeviceInfo(req);
-      const context = this.createErrorContext(req);
-
-      console.log('🚀 About to call tokenService.refreshAccessToken');
-      logger.debug('About to call tokenService.refreshAccessToken', {
-        tokenLength: refreshToken.length,
+    if (typeof refreshToken !== 'string' || refreshToken.trim() === '') {
+      logger.error('Invalid refresh token type or empty', {
+        tokenType: typeof refreshToken,
+        tokenValue: refreshToken,
         requestId: context.requestId,
       });
+      this.clearAuthCookies(res, context);
+      res.status(401).json({
+        success: false,
+        error: {
+          message: 'Invalid refresh token format',
+          code: 'INVALID_REFRESH_TOKEN_FORMAT'
+        }
+      });
+      return;
+    }
 
+    // Basic JWT format validation (should have 3 parts separated by dots)
+    const tokenParts = refreshToken.split('.');
+    if (tokenParts.length !== 3) {
+      logger.error('Refresh token does not have JWT structure', {
+        tokenParts: tokenParts.length,
+        token: refreshToken.substring(0, 50) + '...',
+        requestId: context.requestId,
+      });
+      this.clearAuthCookies(res, context);
+      res.status(401).json({
+        success: false,
+        error: {
+          message: 'Invalid refresh token format',
+          code: 'INVALID_REFRESH_TOKEN_STRUCTURE'
+        }
+      });
+      return;
+    }
+
+    try {
+      console.log('🚀 About to call tokenService.refreshAccessToken');
       const tokens = await this.tokenService.refreshAccessToken(
         refreshToken,
         deviceInfo,
         context
       );
 
-      logger.debug('TokenService returned successfully', {
-        hasAccessToken: !!tokens.accessToken,
-        requestId: context.requestId,
-      });
+      // Handle response based on client type
+      if (isMobileClient) {
+        // Mobile: Return refresh token in response body (with secure storage on client)
+        logger.info('Token refreshed for mobile client', {
+          ip: context.ipAddress,
+          requestId: context.requestId,
+        });
 
-      // Update the refresh token cookie if it was used from cookie
-      if (cookieRefreshToken) {
+        this.sendSuccessResponse(res, 'Token refreshed successfully', {
+          tokens: {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken, // Mobile apps need this for secure storage
+            expiresIn: tokens.expiresIn,
+            refreshExpiresIn: tokens.refreshExpiresIn
+          }
+        });
+      } else {
+        // Web: Set refresh token as HttpOnly cookie (browser-managed)
+        const isSecureProduction = process.env.NODE_ENV === 'production' && req.secure;
+
         res.cookie('refreshToken', tokens.refreshToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+          httpOnly: true,          // JavaScript cannot access (XSS protection)
+          secure: isSecureProduction,
+          sameSite: isSecureProduction ? 'none' : 'lax',
+          maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost',
           path: '/'
         });
 
-        // Renew hasAuth cookie on successful refresh
+        // Renew hasAuth cookie for frontend auth state detection
         res.cookie('hasAuth', '1', {
           httpOnly: false,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-          maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+          secure: isSecureProduction,
+          sameSite: isSecureProduction ? 'none' : 'lax',
+          maxAge: 30 * 24 * 60 * 60 * 1000,
+          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost'
+        });
+
+        logger.info('Token refreshed for web client', {
+          ip: context.ipAddress,
+          requestId: context.requestId,
+        });
+
+        this.sendSuccessResponse(res, 'Token refreshed successfully', {
+          tokens: {
+            accessToken: tokens.accessToken,
+            expiresIn: tokens.expiresIn
+            // ❌ No refreshToken in body for web (it's in HttpOnly cookie)
+          }
         });
       }
-
-      logger.info('Token refreshed', {
-        source: cookieRefreshToken ? 'cookie' : 'body',
-        ip: context.ipAddress,
-        requestId: context.requestId,
-      });
-
-      this.sendSuccessResponse(res, 'Token refreshed successfully', {
-        tokens: {
-          accessToken: tokens.accessToken
-        }
-      });
 
     } catch (error) {
       logger.error('Refresh token error', {
         error: error instanceof Error ? error.message : String(error),
-        requestId: this.createErrorContext(req).requestId,
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+        requestId: context.requestId,
       });
 
+      // Clear HttpOnly cookies when refresh token is invalid/revoked/expired
+      // This is critical for web clients to prevent infinite refresh loops
+      logger.info('About to clear authentication cookies', {
+        requestId: context.requestId,
+      });
+      this.clearAuthCookies(res, context);
+
+      // Handle specific token error types with appropriate status codes
       if (error instanceof BaseError) {
+        // For revoked/invalid/expired tokens, return 401 to trigger re-authentication
+        if (error instanceof UnauthorizedError || 
+            error instanceof InvalidTokenError || 
+            error instanceof TokenExpiredError) {
+          res.status(401).json({
+            success: false,
+            message: 'Authentication required. Please login again.',
+            error: {
+              message: error.message,
+              code: error.code,
+              details: error.details,
+              requestId: context.requestId,
+            },
+          });
+          return;
+        }
+        
         this.sendErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Token refresh failed',
           error instanceof Error ? error : new Error(String(error)),
-          this.createErrorContext(req)
+          context
         );
         this.sendErrorResponse(res, internalError);
       }

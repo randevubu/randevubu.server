@@ -1739,4 +1739,68 @@ export class BusinessController {
       handleRouteError(error, req, res);
     }
   }
+
+  /**
+   * Get stored payment methods for a business
+   * GET /api/v1/businesses/:businessId/payment-methods
+   */
+  async getPaymentMethods(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const userId = req.user!.id;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business ID is required'
+        });
+        return;
+      }
+
+      // Get payment methods for the business
+      const paymentMethods = await this.businessService.getPaymentMethods(businessId, userId);
+
+      res.status(200).json({
+        success: true,
+        data: paymentMethods,
+        message: 'Payment methods retrieved successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * Add a new payment method for a business
+   * POST /api/v1/businesses/:businessId/payment-methods
+   */
+  async addPaymentMethod(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const userId = req.user!.id;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business ID is required'
+        });
+        return;
+      }
+
+      // Add payment method for the business
+      const paymentMethod = await this.businessService.addPaymentMethod(
+        businessId,
+        userId,
+        req.body
+      );
+
+      res.status(201).json({
+        success: true,
+        data: paymentMethod,
+        message: 'Payment method added successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
 }

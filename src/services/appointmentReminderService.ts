@@ -5,6 +5,7 @@ import { NotificationService } from './notificationService';
 import { AppointmentService } from './appointmentService';
 import { BusinessService } from './businessService';
 import { UpcomingAppointment, AppointmentStatus, NotificationChannel } from '../types/business';
+import { getCurrentTimeInIstanbul } from '../utils/timezoneHelper';
 
 export class AppointmentReminderService {
   private cronJob: cron.ScheduledTask | null = null;
@@ -58,7 +59,7 @@ export class AppointmentReminderService {
 
   // Check for appointments that need reminders
   private async processAppointmentReminders(): Promise<void> {
-    const now = new Date();
+    const now = getCurrentTimeInIstanbul();
     const currentHour = now.getHours();
     const currentMinutes = now.getMinutes();
     
@@ -212,13 +213,13 @@ export class AppointmentReminderService {
     }
 
     // Check business quiet hours
-    if (businessSettings.quietHours && this.isInBusinessQuietHours(new Date(), businessSettings.quietHours, businessSettings.timezone)) {
+    if (businessSettings.quietHours && this.isInBusinessQuietHours(getCurrentTimeInIstanbul(), businessSettings.quietHours, businessSettings.timezone)) {
       console.log(`⏭️ Current time is within business quiet hours for appointment ${appointment.id}`);
       return [];
     }
 
     // Check user quiet hours (if any)
-    if (userPreferences?.quietHours && this.isInQuietHours(new Date(), userPreferences.quietHours, userPreferences.timezone)) {
+    if (userPreferences?.quietHours && this.isInQuietHours(getCurrentTimeInIstanbul(), userPreferences.quietHours, userPreferences.timezone)) {
       console.log(`⏭️ Current time is within user quiet hours for appointment ${appointment.id}`);
       return [];
     }
@@ -284,7 +285,7 @@ export class AppointmentReminderService {
     this.isRunning = true;
     
     try {
-      const now = new Date();
+      const now = getCurrentTimeInIstanbul();
       const upcomingAppointments = await this.getAppointmentsNeedingReminders(now);
       
       let successCount = 0;
