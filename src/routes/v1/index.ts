@@ -70,7 +70,7 @@ export function createV1Routes(controllers: ControllerContainer, services: Servi
   router.use('/auth', authRoutes);
   router.use('/users', createUserRoutes());
   router.use('/roles', createRoleRoutes(controllers.roleController));
-  router.use('/businesses', createBusinessRoutes(controllers.businessController, controllers.subscriptionController));
+  router.use('/businesses', createBusinessRoutes(controllers.businessController));
   router.use('/business-types', createBusinessTypeRoutes(controllers.businessTypeController));
   router.use('/services', createServiceRoutes(controllers.serviceController));
   router.use('/appointments', createAppointmentRoutes(controllers.appointmentController));

@@ -13,21 +13,13 @@ import { BusinessClosureRepository } from '../repositories/businessClosureReposi
 import { RepositoryContainer } from '../repositories';
 import { RBACService } from './rbacService';
 import { PermissionName } from '../types/auth';
-// Removed timezone helpers - using pure Istanbul local time (NO UTC conversions!)
+import { createDateTimeInIstanbul, getCurrentTimeInIstanbul } from '../utils/timezoneHelper';
 import { BusinessContext } from '../middleware/businessContext';
 import { BusinessService } from './businessService';
 import { NotificationService } from './notificationService';
 import { UsageService } from './usageService';
 
 export class AppointmentService {
-
-  // Helper method to convert input time to Istanbul timezone
-  private convertToIstanbulTimezone(dateStr: string, timeStr: string): Date {
-    // Create a date string in Istanbul timezone format
-    const istanbulDateTimeStr = `${dateStr}T${timeStr}:00+03:00`; // Istanbul is UTC+3
-    return new Date(istanbulDateTimeStr);
-  }
-
   constructor(
     private appointmentRepository: AppointmentRepository,
     private serviceRepository: ServiceRepository,
@@ -93,10 +85,9 @@ export class AppointmentService {
     }
 
     // Check if business is closed
-    const istanbulDate = new Date(`${data.date}T00:00:00+03:00`);
     const { isClosed, closure } = await this.businessClosureRepository.isBusinessClosed(
       data.businessId,
-      istanbulDate
+      new Date(data.date)
     );
     
     if (isClosed) {
@@ -114,105 +105,26 @@ export class AppointmentService {
       throw new Error('Staff repository not available');
     }
     
-    let staffMember;
+    const staffMember = await this.repositories.staffRepository.findById(data.staffId);
+    if (!staffMember) {
+      throw new Error('Staff member not found');
+    }
     
-    if (data.staffId) {
-      // If staffId is provided, validate the staff member
-      console.log('🔍 DEBUG: Looking for staff member with ID:', data.staffId);
-      staffMember = await this.repositories.staffRepository.findById(data.staffId);
-      console.log('🔍 DEBUG: Found staff member:', staffMember ? 'YES' : 'NO');
-      
-      if (!staffMember) {
-        // Check if this is a temp_owner_ ID (frontend fallback for business owner)
-        if (data.staffId.startsWith('temp_owner_')) {
-          console.log('🔍 DEBUG: Detected temp_owner_ ID, looking for business owner');
-          const ownerStaff = await this.repositories.staffRepository.findStaffByRole(
-            data.businessId,
-            'OWNER' as any,
-            false // only active staff
-          );
-          
-          if (ownerStaff.length > 0) {
-            staffMember = ownerStaff[0];
-            console.log('🔍 DEBUG: Found owner staff member:', staffMember ? 'YES' : 'NO');
-          } else {
-            // If no owner staff found, try to find by user ID
-            const userId = data.staffId.replace('temp_owner_', '');
-            console.log('🔍 DEBUG: Trying to find staff by user ID:', userId);
-            const staffByUserId = await this.repositories.staffRepository.findByUserId(userId);
-            staffMember = staffByUserId.find(s => s.businessId === data.businessId && s.isActive);
-            console.log('🔍 DEBUG: Found staff by user ID:', staffMember ? 'YES' : 'NO');
-          }
-        } else {
-          // The staffId might be a user ID instead of staff ID
-          // Try to find staff by user ID and business ID
-          console.log('🔍 DEBUG: Trying to find staff by user ID and business ID');
-          const staffByUserId = await this.repositories.staffRepository.findByUserId(data.staffId);
-          staffMember = staffByUserId.find(s => s.businessId === data.businessId && s.isActive);
-          console.log('🔍 DEBUG: Found staff by user ID:', staffMember ? 'YES' : 'NO');
-        }
-        
-        if (!staffMember) {
-          // Debug: Let's see what staff members are available for this business
-          const availableStaff = await this.repositories.staffRepository.findByBusinessId(data.businessId);
-          console.log('🔍 DEBUG: Available staff for business:', availableStaff.map(s => ({ id: s.id, role: s.role, isActive: s.isActive })));
-          throw new Error(`Staff member not found. Available staff: ${availableStaff.map(s => s.id).join(', ')}`);
-        }
-      }
-      
-      if (!staffMember.isActive) {
-        throw new Error('Staff member is not active');
-      }
-      
-      if (staffMember.businessId !== data.businessId) {
-        throw new Error('Staff member does not belong to this business');
-      }
-    } else {
-      // If no staffId provided, find the business owner as fallback
-      const ownerStaff = await this.repositories.staffRepository.findStaffByRole(
-        data.businessId,
-        'OWNER' as any,
-        false // only active staff
-      );
-      
-      if (ownerStaff.length === 0) {
-        throw new Error('No staff members available for this business');
-      }
-      
-      staffMember = ownerStaff[0]; // Use the first (and should be only) owner
-      data.staffId = staffMember.id; // Set the staffId for the appointment
+    if (!staffMember.isActive) {
+      throw new Error('Staff member is not active');
+    }
+    
+    if (staffMember.businessId !== data.businessId) {
+      throw new Error('Staff member does not belong to this business');
     }
 
-    // Check appointment time constraints - work in Istanbul timezone
-    const appointmentDateTime = this.convertToIstanbulTimezone(data.date, data.startTime);
-    const now = new Date(); // Current server time
-
-    // Debug logging for time calculation
-    console.log('🔍 Time Debug (Istanbul Local):', {
-      appointmentDateTime: appointmentDateTime.toISOString(),
-      now: now.toISOString(),
-      appointmentDate: data.date,
-      appointmentStartTime: data.startTime,
-      businessId: data.businessId
-    });
-
-    // Check minimum advance booking - simple calculation in Istanbul time
-    const timeDifferenceMs = appointmentDateTime.getTime() - now.getTime();
-    const hoursUntilAppointment = timeDifferenceMs / (1000 * 60 * 60);
-
-    console.log('🔍 Time Difference:', {
-      timeDifferenceMs,
-      hoursUntilAppointment,
-      minutesUntilAppointment: timeDifferenceMs / (1000 * 60)
-    });
-
-    // Handle edge case where appointment is in the past (negative hours)
-    if (timeDifferenceMs < 0) {
-      throw new Error('Cannot book appointments in the past');
-    }
-
-    // Only check minimum advance booking if it's greater than 0
-    if (service.minAdvanceBooking > 0 && hoursUntilAppointment < service.minAdvanceBooking) {
+    // Check appointment time constraints - convert to Istanbul timezone
+    const appointmentDateTime = createDateTimeInIstanbul(data.date, data.startTime);
+    const now = getCurrentTimeInIstanbul();
+    
+    // Check minimum advance booking
+    const hoursUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    if (hoursUntilAppointment < service.minAdvanceBooking) {
       throw new Error(`Appointments must be booked at least ${service.minAdvanceBooking} hours in advance`);
     }
 
@@ -224,19 +136,17 @@ export class AppointmentService {
 
     // Check for staff-specific conflicts
     const endTime = new Date(appointmentDateTime.getTime() + service.duration * 60000);
-    // Use Istanbul date for conflict checking
-    const appointmentDate = new Date(`${data.date}T00:00:00+03:00`);
+    const appointmentDate = createDateTimeInIstanbul(data.date, '00:00');
     const conflicts = await this.appointmentRepository.findConflictingAppointments(
       data.businessId,
       appointmentDate,
       appointmentDateTime,
       endTime,
-      data.staffId, // Staff-specific conflict checking - CRITICAL FIX
-      undefined     // No appointment to exclude
+      data.staffId // Add staffId to check conflicts for specific staff
     );
 
     if (conflicts.length > 0) {
-      throw new Error(`Staff member is not available at the selected time. Found ${conflicts.length} conflicting appointment(s).`);
+      throw new Error('Staff member is not available at the selected time');
     }
 
     // Create appointment
@@ -308,18 +218,12 @@ export class AppointmentService {
     return await this.appointmentRepository.findByCustomerId(customerId, page, limit);
   }
 
-  /**
-   * Get appointments for the current user based on their role:
-   * - Staff: Only their own appointments (staff-specific timeline)
-   * - Owner/Manager: All appointments in their businesses (can optionally filter by staff)
-   */
   async getMyAppointments(
     userId: string,
     filters?: {
       status?: AppointmentStatus;
       date?: string;
       businessId?: string;
-      staffId?: string;  // New: Optional staff filter for owners/managers
       page?: number;
       limit?: number;
     }
@@ -333,97 +237,20 @@ export class AppointmentService {
     const userPermissions = await this.rbacService.getUserPermissions(userId);
     const roleNames = userPermissions.roles.map(role => role.name);
     const hasBusinessRole = roleNames.some(role => ['OWNER', 'STAFF'].includes(role));
-
+    
     if (!hasBusinessRole) {
       throw new Error('Access denied. Business role required.');
     }
 
-    // Determine user role type
-    const isOwnerOrManager = roleNames.some(role => ['OWNER', 'MANAGER'].includes(role));
-    const isStaff = roleNames.includes('STAFF') && !isOwnerOrManager;
-
-    if (isStaff) {
-      // Staff members see only their own appointments (staff-specific timeline)
-      // First, find the staff member record for this user
-      if (!this.repositories?.staffRepository) {
-        throw new Error('Staff repository not available');
-      }
-
-      const staffRecords = await this.repositories.staffRepository.findByUserId(userId);
-      const activeStaffRecord = staffRecords.find(s => s.isActive && !s.leftAt);
-
-      if (!activeStaffRecord) {
-        throw new Error('No active staff record found for user');
-      }
-
-      // Filter by business if specified, otherwise get appointments from all businesses where user is staff
-      const businessFilter = filters?.businessId ? { businessId: filters.businessId } : {};
-
-      return await this.appointmentRepository.findByStaffMember(activeStaffRecord.id, {
-        ...filters,
-        ...businessFilter
-      });
-    } else {
-      // Owners and managers can see all appointments in their businesses
-      // If staffId filter is provided, they can view specific staff member's timeline
-      const extendedFilters = {
-        ...filters,
-        staffId: filters?.staffId  // Pass through staff filter for owners/managers
-      };
-
-      return await this.appointmentRepository.findByUserBusinesses(userId, extendedFilters);
-    }
-  }
-
-  /**
-   * Get appointments for a specific staff member (for owners/managers viewing staff timelines)
-   */
-  async getStaffAppointments(
-    userId: string,
-    staffId: string,
-    filters?: {
-      status?: AppointmentStatus;
-      date?: string;
-      page?: number;
-      limit?: number;
-    }
-  ): Promise<{
-    appointments: AppointmentWithDetails[];
-    total: number;
-    page: number;
-    totalPages: number;
-  }> {
-    // Verify user has permission to view this staff member's appointments
-    if (!this.repositories?.staffRepository) {
-      throw new Error('Staff repository not available');
-    }
-
-    const staffMember = await this.repositories.staffRepository.findById(staffId);
-    if (!staffMember) {
-      throw new Error('Staff member not found');
-    }
-
-    // Check if user can access this business
-    const { resource: viewAllResource, action: viewAllAction } = this.splitPermissionName(PermissionName.VIEW_ALL_APPOINTMENTS);
-    const hasGlobalView = await this.rbacService.hasPermission(userId, viewAllResource, viewAllAction);
-
-    if (!hasGlobalView) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_APPOINTMENTS,
-        { businessId: staffMember.businessId }
-      );
-    }
-
-    return await this.appointmentRepository.findByStaffMember(staffId, filters);
+    // Get appointments from all businesses user has access to
+    return await this.appointmentRepository.findByUserBusinesses(userId, filters);
   }
 
   async getBusinessAppointments(
     userId: string,
     businessId: string,
     page = 1,
-    limit = 20,
-    staffId?: string  // New: Optional staff filter
+    limit = 20
   ): Promise<{
     appointments: AppointmentWithDetails[];
     total: number;
@@ -433,7 +260,7 @@ export class AppointmentService {
     // Check permissions to view business appointments
     const { resource: viewAllResource, action: viewAllAction } = this.splitPermissionName(PermissionName.VIEW_ALL_APPOINTMENTS);
     const hasGlobalView = await this.rbacService.hasPermission(userId, viewAllResource, viewAllAction);
-
+    
     if (!hasGlobalView) {
       await this.rbacService.requirePermission(
         userId,
@@ -442,17 +269,7 @@ export class AppointmentService {
       );
     }
 
-    if (staffId) {
-      // If staffId specified, return staff-specific appointments
-      return await this.appointmentRepository.findByStaffMember(staffId, {
-        businessId,
-        page,
-        limit
-      });
-    } else {
-      // Return all appointments for the business
-      return await this.appointmentRepository.findByBusinessId(businessId, page, limit);
-    }
+    return await this.appointmentRepository.findByBusinessId(businessId, page, limit);
   }
 
   async searchAppointments(
@@ -562,21 +379,20 @@ export class AppointmentService {
 
     // If rescheduling, check availability
     if (data.date || data.startTime) {
-      const newDate = data.date ? new Date(`${data.date}T00:00:00+03:00`) : appointment.date;
+      const newDate = data.date ? createDateTimeInIstanbul(data.date, '00:00') : appointment.date;
       const dateStr = data.date || appointment.date.toISOString().split('T')[0];
-      const newStartTime = data.startTime ? this.convertToIstanbulTimezone(dateStr, data.startTime) : appointment.startTime;
-
+      const newStartTime = data.startTime ? createDateTimeInIstanbul(dateStr, data.startTime) : appointment.startTime;
+      
       const service = await this.serviceRepository.findById(appointment.serviceId);
       if (service) {
         const newEndTime = new Date(newStartTime.getTime() + service.duration * 60000);
-
+        
         const conflicts = await this.appointmentRepository.findConflictingAppointments(
           appointment.businessId,
           newDate,
           newStartTime,
           newEndTime,
-          appointment.staffId, // Check conflicts for the staff member assigned to this appointment
-          appointmentId        // Exclude the current appointment from conflict check
+          appointmentId
         );
 
         if (conflicts.length > 0) {
@@ -683,25 +499,25 @@ export class AppointmentService {
   }
 
   async getNearestAppointmentInCurrentHour(userId: string): Promise<AppointmentWithDetails | null> {
-    const now = new Date(); // Current Istanbul time
+    const now = getCurrentTimeInIstanbul();
     const currentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
     const nextHour = new Date(currentHour.getTime() + 60 * 60 * 1000);
-
+    
     return await this.appointmentRepository.findNearestAppointmentInTimeRange(
-      userId,
-      currentHour,
+      userId, 
+      currentHour, 
       nextHour
     );
   }
 
   async getAppointmentsInCurrentHour(userId: string): Promise<AppointmentWithDetails[]> {
-    const now = new Date(); // Current Istanbul time
+    const now = getCurrentTimeInIstanbul();
     const currentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
     const nextHour = new Date(currentHour.getTime() + 60 * 60 * 1000);
-
+    
     return await this.appointmentRepository.findAppointmentsInTimeRange(
-      userId,
-      currentHour,
+      userId, 
+      currentHour, 
       nextHour
     );
   }

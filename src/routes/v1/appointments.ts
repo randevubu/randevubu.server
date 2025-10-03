@@ -67,11 +67,6 @@ export function createAppointmentRoutes(
    *           type: string
    *         description: Filter by specific business
    *       - in: query
-   *         name: staffId
-   *         schema:
-   *           type: string
-   *         description: Filter by specific staff member (owners/managers only)
-   *       - in: query
    *         name: page
    *         schema:
    *           type: integer
@@ -1291,7 +1286,7 @@ export function createAppointmentRoutes(
         action: "view_own",
       })
     ),
-    appointmentController.getStaffAppointments.bind(appointmentController)
+    appointmentController.getAppointmentsByStaff.bind(appointmentController)
   );
 
   // Search appointments

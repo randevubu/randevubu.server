@@ -44,20 +44,25 @@ const getConfig = (): Config => {
 export const config = getConfig();
 
 export const validateConfig = (): void => {
-  const requiredVars = ['NODE_ENV', 'PORT'];
-  
+  const requiredVars = ['DATABASE_URL'];
+
   for (const varName of requiredVars) {
-    if (!process.env[varName] && varName !== 'PORT') {
+    if (!process.env[varName]) {
       throw new Error(`Missing required environment variable: ${varName}`);
     }
   }
 
   if (config.NODE_ENV === 'production') {
-    const productionVars = ['JWT_SECRET', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'];
-    for (const varName of productionVars) {
-      if (!process.env[varName]) {
-        console.warn(`Warning: Missing recommended environment variable for production: ${varName}`);
-      }
+    const productionVars = ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'DATABASE_URL'];
+    const missingVars = productionVars.filter(varName => !process.env[varName]);
+
+    if (missingVars.length > 0) {
+      throw new Error(`Missing required environment variables for production: ${missingVars.join(', ')}`);
+    }
+
+    // Validate DATABASE_URL format
+    if (process.env.DATABASE_URL && !process.env.DATABASE_URL.startsWith('postgresql://')) {
+      throw new Error('DATABASE_URL must be a valid PostgreSQL connection string starting with postgresql://');
     }
   }
 };
