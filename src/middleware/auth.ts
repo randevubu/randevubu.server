@@ -1,17 +1,16 @@
-import { Request, Response, NextFunction } from 'express';
-import { RepositoryContainer } from '../repositories';
-import { TokenService } from '../services/tokenService';
-import { JWTPayload, AuthenticatedUser } from '../types/auth';
-import { 
-  UnauthorizedError, 
-  ForbiddenError, 
-  UserNotVerifiedError,
+import { NextFunction, Request, Response } from "express";
+import { RepositoryContainer } from "../repositories";
+import { RBACService } from "../services/rbacService";
+import { TokenService } from "../services/tokenService";
+import { AuthenticatedUser, JWTPayload } from "../types/auth";
+import {
+  ErrorContext,
+  UnauthorizedError,
   UserDeactivatedError,
   UserLockedError,
-  ErrorContext
-} from '../types/errors';
-import { logger } from '../utils/logger';
-import { RBACService } from '../services/rbacService';
+  UserNotVerifiedError,
+} from "../types/errors";
+import { logger } from "../utils/Logger/logger";
 
 export interface AuthenticatedRequest extends Request {
   user?: AuthenticatedUser;
@@ -29,7 +28,7 @@ export class AuthMiddleware {
     return {
       userId,
       ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
+      userAgent: req.get("user-agent"),
       requestId: Math.random().toString(36).substring(7),
       timestamp: new Date(),
       endpoint: req.path,
@@ -45,40 +44,55 @@ export class AuthMiddleware {
     try {
       const context = this.createErrorContext(req);
       const authHeader = req.headers.authorization;
-      
+
       if (!authHeader) {
-        throw new UnauthorizedError('Authorization header is required', context);
+        throw new UnauthorizedError(
+          "Authorization header is required",
+          context
+        );
       }
 
-      const token = authHeader.startsWith('Bearer ')
+      const token = authHeader.startsWith("Bearer ")
         ? authHeader.slice(7)
         : authHeader;
 
       if (!token) {
-        throw new UnauthorizedError('Access token is required', context);
+        throw new UnauthorizedError("Access token is required", context);
       }
 
       const decoded = await this.tokenService.verifyAccessToken(token, context);
 
-      const user = await this.repositories.userRepository.findById(decoded.userId);
+      const user = await this.repositories.userRepository.findById(
+        decoded.userId
+      );
 
       if (!user) {
-        throw new UnauthorizedError('User not found', context);
+        throw new UnauthorizedError("User not found", context);
       }
 
       if (!user.isActive) {
-        throw new UserDeactivatedError('Account is deactivated', context);
+        throw new UserDeactivatedError("Account is deactivated", context);
       }
 
       // Check for any security issues via the full user record
-      const userWithSecurity = await this.repositories.userRepository.findByPhoneNumber(user.phoneNumber);
-      
-      if (userWithSecurity?.lockedUntil && userWithSecurity.lockedUntil > new Date()) {
+      const userWithSecurity =
+        await this.repositories.userRepository.findByPhoneNumber(
+          user.phoneNumber
+        );
+
+      if (
+        userWithSecurity?.lockedUntil &&
+        userWithSecurity.lockedUntil > new Date()
+      ) {
         const unlockTime = userWithSecurity.lockedUntil.toISOString();
         throw new UserLockedError(
-          `Account is temporarily locked until ${unlockTime}`, 
+          `Account is temporarily locked until ${unlockTime}`,
           context,
-          { retryAfter: Math.ceil((userWithSecurity.lockedUntil.getTime() - Date.now()) / 1000) }
+          {
+            retryAfter: Math.ceil(
+              (userWithSecurity.lockedUntil.getTime() - Date.now()) / 1000
+            ),
+          }
         );
       }
 
@@ -86,21 +100,23 @@ export class AuthMiddleware {
       let roles, permissions, effectiveLevel;
       if (this.rbacService) {
         try {
-          const userPermissions = await this.rbacService.getUserPermissions(user.id);
-          roles = userPermissions.roles.map(role => ({
+          const userPermissions = await this.rbacService.getUserPermissions(
+            user.id
+          );
+          roles = userPermissions.roles.map((role) => ({
             id: role.id,
             name: role.name,
-            level: role.level
+            level: role.level,
           }));
-          permissions = userPermissions.permissions.map(permission => ({
+          permissions = userPermissions.permissions.map((permission) => ({
             resource: permission.resource,
-            action: permission.action
+            action: permission.action,
           }));
           effectiveLevel = userPermissions.effectiveLevel;
         } catch (error) {
-          logger.warn('Failed to load user permissions during authentication', {
+          logger.warn("Failed to load user permissions during authentication", {
             userId: user.id,
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
           });
         }
       }
@@ -112,15 +128,15 @@ export class AuthMiddleware {
         isActive: user.isActive,
         roles,
         permissions,
-        effectiveLevel
+        effectiveLevel,
       };
       req.token = decoded;
 
       next();
     } catch (error) {
       const context = this.createErrorContext(req);
-      
-      logger.warn('Authentication failed', {
+
+      logger.warn("Authentication failed", {
         ip: context.ipAddress,
         userAgent: context.userAgent,
         url: context.endpoint,
@@ -128,7 +144,7 @@ export class AuthMiddleware {
         error: error instanceof Error ? error.message : String(error),
         requestId: context.requestId,
       });
-      
+
       next(error);
     }
   };
@@ -139,9 +155,12 @@ export class AuthMiddleware {
     next: NextFunction
   ): void => {
     const context = this.createErrorContext(req, req.user?.id);
-    
+
     if (!req.user?.isVerified) {
-      throw new UserNotVerifiedError('Phone number verification required', context);
+      throw new UserNotVerifiedError(
+        "Phone number verification required",
+        context
+      );
     }
     next();
   };
@@ -154,12 +173,12 @@ export class AuthMiddleware {
     try {
       const context = this.createErrorContext(req);
       const authHeader = req.headers.authorization;
-      
+
       if (!authHeader) {
         return next();
       }
 
-      const token = authHeader.startsWith('Bearer ')
+      const token = authHeader.startsWith("Bearer ")
         ? authHeader.slice(7)
         : authHeader;
 
@@ -168,34 +187,50 @@ export class AuthMiddleware {
       }
 
       try {
-        const decoded = await this.tokenService.verifyAccessToken(token, context);
-        const user = await this.repositories.userRepository.findById(decoded.userId);
+        const decoded = await this.tokenService.verifyAccessToken(
+          token,
+          context
+        );
+        const user = await this.repositories.userRepository.findById(
+          decoded.userId
+        );
 
         if (user && user.isActive) {
-          const userWithSecurity = await this.repositories.userRepository.findByPhoneNumber(user.phoneNumber);
-          
+          const userWithSecurity =
+            await this.repositories.userRepository.findByPhoneNumber(
+              user.phoneNumber
+            );
+
           // Only set user if account is not locked
-          if (!userWithSecurity?.lockedUntil || userWithSecurity.lockedUntil <= new Date()) {
+          if (
+            !userWithSecurity?.lockedUntil ||
+            userWithSecurity.lockedUntil <= new Date()
+          ) {
             // Get user roles and permissions if RBAC service is available
             let roles, permissions, effectiveLevel;
             if (this.rbacService) {
               try {
-                const userPermissions = await this.rbacService.getUserPermissions(user.id);
-                roles = userPermissions.roles.map(role => ({
+                const userPermissions =
+                  await this.rbacService.getUserPermissions(user.id);
+                roles = userPermissions.roles.map((role) => ({
                   id: role.id,
                   name: role.name,
-                  level: role.level
+                  level: role.level,
                 }));
-                permissions = userPermissions.permissions.map(permission => ({
+                permissions = userPermissions.permissions.map((permission) => ({
                   resource: permission.resource,
-                  action: permission.action
+                  action: permission.action,
                 }));
                 effectiveLevel = userPermissions.effectiveLevel;
               } catch (error) {
-                logger.debug('Failed to load user permissions during optional authentication', {
-                  userId: user.id,
-                  error: error instanceof Error ? error.message : String(error)
-                });
+                logger.debug(
+                  "Failed to load user permissions during optional authentication",
+                  {
+                    userId: user.id,
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  }
+                );
               }
             }
 
@@ -206,13 +241,13 @@ export class AuthMiddleware {
               isActive: user.isActive,
               roles,
               permissions,
-              effectiveLevel
+              effectiveLevel,
             };
             req.token = decoded;
           }
         }
       } catch (error) {
-        logger.debug('Optional authentication failed', {
+        logger.debug("Optional authentication failed", {
           ip: context.ipAddress,
           error: error instanceof Error ? error.message : String(error),
           requestId: context.requestId,
@@ -235,15 +270,22 @@ export const createUserContext = (user: any) => ({
 });
 
 export const extractDeviceInfo = (req: Request) => ({
-  deviceId: req.headers['x-device-id'] as string,
-  userAgent: req.get('user-agent'),
+  deviceId: req.headers["x-device-id"] as string,
+  userAgent: req.get("user-agent"),
   ipAddress: req.ip,
 });
 
 export const rateLimitByUser = (maxRequests: number, windowMs: number) => {
-  const userRequestCounts = new Map<string, { count: number; resetTime: number }>();
+  const userRequestCounts = new Map<
+    string,
+    { count: number; resetTime: number }
+  >();
 
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+  return (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): void => {
     const userId = req.user?.id;
     const ip = req.ip;
     const key = userId || ip;
@@ -265,8 +307,8 @@ export const rateLimitByUser = (maxRequests: number, windowMs: number) => {
 
     if (userLimit.count >= maxRequests) {
       const resetIn = Math.ceil((userLimit.resetTime - now) / 1000);
-      
-      logger.warn('User rate limit exceeded', {
+
+      logger.warn("User rate limit exceeded", {
         userId,
         ip,
         count: userLimit.count,
@@ -276,7 +318,7 @@ export const rateLimitByUser = (maxRequests: number, windowMs: number) => {
       res.status(429).json({
         success: false,
         error: {
-          message: 'Too many requests',
+          message: "Too many requests",
           retryAfter: resetIn,
         },
       });

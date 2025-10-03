@@ -1,5 +1,5 @@
-import { logger } from '../utils/logger';
-import { ErrorContext } from '../types/errors';
+import { ErrorContext } from "../types/errors";
+import { logger } from "../utils/Logger/logger";
 
 export interface SMSSendOptions {
   phoneNumber: string;
@@ -20,13 +20,15 @@ export class SMSService {
   private readonly baseUrl: string;
 
   constructor() {
-    this.apiKey = process.env.ILETI_MERKEZI_API_KEY || '';
-    this.secretKey = process.env.ILETI_MERKEZI_SECRET_KEY || '';
-    this.sender = process.env.ILETI_MERKEZI_SENDER || 'APITEST';
-    this.baseUrl = 'https://api.iletimerkezi.com/v1/send-sms/get/';
+    this.apiKey = process.env.ILETI_MERKEZI_API_KEY || "";
+    this.secretKey = process.env.ILETI_MERKEZI_SECRET_KEY || "";
+    this.sender = process.env.ILETI_MERKEZI_SENDER || "APITEST";
+    this.baseUrl = "https://api.iletimerkezi.com/v1/send-sms/get/";
 
     if (!this.apiKey || !this.secretKey) {
-      logger.warn('SMS API credentials not configured. SMS sending will be disabled.');
+      logger.warn(
+        "SMS API credentials not configured. SMS sending will be disabled."
+      );
     }
   }
 
@@ -53,14 +55,14 @@ export class SMSService {
 
     // Check if credentials are configured
     if (!this.apiKey || !this.secretKey) {
-      logger.error('SMS API credentials not configured', {
+      logger.error("SMS API credentials not configured", {
         phoneNumber: this.maskPhoneNumber(phoneNumber),
         requestId: context?.requestId,
       });
-      
+
       return {
         success: false,
-        error: 'SMS service not configured',
+        error: "SMS service not configured",
       };
     }
 
@@ -70,7 +72,7 @@ export class SMSService {
       if (!normalizedPhone) {
         return {
           success: false,
-          error: 'Invalid phone number format',
+          error: "Invalid phone number format",
         };
       }
 
@@ -84,7 +86,7 @@ export class SMSService {
       // Build the API URL with parameters according to İleti Merkezi documentation
       const apiUrl = `${this.baseUrl}?key=${this.apiKey}&hash=${hash}&text=${encodedMessage}&receipents=${normalizedPhone}&sender=${encodedSender}&iys=1&iysList=BIREYSEL`;
 
-      logger.info('Sending SMS via İleti Merkezi', {
+      logger.info("Sending SMS via İleti Merkezi", {
         phoneNumber: this.maskPhoneNumber(normalizedPhone),
         messageLength: message.length,
         sender: this.sender,
@@ -93,23 +95,23 @@ export class SMSService {
 
       // Make the API request
       const response = await fetch(apiUrl, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/xml',
+          "Content-Type": "application/xml",
         },
       });
 
       const responseText = await response.text();
-      
+
       if (!response.ok) {
-        logger.error('SMS API request failed', {
+        logger.error("SMS API request failed", {
           status: response.status,
           statusText: response.statusText,
           response: responseText,
           phoneNumber: this.maskPhoneNumber(normalizedPhone),
           requestId: context?.requestId,
         });
-        
+
         return {
           success: false,
           error: `API request failed: ${response.status} ${response.statusText}`,
@@ -118,15 +120,15 @@ export class SMSService {
 
       // Parse XML response
       const result = this.parseXMLResponse(responseText);
-      
+
       if (result.success) {
-        logger.info('SMS sent successfully', {
+        logger.info("SMS sent successfully", {
           phoneNumber: this.maskPhoneNumber(normalizedPhone),
           messageId: result.messageId,
           requestId: context?.requestId,
         });
       } else {
-        logger.error('SMS sending failed', {
+        logger.error("SMS sending failed", {
           phoneNumber: this.maskPhoneNumber(normalizedPhone),
           error: result.error,
           response: responseText,
@@ -135,17 +137,16 @@ export class SMSService {
       }
 
       return result;
-
     } catch (error) {
-      logger.error('SMS sending error', {
+      logger.error("SMS sending error", {
         error: error instanceof Error ? error.message : String(error),
         phoneNumber: this.maskPhoneNumber(phoneNumber),
         requestId: context?.requestId,
       });
-      
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -153,29 +154,32 @@ export class SMSService {
   private normalizePhoneNumber(phoneNumber: string): string | null {
     try {
       // Remove all non-digit characters
-      const digits = phoneNumber.replace(/\D/g, '');
-      
+      const digits = phoneNumber.replace(/\D/g, "");
+
       // Handle Turkish phone numbers - İleti Merkezi expects format: 5xxxxxxxxx
-      if (digits.startsWith('90')) {
+      if (digits.startsWith("90")) {
         // Has country code, remove it and return the rest
         const withoutCountryCode = digits.substring(2);
-        if (withoutCountryCode.startsWith('5') && withoutCountryCode.length === 10) {
+        if (
+          withoutCountryCode.startsWith("5") &&
+          withoutCountryCode.length === 10
+        ) {
           return withoutCountryCode;
         }
-      } else if (digits.startsWith('0')) {
+      } else if (digits.startsWith("0")) {
         // Remove leading 0
         const withoutZero = digits.substring(1);
-        if (withoutZero.startsWith('5') && withoutZero.length === 10) {
+        if (withoutZero.startsWith("5") && withoutZero.length === 10) {
           return withoutZero;
         }
-      } else if (digits.startsWith('5') && digits.length === 10) {
+      } else if (digits.startsWith("5") && digits.length === 10) {
         // Already in correct format
         return digits;
       }
-      
+
       return null;
     } catch (error) {
-      logger.warn('Phone number normalization failed', {
+      logger.warn("Phone number normalization failed", {
         phoneNumber: this.maskPhoneNumber(phoneNumber),
         error: error instanceof Error ? error.message : String(error),
       });
@@ -197,7 +201,7 @@ export class SMSService {
       const idMatch = xmlResponse.match(/<id>(\d+)<\/id>/);
 
       const code = codeMatch ? parseInt(codeMatch[1]) : 0;
-      const message = messageMatch ? messageMatch[1] : '';
+      const message = messageMatch ? messageMatch[1] : "";
       const messageId = idMatch ? idMatch[1] : undefined;
 
       if (code === 200) {
@@ -212,39 +216,37 @@ export class SMSService {
         };
       }
     } catch (error) {
-      logger.error('Failed to parse SMS API response', {
+      logger.error("Failed to parse SMS API response", {
         error: error instanceof Error ? error.message : String(error),
         response: xmlResponse,
       });
-      
+
       return {
         success: false,
-        error: 'Failed to parse API response',
+        error: "Failed to parse API response",
       };
     }
   }
 
   private maskPhoneNumber(phoneNumber: string): string {
     if (phoneNumber.length < 4) {
-      return '*'.repeat(phoneNumber.length);
+      return "*".repeat(phoneNumber.length);
     }
-    
+
     const visibleDigits = 3;
-    const maskedPart = '*'.repeat(phoneNumber.length - visibleDigits);
+    const maskedPart = "*".repeat(phoneNumber.length - visibleDigits);
     return maskedPart + phoneNumber.slice(-visibleDigits);
   }
 
   // Test method to verify SMS service configuration
   async testSMS(phoneNumber: string): Promise<SMSResponse> {
-    const testMessage = 'RandevuBu SMS servisi test mesajıdır. Bu mesaj İleti Merkezi API entegrasyonunu test etmek için gönderilmiştir.';
-    
+    const testMessage =
+      "RandevuBu SMS servisi test mesajıdır. Bu mesaj İleti Merkezi API entegrasyonunu test etmek için gönderilmiştir.";
+
     return this.sendSMS({
       phoneNumber,
       message: testMessage,
-      context: { requestId: 'test' },
+      context: { requestId: "test" },
     });
   }
 }
-
-
-

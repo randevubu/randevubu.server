@@ -198,6 +198,7 @@ export class AppointmentService {
     return appointment;
   }
 
+  // checked 
   async getCustomerAppointments(
     userId: string,
     customerId: string,

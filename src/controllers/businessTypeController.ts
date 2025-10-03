@@ -1,15 +1,19 @@
-import { Request, Response } from 'express';
-import { BusinessTypeService } from '../services/businessTypeService';
-import { 
-  sendStandardSuccessResponse, 
-  sendSimpleErrorResponse, 
-  getErrorMessage 
-} from '../utils/errorResponse';
+import { Request, Response } from "express";
+import { BusinessTypeService } from "../services/businessTypeService";
+import {
+  getErrorMessage,
+  sendSimpleErrorResponse,
+  sendStandardSuccessResponse,
+} from "../utils/responseUtils";
 
 export class BusinessTypeController {
   constructor(private businessTypeService: BusinessTypeService) {}
 
-  private handleError(res: Response, error: unknown, fallbackMessage: string): void {
+  private handleError(
+    res: Response,
+    error: unknown,
+    fallbackMessage: string
+  ): void {
     const message = getErrorMessage(error, fallbackMessage);
     sendSimpleErrorResponse(res, 500, message);
   }
@@ -20,10 +24,15 @@ export class BusinessTypeController {
    */
   async getAllActiveBusinessTypes(req: Request, res: Response): Promise<void> {
     try {
-      const businessTypes = await this.businessTypeService.getAllActiveBusinessTypes();
-      sendStandardSuccessResponse(res, businessTypes, 'Business types retrieved successfully');
+      const businessTypes =
+        await this.businessTypeService.getAllActiveBusinessTypes();
+      sendStandardSuccessResponse(
+        res,
+        businessTypes,
+        "Business types retrieved successfully"
+      );
     } catch (error) {
-      this.handleError(res, error, 'Failed to retrieve business types');
+      this.handleError(res, error, "Failed to retrieve business types");
     }
   }
 
@@ -33,10 +42,15 @@ export class BusinessTypeController {
    */
   async getAllBusinessTypes(req: Request, res: Response): Promise<void> {
     try {
-      const businessTypes = await this.businessTypeService.getAllBusinessTypes();
-      sendStandardSuccessResponse(res, businessTypes, 'All business types retrieved successfully');
+      const businessTypes =
+        await this.businessTypeService.getAllBusinessTypes();
+      sendStandardSuccessResponse(
+        res,
+        businessTypes,
+        "All business types retrieved successfully"
+      );
     } catch (error) {
-      this.handleError(res, error, 'Failed to retrieve business types');
+      this.handleError(res, error, "Failed to retrieve business types");
     }
   }
 
@@ -47,16 +61,29 @@ export class BusinessTypeController {
   async getBusinessTypesByCategory(req: Request, res: Response): Promise<void> {
     try {
       const { category } = req.params;
-      const businessTypes = await this.businessTypeService.getBusinessTypesByCategory(category);
+      const businessTypes =
+        await this.businessTypeService.getBusinessTypesByCategory(category);
 
       if (businessTypes.length === 0) {
-        sendSimpleErrorResponse(res, 404, `No business types found for category: ${category}`);
+        sendSimpleErrorResponse(
+          res,
+          404,
+          `No business types found for category: ${category}`
+        );
         return;
       }
 
-      sendStandardSuccessResponse(res, businessTypes, `Business types for category '${category}' retrieved successfully`);
+      sendStandardSuccessResponse(
+        res,
+        businessTypes,
+        `Business types for category '${category}' retrieved successfully`
+      );
     } catch (error) {
-      this.handleError(res, error, 'Failed to retrieve business types by category');
+      this.handleError(
+        res,
+        error,
+        "Failed to retrieve business types by category"
+      );
     }
   }
 
@@ -67,16 +94,22 @@ export class BusinessTypeController {
   async getBusinessTypeById(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const businessType = await this.businessTypeService.getBusinessTypeById(id);
+      const businessType = await this.businessTypeService.getBusinessTypeById(
+        id
+      );
 
       if (!businessType) {
-        sendSimpleErrorResponse(res, 404, 'Business type not found');
+        sendSimpleErrorResponse(res, 404, "Business type not found");
         return;
       }
 
-      sendStandardSuccessResponse(res, businessType, 'Business type retrieved successfully');
+      sendStandardSuccessResponse(
+        res,
+        businessType,
+        "Business type retrieved successfully"
+      );
     } catch (error) {
-      this.handleError(res, error, 'Failed to retrieve business type');
+      this.handleError(res, error, "Failed to retrieve business type");
     }
   }
 
@@ -86,11 +119,20 @@ export class BusinessTypeController {
    */
   async getBusinessTypesWithCount(req: Request, res: Response): Promise<void> {
     try {
-      const businessTypes = await this.businessTypeService.getBusinessTypesWithCount();
+      const businessTypes =
+        await this.businessTypeService.getBusinessTypesWithCount();
 
-      sendStandardSuccessResponse(res, businessTypes, 'Business types with count retrieved successfully');
+      sendStandardSuccessResponse(
+        res,
+        businessTypes,
+        "Business types with count retrieved successfully"
+      );
     } catch (error) {
-      this.handleError(res, error, 'Failed to retrieve business types with count');
+      this.handleError(
+        res,
+        error,
+        "Failed to retrieve business types with count"
+      );
     }
   }
 
@@ -102,9 +144,13 @@ export class BusinessTypeController {
     try {
       const categories = await this.businessTypeService.getCategories();
 
-      sendStandardSuccessResponse(res, categories, 'Categories retrieved successfully');
+      sendStandardSuccessResponse(
+        res,
+        categories,
+        "Categories retrieved successfully"
+      );
     } catch (error) {
-      this.handleError(res, error, 'Failed to retrieve categories');
+      this.handleError(res, error, "Failed to retrieve categories");
     }
   }
 
@@ -112,14 +158,21 @@ export class BusinessTypeController {
    * Get business types grouped by category
    * GET /api/v1/business-types/grouped
    */
-  async getBusinessTypesGroupedByCategory(req: Request, res: Response): Promise<void> {
+  async getBusinessTypesGroupedByCategory(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
-      const groupedBusinessTypes = await this.businessTypeService.getBusinessTypesGroupedByCategory();
+      const groupedBusinessTypes =
+        await this.businessTypeService.getBusinessTypesGroupedByCategory();
 
-      sendStandardSuccessResponse(res, groupedBusinessTypes, 'Business types grouped by category retrieved successfully');
+      sendStandardSuccessResponse(
+        res,
+        groupedBusinessTypes,
+        "Business types grouped by category retrieved successfully"
+      );
     } catch (error) {
-      this.handleError(res, error, 'Failed to retrieve grouped business types');
+      this.handleError(res, error, "Failed to retrieve grouped business types");
     }
   }
 }
-

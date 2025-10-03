@@ -1,24 +1,24 @@
 // @ts-ignore - node-cron is available in Docker container
-import * as cron from 'node-cron';
-import { PrismaClient } from '@prisma/client';
-import { logger } from '../utils/logger';
-import { PaymentService } from './paymentService';
-import { NotificationService } from './notificationService';
-import { SubscriptionStatus } from '../types/business';
+import { PrismaClient } from "@prisma/client";
+import * as cron from "node-cron";
+import { SubscriptionStatus } from "../types/business";
+import { logger } from "../utils/Logger/logger";
+import { NotificationService } from "./notificationService";
+import { PaymentService } from "./paymentService";
 
 export interface SchedulerConfig {
   renewalCheckSchedule?: string; // Cron expression, default: daily at 2 AM
-  reminderSchedule?: string;     // Cron expression, default: daily at 9 AM
-  cleanupSchedule?: string;      // Cron expression, default: weekly on Sunday 3 AM
-  timezone?: string;             // Default: 'Europe/Istanbul'
-  developmentMode?: boolean;     // Enable for testing with accelerated schedules
+  reminderSchedule?: string; // Cron expression, default: daily at 9 AM
+  cleanupSchedule?: string; // Cron expression, default: weekly on Sunday 3 AM
+  timezone?: string; // Default: 'Europe/Istanbul'
+  developmentMode?: boolean; // Enable for testing with accelerated schedules
 }
 
 export class SubscriptionSchedulerService {
   private renewalTask: cron.ScheduledTask | null = null;
   private reminderTask: cron.ScheduledTask | null = null;
   private cleanupTask: cron.ScheduledTask | null = null;
-  
+
   constructor(
     private prisma: PrismaClient,
     private paymentService: PaymentService,
@@ -26,15 +26,16 @@ export class SubscriptionSchedulerService {
     private config: SchedulerConfig = {}
   ) {
     // Development mode uses accelerated schedules for testing
-    const isDevelopment = config.developmentMode || process.env.NODE_ENV === 'development';
-    
+    const isDevelopment =
+      config.developmentMode || process.env.NODE_ENV === "development";
+
     this.config = {
-      renewalCheckSchedule: isDevelopment ? '*/1 * * * *' : '0 2 * * *',    // Every minute in dev, 2 AM in prod
-      reminderSchedule: isDevelopment ? '*/2 * * * *' : '0 9 * * *',        // Every 2 minutes in dev, 9 AM in prod
-      cleanupSchedule: isDevelopment ? '*/5 * * * *' : '0 3 * * 0',         // Every 5 minutes in dev, Sunday 3 AM in prod
-      timezone: 'Europe/Istanbul',
+      renewalCheckSchedule: isDevelopment ? "*/1 * * * *" : "0 2 * * *", // Every minute in dev, 2 AM in prod
+      reminderSchedule: isDevelopment ? "*/2 * * * *" : "0 9 * * *", // Every 2 minutes in dev, 9 AM in prod
+      cleanupSchedule: isDevelopment ? "*/5 * * * *" : "0 3 * * 0", // Every 5 minutes in dev, Sunday 3 AM in prod
+      timezone: "Europe/Istanbul",
       developmentMode: isDevelopment,
-      ...config
+      ...config,
     };
   }
 
@@ -45,10 +46,10 @@ export class SubscriptionSchedulerService {
     this.startRenewalChecker();
     this.startReminderService();
     this.startCleanupService();
-    
-    const mode = this.config.developmentMode ? 'DEVELOPMENT' : 'PRODUCTION';
+
+    const mode = this.config.developmentMode ? "DEVELOPMENT" : "PRODUCTION";
     logger.info(`📅 Subscription scheduler started in ${mode} mode`);
-    
+
     if (this.config.developmentMode) {
       logger.info(`⚡ Development schedules:`);
       logger.info(`   - Renewals: Every minute`);
@@ -74,7 +75,7 @@ export class SubscriptionSchedulerService {
       this.cleanupTask.stop();
       this.cleanupTask = null;
     }
-    logger.info('📅 Subscription scheduler stopped');
+    logger.info("📅 Subscription scheduler stopped");
   }
 
   /**
@@ -85,12 +86,12 @@ export class SubscriptionSchedulerService {
     this.renewalTask = cron.schedule(
       this.config.renewalCheckSchedule!,
       async () => {
-        logger.info('🔄 Running subscription renewal check...');
+        logger.info("🔄 Running subscription renewal check...");
         await this.processSubscriptionRenewals();
       },
       {
         scheduled: true,
-        timezone: this.config.timezone
+        timezone: this.config.timezone,
       }
     );
   }
@@ -103,13 +104,13 @@ export class SubscriptionSchedulerService {
     this.reminderTask = cron.schedule(
       this.config.reminderSchedule!,
       async () => {
-        logger.info('📧 Running renewal reminder service...');
+        logger.info("📧 Running renewal reminder service...");
         await this.sendRenewalReminders();
         await this.sendPaymentFailureNotifications();
       },
       {
         scheduled: true,
-        timezone: this.config.timezone
+        timezone: this.config.timezone,
       }
     );
   }
@@ -122,12 +123,12 @@ export class SubscriptionSchedulerService {
     this.cleanupTask = cron.schedule(
       this.config.cleanupSchedule!,
       async () => {
-        logger.info('🧹 Running subscription cleanup...');
+        logger.info("🧹 Running subscription cleanup...");
         await this.cleanupExpiredData();
       },
       {
         scheduled: true,
-        timezone: this.config.timezone
+        timezone: this.config.timezone,
       }
     );
   }
@@ -147,25 +148,26 @@ export class SubscriptionSchedulerService {
       tomorrow.setDate(tomorrow.getDate() + 1);
 
       // Find subscriptions that need renewal (current period ends today or tomorrow)
-      const subscriptionsToRenew = await this.prisma.businessSubscription.findMany({
-        where: {
-          status: SubscriptionStatus.ACTIVE,
-          autoRenewal: true,
-          currentPeriodEnd: {
-            lte: tomorrow
+      const subscriptionsToRenew =
+        await this.prisma.businessSubscription.findMany({
+          where: {
+            status: SubscriptionStatus.ACTIVE,
+            autoRenewal: true,
+            currentPeriodEnd: {
+              lte: tomorrow,
+            },
+            cancelAtPeriodEnd: false,
           },
-          cancelAtPeriodEnd: false
-        },
-        include: {
-          business: {
-            include: {
-              owner: true
-            }
+          include: {
+            business: {
+              include: {
+                owner: true,
+              },
+            },
+            plan: true,
+            paymentMethod: true,
           },
-          plan: true,
-          paymentMethod: true
-        }
-      });
+        });
 
       let processed = 0;
       let renewed = 0;
@@ -175,28 +177,38 @@ export class SubscriptionSchedulerService {
         try {
           await this.processIndividualRenewal(subscription);
           renewed++;
-          logger.info(`✅ Successfully renewed subscription ${subscription.id} for business ${subscription.business.name}`);
+          logger.info(
+            `✅ Successfully renewed subscription ${subscription.id} for business ${subscription.business.name}`
+          );
         } catch (error) {
           failed++;
-          logger.error(`❌ Failed to renew subscription ${subscription.id}:`, error);
-          
+          logger.error(
+            `❌ Failed to renew subscription ${subscription.id}:`,
+            error
+          );
+
           // Update failed payment count
           await this.prisma.businessSubscription.update({
             where: { id: subscription.id },
             data: {
               failedPaymentCount: subscription.failedPaymentCount + 1,
               // If too many failures, disable auto-renewal
-              autoRenewal: subscription.failedPaymentCount >= 2 ? false : subscription.autoRenewal
-            }
+              autoRenewal:
+                subscription.failedPaymentCount >= 2
+                  ? false
+                  : subscription.autoRenewal,
+            },
           });
         }
         processed++;
       }
 
-      logger.info(`🔄 Renewal check completed: ${processed} processed, ${renewed} renewed, ${failed} failed`);
+      logger.info(
+        `🔄 Renewal check completed: ${processed} processed, ${renewed} renewed, ${failed} failed`
+      );
       return { processed, renewed, failed };
     } catch (error) {
-      logger.error('❌ Error in subscription renewal process:', error);
+      logger.error("❌ Error in subscription renewal process:", error);
       return { processed: 0, renewed: 0, failed: 0 };
     }
   }
@@ -206,17 +218,17 @@ export class SubscriptionSchedulerService {
    */
   private async processIndividualRenewal(subscription: any): Promise<void> {
     if (!subscription.paymentMethod) {
-      throw new Error('No payment method available for renewal');
+      throw new Error("No payment method available for renewal");
     }
 
     // Calculate new billing period
     const currentPeriodEnd = new Date(subscription.currentPeriodEnd);
     const newPeriodStart = new Date(currentPeriodEnd);
     const newPeriodEnd = new Date(currentPeriodEnd);
-    
-    if (subscription.plan.billingInterval === 'monthly') {
+
+    if (subscription.plan.billingInterval === "monthly") {
       newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
-    } else if (subscription.plan.billingInterval === 'yearly') {
+    } else if (subscription.plan.billingInterval === "yearly") {
       newPeriodEnd.setFullYear(newPeriodEnd.getFullYear() + 1);
     }
 
@@ -237,8 +249,8 @@ export class SubscriptionSchedulerService {
           currentPeriodEnd: newPeriodEnd,
           nextBillingDate: newPeriodEnd,
           failedPaymentCount: 0, // Reset failure count on successful renewal
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
 
       // Send renewal confirmation
@@ -249,7 +261,7 @@ export class SubscriptionSchedulerService {
         newPeriodEnd
       );
     } else {
-      throw new Error(paymentResult.error || 'Payment failed');
+      throw new Error(paymentResult.error || "Payment failed");
     }
   }
 
@@ -261,24 +273,25 @@ export class SubscriptionSchedulerService {
       const threeDaysFromNow = new Date();
       threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
 
-      const expiringSubscriptions = await this.prisma.businessSubscription.findMany({
-        where: {
-          status: SubscriptionStatus.ACTIVE,
-          currentPeriodEnd: {
-            gte: new Date(),
-            lte: threeDaysFromNow
+      const expiringSubscriptions =
+        await this.prisma.businessSubscription.findMany({
+          where: {
+            status: SubscriptionStatus.ACTIVE,
+            currentPeriodEnd: {
+              gte: new Date(),
+              lte: threeDaysFromNow,
+            },
+            autoRenewal: false, // Only send reminders to manual renewals
           },
-          autoRenewal: false // Only send reminders to manual renewals
-        },
-        include: {
-          business: {
-            include: {
-              owner: true
-            }
+          include: {
+            business: {
+              include: {
+                owner: true,
+              },
+            },
+            plan: true,
           },
-          plan: true
-        }
-      });
+        });
 
       let sent = 0;
       for (const subscription of expiringSubscriptions) {
@@ -291,14 +304,17 @@ export class SubscriptionSchedulerService {
           );
           sent++;
         } catch (error) {
-          logger.error(`Failed to send renewal reminder for subscription ${subscription.id}:`, error);
+          logger.error(
+            `Failed to send renewal reminder for subscription ${subscription.id}:`,
+            error
+          );
         }
       }
 
       logger.info(`📧 Sent ${sent} renewal reminders`);
       return sent;
     } catch (error) {
-      logger.error('❌ Error sending renewal reminders:', error);
+      logger.error("❌ Error sending renewal reminders:", error);
       return 0;
     }
   }
@@ -308,22 +324,23 @@ export class SubscriptionSchedulerService {
    */
   private async sendPaymentFailureNotifications(): Promise<number> {
     try {
-      const subscriptionsWithFailedPayments = await this.prisma.businessSubscription.findMany({
-        where: {
-          status: SubscriptionStatus.PAST_DUE,
-          failedPaymentCount: {
-            gt: 0
-          }
-        },
-        include: {
-          business: {
-            include: {
-              owner: true
-            }
+      const subscriptionsWithFailedPayments =
+        await this.prisma.businessSubscription.findMany({
+          where: {
+            status: SubscriptionStatus.PAST_DUE,
+            failedPaymentCount: {
+              gt: 0,
+            },
           },
-          plan: true
-        }
-      });
+          include: {
+            business: {
+              include: {
+                owner: true,
+              },
+            },
+            plan: true,
+          },
+        });
 
       let sent = 0;
       for (const subscription of subscriptionsWithFailedPayments) {
@@ -336,14 +353,17 @@ export class SubscriptionSchedulerService {
           );
           sent++;
         } catch (error) {
-          logger.error(`Failed to send payment failure notification for subscription ${subscription.id}:`, error);
+          logger.error(
+            `Failed to send payment failure notification for subscription ${subscription.id}:`,
+            error
+          );
         }
       }
 
       logger.info(`📧 Sent ${sent} payment failure notifications`);
       return sent;
     } catch (error) {
-      logger.error('❌ Error sending payment failure notifications:', error);
+      logger.error("❌ Error sending payment failure notifications:", error);
       return 0;
     }
   }
@@ -360,44 +380,47 @@ export class SubscriptionSchedulerService {
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
       // Cancel subscriptions that have been past due for too long
-      const subscriptionsToCancel = await this.prisma.businessSubscription.updateMany({
-        where: {
-          status: SubscriptionStatus.PAST_DUE,
-          currentPeriodEnd: {
-            lt: thirtyDaysAgo
+      const subscriptionsToCancel =
+        await this.prisma.businessSubscription.updateMany({
+          where: {
+            status: SubscriptionStatus.PAST_DUE,
+            currentPeriodEnd: {
+              lt: thirtyDaysAgo,
+            },
+            failedPaymentCount: {
+              gte: 3,
+            },
           },
-          failedPaymentCount: {
-            gte: 3
-          }
-        },
-        data: {
-          status: SubscriptionStatus.CANCELED,
-          canceledAt: new Date(),
-          autoRenewal: false
-        }
-      });
+          data: {
+            status: SubscriptionStatus.CANCELED,
+            canceledAt: new Date(),
+            autoRenewal: false,
+          },
+        });
 
       // Clean up old failed payment records (keep metadata but remove sensitive data)
       const cleanedPayments = await this.prisma.payment.updateMany({
         where: {
-          status: 'FAILED',
+          status: "FAILED",
           createdAt: {
-            lt: thirtyDaysAgo
-          }
+            lt: thirtyDaysAgo,
+          },
         },
         data: {
-          metadata: {}
-        }
+          metadata: {},
+        },
       });
 
-      logger.info(`🧹 Cleanup completed: ${subscriptionsToCancel.count} canceled, ${cleanedPayments.count} payments cleaned`);
-      
+      logger.info(
+        `🧹 Cleanup completed: ${subscriptionsToCancel.count} canceled, ${cleanedPayments.count} payments cleaned`
+      );
+
       return {
         canceledSubscriptions: subscriptionsToCancel.count,
-        cleanedPayments: cleanedPayments.count
+        cleanedPayments: cleanedPayments.count,
       };
     } catch (error) {
-      logger.error('❌ Error in cleanup process:', error);
+      logger.error("❌ Error in cleanup process:", error);
       return { canceledSubscriptions: 0, cleanedPayments: 0 };
     }
   }
@@ -419,9 +442,9 @@ export class SubscriptionSchedulerService {
       tasks: {
         renewal: !!this.renewalTask,
         reminders: !!this.reminderTask,
-        cleanup: !!this.cleanupTask
+        cleanup: !!this.cleanupTask,
       },
-      config: this.config
+      config: this.config,
     };
   }
 
@@ -433,7 +456,7 @@ export class SubscriptionSchedulerService {
     renewed: number;
     failed: number;
   }> {
-    logger.info('🔧 Manually triggering renewal check...');
+    logger.info("🔧 Manually triggering renewal check...");
     return await this.processSubscriptionRenewals();
   }
 
@@ -441,7 +464,7 @@ export class SubscriptionSchedulerService {
    * Manual trigger for reminder service (for testing)
    */
   public async triggerReminderService(): Promise<number> {
-    logger.info('🔧 Manually triggering reminder service...');
+    logger.info("🔧 Manually triggering reminder service...");
     const remindersSent = await this.sendRenewalReminders();
     const failuresSent = await this.sendPaymentFailureNotifications();
     return remindersSent + failuresSent;
@@ -454,7 +477,7 @@ export class SubscriptionSchedulerService {
     canceledSubscriptions: number;
     cleanedPayments: number;
   }> {
-    logger.info('🔧 Manually triggering cleanup...');
+    logger.info("🔧 Manually triggering cleanup...");
     return await this.cleanupExpiredData();
   }
 }

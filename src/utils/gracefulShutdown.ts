@@ -1,5 +1,5 @@
-import { Server } from 'http';
-import { logger } from './logger';
+import { Server } from "http";
+import { logger } from "./Logger/logger";
 
 let services: any = null;
 
@@ -8,31 +8,33 @@ export const setServicesForShutdown = (serviceContainer: any) => {
 };
 
 export const gracefulShutdown = (server: Server): void => {
-  logger.info('Received shutdown signal, shutting down gracefully...');
-  
+  logger.info("Received shutdown signal, shutting down gracefully...");
+
   // Stop schedulers if running
   if (services?.subscriptionSchedulerService) {
     services.subscriptionSchedulerService.stop();
-    logger.info('📅 Subscription scheduler stopped');
+    logger.info("📅 Subscription scheduler stopped");
   }
 
   if (services?.appointmentSchedulerService) {
     services.appointmentSchedulerService.stop();
-    logger.info('📅 Appointment scheduler stopped');
+    logger.info("📅 Appointment scheduler stopped");
   }
-  
+
   server.close((err) => {
     if (err) {
-      logger.error('Error during server shutdown:', err);
+      logger.error("Error during server shutdown:", err);
       process.exit(1);
     }
-    
-    logger.info('Server closed successfully. Goodbye!');
+
+    logger.info("Server closed successfully. Goodbye!");
     process.exit(0);
   });
 
   setTimeout(() => {
-    logger.error('Could not close connections in time, forcefully shutting down');
+    logger.error(
+      "Could not close connections in time, forcefully shutting down"
+    );
     process.exit(1);
   }, 10000);
 };

@@ -465,7 +465,7 @@ export class BusinessClosureService {
     );
 
     // Filter to only include active appointments
-    return appointments.filter((apt: any) => 
+    return appointments.filter((apt: { status: string }) => 
       apt.status === 'CONFIRMED'
     );
   }

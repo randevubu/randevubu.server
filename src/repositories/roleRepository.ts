@@ -1,24 +1,26 @@
-import { PrismaClient } from '@prisma/client';
-import { 
-  RoleData, 
-  PermissionData, 
-  UserRoleData, 
-  RolePermissionData,
-  CreateRoleRequest,
-  UpdateRoleRequest,
+import { PrismaClient } from "@prisma/client";
+import {
   CreatePermissionRequest,
-  UpdatePermissionRequest
-} from '../types/auth';
-import { logger } from '../utils/logger';
+  CreateRoleRequest,
+  PermissionData,
+  RoleData,
+  UpdatePermissionRequest,
+  UpdateRoleRequest,
+  UserRoleData,
+} from "../types/auth";
+import logger from "../utils/Logger/logger";
 
 export class RoleRepository {
   constructor(private prisma: PrismaClient) {}
 
   // Role CRUD operations
-  async createRole(data: CreateRoleRequest, createdBy: string): Promise<RoleData> {
+  async createRole(
+    data: CreateRoleRequest,
+    createdBy: string
+  ): Promise<RoleData> {
     try {
-      const roleId = this.generateId('role');
-      
+      const roleId = this.generateId("role");
+
       const role = await this.prisma.role.create({
         data: {
           id: roleId,
@@ -27,76 +29,90 @@ export class RoleRepository {
           description: data.description,
           level: data.level,
           isSystem: false,
-          isActive: true
-        }
+          isActive: true,
+        },
       });
 
       // Assign permissions if provided
       if (data.permissionIds && data.permissionIds.length > 0) {
-        await this.assignPermissionsToRole(roleId, data.permissionIds, createdBy);
+        await this.assignPermissionsToRole(
+          roleId,
+          data.permissionIds,
+          createdBy
+        );
       }
 
-      logger.info('Role created', {
+      logger.info("Role created", {
         roleId,
         roleName: data.name,
         createdBy,
-        permissionCount: data.permissionIds?.length || 0
+        permissionCount: data.permissionIds?.length || 0,
       });
 
       return role as RoleData;
     } catch (error) {
-      logger.error('Failed to create role', {
+      logger.error("Failed to create role", {
         roleName: data.name,
         createdBy,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
   }
 
-  async getRoleById(id: string, includePermissions = false): Promise<RoleData | null> {
+  async getRoleById(
+    id: string,
+    includePermissions = false
+  ): Promise<RoleData | null> {
     try {
       const role = await this.prisma.role.findUnique({
         where: { id },
-        include: includePermissions ? {
-          rolePermissions: {
-            where: { isActive: true },
-            include: {
-              permission: true
+        include: includePermissions
+          ? {
+              rolePermissions: {
+                where: { isActive: true },
+                include: {
+                  permission: true,
+                },
+              },
             }
-          }
-        } : undefined
+          : undefined,
       });
 
       return role as RoleData | null;
     } catch (error) {
-      logger.error('Failed to get role by ID', {
+      logger.error("Failed to get role by ID", {
         roleId: id,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
   }
 
-  async getRoleByName(name: string, includePermissions = false): Promise<RoleData | null> {
+  async getRoleByName(
+    name: string,
+    includePermissions = false
+  ): Promise<RoleData | null> {
     try {
       const role = await this.prisma.role.findUnique({
         where: { name },
-        include: includePermissions ? {
-          rolePermissions: {
-            where: { isActive: true },
-            include: {
-              permission: true
+        include: includePermissions
+          ? {
+              rolePermissions: {
+                where: { isActive: true },
+                include: {
+                  permission: true,
+                },
+              },
             }
-          }
-        } : undefined
+          : undefined,
       });
 
       return role as RoleData | null;
     } catch (error) {
-      logger.error('Failed to get role by name', {
+      logger.error("Failed to get role by name", {
         roleName: name,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -106,43 +122,44 @@ export class RoleRepository {
     try {
       const roles = await this.prisma.role.findMany({
         where: includeInactive ? {} : { isActive: true },
-        orderBy: [
-          { level: 'desc' },
-          { name: 'asc' }
-        ]
+        orderBy: [{ level: "desc" }, { name: "asc" }],
       });
 
       return roles as RoleData[];
     } catch (error) {
-      logger.error('Failed to get all roles', {
-        error: error instanceof Error ? error.message : String(error)
+      logger.error("Failed to get all roles", {
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
   }
 
-  async updateRole(id: string, data: UpdateRoleRequest, updatedBy: string): Promise<RoleData> {
+  async updateRole(
+    id: string,
+    data: UpdateRoleRequest,
+    updatedBy: string
+  ): Promise<RoleData> {
     try {
       const role = await this.prisma.role.update({
         where: { id },
         data: {
           ...data,
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
 
-      logger.info('Role updated', {
+      logger.info("Role updated", {
         roleId: id,
         updatedBy,
-        changes: Object.keys(data)
+        changes: Object.keys(data),
       });
 
       return role as RoleData;
     } catch (error) {
-      logger.error('Failed to update role', {
+      logger.error("Failed to update role", {
         roleId: id,
         updatedBy,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -153,7 +170,7 @@ export class RoleRepository {
       // Check if role is system role
       const role = await this.getRoleById(id);
       if (role?.isSystem) {
-        throw new Error('Cannot delete system role');
+        throw new Error("Cannot delete system role");
       }
 
       // Soft delete - deactivate role and set deletedAt
@@ -162,58 +179,60 @@ export class RoleRepository {
         data: {
           isActive: false,
           deletedAt: new Date(),
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
 
       // Deactivate all user role assignments
       await this.prisma.userRole.updateMany({
         where: { roleId: id, isActive: true },
-        data: { isActive: false, updatedAt: new Date() }
+        data: { isActive: false, updatedAt: new Date() },
       });
 
-      logger.info('Role deleted', {
-        roleId: id,
-        deletedBy
-      });
-    } catch (error) {
-      logger.error('Failed to delete role', {
+      logger.info("Role deleted", {
         roleId: id,
         deletedBy,
-        error: error instanceof Error ? error.message : String(error)
+      });
+    } catch (error) {
+      logger.error("Failed to delete role", {
+        roleId: id,
+        deletedBy,
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
   }
 
   // Permission CRUD operations
-  async createPermission(data: CreatePermissionRequest): Promise<PermissionData> {
+  async createPermission(
+    data: CreatePermissionRequest
+  ): Promise<PermissionData> {
     try {
       const permission = await this.prisma.permission.create({
         data: {
-          id: this.generateId('perm'),
+          id: this.generateId("perm"),
           name: data.name,
           displayName: data.displayName,
           description: data.description,
           resource: data.resource,
           action: data.action,
           conditions: data.conditions,
-          isSystem: false
-        }
+          isSystem: false,
+        },
       });
 
-      logger.info('Permission created', {
+      logger.info("Permission created", {
         permissionId: permission.id,
         permissionName: data.name,
         resource: data.resource,
-        action: data.action
+        action: data.action,
       });
 
       return permission as PermissionData;
     } catch (error) {
-      logger.error('Failed to create permission', {
+      logger.error("Failed to create permission", {
         permissionName: data.name,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -222,14 +241,14 @@ export class RoleRepository {
   async getPermissionById(id: string): Promise<PermissionData | null> {
     try {
       const permission = await this.prisma.permission.findUnique({
-        where: { id }
+        where: { id },
       });
 
       return permission as PermissionData | null;
     } catch (error) {
-      logger.error('Failed to get permission by ID', {
+      logger.error("Failed to get permission by ID", {
         permissionId: id,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -238,14 +257,14 @@ export class RoleRepository {
   async getPermissionByName(name: string): Promise<PermissionData | null> {
     try {
       const permission = await this.prisma.permission.findUnique({
-        where: { name }
+        where: { name },
       });
 
       return permission as PermissionData | null;
     } catch (error) {
-      logger.error('Failed to get permission by name', {
+      logger.error("Failed to get permission by name", {
         permissionName: name,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -254,16 +273,13 @@ export class RoleRepository {
   async getAllPermissions(): Promise<PermissionData[]> {
     try {
       const permissions = await this.prisma.permission.findMany({
-        orderBy: [
-          { resource: 'asc' },
-          { action: 'asc' }
-        ]
+        orderBy: [{ resource: "asc" }, { action: "asc" }],
       });
 
       return permissions as PermissionData[];
     } catch (error) {
-      logger.error('Failed to get all permissions', {
-        error: error instanceof Error ? error.message : String(error)
+      logger.error("Failed to get all permissions", {
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -273,39 +289,42 @@ export class RoleRepository {
     try {
       const permissions = await this.prisma.permission.findMany({
         where: { resource },
-        orderBy: { action: 'asc' }
+        orderBy: { action: "asc" },
       });
 
       return permissions as PermissionData[];
     } catch (error) {
-      logger.error('Failed to get permissions by resource', {
+      logger.error("Failed to get permissions by resource", {
         resource,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
   }
 
-  async updatePermission(id: string, data: UpdatePermissionRequest): Promise<PermissionData> {
+  async updatePermission(
+    id: string,
+    data: UpdatePermissionRequest
+  ): Promise<PermissionData> {
     try {
       const permission = await this.prisma.permission.update({
         where: { id },
         data: {
           ...data,
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
 
-      logger.info('Permission updated', {
+      logger.info("Permission updated", {
         permissionId: id,
-        changes: Object.keys(data)
+        changes: Object.keys(data),
       });
 
       return permission as PermissionData;
     } catch (error) {
-      logger.error('Failed to update permission', {
+      logger.error("Failed to update permission", {
         permissionId: id,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -313,66 +332,69 @@ export class RoleRepository {
 
   // Role-Permission management
   async assignPermissionsToRole(
-    roleId: string, 
-    permissionIds: string[], 
+    roleId: string,
+    permissionIds: string[],
     grantedBy: string
   ): Promise<void> {
     try {
-      const rolePermissions = permissionIds.map(permissionId => ({
-        id: this.generateId('rperm'),
+      const rolePermissions = permissionIds.map((permissionId) => ({
+        id: this.generateId("rperm"),
         roleId,
         permissionId,
         grantedBy,
         grantedAt: new Date(),
         isActive: true,
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
       }));
 
       await this.prisma.rolePermission.createMany({
         data: rolePermissions,
-        skipDuplicates: true
+        skipDuplicates: true,
       });
 
-      logger.info('Permissions assigned to role', {
+      logger.info("Permissions assigned to role", {
         roleId,
         permissionCount: permissionIds.length,
-        grantedBy
+        grantedBy,
       });
     } catch (error) {
-      logger.error('Failed to assign permissions to role', {
+      logger.error("Failed to assign permissions to role", {
         roleId,
         permissionIds,
         grantedBy,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
   }
 
-  async revokePermissionFromRole(roleId: string, permissionId: string): Promise<void> {
+  async revokePermissionFromRole(
+    roleId: string,
+    permissionId: string
+  ): Promise<void> {
     try {
       await this.prisma.rolePermission.updateMany({
         where: {
           roleId,
           permissionId,
-          isActive: true
+          isActive: true,
         },
         data: {
           isActive: false,
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
 
-      logger.info('Permission revoked from role', {
-        roleId,
-        permissionId
-      });
-    } catch (error) {
-      logger.error('Failed to revoke permission from role', {
+      logger.info("Permission revoked from role", {
         roleId,
         permissionId,
-        error: error instanceof Error ? error.message : String(error)
+      });
+    } catch (error) {
+      logger.error("Failed to revoke permission from role", {
+        roleId,
+        permissionId,
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -383,18 +405,18 @@ export class RoleRepository {
       const rolePermissions = await this.prisma.rolePermission.findMany({
         where: {
           roleId,
-          isActive: true
+          isActive: true,
         },
         include: {
-          permission: true
-        }
+          permission: true,
+        },
       });
 
-      return rolePermissions.map(rp => rp.permission) as PermissionData[];
+      return rolePermissions.map((rp) => rp.permission) as PermissionData[];
     } catch (error) {
-      logger.error('Failed to get role permissions', {
+      logger.error("Failed to get role permissions", {
         roleId,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -411,31 +433,31 @@ export class RoleRepository {
     try {
       const userRole = await this.prisma.userRole.create({
         data: {
-          id: this.generateId('urole'),
+          id: this.generateId("urole"),
           userId,
           roleId,
           grantedBy,
           grantedAt: new Date(),
           expiresAt,
           metadata,
-          isActive: true
-        }
+          isActive: true,
+        },
       });
 
-      logger.info('Role assigned to user', {
+      logger.info("Role assigned to user", {
         userId,
         roleId,
         grantedBy,
-        expiresAt
+        expiresAt,
       });
 
       return userRole as UserRoleData;
     } catch (error) {
-      logger.error('Failed to assign role to user', {
+      logger.error("Failed to assign role to user", {
         userId,
         roleId,
         grantedBy,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -447,28 +469,29 @@ export class RoleRepository {
         where: {
           userId,
           roleId,
-          isActive: true
+          isActive: true,
         },
         data: {
           isActive: false,
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
 
-      logger.info('Role revoked from user', {
-        userId,
-        roleId
-      });
-    } catch (error) {
-      logger.error('Failed to revoke role from user', {
+      logger.info("Role revoked from user", {
         userId,
         roleId,
-        error: error instanceof Error ? error.message : String(error)
+      });
+    } catch (error) {
+      logger.error("Failed to revoke role from user", {
+        userId,
+        roleId,
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
   }
 
+  // checked
   async getUserRoles(userId: string): Promise<RoleData[]> {
     try {
       // Get global roles from UserRole table
@@ -476,15 +499,12 @@ export class RoleRepository {
         where: {
           userId,
           isActive: true,
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gt: new Date() } }
-          ],
-          role: { isActive: true }
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+          role: { isActive: true },
         },
         include: {
-          role: true
-        }
+          role: true,
+        },
       });
 
       // Get business staff roles from BusinessStaff table
@@ -494,22 +514,22 @@ export class RoleRepository {
           isActive: true,
           business: {
             isActive: true,
-            deletedAt: null
-          }
+            deletedAt: null,
+          },
         },
         select: {
           role: true,
-          businessId: true
-        }
+          businessId: true,
+        },
       });
 
       // Convert global roles
-      const globalRoles = userRoles.map(ur => ur.role) as RoleData[];
-      
+      const globalRoles = userRoles.map((ur) => ur.role) as RoleData[];
+
       // Convert BusinessStaff roles to RoleData format
       // Create synthetic role entries for BusinessStaff roles
       const staffRoleMap: { [key: string]: RoleData } = {};
-      
+
       for (const staff of businessStaffRoles) {
         const roleKey = `BUSINESS_${staff.role}`;
         if (!staffRoleMap[roleKey]) {
@@ -522,24 +542,132 @@ export class RoleRepository {
             isSystem: true,
             isActive: true,
             createdAt: new Date(),
-            updatedAt: new Date()
+            updatedAt: new Date(),
           } as RoleData;
         }
       }
 
       // Combine global roles and business staff roles
       const allRoles = [...globalRoles, ...Object.values(staffRoleMap)];
-      
+
       // Remove duplicates based on role name
-      const uniqueRoles = allRoles.filter((role, index, self) =>
-        index === self.findIndex(r => r.name === role.name)
+      const uniqueRoles = allRoles.filter(
+        (role, index, self) =>
+          index === self.findIndex((r) => r.name === role.name)
       );
 
       return uniqueRoles;
     } catch (error) {
-      logger.error('Failed to get user roles', {
+      logger.error("Failed to get user roles", {
         userId,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  // Optimized method to get user roles with permissions in a single query
+  async getUserRolesWithPermissions(userId: string): Promise<{
+    roles: RoleData[];
+    permissions: PermissionData[];
+    rolePermissions: Array<{ roleId: string; permissionId: string }>;
+  }> {
+    try {
+      // Execute both queries in parallel for maximum speed
+      const [userRolesWithPermissions, businessStaffRoles] = await Promise.all([
+        this.prisma.userRole.findMany({
+          where: {
+            userId,
+            isActive: true,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+            role: { isActive: true },
+          },
+          include: {
+            role: {
+              include: {
+                rolePermissions: {
+                  where: { isActive: true },
+                  include: { permission: true },
+                },
+              },
+            },
+          },
+        }),
+        this.prisma.businessStaff.findMany({
+          where: {
+            userId,
+            isActive: true,
+            business: { isActive: true, deletedAt: null },
+          },
+          select: { role: true, businessId: true },
+        }),
+      ]);
+
+      // Process global roles and permissions
+      const globalRoles: RoleData[] = [];
+      const allPermissions: PermissionData[] = [];
+      const rolePermissions: Array<{ roleId: string; permissionId: string }> =
+        [];
+
+      for (const userRole of userRolesWithPermissions) {
+        const role = userRole.role as RoleData;
+        globalRoles.push(role);
+
+        // Extract permissions from role and maintain associations
+        for (const rp of userRole.role.rolePermissions) {
+          const permission = rp.permission as PermissionData;
+          allPermissions.push(permission);
+          rolePermissions.push({
+            roleId: role.id,
+            permissionId: permission.id,
+          });
+        }
+      }
+
+      // Process business staff roles efficiently
+      const staffRoleMap = new Map<string, RoleData>();
+      for (const staff of businessStaffRoles) {
+        const roleKey = `BUSINESS_${staff.role}`;
+        if (!staffRoleMap.has(roleKey)) {
+          staffRoleMap.set(roleKey, {
+            id: `business_staff_${staff.role.toLowerCase()}`,
+            name: staff.role,
+            displayName: `Business ${staff.role}`,
+            description: `${staff.role} role in business context`,
+            level: this.getStaffRoleLevel(staff.role),
+            isSystem: true,
+            isActive: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as RoleData);
+        }
+      }
+
+      // Combine and deduplicate roles efficiently
+      const allRoles = [...globalRoles, ...staffRoleMap.values()];
+      const uniqueRoles = allRoles.filter(
+        (role, index, self) =>
+          index === self.findIndex((r) => r.name === role.name)
+      );
+
+      // Deduplicate permissions using Map for O(n) performance
+      const permissionMap = new Map<string, PermissionData>();
+      for (const permission of allPermissions) {
+        const key = `${permission.resource}:${permission.action}:${permission.name}`;
+        if (!permissionMap.has(key)) {
+          permissionMap.set(key, permission);
+        }
+      }
+
+      return {
+        roles: uniqueRoles,
+        permissions: Array.from(permissionMap.values()),
+        rolePermissions,
+      };
+    } catch (error) {
+      logger.error("Failed to get user roles with permissions", {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -548,10 +676,10 @@ export class RoleRepository {
   private getStaffRoleLevel(role: string): number {
     // Define role hierarchy levels for BusinessStaff roles
     const roleLevels = {
-      'OWNER': 300,
-      'MANAGER': 250, 
-      'STAFF': 200,
-      'RECEPTIONIST': 150
+      OWNER: 300,
+      MANAGER: 250,
+      STAFF: 200,
+      RECEPTIONIST: 150,
     };
     return roleLevels[role as keyof typeof roleLevels] || 100;
   }
@@ -562,21 +690,18 @@ export class RoleRepository {
         where: {
           roleId,
           isActive: true,
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gt: new Date() } }
-          ]
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
         },
         select: {
-          userId: true
-        }
+          userId: true,
+        },
       });
 
-      return userRoles.map(ur => ur.userId);
+      return userRoles.map((ur) => ur.userId);
     } catch (error) {
-      logger.error('Failed to get users by role', {
+      logger.error("Failed to get users by role", {
         roleId,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -584,7 +709,9 @@ export class RoleRepository {
 
   // Utility methods
   private generateId(prefix: string): string {
-    return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    return `${prefix}_${Date.now()}_${Math.random()
+      .toString(36)
+      .substring(2, 15)}`;
   }
 
   // Statistics and analytics
@@ -598,18 +725,18 @@ export class RoleRepository {
       const [total, active, system] = await Promise.all([
         this.prisma.role.count(),
         this.prisma.role.count({ where: { isActive: true } }),
-        this.prisma.role.count({ where: { isSystem: true } })
+        this.prisma.role.count({ where: { isSystem: true } }),
       ]);
 
       return {
         totalRoles: total,
         activeRoles: active,
         systemRoles: system,
-        customRoles: total - system
+        customRoles: total - system,
       };
     } catch (error) {
-      logger.error('Failed to get role statistics', {
-        error: error instanceof Error ? error.message : String(error)
+      logger.error("Failed to get role statistics", {
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -626,9 +753,9 @@ export class RoleRepository {
         this.prisma.permission.count(),
         this.prisma.permission.count({ where: { isSystem: true } }),
         this.prisma.permission.groupBy({
-          by: ['resource'],
-          _count: { resource: true }
-        })
+          by: ["resource"],
+          _count: { resource: true },
+        }),
       ]);
 
       const permissionsByResource = byResource.reduce((acc, item) => {
@@ -640,11 +767,11 @@ export class RoleRepository {
         totalPermissions: total,
         systemPermissions: system,
         customPermissions: total - system,
-        permissionsByResource
+        permissionsByResource,
       };
     } catch (error) {
-      logger.error('Failed to get permission statistics', {
-        error: error instanceof Error ? error.message : String(error)
+      logger.error("Failed to get permission statistics", {
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
