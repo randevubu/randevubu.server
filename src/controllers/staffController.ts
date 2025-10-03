@@ -1,16 +1,20 @@
-import { Request, Response } from 'express';
-import { BusinessContextRequest } from '../middleware/businessContext';
-import { StaffService, InviteStaffRequest, VerifyStaffInvitationRequest } from '../services/staffService';
-import { AuthenticatedRequest } from '../types/auth';
+import { BusinessStaffRole } from "@prisma/client";
+import { Request, Response } from "express";
+import { ERROR_CODES } from "../constants/errorCodes";
+import { BusinessContextRequest } from "../middleware/businessContext";
+import {
+  InviteStaffRequest,
+  StaffService,
+  VerifyStaffInvitationRequest,
+} from "../services/staffService";
+import { AuthenticatedRequest } from "../types/auth";
+import { AppError } from "../types/responseTypes";
 import {
   createErrorContext,
   handleRouteError,
   sendAppErrorResponse,
-  sendSuccessResponse
-} from '../utils/errorResponse';
-import { AppError, NotFoundError, ValidationAppError } from '../types/errorResponse';
-import { ERROR_CODES } from '../constants/errorCodes';
-import { BusinessStaffRole } from '@prisma/client';
+  sendSuccessResponse,
+} from "../utils/responseUtils";
 
 export class StaffController {
   constructor(private staffService: StaffService) {}
@@ -22,9 +26,16 @@ export class StaffController {
   async inviteStaff(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
-      const { businessId, phoneNumber, role, permissions, firstName, lastName } = req.body;
+      const {
+        businessId,
+        phoneNumber,
+        role,
+        permissions,
+        firstName,
+        lastName,
+      } = req.body;
 
-      const context = createErrorContext(req, 'STAFF_INVITATION');
+      const context = createErrorContext(req, "STAFF_INVITATION");
 
       const result = await this.staffService.inviteStaff(
         userId,
@@ -49,7 +60,10 @@ export class StaffController {
    * Complete staff invitation - verify SMS code and add staff to business
    * POST /api/v1/staff/verify-invitation
    */
-  async verifyStaffInvitation(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async verifyStaffInvitation(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
       const {
@@ -62,7 +76,7 @@ export class StaffController {
         lastName,
       } = req.body;
 
-      const context = createErrorContext(req, 'STAFF_VERIFICATION');
+      const context = createErrorContext(req, "STAFF_VERIFICATION");
 
       const result = await this.staffService.verifyStaffInvitation(
         userId,
@@ -99,11 +113,14 @@ export class StaffController {
    * GET /api/v1/staff/:businessId
    * Query params: ?includeInactive=true
    */
-  async getBusinessStaff(req: BusinessContextRequest, res: Response): Promise<void> {
+  async getBusinessStaff(
+    req: BusinessContextRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
-      const includeInactive = req.query.includeInactive === 'true';
+      const includeInactive = req.query.includeInactive === "true";
 
       const staff = await this.staffService.getBusinessStaff(
         userId,
@@ -121,7 +138,10 @@ export class StaffController {
    * Get staff member details
    * GET /api/v1/staff/member/:staffId
    */
-  async getStaffMember(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getStaffMember(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const { staffId } = req.params;
 
@@ -140,47 +160,65 @@ export class StaffController {
 
       sendSuccessResponse(res, { staff });
     } catch (error) {
-      handleRouteError(error, req, res);    }
+      handleRouteError(error, req, res);
+    }
   }
 
   /**
    * Update staff member
    * PUT /api/v1/staff/member/:staffId
    */
-  async updateStaffMember(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async updateStaffMember(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
       const { staffId } = req.params;
       const updates = req.body;
 
-      const staff = await this.staffService.updateStaff(userId, staffId, updates);
+      const staff = await this.staffService.updateStaff(
+        userId,
+        staffId,
+        updates
+      );
 
       sendSuccessResponse(res, { staff });
     } catch (error) {
-      handleRouteError(error, req, res);    }
+      handleRouteError(error, req, res);
+    }
   }
 
   /**
    * Remove staff member (deactivate)
    * DELETE /api/v1/staff/member/:staffId
    */
-  async removeStaffMember(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async removeStaffMember(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
       const { staffId } = req.params;
 
       await this.staffService.removeStaff(userId, staffId);
 
-      sendSuccessResponse(res, { message: 'Staff member removed successfully' });
+      sendSuccessResponse(res, {
+        message: "Staff member removed successfully",
+      });
     } catch (error) {
-      handleRouteError(error, req, res);    }
+      handleRouteError(error, req, res);
+    }
   }
 
   /**
    * Get staff statistics for a business
    * GET /api/v1/staff/:businessId/stats
    */
-  async getStaffStats(req: BusinessContextRequest, res: Response): Promise<void> {
+  async getStaffStats(
+    req: BusinessContextRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
@@ -189,7 +227,8 @@ export class StaffController {
 
       sendSuccessResponse(res, { stats });
     } catch (error) {
-      handleRouteError(error, req, res);    }
+      handleRouteError(error, req, res);
+    }
   }
 
   /**
@@ -197,17 +236,22 @@ export class StaffController {
    * GET /api/v1/staff/:businessId/role/:role
    * Query params: ?includeInactive=true
    */
-  async getStaffByRole(req: BusinessContextRequest, res: Response): Promise<void> {
+  async getStaffByRole(
+    req: BusinessContextRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId, role } = req.params;
-      const includeInactive = req.query.includeInactive === 'true';
+      const includeInactive = req.query.includeInactive === "true";
 
       // Validate role
-      if (!Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)) {
+      if (
+        !Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)
+      ) {
         const error = new AppError(
           ERROR_CODES.VALIDATION_ERROR,
-          { field: 'role', message: 'Invalid staff role' },
+          { field: "role", message: "Invalid staff role" },
           createErrorContext(req),
           400
         );
@@ -215,29 +259,40 @@ export class StaffController {
         return;
       }
 
-      const staff = await this.staffService.getBusinessStaff(userId, businessId, includeInactive);
-      const filteredStaff = staff.filter(s => s.role === role);
+      const staff = await this.staffService.getBusinessStaff(
+        userId,
+        businessId,
+        includeInactive
+      );
+      const filteredStaff = staff.filter((s) => s.role === role);
 
       sendSuccessResponse(res, { staff: filteredStaff });
     } catch (error) {
-      handleRouteError(error, req, res);    }
+      handleRouteError(error, req, res);
+    }
   }
 
   /**
    * Get current user's staff positions (businesses they work at)
    * GET /api/v1/staff/my-positions
    */
-  async getMyStaffPositions(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getMyStaffPositions(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
 
       // This would need a new method in StaffService to get user's staff positions
       // For now, we'll use the repository directly through the service
-      const positions = await this.staffService['repositories'].staffRepository.findByUserId(userId);
+      const positions = await this.staffService[
+        "repositories"
+      ].staffRepository.findByUserId(userId);
 
       sendSuccessResponse(res, { positions });
     } catch (error) {
-      handleRouteError(error, req, res);    }
+      handleRouteError(error, req, res);
+    }
   }
 
   /**
@@ -256,22 +311,26 @@ export class StaffController {
         toBusinessId
       );
 
-      sendSuccessResponse(res, { message: 'Staff transferred successfully' });
+      sendSuccessResponse(res, { message: "Staff transferred successfully" });
     } catch (error) {
-      handleRouteError(error, req, res);    }
+      handleRouteError(error, req, res);
+    }
   }
 
   /**
    * Bulk invite staff members
    * POST /api/v1/staff/bulk-invite
    */
-  async bulkInviteStaff(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async bulkInviteStaff(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId, invitations } = req.body;
 
       const results = [];
-      const context = createErrorContext(req, 'BULK_STAFF_INVITATION');
+      const context = createErrorContext(req, "BULK_STAFF_INVITATION");
 
       for (const invitation of invitations) {
         try {
@@ -283,31 +342,35 @@ export class StaffController {
             } as InviteStaffRequest,
             context
           );
-          results.push({ 
+          results.push({
             phoneNumber: invitation.phoneNumber,
-            ...result 
+            ...result,
           });
         } catch (error) {
           results.push({
             phoneNumber: invitation.phoneNumber,
             success: false,
-            message: error instanceof Error ? error.message : 'Unknown error',
+            message: error instanceof Error ? error.message : "Unknown error",
           });
         }
       }
 
       sendSuccessResponse(res, { results });
     } catch (error) {
-      handleRouteError(error, req, res);    }
+      handleRouteError(error, req, res);
+    }
   }
 
   /**
    * Get available staff roles
    * GET /api/v1/staff/roles
    */
-  async getAvailableRoles(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getAvailableRoles(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
     try {
-      const roles = Object.values(BusinessStaffRole).map(role => ({
+      const roles = Object.values(BusinessStaffRole).map((role) => ({
         value: role,
         label: this.getRoleDisplayName(role),
         description: this.getRoleDescription(role),
@@ -315,27 +378,29 @@ export class StaffController {
 
       sendSuccessResponse(res, { roles });
     } catch (error) {
-      handleRouteError(error, req, res);    }
+      handleRouteError(error, req, res);
+    }
   }
 
   private getRoleDisplayName(role: BusinessStaffRole): string {
     const roleNames = {
-      [BusinessStaffRole.OWNER]: 'Owner',
-      [BusinessStaffRole.MANAGER]: 'Manager',
-      [BusinessStaffRole.STAFF]: 'Staff Member',
-      [BusinessStaffRole.RECEPTIONIST]: 'Receptionist',
+      [BusinessStaffRole.OWNER]: "Owner",
+      [BusinessStaffRole.MANAGER]: "Manager",
+      [BusinessStaffRole.STAFF]: "Staff Member",
+      [BusinessStaffRole.RECEPTIONIST]: "Receptionist",
     };
     return roleNames[role] || role;
   }
 
   private getRoleDescription(role: BusinessStaffRole): string {
     const roleDescriptions = {
-      [BusinessStaffRole.OWNER]: 'Full access to all business features',
-      [BusinessStaffRole.MANAGER]: 'Manage staff, services, and appointments',
-      [BusinessStaffRole.STAFF]: 'Handle appointments and basic operations',
-      [BusinessStaffRole.RECEPTIONIST]: 'Manage appointments and customer interactions',
+      [BusinessStaffRole.OWNER]: "Full access to all business features",
+      [BusinessStaffRole.MANAGER]: "Manage staff, services, and appointments",
+      [BusinessStaffRole.STAFF]: "Handle appointments and basic operations",
+      [BusinessStaffRole.RECEPTIONIST]:
+        "Manage appointments and customer interactions",
     };
-    return roleDescriptions[role] || '';
+    return roleDescriptions[role] || "";
   }
 
   /**
