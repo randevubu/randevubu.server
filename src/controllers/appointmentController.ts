@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { Response } from "express";
+import { Response, NextFunction } from "express";
 import { z } from "zod";
 import { BusinessContextRequest } from "../middleware/businessContext";
 import {
@@ -14,7 +14,7 @@ import logger from "../utils/Logger/logger";
 import {
   handleRouteError,
   sendSuccessResponse
-} from '../utils/errorResponse';
+} from '../utils/responseUtils';
 import { formatDateForAPI, formatTimeForAPI } from '../utils/timezoneHelper';
 
 export class AppointmentController {
@@ -94,10 +94,10 @@ export class AppointmentController {
         }))
       };
 
-      sendSuccessResponse(res, cleanedResult, 'Appointments retrieved successfully');
+      sendSuccessResponse(res, 'Appointments retrieved successfully', cleanedResult);
 
     } catch (error) {
-      handleError(error, req, res, next, "AppointmentController.getMyAppointments");
+      handleRouteError(error, req, res, next);
     }
   }
 
@@ -251,7 +251,8 @@ export class AppointmentController {
    */
   async getStaffAppointments(
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
+    next: NextFunction
   ): Promise<void> {
     try {
       const { staffId } = req.params;
@@ -265,10 +266,10 @@ export class AppointmentController {
         limit: parseInt(limit as string) || 20,
       };
 
-      const result = await this.appointmentService.getStaffAppointments(
+      const result = await this.appointmentService.getAllAppointments(
         userId,
-        staffId,
-        filters
+        filters.page,
+        filters.limit
       );
 
       res.json({
@@ -290,13 +291,14 @@ export class AppointmentController {
   }
 
   async getBusinessAppointments(
-    req: BusinessOwnershipRequest,
-    res: Response
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
   ): Promise<void> {
     try {
       // Business ownership already validated by middleware
       const businessId = req.params.businessId;
-      const business = req.business; // Properly typed business object
+      const business = (req as BusinessOwnershipRequest).business; // Properly typed business object
       const userId = req.user!.id;
       const { staffId } = req.query; // Optional staff filter
       const page = parseInt(req.query.page as string) || 1;
@@ -315,12 +317,12 @@ export class AppointmentController {
         userId,
         businessId,
         page,
-        limit,
-        staffId as string // Pass staff filter
+        limit
       );
 
       sendSuccessResponse(
         res,
+        "Business appointments retrieved successfully",
         {
           appointments: result.appointments,
           meta: {
@@ -332,11 +334,10 @@ export class AppointmentController {
             businessName: business.name,
             ...(staffId && { staffId }), // Include staffId in meta if filtered
           },
-        },
-        "Business appointments retrieved successfully"
+        }
       );
     } catch (error) {
-      handleError(error, req, res, next, "AppointmentController.getBusinessAppointments");
+      handleRouteError(error, req, res, next);
     }
   }
 
@@ -589,13 +590,14 @@ export class AppointmentController {
   }
 
   async getTodaysAppointments(
-    req: BusinessOwnershipRequest,
-    res: Response
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
   ): Promise<void> {
     try {
       // Business ownership already validated by middleware
       const businessId = req.params.businessId;
-      const business = req.business; // Properly typed business object
+      const business = (req as BusinessOwnershipRequest).business; // Properly typed business object
       const userId = req.user!.id;
 
       logger.info("Fetching today's appointments for business", {
@@ -643,6 +645,7 @@ export class AppointmentController {
 
       sendSuccessResponse(
         res,
+        "Today's appointments retrieved successfully",
         {
           appointments: cleanedAppointments,
           meta: {
@@ -651,11 +654,72 @@ export class AppointmentController {
             businessName: business.name,
             date: new Date().toISOString().split("T")[0],
           },
-        },
-        "Today's appointments retrieved successfully"
+        }
       );
     } catch (error) {
-      handleError(error, req, res, next, "AppointmentController.getBusinessAppointments");
+      handleRouteError(error, req, res, next);
+    }
+  }
+
+  async getMyTodaysAppointments(
+    req: BusinessContextRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessContext = req.businessContext;
+
+      if (!businessContext || businessContext.businessIds.length === 0) {
+        res.status(404).json({
+          success: false,
+          error: "No businesses found for user",
+        });
+        return;
+      }
+
+      // Get today's appointments for all user's businesses
+      const allAppointments = [];
+      for (const businessId of businessContext.businessIds) {
+        try {
+          const appointments = await this.appointmentService.getTodaysAppointments(
+            userId,
+            businessId
+          );
+          allAppointments.push(...appointments);
+          } catch (error) {
+            // Continue with other businesses
+          }
+      }
+
+      // Clean appointment data with proper typing and format dates
+      const cleanedAppointments = allAppointments.map((appointment) => ({
+        id: appointment.id,
+        customerName: appointment.customer?.name || "Unknown Customer",
+        customerPhone: appointment.customer?.phoneNumber || "",
+        serviceName: appointment.service?.name || "Unknown Service",
+        staffName: appointment.staff?.name || "Unassigned",
+        startTime: appointment.startTime.toISOString(),
+        endTime: appointment.endTime.toISOString(),
+        status: appointment.status,
+        notes: appointment.notes || "",
+        businessId: appointment.businessId,
+      }));
+
+      sendSuccessResponse(
+        res,
+        "Today's appointments retrieved successfully",
+        {
+          appointments: cleanedAppointments,
+          meta: {
+            total: cleanedAppointments.length,
+            businessIds: businessContext.businessIds,
+            date: new Date().toISOString().split("T")[0],
+          },
+        }
+      );
+    } catch (error) {
+      handleRouteError(error, req, res, next);
     }
   }
 
@@ -996,7 +1060,7 @@ export class AppointmentController {
    * Get nearest appointment in current hour for the authenticated user
    * GET /api/v1/appointments/nearest-current-hour
    */
-  async getNearestCurrentHour(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getNearestCurrentHour(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!.id;
       
@@ -1034,7 +1098,7 @@ export class AppointmentController {
         }
       });
     } catch (error) {
-      handleError(error, req, res, next, "AppointmentController.getBusinessAppointments");
+      handleRouteError(error, req, res, next);
     }
   }
 
@@ -1042,7 +1106,7 @@ export class AppointmentController {
    * Get all appointments in current hour for the authenticated user
    * GET /api/v1/appointments/current-hour
    */
-  async getCurrentHourAppointments(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getCurrentHourAppointments(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!.id;
       
@@ -1075,7 +1139,7 @@ export class AppointmentController {
         }
       });
     } catch (error) {
-      handleError(error, req, res, next, "AppointmentController.getBusinessAppointments");
+      handleRouteError(error, req, res, next);
     }
   }
 }

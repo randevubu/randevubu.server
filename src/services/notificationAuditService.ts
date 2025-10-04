@@ -337,7 +337,7 @@ export class NotificationAuditService {
       });
 
       // Convert to AuditEvent format
-      const auditEvents: AuditEvent[] = events.map(event => ({
+      const auditEvents: AuditEvent[] = events.map((event: any) => ({
         id: event.id,
         businessId: event.businessId,
         userId: event.userId,
@@ -397,26 +397,26 @@ export class NotificationAuditService {
 
       // Calculate statistics
       const totalEvents = events.length;
-      const successCount = events.filter(e => e.success).length;
+      const successCount = events.filter((e: any) => e.success).length;
       const failureCount = totalEvents - successCount;
       const successRate = totalEvents > 0 ? (successCount / totalEvents) * 100 : 0;
       const failureRate = 100 - successRate;
 
       // Events by type
       const eventsByType: Record<string, number> = {};
-      events.forEach(event => {
+      events.forEach((event: any) => {
         eventsByType[event.eventType] = (eventsByType[event.eventType] || 0) + 1;
       });
 
       // Events by business
       const eventsByBusiness: Record<string, number> = {};
-      events.forEach(event => {
+      events.forEach((event: any) => {
         eventsByBusiness[event.businessId] = (eventsByBusiness[event.businessId] || 0) + 1;
       });
 
       // Events by user
       const eventsByUser: Record<string, number> = {};
-      events.forEach(event => {
+      events.forEach((event: any) => {
         eventsByUser[event.userId] = (eventsByUser[event.userId] || 0) + 1;
       });
 
@@ -430,7 +430,7 @@ export class NotificationAuditService {
 
       const dailyMap = new Map<string, { count: number; successCount: number; failureCount: number }>();
       
-      events.forEach(event => {
+      events.forEach((event: any) => {
         const date = event.createdAt.toISOString().split('T')[0];
         if (!dailyMap.has(date)) {
           dailyMap.set(date, { count: 0, successCount: 0, failureCount: 0 });

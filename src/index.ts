@@ -18,12 +18,12 @@ import { requestIdMiddleware } from "./middleware/requestId";
 import { RepositoryContainer } from "./repositories";
 import { createRoutes } from "./routes";
 import { ServiceContainer } from "./services";
-import logger, loggers   from "./utils/Logger/logger";
+import logger from "./utils/Logger/logger";
 import {
   gracefulShutdown,
   setServicesForShutdown,
 } from "./utils/gracefulShutdown";
-import { getMetrics, metricsMiddleware } from "./utils/metrics";
+// import { getMetrics, metricsMiddleware } from "./utils/metrics";
 
 const app: Express = express();
 const PORT = config.PORT;
@@ -90,7 +90,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(requestIdMiddleware);
 
 // Metrics collection middleware (before route handlers)
-app.use(metricsMiddleware);
+// app.use(metricsMiddleware);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   (req as any).startTime = Date.now();
@@ -264,7 +264,7 @@ app.get("/health", async (req: Request, res: Response) => {
  *             schema:
  *               type: string
  */
-app.get("/metrics", getMetrics);
+// app.get("/metrics", getMetrics);
 
 // API Documentation
 app.use(
@@ -298,7 +298,7 @@ app.use(errorHandler);
 
 const server = app.listen(PORT, () => {
   // Use structured logging for startup
-  loggers.system.startup(PORT);
+  logger.info(`System startup on port ${PORT}`);
 
   logger.info(`🚀 Server is running on port ${PORT}`);
   logger.info(`📱 Health check: http://localhost:${PORT}/health`);

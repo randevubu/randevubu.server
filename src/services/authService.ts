@@ -18,7 +18,7 @@ import {
   UserLockedError,
   UserNotFoundError,
 } from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 import { ReliabilityScoreCalculator } from "../utils/reliabilityScoreCalculator";
 import { PhoneVerificationService } from "./phoneVerificationService";
 import { RBACService } from "./rbacService";

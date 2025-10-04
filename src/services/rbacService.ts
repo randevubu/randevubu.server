@@ -56,6 +56,12 @@ const SECURITY_CONSTANTS = {
   DEFAULT_TIMEZONE: "UTC",
 } as const;
 
+// Helper function to split permission name into resource and action
+function splitPermissionName(permissionName: string): { resource: string; action: string } {
+  const [resource, action] = permissionName.split(':');
+  return { resource, action };
+}
+
 export class RBACService {
   private permissionCache = new Map<string, UserPermissions>();
   private cacheExpiry = new Map<string, number>();
@@ -1028,6 +1034,33 @@ export class RBACService {
         userId: userPermissions.userId,
         error: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString(),
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Check if user has any of the specified permissions
+   */
+  async requireAny(
+    userId: string,
+    permissions: string[],
+    context?: ErrorContext
+  ): Promise<boolean> {
+    try {
+      for (const permission of permissions) {
+        const { resource, action } = splitPermissionName(permission);
+        if (await this.hasPermission(userId, resource, action)) {
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      logger.error("Error checking requireAny permissions", {
+        userId,
+        permissions,
+        error: error instanceof Error ? error.message : "Unknown error",
+        context,
       });
       return false;
     }

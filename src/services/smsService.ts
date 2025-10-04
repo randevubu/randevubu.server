@@ -1,5 +1,5 @@
 import { ErrorContext } from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 
 export interface SMSSendOptions {
   phoneNumber: string;

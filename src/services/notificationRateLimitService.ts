@@ -139,7 +139,7 @@ export class NotificationRateLimitService {
           id: `usage_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           businessId,
           recipientCount,
-          notificationType,
+          type: notificationType,
           sentAt: now
         }
       });

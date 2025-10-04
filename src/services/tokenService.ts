@@ -15,7 +15,7 @@ import {
   TokenExpiredError,
   UnauthorizedError,
 } from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 
 export class TokenService {
   private static readonly DEFAULT_CONFIG: TokenServiceConfig = {

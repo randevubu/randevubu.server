@@ -77,7 +77,7 @@ export class CustomerRelationshipService {
       // 2. Check if customer exists and is active
       const customer = await this.prisma.user.findUnique({
         where: { id: customerId },
-        select: { id: true, isActive: true, isBlocked: true }
+        select: { id: true, isActive: true, lockedUntil: true }
       });
 
       if (!customer) {
@@ -96,11 +96,11 @@ export class CustomerRelationshipService {
         };
       }
 
-      if (customer.isBlocked) {
+      if (customer.lockedUntil && customer.lockedUntil > new Date()) {
         return {
           isValid: false,
-          reason: 'Customer account is blocked',
-          errorCode: 'CUSTOMER_BLOCKED'
+          reason: 'Customer account is locked',
+          errorCode: 'CUSTOMER_LOCKED'
         };
       }
 
@@ -301,7 +301,7 @@ export class CustomerRelationshipService {
             select: {
               id: true,
               isActive: true,
-              isBlocked: true
+              lockedUntil: true
             }
           }
         },

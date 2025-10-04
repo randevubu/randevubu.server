@@ -33,7 +33,7 @@ import {
   InvalidTokenError,
   TokenExpiredError
 } from '../types/errors';
-import { logger } from '../utils/logger';
+import logger from '../utils/Logger/logger';
 
 export class AuthController {
   constructor(
@@ -350,7 +350,6 @@ export class AuthController {
     }
 
     try {
-      console.log('🚀 About to call tokenService.refreshAccessToken');
       const tokens = await this.tokenService.refreshAccessToken(
         refreshToken,
         deviceInfo,
@@ -520,7 +519,6 @@ export class AuthController {
       // ENTERPRISE PATTERN: If client indicates role update, bypass cache completely
       if (forceRefresh && this.rbacService) {
         this.rbacService.forceInvalidateUser(req.user.id);
-        console.log('🔄 Profile fetch with forced cache refresh for user:', req.user.id);
       }
 
       let profile;

@@ -2,7 +2,7 @@ import { Response } from "express";
 import { ReportsService } from "../services/reportsService";
 import { GuaranteedAuthRequest } from "../types/auth";
 import { BaseError } from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 
 export class ReportsController {
   constructor(private reportsService: ReportsService) {}

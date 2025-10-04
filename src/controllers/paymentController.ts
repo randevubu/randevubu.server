@@ -42,13 +42,6 @@ export class PaymentController {
       const validatedData = createSubscriptionPaymentSchema.parse(req.body);
       const userId = req.user.id;
 
-      console.log(`🔍 Payment request received:`, {
-        businessId,
-        planId: validatedData.planId,
-        discountCode: validatedData.discountCode,
-        hasCard: !!validatedData.card
-      });
-
       const result = await this.paymentService.createSubscriptionForBusiness(
         businessId,
         validatedData.planId,
@@ -65,7 +58,6 @@ export class PaymentController {
         }
       );
 
-      console.log(`🔍 Payment service result:`, result);
 
       if (result.success) {
         res.status(201).json({
@@ -91,7 +83,6 @@ export class PaymentController {
           details: error.errors
         });
       } else {
-        console.error('Create subscription payment error:', error);
         res.status(500).json({
           success: false,
           error: error instanceof Error ? error.message : 'Internal server error'
@@ -134,7 +125,6 @@ export class PaymentController {
           details: error.errors
         });
       } else {
-        console.error('Refund payment error:', error);
         res.status(500).json({
           success: false,
           error: error instanceof Error ? error.message : 'Internal server error'
@@ -163,7 +153,6 @@ export class PaymentController {
         });
       }
     } catch (error) {
-      console.error('Cancel payment error:', error);
       res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Internal server error'
@@ -190,7 +179,6 @@ export class PaymentController {
         });
       }
     } catch (error) {
-      console.error('Get payment error:', error);
       res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Internal server error'
@@ -217,7 +205,6 @@ export class PaymentController {
         });
       }
     } catch (error) {
-      console.error('Get payment history error:', error);
       res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Internal server error'
@@ -240,7 +227,6 @@ export class PaymentController {
         }
       });
     } catch (error) {
-      console.error('Get test cards error:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -275,7 +261,6 @@ export class PaymentController {
         message: 'Subscription plans retrieved successfully'
       });
     } catch (error) {
-      console.error('Get subscription plans error:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -287,7 +272,6 @@ export class PaymentController {
     try {
       const iyzicoData = req.body;
       
-      console.log('Iyzico webhook received:', iyzicoData);
 
       if (iyzicoData.status === 'success') {
         const paymentId = iyzicoData.paymentId;
@@ -295,7 +279,6 @@ export class PaymentController {
         const payment = await this.paymentService.retrievePayment(paymentId);
         
         if (payment.success) {
-          console.log('Webhook processed successfully for payment:', paymentId);
         }
       }
 
@@ -304,7 +287,6 @@ export class PaymentController {
         message: 'Webhook processed'
       });
     } catch (error) {
-      console.error('Webhook handler error:', error);
       res.status(400).json({
         status: 'error',
         message: 'Webhook processing failed'

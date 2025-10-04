@@ -59,3 +59,21 @@ export interface SuccessResponse<T = any> {
  * Generic API response (success or error)
  */
 export type ApiResponse<T = any> = SuccessResponse<T> | ErrorResponse;
+
+/**
+ * App Error class for application-specific errors
+ */
+export class AppError extends Error {
+  public statusCode: number;
+  public code: string;
+  public isOperational: boolean;
+
+  constructor(message: string, statusCode: number = 500, code: string = 'APP_ERROR', isOperational: boolean = true) {
+    super(message);
+    this.statusCode = statusCode;
+    this.code = code;
+    this.isOperational = isOperational;
+    
+    Error.captureStackTrace(this, this.constructor);
+  }
+}

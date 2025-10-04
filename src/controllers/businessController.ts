@@ -16,13 +16,13 @@ import { TokenService } from '../services/tokenService';
 import { StaffService } from '../services/staffService';
 import { AuthenticatedRequest, AuthenticatedRequestWithFile } from '../types/auth';
 import {
-  BusinessErrors,
-  createErrorContext,
   handleRouteError,
+  sendSuccessResponse,
+  createErrorContext,
   sendAppErrorResponse,
-  sendSuccessResponse
-} from '../utils/errorResponse';
-import { AppError } from '../types/errorResponse';
+  BusinessErrors
+} from '../utils/responseUtils';
+import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
 
 export class BusinessController {
@@ -43,13 +43,8 @@ export class BusinessController {
       const userId = req.user!.id;
       const includeSubscription = req.query.includeSubscription === 'true';
       
-      console.log('🔍 DEBUG getMyBusiness:');
-      console.log('  User ID:', userId);
-      console.log('  User roles:', req.user?.roles?.map(r => r.name) || 'undefined');
-      console.log('  Business context:', req.businessContext);
       
       if (!req.businessContext || req.businessContext.businessIds.length === 0) {
-        console.log('  ❌ Returning empty - no business context or empty business IDs');
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.set('Pragma', 'no-cache');
         res.set('Expires', '0');
@@ -64,14 +59,9 @@ export class BusinessController {
       }
 
       let businesses;
-      console.log('DEBUG: includeSubscription =', includeSubscription);
       if (includeSubscription) {
-        console.log('DEBUG: Calling getMyBusinessesWithSubscription');
         businesses = await this.businessService.getMyBusinessesWithSubscription(userId);
-        console.log('DEBUG: Received businesses with subscription:', businesses.length, 'businesses');
-        console.log('DEBUG: First business subscription:', businesses[0]?.subscription);
       } else {
-        console.log('DEBUG: Calling regular getMyBusinesses');
         businesses = await this.businessService.getMyBusinesses(userId);
       }
 
@@ -173,18 +163,18 @@ export class BusinessController {
       // This enables them to create their first business
       if (!req.businessContext || (req.businessContext.businessIds.length === 0 && !req.businessContext.isOwner)) {
         const context = createErrorContext(req, userId);
-        const error = BusinessErrors.noAccess(context);
+        const error = new AppError('Access denied', 403, BusinessErrors.noAccess);
         return sendAppErrorResponse(res, error);
       }
 
       // If user has no businesses yet, return empty services array
       if (req.businessContext.businessIds.length === 0) {
-        return sendSuccessResponse(res, {
+        return sendSuccessResponse(res, 'No services found - create a business first', {
           services: [],
           total: 0,
           page: 1,
           totalPages: 0
-        }, 'No services found - create a business first');
+        });
       }
 
       const { businessId, active, page = '1', limit = '50' } = req.query;
@@ -198,7 +188,7 @@ export class BusinessController {
         limit: limitNum
       });
 
-      sendSuccessResponse(res, services, 'Services retrieved successfully');
+      sendSuccessResponse(res, 'Services retrieved successfully', services);
 
     } catch (error) {
       handleRouteError(error, req, res);
@@ -206,19 +196,11 @@ export class BusinessController {
   }
 
   async createBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
-    console.log('🚀 BUSINESS CREATION STARTED - Method called');
-    console.log('🚀 BUSINESS CREATION - Request body:', req.body);
-    console.log('🚀 BUSINESS CREATION - User:', req.user?.id);
-    console.log('🚀 BUSINESS CREATION - Token service available:', !!this.tokenService);
-    console.log('🚀 BUSINESS CREATION - RBAC service available:', !!this.rbacService);
     try {
       const validatedData = createBusinessSchema.parse(req.body);
       const userId = req.user!.id;
-      console.log('🚀 BUSINESS CREATION - User ID:', userId);
-      
       // Get user's roles before business creation
       const userRolesBefore = req.user?.roles?.map(role => role.name) || [];
-      console.log('🔍 DEBUG Business Creation - Roles before:', userRolesBefore);
 
       // Create business (transaction will be committed inside the service)
       const business = await this.businessService.createBusiness(userId, validatedData);
@@ -240,7 +222,6 @@ export class BusinessController {
         const ownerWasAdded = !userRolesBefore.includes('OWNER') && userRolesAfter.includes('OWNER');
         
         if (!ownerWasAdded) {
-          console.warn('⚠️ OWNER role was not found immediately after assignment. Retrying...');
           // Retry with additional cache clearing (handles distributed cache scenarios)
           this.rbacService.forceInvalidateUser(userId);
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -264,7 +245,6 @@ export class BusinessController {
           refreshToken: tokenPair.refreshToken
         };
         
-        console.log('✅ Role propagation validated successfully:', userRolesAfter);
       }
 
       const response: any = {
@@ -282,13 +262,10 @@ export class BusinessController {
         res.set('X-Role-Update', 'true');
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       } else {
-        console.warn('⚠️ No tokens generated after business creation');
       }
 
       res.status(201).json(response);
     } catch (error) {
-      console.error('❌ BUSINESS CREATION ERROR:', error);
-      console.error('❌ BUSINESS CREATION ERROR STACK:', error instanceof Error ? error.stack : 'No stack trace');
       res.status(400).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to create business'
@@ -1192,7 +1169,7 @@ export class BusinessController {
         includeInactive
       );
 
-      sendSuccessResponse(res, { staff });
+      sendSuccessResponse(res, 'Staff retrieved successfully', { staff });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1227,7 +1204,7 @@ export class BusinessController {
         context
       );
 
-      sendSuccessResponse(res, result);
+      sendSuccessResponse(res, 'Staff member added successfully', result);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1271,13 +1248,12 @@ export class BusinessController {
       );
 
       if (result.success) {
-        sendSuccessResponse(res, result, undefined, undefined, 201);
+        sendSuccessResponse(res, 'Staff member verified successfully', result, 201);
       } else {
         const error = new AppError(
-          ERROR_CODES.INVALID_VERIFICATION_CODE,
-          { message: result.message },
-          context,
-          400
+          result.message,
+          400,
+          ERROR_CODES.INVALID_VERIFICATION_CODE
         );
         sendAppErrorResponse(res, error);
       }
@@ -1292,31 +1268,18 @@ export class BusinessController {
    */
   async uploadImage(req: AuthenticatedRequestWithFile, res: Response): Promise<void> {
     try {
-      console.log('🔍 Upload Image - Starting');
       const userId = req.user!.id;
       const { businessId } = req.params;
       
-      console.log('🔍 Upload Image - User ID:', userId);
-      console.log('🔍 Upload Image - Business ID:', businessId);
-      console.log('🔍 Upload Image - Request body:', req.body);
-      console.log('🔍 Upload Image - File info:', req.file ? {
-        fieldname: req.file.fieldname,
-        originalname: req.file.originalname,
-        mimetype: req.file.mimetype,
-        size: req.file.size
-      } : 'No file');
-      
       // Validate request body
       const validatedData = imageUploadSchema.parse(req.body);
-      console.log('🔍 Upload Image - Validated data:', validatedData);
       
       // Check if file was uploaded
       if (!req.file) {
         const error = new AppError(
-          ERROR_CODES.VALIDATION_ERROR,
-          { message: 'No image file provided' },
-          createErrorContext(req, 'IMAGE_UPLOAD'),
-          400
+          'No image file provided',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
         );
         sendAppErrorResponse(res, error);
         return;
@@ -1325,7 +1288,6 @@ export class BusinessController {
       const { imageType } = validatedData;
       const file = req.file;
 
-      console.log('🔍 Upload Image - Calling business service...');
       const result = await this.businessService.uploadBusinessImage(
         userId,
         businessId,
@@ -1335,14 +1297,11 @@ export class BusinessController {
         file.mimetype
       );
 
-      console.log('🔍 Upload Image - Success:', result.imageUrl);
-      sendSuccessResponse(res, {
-        message: `${imageType} image uploaded successfully`,
+      sendSuccessResponse(res, `${imageType} image uploaded successfully`, {
         imageUrl: result.imageUrl,
         business: result.business
       });
     } catch (error) {
-      console.error('🚨 Upload Image Error:', error);
       handleRouteError(error, req, res);
     }
   }
@@ -1366,8 +1325,7 @@ export class BusinessController {
         imageType
       );
 
-      sendSuccessResponse(res, {
-        message: `${imageType} image deleted successfully`,
+      sendSuccessResponse(res, `${imageType} image deleted successfully`, {
         business
       });
     } catch (error) {
@@ -1394,8 +1352,7 @@ export class BusinessController {
         imageUrl
       );
 
-      sendSuccessResponse(res, {
-        message: 'Gallery image deleted successfully',
+      sendSuccessResponse(res, 'Gallery image deleted successfully', {
         business
       });
     } catch (error) {
@@ -1414,8 +1371,7 @@ export class BusinessController {
 
       const images = await this.businessService.getBusinessImages(userId, businessId);
 
-      sendSuccessResponse(res, {
-        message: 'Business images retrieved successfully',
+      sendSuccessResponse(res, 'Business images retrieved successfully', {
         images
       });
     } catch (error) {
@@ -1435,10 +1391,9 @@ export class BusinessController {
 
       if (!Array.isArray(imageUrls)) {
         const error = new AppError(
-          ERROR_CODES.VALIDATION_ERROR,
-          { message: 'imageUrls must be an array' },
-          createErrorContext(req, 'IMAGE_UPDATE'),
-          400
+          'imageUrls must be an array',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
         );
         sendAppErrorResponse(res, error);
         return;
@@ -1450,8 +1405,7 @@ export class BusinessController {
         imageUrls
       );
 
-      sendSuccessResponse(res, {
-        message: 'Gallery images updated successfully',
+      sendSuccessResponse(res, 'Gallery images updated successfully', {
         business
       });
     } catch (error) {

@@ -50,7 +50,7 @@ export class StaffController {
         context
       );
 
-      sendSuccessResponse(res, result);
+      sendSuccessResponse(res, result.message, { success: result.success });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -93,13 +93,12 @@ export class StaffController {
       );
 
       if (result.success) {
-        sendSuccessResponse(res, result, undefined, undefined, 201);
+        sendSuccessResponse(res, 'Staff member verified successfully', result, 201);
       } else {
         const error = new AppError(
-          ERROR_CODES.INVALID_VERIFICATION_CODE,
-          { message: result.message },
-          context,
-          400
+          result.message,
+          400,
+          ERROR_CODES.INVALID_VERIFICATION_CODE
         );
         sendAppErrorResponse(res, error);
       }
@@ -128,7 +127,7 @@ export class StaffController {
         includeInactive
       );
 
-      sendSuccessResponse(res, { staff });
+      sendSuccessResponse(res, 'Staff retrieved successfully', { staff });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -149,16 +148,15 @@ export class StaffController {
 
       if (!staff) {
         const error = new AppError(
-          ERROR_CODES.STAFF_NOT_FOUND,
-          {},
-          createErrorContext(req),
-          404
+          'Staff member not found',
+          404,
+          ERROR_CODES.STAFF_NOT_FOUND
         );
         sendAppErrorResponse(res, error);
         return;
       }
 
-      sendSuccessResponse(res, { staff });
+      sendSuccessResponse(res, 'Staff member retrieved successfully', { staff });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -183,7 +181,7 @@ export class StaffController {
         updates
       );
 
-      sendSuccessResponse(res, { staff });
+      sendSuccessResponse(res, 'Staff member updated successfully', { staff });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -203,9 +201,7 @@ export class StaffController {
 
       await this.staffService.removeStaff(userId, staffId);
 
-      sendSuccessResponse(res, {
-        message: "Staff member removed successfully",
-      });
+      sendSuccessResponse(res, "Staff member removed successfully");
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -225,7 +221,7 @@ export class StaffController {
 
       const stats = await this.staffService.getStaffStats(userId, businessId);
 
-      sendSuccessResponse(res, { stats });
+      sendSuccessResponse(res, 'Staff statistics retrieved successfully', { stats });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -250,10 +246,9 @@ export class StaffController {
         !Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)
       ) {
         const error = new AppError(
-          ERROR_CODES.VALIDATION_ERROR,
-          { field: "role", message: "Invalid staff role" },
-          createErrorContext(req),
-          400
+          "Invalid staff role",
+          400,
+          ERROR_CODES.VALIDATION_ERROR
         );
         sendAppErrorResponse(res, error);
         return;
@@ -266,7 +261,7 @@ export class StaffController {
       );
       const filteredStaff = staff.filter((s) => s.role === role);
 
-      sendSuccessResponse(res, { staff: filteredStaff });
+      sendSuccessResponse(res, 'Staff by role retrieved successfully', { staff: filteredStaff });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -289,7 +284,7 @@ export class StaffController {
         "repositories"
       ].staffRepository.findByUserId(userId);
 
-      sendSuccessResponse(res, { positions });
+      sendSuccessResponse(res, 'Staff positions retrieved successfully', { positions });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -311,7 +306,7 @@ export class StaffController {
         toBusinessId
       );
 
-      sendSuccessResponse(res, { message: "Staff transferred successfully" });
+      sendSuccessResponse(res, "Staff transferred successfully");
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -355,7 +350,7 @@ export class StaffController {
         }
       }
 
-      sendSuccessResponse(res, { results });
+      sendSuccessResponse(res, 'Bulk invitation completed', { results });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -376,7 +371,7 @@ export class StaffController {
         description: this.getRoleDescription(role),
       }));
 
-      sendSuccessResponse(res, { roles });
+      sendSuccessResponse(res, 'Available staff roles retrieved successfully', { roles });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -413,7 +408,7 @@ export class StaffController {
 
       const staff = await this.staffService.getPublicBusinessStaff(businessId);
 
-      sendSuccessResponse(res, { staff });
+      sendSuccessResponse(res, 'Public business staff retrieved successfully', { staff });
     } catch (error) {
       handleRouteError(error, req, res);
     }

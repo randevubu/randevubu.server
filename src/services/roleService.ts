@@ -16,7 +16,7 @@ import {
   UserNotFoundError,
   ValidationError,
 } from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 import { RBACService } from "./rbacService";
 
 export class RoleService {

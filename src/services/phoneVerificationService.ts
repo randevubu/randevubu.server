@@ -11,7 +11,7 @@ import {
   VerificationCodeInvalidError,
   VerificationMaxAttemptsError,
 } from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 import { SMSService } from "./smsService";
 import { TokenService } from "./tokenService";
 
