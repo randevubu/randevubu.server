@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
-import { logger } from '../utils/logger';
+import logger from '../utils/Logger/logger';
 import { config } from '../config/environment';
 import {
   BaseError,
@@ -9,7 +9,6 @@ import {
   InternalServerError,
   createSecureErrorResponse,
 } from "../types/errors";
-import { logger } from "../utils/Logger/logger";
 
 class RouteNotFoundError extends BaseError {
   constructor(url: string, context?: ErrorContext) {

@@ -2,7 +2,7 @@
 import { PrismaClient } from "@prisma/client";
 import * as cron from "node-cron";
 import { AppointmentStatus } from "../types/business";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 import { getCurrentTimeInIstanbul } from "../utils/timezoneHelper";
 
 export interface AppointmentSchedulerConfig {

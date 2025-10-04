@@ -95,6 +95,7 @@ model User {
   discountCodeUsages     DiscountCodeUsage[]     @relation("DiscountCodeUsedBy")
   pushSubscriptions      PushSubscription[]
   notificationPreference NotificationPreference?
+  notificationAudits     NotificationAudit[]
 
   @@index([createdAt])
   @@index([isActive])
@@ -331,6 +332,8 @@ model Business {
   hoursOverrides     BusinessHoursOverride[]
   pushNotifications  PushNotification[]
   notificationSettings BusinessNotificationSettings?
+  notificationAudits NotificationAudit[]
+  notificationUsage  NotificationUsage[]
 
   @@index([ownerId])
   @@index([businessTypeId])
@@ -996,4 +999,43 @@ model BusinessNotificationSettings {
 
   @@index([businessId])
   @@map("business_notification_settings")
+}
+
+model NotificationAudit {
+  id            String   @id
+  businessId    String
+  userId        String
+  eventType     String
+  action        String
+  details       Json?
+  recipientCount Int?
+  success       Boolean
+  errorCode     String?
+  errorMessage  String?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([success])
+  @@map("notification_audits")
+}
+
+model NotificationUsage {
+  id         String   @id
+  businessId String
+  sentAt     DateTime @default(now())
+  type       String   // 'SMS', 'PUSH', 'EMAIL'
+  recipientCount Int  @default(1)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([sentAt])
+  @@index([type])
+  @@map("notification_usage")
 }

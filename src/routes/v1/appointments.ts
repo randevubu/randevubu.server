@@ -916,7 +916,7 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/business/:businessId",
-    requireBusinessOwnershipAccess("businessId"), // Use new business ownership middleware
+    requireBusinessOwnershipAccess,
     appointmentController.getBusinessAppointments.bind(appointmentController)
   );
 
@@ -945,7 +945,7 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/business/:businessId/today",
-    requireBusinessOwnershipAccess("businessId"), // Use new business ownership middleware
+    requireBusinessOwnershipAccess,
     appointmentController.getTodaysAppointments.bind(appointmentController)
   );
 
@@ -1036,7 +1036,7 @@ export function createAppointmentRoutes(
   router.get(
     "/my/today",
     requireBusinessAccess,
-    appointmentController.getTodaysAppointments.bind(appointmentController)
+    appointmentController.getMyTodaysAppointments.bind(appointmentController)
   );
 
   /**
@@ -1064,7 +1064,7 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/business/:businessId/stats",
-    requireBusinessOwnershipAccess("businessId"), // Use new business ownership middleware
+    requireBusinessOwnershipAccess,
     appointmentController.getAppointmentStats.bind(appointmentController)
   );
 
@@ -1208,7 +1208,7 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/business/:businessId/status/:status",
-    requireBusinessOwnershipAccess("businessId"), // Use new business ownership middleware
+    requireBusinessOwnershipAccess,
     appointmentController.getAppointmentsByStatus.bind(appointmentController)
   );
 

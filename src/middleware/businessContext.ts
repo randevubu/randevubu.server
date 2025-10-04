@@ -144,7 +144,7 @@ export class BusinessContextMiddleware {
     
     if (!req.businessContext || req.businessContext.businessIds.length === 0) {
       const context = createErrorContext(req, req.user?.id);
-      const error = BusinessErrors.noAccess(context);
+      const error = BusinessErrors.noAccess('No business access', context);
       return sendAppErrorResponse(res, error);
     }
     next();
@@ -156,7 +156,7 @@ export class BusinessContextMiddleware {
   requireBusinessOwner(req: BusinessContextRequest, res: Response, next: NextFunction): void {
     if (!req.businessContext?.isOwner) {
       const context = createErrorContext(req, req.user?.id);
-      const error = BusinessErrors.noAccess(context);
+      const error = BusinessErrors.noAccess('No business access', context);
       return sendAppErrorResponse(res, error);
     }
     next();
@@ -169,7 +169,7 @@ export class BusinessContextMiddleware {
   requireBusinessContext(req: BusinessContextRequest, res: Response, next: NextFunction): void {
     if (!req.businessContext) {
       const context = createErrorContext(req, req.user?.id);
-      const error = BusinessErrors.noAccess(context);
+      const error = BusinessErrors.noAccess('No business access', context);
       return sendAppErrorResponse(res, error);
     }
     next();
@@ -200,7 +200,7 @@ export class BusinessContextMiddleware {
 
       if (!req.businessContext || !this.validateBusinessAccess(businessId, req.businessContext)) {
         const context = createErrorContext(req, req.user?.id);
-        const error = BusinessErrors.noAccess(context);
+        const error = BusinessErrors.noAccess('No business access', context);
         return sendAppErrorResponse(res, error);
       }
       

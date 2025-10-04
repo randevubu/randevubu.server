@@ -2,7 +2,7 @@
 import { PrismaClient } from "@prisma/client";
 import * as cron from "node-cron";
 import { SubscriptionStatus } from "../types/business";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 import { NotificationService } from "./notificationService";
 import { PaymentService } from "./paymentService";
 

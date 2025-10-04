@@ -11,6 +11,7 @@ import {
   sendAppErrorResponse,
   sendSuccessResponse,
 } from "../utils/responseUtils";
+import { BusinessRuleViolationError } from "../types/errors";
 
 const usageQuerySchema = z.object({
   days: z.coerce.number().min(1).max(365).optional().default(30),
@@ -38,14 +39,15 @@ export class UsageController {
       );
 
       if (!summary) {
-        const context = createErrorContext(req, businessId);
-        const error = BusinessErrors.notFound(businessId, context);
+        const error = new BusinessRuleViolationError(
+          'BUSINESS_NOT_FOUND',
+          'Business not found'
+        );
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(res, {
-        data: summary,
-        message: "Usage summary retrieved successfully",
+      sendSuccessResponse(res, "Usage summary retrieved successfully", {
+        data: summary
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -67,14 +69,15 @@ export class UsageController {
       const alerts = await this.usageService.getUsageAlerts(userId, businessId);
 
       if (!alerts) {
-        const context = createErrorContext(req, businessId);
-        const error = BusinessErrors.notFound(businessId, context);
+        const error = new BusinessRuleViolationError(
+          'BUSINESS_NOT_FOUND',
+          'Business not found'
+        );
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(res, {
-        data: alerts,
-        message: "Usage alerts retrieved successfully",
+      sendSuccessResponse(res, "Usage alerts retrieved successfully", {
+        data: alerts
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -96,10 +99,9 @@ export class UsageController {
 
       const queryResult = usageQuerySchema.safeParse(req.query);
       if (!queryResult.success) {
-        const context = createErrorContext(req);
-        const error = ValidationErrors.general(
-          "Invalid query parameters",
-          context
+        const error = new BusinessRuleViolationError(
+          'VALIDATION_ERROR',
+          'Invalid query parameters'
         );
         return sendAppErrorResponse(res, error);
       }
@@ -111,9 +113,8 @@ export class UsageController {
         days
       );
 
-      sendSuccessResponse(res, {
-        data: usage,
-        message: `Daily SMS usage for last ${days} days retrieved successfully`,
+      sendSuccessResponse(res, `Daily SMS usage for last ${days} days retrieved successfully`, {
+        data: usage
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -135,10 +136,9 @@ export class UsageController {
 
       const queryResult = usageQuerySchema.safeParse(req.query);
       if (!queryResult.success) {
-        const context = createErrorContext(req);
-        const error = ValidationErrors.general(
-          "Invalid query parameters",
-          context
+        const error = new BusinessRuleViolationError(
+          'VALIDATION_ERROR',
+          'Invalid query parameters'
         );
         return sendAppErrorResponse(res, error);
       }
@@ -150,9 +150,8 @@ export class UsageController {
         months
       );
 
-      sendSuccessResponse(res, {
-        data: history,
-        message: `Monthly usage history for last ${months} months retrieved successfully`,
+      sendSuccessResponse(res, `Monthly usage history for last ${months} months retrieved successfully`, {
+        data: history
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -176,14 +175,13 @@ export class UsageController {
           this.usageService.canAddCustomer(businessId),
         ]);
 
-      sendSuccessResponse(res, {
+      sendSuccessResponse(res, "Usage limits check completed successfully", {
         data: {
           sms: smsCheck,
           staff: staffCheck,
           service: serviceCheck,
           customer: customerCheck,
-        },
-        message: "Usage limits check completed successfully",
+        }
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -203,12 +201,11 @@ export class UsageController {
         this.usageService.updateServiceUsage(businessId),
       ]);
 
-      sendSuccessResponse(res, {
+      sendSuccessResponse(res, "Usage data refreshed successfully", {
         data: {
           refreshedCounters: ["staff", "services"],
           updatedAt: new Date().toISOString(),
-        },
-        message: "Usage data refreshed successfully",
+        }
       });
     } catch (error) {
       handleRouteError(error, req, res);

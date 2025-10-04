@@ -11,7 +11,7 @@ import { AppointmentSchedulerService } from "../../services/appointmentScheduler
 import { RBACService } from "../../services/rbacService";
 import { SMSService } from "../../services/smsService";
 import { UsageService } from "../../services/usageService";
-import { logger } from "../../utils/Logger/logger";
+import logger from "../../utils/Logger/logger";
 import { TestSubscriptionHelper } from "../../utils/testSubscriptionHelper";
 
 const router = Router();

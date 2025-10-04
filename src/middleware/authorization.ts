@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { RBACService } from "../services/rbacService";
 import { ErrorContext, ForbiddenError } from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 import { AuthenticatedRequest } from "./auth";
 
 export interface AuthorizationOptions {

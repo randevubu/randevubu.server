@@ -1,5 +1,5 @@
 import { Server } from "http";
-import { logger } from "./Logger/logger";
+import logger from "./Logger/logger";
 
 let services: any = null;
 

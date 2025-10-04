@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { performance } from "perf_hooks";
-import { logger } from "./Logger/logger";
+import logger from "./Logger/logger";
 
 export interface RequestMetrics {
   requestId: string;

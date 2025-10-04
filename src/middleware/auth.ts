@@ -10,7 +10,7 @@ import {
   UserLockedError,
   UserNotVerifiedError,
 } from "../types/errors";
-import { logger } from "../utils/Logger/logger";
+import logger from "../utils/Logger/logger";
 
 export interface AuthenticatedRequest extends Request {
   user?: AuthenticatedUser;

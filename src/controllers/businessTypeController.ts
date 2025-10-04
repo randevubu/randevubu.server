@@ -14,8 +14,8 @@ export class BusinessTypeController {
     error: unknown,
     fallbackMessage: string
   ): void {
-    const message = getErrorMessage(error, fallbackMessage);
-    sendSimpleErrorResponse(res, 500, message);
+    const message = getErrorMessage(error) || fallbackMessage;
+    sendSimpleErrorResponse(res, message, 500);
   }
 
   /**
@@ -28,8 +28,8 @@ export class BusinessTypeController {
         await this.businessTypeService.getAllActiveBusinessTypes();
       sendStandardSuccessResponse(
         res,
-        businessTypes,
-        "Business types retrieved successfully"
+        "Business types retrieved successfully",
+        businessTypes
       );
     } catch (error) {
       this.handleError(res, error, "Failed to retrieve business types");
@@ -46,8 +46,8 @@ export class BusinessTypeController {
         await this.businessTypeService.getAllBusinessTypes();
       sendStandardSuccessResponse(
         res,
-        businessTypes,
-        "All business types retrieved successfully"
+        "All business types retrieved successfully",
+        businessTypes
       );
     } catch (error) {
       this.handleError(res, error, "Failed to retrieve business types");
@@ -67,16 +67,16 @@ export class BusinessTypeController {
       if (businessTypes.length === 0) {
         sendSimpleErrorResponse(
           res,
-          404,
-          `No business types found for category: ${category}`
+          `No business types found for category: ${category}`,
+          404
         );
         return;
       }
 
       sendStandardSuccessResponse(
         res,
-        businessTypes,
-        `Business types for category '${category}' retrieved successfully`
+        `Business types for category '${category}' retrieved successfully`,
+        businessTypes
       );
     } catch (error) {
       this.handleError(
@@ -99,14 +99,14 @@ export class BusinessTypeController {
       );
 
       if (!businessType) {
-        sendSimpleErrorResponse(res, 404, "Business type not found");
+        sendSimpleErrorResponse(res, "Business type not found", 404);
         return;
       }
 
       sendStandardSuccessResponse(
         res,
-        businessType,
-        "Business type retrieved successfully"
+        "Business type retrieved successfully",
+        businessType
       );
     } catch (error) {
       this.handleError(res, error, "Failed to retrieve business type");
@@ -124,8 +124,8 @@ export class BusinessTypeController {
 
       sendStandardSuccessResponse(
         res,
-        businessTypes,
-        "Business types with count retrieved successfully"
+        "Business types with count retrieved successfully",
+        businessTypes
       );
     } catch (error) {
       this.handleError(
@@ -146,8 +146,8 @@ export class BusinessTypeController {
 
       sendStandardSuccessResponse(
         res,
-        categories,
-        "Categories retrieved successfully"
+        "Categories retrieved successfully",
+        categories
       );
     } catch (error) {
       this.handleError(res, error, "Failed to retrieve categories");
@@ -168,8 +168,8 @@ export class BusinessTypeController {
 
       sendStandardSuccessResponse(
         res,
-        groupedBusinessTypes,
-        "Business types grouped by category retrieved successfully"
+        "Business types grouped by category retrieved successfully",
+        groupedBusinessTypes
       );
     } catch (error) {
       this.handleError(res, error, "Failed to retrieve grouped business types");

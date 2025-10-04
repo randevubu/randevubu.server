@@ -121,7 +121,6 @@ export class DiscountCodeController {
         message: 'Discount code created successfully'
       });
     } catch (error) {
-      console.error('Create discount code error:', error);
       res.status(error instanceof Error && error.message.includes('permission') ? 403 : 400).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to create discount code'
@@ -195,7 +194,6 @@ export class DiscountCodeController {
         data: result
       });
     } catch (error) {
-      console.error('Get discount codes error:', error);
       res.status(error instanceof Error && error.message.includes('permission') ? 403 : 500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to retrieve discount codes'
@@ -245,7 +243,6 @@ export class DiscountCodeController {
         data: discountCode
       });
     } catch (error) {
-      console.error('Get discount code error:', error);
       const statusCode = error instanceof Error && error.message.includes('not found') ? 404 :
                         error instanceof Error && error.message.includes('permission') ? 403 : 500;
       
@@ -296,7 +293,6 @@ export class DiscountCodeController {
         message: 'Discount code updated successfully'
       });
     } catch (error) {
-      console.error('Update discount code error:', error);
       const statusCode = error instanceof Error && error.message.includes('not found') ? 404 :
                         error instanceof Error && error.message.includes('permission') ? 403 : 400;
       
@@ -348,7 +344,6 @@ export class DiscountCodeController {
         message: 'Discount code deactivated successfully'
       });
     } catch (error) {
-      console.error('Deactivate discount code error:', error);
       res.status(error instanceof Error && error.message.includes('permission') ? 403 : 500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to deactivate discount code'
@@ -399,7 +394,6 @@ export class DiscountCodeController {
         message: 'Discount code deleted successfully'
       });
     } catch (error) {
-      console.error('Delete discount code error:', error);
       const statusCode = error instanceof Error && error.message.includes('already used') ? 400 :
                         error instanceof Error && error.message.includes('permission') ? 403 : 500;
       
@@ -484,7 +478,6 @@ export class DiscountCodeController {
         }
       });
     } catch (error) {
-      console.error('Validate discount code error:', error);
       res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to validate discount code'
@@ -539,7 +532,6 @@ export class DiscountCodeController {
         data: result
       });
     } catch (error) {
-      console.error('Get usage history error:', error);
       const statusCode = error instanceof Error && error.message.includes('not found') ? 404 :
                         error instanceof Error && error.message.includes('permission') ? 403 : 500;
       
@@ -593,7 +585,6 @@ export class DiscountCodeController {
         data: statistics
       });
     } catch (error) {
-      console.error('Get statistics error:', error);
       res.status(error instanceof Error && error.message.includes('permission') ? 403 : 500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to retrieve statistics'
@@ -664,7 +655,6 @@ export class DiscountCodeController {
         message: `Successfully generated ${codes.length} discount codes`
       });
     } catch (error) {
-      console.error('Generate bulk codes error:', error);
       res.status(error instanceof Error && error.message.includes('permission') ? 403 : 400).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to generate bulk discount codes'

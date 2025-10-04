@@ -7,9 +7,9 @@ import { RBACService } from './rbacService';
 import { UsageService } from './usageService';
 import { PermissionName, CreateUserData, UpdateUserData } from '../types/auth';
 import { ErrorContext } from '../types/errors';
-import { AuthError } from '../types/errorResponse';
+import { ForbiddenError } from '../types/errors';
 import { ERROR_CODES } from '../constants/errorCodes';
-import { logger } from '../utils/logger';
+import logger from '../utils/Logger/logger';
 import { isValidPhoneNumber, parsePhoneNumber } from 'libphonenumber-js';
 
 export interface InviteStaffRequest {
@@ -396,9 +396,8 @@ export class StaffService {
     );
 
     if (!isOwner && !isStaffMember) {
-      throw new AuthError(
-        ERROR_CODES.ACCESS_DENIED,
-        { message: 'You do not have access to this business' }
+      throw new ForbiddenError(
+        'You do not have access to this business'
       );
     }
   }
