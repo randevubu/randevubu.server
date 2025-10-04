@@ -341,7 +341,7 @@ export class AppointmentReminderService {
     endTime: Date,
     includeReminded = false
   ): Promise<UpcomingAppointment[]> {
-    const where: any = {
+    const where: Record<string, unknown> = {
       startTime: {
         gte: startTime,
         lte: endTime

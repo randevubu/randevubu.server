@@ -243,8 +243,8 @@ export class AuthController {
             isVerified: result.user.isVerified,
             createdAt: result.user.createdAt,
             lastLoginAt: result.user.lastLoginAt,
-            roles: (result.user as any).roles || [],
-            effectiveLevel: (result.user as any).effectiveLevel || 0,
+            roles: (result.user as { roles?: string[] }).roles || [],
+            effectiveLevel: (result.user as { effectiveLevel?: number }).effectiveLevel || 0,
           },
           tokens: {
             accessToken: result.tokens.accessToken,
