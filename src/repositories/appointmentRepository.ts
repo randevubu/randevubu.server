@@ -14,19 +14,19 @@ export class AppointmentRepository {
   constructor(private prisma: PrismaClient) {}
 
   // Helper method to check if prices should be hidden based on business settings
-  private shouldHidePrice(businessSettings: any, serviceShowPrice: boolean = true): boolean {
-    const hideAllServicePrices = businessSettings?.priceVisibility?.hideAllServicePrices === true;
+  private shouldHidePrice(businessSettings: Record<string, unknown> | null, serviceShowPrice: boolean = true): boolean {
+    const hideAllServicePrices = (businessSettings as any)?.priceVisibility?.hideAllServicePrices === true;
     return hideAllServicePrices || serviceShowPrice === false;
   }
 
   // Helper method to check if staff names should be hidden based on business settings
-  private shouldHideStaffNames(businessSettings: any): boolean {
-    return businessSettings?.staffPrivacy?.hideStaffNames === true;
+  private shouldHideStaffNames(businessSettings: Record<string, unknown> | null): boolean {
+    return (businessSettings as any)?.staffPrivacy?.hideStaffNames === true;
   }
 
   // Helper method to get staff display name based on privacy settings
-  private getStaffDisplayName(role: string, businessSettings: any): string {
-    const privacySettings = businessSettings?.staffPrivacy;
+  private getStaffDisplayName(role: string, businessSettings: Record<string, unknown> | null): string {
+    const privacySettings = (businessSettings as any)?.staffPrivacy;
     if (!privacySettings) return 'Staff';
 
     if (privacySettings.staffDisplayMode === 'ROLES') {
@@ -53,20 +53,20 @@ export class AppointmentRepository {
     
     return {
       ...appointment,
-      price: undefined,
-      currency: undefined,
+      price: 0,
+      currency: '',
       ...(appointment.service && {
         service: {
           ...appointment.service,
-          price: undefined,
-          currency: undefined
+          price: 0,
+          currency: ''
         }
       })
     };
   }
 
   // Helper method to filter staff information from appointment data
-  private filterStaffInfo(appointment: any, shouldHide: boolean, businessSettings: any): any {
+  private filterStaffInfo(appointment: any, shouldHide: boolean, businessSettings: Record<string, unknown> | null): any {
     if (!shouldHide || !appointment.staff) return appointment;
     
     const staffRole = appointment.staff.role || 'STAFF';
@@ -78,11 +78,11 @@ export class AppointmentRepository {
         ...appointment.staff,
         user: {
           ...appointment.staff.user,
-          firstName: null,
-          lastName: null,
+          firstName: undefined,
+          lastName: undefined,
         },
-        displayName,
-      }
+        ...(displayName && { displayName })
+      } as any
     };
   }
 
@@ -199,7 +199,13 @@ export class AppointmentRepository {
           },
           staff: {
             select: {
+              id: true,
+              businessId: true,
+              userId: true,
               role: true,
+              isActive: true,
+              joinedAt: true,
+              leftAt: true,
               user: {
                 select: {
                   firstName: true,
@@ -228,13 +234,10 @@ export class AppointmentRepository {
         const businessSettings = apt.business?.settings as any;
         const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
         
-        const filteredApt = this.filterPriceInfo({
-          ...apt,
-          staff: apt.staff?.user
-        }, shouldHide);
+        const filteredApt = this.filterPriceInfo(apt, shouldHide);
         
-        return filteredApt;
-      }) as unknown as AppointmentWithDetails[],
+        return filteredApt as AppointmentWithDetails;
+      }),
       total,
       page,
       totalPages: Math.ceil(total / limit)
@@ -249,7 +252,7 @@ export class AppointmentRepository {
     lastAppointmentDate: Date | null;
   }> {
     // Build where clause - if businessOwnerId provided, only count appointments from their businesses
-    let whereClause: any = { customerId };
+    let whereClause: Record<string, unknown> = { customerId };
     
     if (businessOwnerId) {
       whereClause = {
@@ -325,7 +328,7 @@ export class AppointmentRepository {
     page?: number;
     limit?: number;
   }): Promise<{
-    appointments: any[];
+    appointments: AppointmentWithDetails[];
     total: number;
     page: number;
     totalPages: number;
@@ -335,7 +338,7 @@ export class AppointmentRepository {
     const skip = (page - 1) * limit;
 
     // Build where clause for appointments in user's businesses
-    const whereClause: any = {
+    const whereClause: Record<string, unknown> = {
       OR: [
         // Businesses owned by user
         { business: { ownerId: userId } },
@@ -431,10 +434,7 @@ export class AppointmentRepository {
         const businessSettings = apt.business?.settings as any;
         const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
         
-        return this.filterPriceInfo({
-          ...apt,
-          staff: apt.staff?.user
-        }, shouldHide);
+        return this.filterPriceInfo(apt, shouldHide) as AppointmentWithDetails;
       }),
       total,
       page,
@@ -504,7 +504,7 @@ export class AppointmentRepository {
   }> {
     const skip = (page - 1) * limit;
     
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
     if (filters.businessId) {
       where.businessId = filters.businessId;
@@ -590,7 +590,7 @@ export class AppointmentRepository {
   }
 
   async update(id: string, data: UpdateAppointmentRequest): Promise<AppointmentData> {
-    const updateData: any = { ...data };
+    const updateData: Record<string, unknown> = { ...data };
 
     if (data.date && data.startTime) {
       const startDateTime = new Date(`${data.date}T${data.startTime}`);
@@ -961,7 +961,7 @@ export class AppointmentRepository {
     endTime: Date,
     excludeAppointmentId?: string
   ): Promise<AppointmentData[]> {
-    const where: any = {
+    const where: Record<string, unknown> = {
       businessId,
       date,
       status: { in: [AppointmentStatus.CONFIRMED] },
@@ -1001,12 +1001,12 @@ export class AppointmentRepository {
     totalRevenue: number;
     averageValue: number;
   }> {
-    const where: any = { businessId };
+    const where: Record<string, unknown> = { businessId };
     
     if (startDate || endDate) {
-      where.date = {};
-      if (startDate) where.date.gte = startDate;
-      if (endDate) where.date.lte = endDate;
+      (where.date as any) = {};
+      if (startDate) (where.date as any).gte = startDate;
+      if (endDate) (where.date as any).lte = endDate;
     }
 
     const appointments = await this.prisma.appointment.findMany({
@@ -1041,12 +1041,12 @@ export class AppointmentRepository {
     totalRevenue: number;
     averageValue: number;
   }>> {
-    const where: any = { businessId: { in: businessIds } };
+    const where: Record<string, unknown> = { businessId: { in: businessIds } };
     
     if (startDate || endDate) {
-      where.date = {};
-      if (startDate) where.date.gte = startDate;
-      if (endDate) where.date.lte = endDate;
+      (where.date as any) = {};
+      if (startDate) (where.date as any).gte = startDate;
+      if (endDate) (where.date as any).lte = endDate;
     }
 
     const appointments = await this.prisma.appointment.findMany({

@@ -7,7 +7,7 @@ const phoneNumberSchema = z
   .min(10, 'Phone number must be at least 10 digits')
   .max(20, 'Phone number must not exceed 20 characters')
   .refine(
-    (phone: any) => {
+    (phone: string) => {
       try {
         return isValidPhoneNumber(phone);
       } catch {
@@ -16,7 +16,7 @@ const phoneNumberSchema = z
     },
     { message: 'Invalid phone number format' }
   )
-  .transform((phone: any) => {
+  .transform((phone: string) => {
     try {
       const parsed = parsePhoneNumber(phone);
       return parsed.format('E.164');
@@ -125,13 +125,13 @@ export const paginationSchema = z.object({
     .string()
     .regex(/^\d+$/, 'Page must be a positive integer')
     .transform(Number)
-    .refine((n: any) => n >= 1, 'Page must be greater than 0')
+    .refine((n: number) => n >= 1, 'Page must be greater than 0')
     .default('1'),
   limit: z
     .string()
     .regex(/^\d+$/, 'Limit must be a positive integer')
     .transform(Number)
-    .refine((n: any) => n >= 1 && n <= 100, 'Limit must be between 1 and 100')
+    .refine((n: number) => n >= 1 && n <= 100, 'Limit must be between 1 and 100')
     .default('10'),
 });
 
@@ -151,7 +151,7 @@ export const authHeaderSchema = z.object({
   authorization: z
     .string()
     .regex(/^Bearer .+/, 'Authorization header must start with "Bearer "')
-    .transform((auth: any) => auth.slice(7)), // Remove "Bearer " prefix
+    .transform((auth: string) => auth.slice(7)), // Remove "Bearer " prefix
 });
 
 export const deviceHeaderSchema = z.object({

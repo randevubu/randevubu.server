@@ -1,5 +1,6 @@
 import { PrismaClient, Appointment, BusinessClosure, AppointmentStatus } from '@prisma/client';
 import { NotificationService, RescheduleSuggestion, TimeSlot } from './notificationService';
+import { AppointmentData } from '../types/business';
 
 export interface RescheduleOptions {
   autoReschedule: boolean;
@@ -126,7 +127,19 @@ export class AppointmentRescheduleService {
       return [{
         originalAppointmentId: appointmentId,
         suggestedSlots: availableSlots,
-        message: this.generateRescheduleMessage(appointment, availableSlots, closureData)
+        message: this.generateRescheduleMessage({
+          ...appointment,
+          staffId: appointment.staffId || undefined,
+          status: appointment.status as any,
+          price: Number(appointment.price),
+          customerNotes: appointment.customerNotes || undefined,
+          internalNotes: appointment.internalNotes || undefined,
+          confirmedAt: appointment.confirmedAt || undefined,
+          completedAt: appointment.completedAt || undefined,
+          canceledAt: appointment.canceledAt || undefined,
+          cancelReason: appointment.cancelReason || undefined,
+          reminderSentAt: appointment.reminderSentAt || undefined
+        }, availableSlots, closureData)
       }];
     } catch (error) {
       throw new Error(`Failed to generate reschedule suggestions: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -152,7 +165,19 @@ export class AppointmentRescheduleService {
       for (const appointment of affectedAppointments) {
         try {
           const result = await this.processAppointmentReschedule(
-            appointment,
+            {
+              ...appointment,
+              staffId: appointment.staffId || undefined,
+              status: appointment.status as any,
+              price: Number(appointment.price),
+              customerNotes: appointment.customerNotes || undefined,
+              internalNotes: appointment.internalNotes || undefined,
+              confirmedAt: appointment.confirmedAt || undefined,
+              completedAt: appointment.completedAt || undefined,
+              canceledAt: appointment.canceledAt || undefined,
+              cancelReason: appointment.cancelReason || undefined,
+              reminderSentAt: appointment.reminderSentAt || undefined
+            },
             closure,
             rescheduleOptions
           );
@@ -341,7 +366,7 @@ export class AppointmentRescheduleService {
   }
 
   private async processAppointmentReschedule(
-    appointment: any,
+    appointment: AppointmentData,
     closure: BusinessClosure,
     options: RescheduleOptions
   ): Promise<RescheduleResult> {
@@ -493,7 +518,7 @@ export class AppointmentRescheduleService {
   }
 
   private generateRescheduleMessage(
-    appointment: any,
+    appointment: AppointmentData,
     suggestedSlots: TimeSlot[],
     closureData: ClosureData
   ): string {

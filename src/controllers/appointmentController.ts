@@ -23,7 +23,7 @@ export class AppointmentController {
   /**
    * Helper method to format appointment dates for API responses
    */
-  private formatAppointmentDates(apt: any): any {
+  private formatAppointmentDates(apt: AppointmentWithDetails): any {
     return {
       ...apt,
       date: apt.date instanceof Date ? formatDateForAPI(apt.date) : apt.date,
@@ -43,7 +43,7 @@ export class AppointmentController {
   async getMyAppointments(
     req: BusinessContextRequest,
     res: Response,
-    next: any
+    next: NextFunction
   ): Promise<void> {
     try {
       const userId = req.user!.id;
@@ -67,7 +67,7 @@ export class AppointmentController {
       // Transform appointments to remove unnecessary data and format dates
       const cleanedResult = {
         ...result,
-        appointments: result.appointments.map((apt: any) => ({
+        appointments: result.appointments.map((apt: AppointmentWithDetails) => ({
           id: apt.id,
           date: formatDateForAPI(apt.date),
           startTime: formatTimeForAPI(apt.startTime),
@@ -83,8 +83,8 @@ export class AppointmentController {
             duration: apt.service.duration
           },
           staff: apt.staff ? {
-            firstName: apt.staff.firstName,
-            lastName: apt.staff.lastName
+            firstName: (apt.staff as any).firstName || apt.staff.user?.firstName,
+            lastName: (apt.staff as any).lastName || apt.staff.user?.lastName
           } : null,
           customer: apt.customer ? {
             firstName: apt.customer.firstName,
@@ -116,7 +116,7 @@ export class AppointmentController {
 
       res.status(201).json({
         success: true,
-        data: this.formatAppointmentDates(appointment),
+        data: appointment,
         message: "Appointment created successfully",
       });
     } catch (error) {
@@ -927,7 +927,7 @@ export class AppointmentController {
       const result = await this.appointmentService.getPublicAppointments(filters, 1, 1000);
 
       // Sanitize data for public access - remove sensitive customer information
-      const sanitizedAppointments = result.appointments.map((apt: any) => ({
+      const sanitizedAppointments = result.appointments.map((apt: AppointmentWithDetails) => ({
         id: apt.id,
         startTime: formatTimeForAPI(new Date(apt.startTime)),
         endTime: formatTimeForAPI(new Date(apt.endTime)),

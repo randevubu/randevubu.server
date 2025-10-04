@@ -662,16 +662,18 @@ export const appointmentSearchSchema = z.object({
 });
 
 // Utility validation functions
-export const validateBusinessHours = (businessHours: any): boolean => {
+export const validateBusinessHours = (businessHours: unknown): boolean => {
   const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
   
   if (!businessHours || typeof businessHours !== 'object') {
     return false;
   }
   
+  const hoursObj = businessHours as Record<string, any>;
+  
   for (const day of days) {
-    if (businessHours[day]) {
-      const { open, close, closed } = businessHours[day];
+    if (hoursObj[day]) {
+      const { open, close, closed } = hoursObj[day];
       
       if (typeof closed !== 'boolean') {
         return false;

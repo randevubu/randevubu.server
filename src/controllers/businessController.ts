@@ -102,7 +102,9 @@ export class BusinessController {
 
             // Add subscription info if requested and available
             if (includeSubscription && 'subscription' in business && business.subscription) {
-              const sub = business.subscription as any;
+              const sub = business.subscription as Record<string, unknown>;
+              const plan = sub.plan as Record<string, unknown> | undefined;
+              
               return {
                 ...baseData,
                 subscription: {
@@ -111,21 +113,21 @@ export class BusinessController {
                   currentPeriodStart: sub.currentPeriodStart,
                   currentPeriodEnd: sub.currentPeriodEnd,
                   cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
-                  plan: {
-                    id: sub.plan.id,
-                    name: sub.plan.name,
-                    displayName: sub.plan.displayName,
-                    description: sub.plan.description,
-                    price: sub.plan.price,
-                    currency: sub.plan.currency,
-                    billingInterval: sub.plan.billingInterval,
-                    features: sub.plan.features,
+                  plan: plan ? {
+                    id: plan.id,
+                    name: plan.name,
+                    displayName: plan.displayName,
+                    description: plan.description,
+                    price: plan.price,
+                    currency: plan.currency,
+                    billingInterval: plan.billingInterval,
+                    features: plan.features,
                     limits: {
-                      maxBusinesses: sub.plan.maxBusinesses,
-                      maxStaffPerBusiness: sub.plan.maxStaffPerBusiness
+                      maxBusinesses: plan.maxBusinesses,
+                      maxStaffPerBusiness: plan.maxStaffPerBusiness
                     },
-                    isPopular: sub.plan.isPopular
-                  }
+                    isPopular: plan.isPopular
+                  } : undefined
                 }
               };
             }
@@ -301,17 +303,20 @@ export class BusinessController {
       // Format response based on what was requested
       let responseData: any = business;
       if (includeSubscription === 'true' && 'subscription' in business) {
-        const businessWithSub = business as any;
+        const businessWithSub = business as Record<string, unknown>;
+        const subscription = businessWithSub.subscription as Record<string, unknown> | undefined;
+        const plan = subscription?.plan as Record<string, unknown> | undefined;
+        
         responseData = {
           ...business,
-          subscription: businessWithSub.subscription ? {
-            ...businessWithSub.subscription,
-            plan: businessWithSub.subscription.plan ? {
-              ...businessWithSub.subscription.plan,
+          subscription: subscription ? {
+            ...subscription,
+            plan: plan ? {
+              ...plan,
               limits: {
-                maxBusinesses: businessWithSub.subscription.plan.maxBusinesses,
-                maxStaffPerBusiness: businessWithSub.subscription.plan.maxStaffPerBusiness,
-                maxAppointmentsPerDay: businessWithSub.subscription.plan.maxAppointmentsPerDay
+                maxBusinesses: plan.maxBusinesses,
+                maxStaffPerBusiness: plan.maxStaffPerBusiness,
+                maxAppointmentsPerDay: plan.maxAppointmentsPerDay
               }
             } : undefined
           } : null

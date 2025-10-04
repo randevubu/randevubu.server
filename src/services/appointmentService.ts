@@ -782,7 +782,7 @@ export class AppointmentService {
   /**
    * Send notification to business owner/staff about new appointment booking
    */
-  private async notifyNewAppointment(appointment: AppointmentData, service: any): Promise<void> {
+  private async notifyNewAppointment(appointment: AppointmentData, service: { name: string; duration: number; price: number; currency: string }): Promise<void> {
     try {
       console.log('🔍 NOTIFY NEW APPOINTMENT - Starting notification process for appointment:', appointment.id);
       

@@ -527,14 +527,15 @@ export class BusinessService {
     }
 
     // Merge price settings into existing business settings
-    const currentSettings = (currentBusiness.settings as any) || {};
+    const currentSettings = (currentBusiness.settings as Record<string, unknown>) || {};
+    const currentPriceVisibility = (currentSettings.priceVisibility as Record<string, unknown>) || {};
     const updatedSettings = {
       ...currentSettings,
       priceVisibility: {
-        ...currentSettings.priceVisibility,
-        hideAllServicePrices: priceSettings.hideAllServicePrices ?? currentSettings.priceVisibility?.hideAllServicePrices ?? false,
-        showPriceOnBooking: priceSettings.showPriceOnBooking ?? currentSettings.priceVisibility?.showPriceOnBooking ?? true,
-        priceDisplayMessage: priceSettings.priceDisplayMessage ?? currentSettings.priceVisibility?.priceDisplayMessage ?? null
+        ...currentPriceVisibility,
+        hideAllServicePrices: priceSettings.hideAllServicePrices ?? currentPriceVisibility.hideAllServicePrices ?? false,
+        showPriceOnBooking: priceSettings.showPriceOnBooking ?? currentPriceVisibility.showPriceOnBooking ?? true,
+        priceDisplayMessage: priceSettings.priceDisplayMessage ?? currentPriceVisibility.priceDisplayMessage ?? null
       }
     };
 
@@ -566,8 +567,8 @@ export class BusinessService {
     }
 
     // Extract price visibility settings
-    const settings = (currentBusiness.settings as any) || {};
-    const priceVisibility = settings.priceVisibility || {};
+    const settings = (currentBusiness.settings as Record<string, unknown>) || {};
+    const priceVisibility = (settings.priceVisibility as Record<string, unknown>) || {};
 
     return {
       hideAllServicePrices: priceVisibility.hideAllServicePrices || false,
@@ -599,18 +600,20 @@ export class BusinessService {
     }
 
     // Merge staff privacy settings into existing business settings
-    const currentSettings = (currentBusiness.settings as any) || {};
+    const currentSettings = (currentBusiness.settings as Record<string, unknown>) || {};
+    const currentStaffPrivacy = (currentSettings.staffPrivacy as Record<string, unknown>) || {};
+    const currentCustomStaffLabels = (currentStaffPrivacy.customStaffLabels as Record<string, unknown>) || {};
     const updatedSettings = {
       ...currentSettings,
       staffPrivacy: {
-        ...currentSettings.staffPrivacy,
-        hideStaffNames: staffPrivacySettings.hideStaffNames ?? currentSettings.staffPrivacy?.hideStaffNames ?? false,
-        staffDisplayMode: staffPrivacySettings.staffDisplayMode ?? currentSettings.staffPrivacy?.staffDisplayMode ?? 'NAMES',
+        ...currentStaffPrivacy,
+        hideStaffNames: staffPrivacySettings.hideStaffNames ?? currentStaffPrivacy.hideStaffNames ?? false,
+        staffDisplayMode: staffPrivacySettings.staffDisplayMode ?? currentStaffPrivacy.staffDisplayMode ?? 'NAMES',
         customStaffLabels: {
-          owner: staffPrivacySettings.customStaffLabels?.owner ?? currentSettings.staffPrivacy?.customStaffLabels?.owner ?? 'Owner',
-          manager: staffPrivacySettings.customStaffLabels?.manager ?? currentSettings.staffPrivacy?.customStaffLabels?.manager ?? 'Manager',
-          staff: staffPrivacySettings.customStaffLabels?.staff ?? currentSettings.staffPrivacy?.customStaffLabels?.staff ?? 'Staff',
-          receptionist: staffPrivacySettings.customStaffLabels?.receptionist ?? currentSettings.staffPrivacy?.customStaffLabels?.receptionist ?? 'Receptionist',
+          owner: staffPrivacySettings.customStaffLabels?.owner ?? currentCustomStaffLabels.owner ?? 'Owner',
+          manager: staffPrivacySettings.customStaffLabels?.manager ?? currentCustomStaffLabels.manager ?? 'Manager',
+          staff: staffPrivacySettings.customStaffLabels?.staff ?? currentCustomStaffLabels.staff ?? 'Staff',
+          receptionist: staffPrivacySettings.customStaffLabels?.receptionist ?? currentCustomStaffLabels.receptionist ?? 'Receptionist',
         }
       }
     };
@@ -649,17 +652,18 @@ export class BusinessService {
     }
 
     // Extract staff privacy settings from business settings
-    const settings = (currentBusiness.settings as any) || {};
-    const staffPrivacy = settings.staffPrivacy || {};
+    const settings = (currentBusiness.settings as Record<string, unknown>) || {};
+    const staffPrivacy = (settings.staffPrivacy as Record<string, unknown>) || {};
+    const customStaffLabels = (staffPrivacy.customStaffLabels as Record<string, unknown>) || {};
     
     return {
-      hideStaffNames: staffPrivacy.hideStaffNames || false,
-      staffDisplayMode: staffPrivacy.staffDisplayMode || 'NAMES',
+      hideStaffNames: (staffPrivacy.hideStaffNames as boolean) || false,
+      staffDisplayMode: (staffPrivacy.staffDisplayMode as 'NAMES' | 'ROLES' | 'GENERIC') || 'NAMES',
       customStaffLabels: {
-        owner: staffPrivacy.customStaffLabels?.owner || 'Owner',
-        manager: staffPrivacy.customStaffLabels?.manager || 'Manager',
-        staff: staffPrivacy.customStaffLabels?.staff || 'Staff',
-        receptionist: staffPrivacy.customStaffLabels?.receptionist || 'Receptionist',
+        owner: (customStaffLabels.owner as string) || 'Owner',
+        manager: (customStaffLabels.manager as string) || 'Manager',
+        staff: (customStaffLabels.staff as string) || 'Staff',
+        receptionist: (customStaffLabels.receptionist as string) || 'Receptionist',
       }
     };
   }
@@ -892,8 +896,8 @@ export class BusinessService {
     const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const dayName = dayNames[dayOfWeek];
 
-    const businessHours = business.businessHours as any;
-    const dayHours = businessHours?.[dayName];
+    const businessHours = business.businessHours as Record<string, unknown>;
+    const dayHours = (businessHours?.[dayName] as Record<string, unknown>) || {};
 
     if (!dayHours || !dayHours.isOpen) {
       // Find next open day
@@ -913,9 +917,9 @@ export class BusinessService {
       businessId,
       date: targetDate.toISOString().split('T')[0],
       isOpen: true,
-      openTime: dayHours.openTime,
-      closeTime: dayHours.closeTime,
-      breaks: dayHours.breaks || [],
+      openTime: dayHours.openTime as string,
+      closeTime: dayHours.closeTime as string,
+      breaks: (dayHours.breaks as any[]) || [],
       isOverride: false,
       timezone: businessTimezone
     };
@@ -932,7 +936,7 @@ export class BusinessService {
       breaks?: any[];
       reason?: string;
       isRecurring?: boolean;
-      recurringPattern?: any;
+      recurringPattern?: Record<string, unknown>;
     }
   ): Promise<any> {
     // Check permissions
@@ -959,7 +963,7 @@ export class BusinessService {
         breaks: data.breaks,
         reason: data.reason,
         isRecurring: data.isRecurring || false,
-        recurringPattern: data.recurringPattern,
+        recurringPattern: data.recurringPattern as any,
         createdAt: new Date(),
         updatedAt: new Date()
       }
@@ -979,7 +983,7 @@ export class BusinessService {
       breaks?: any[];
       reason?: string;
       isRecurring?: boolean;
-      recurringPattern?: any;
+      recurringPattern?: Record<string, unknown>;
     }
   ): Promise<any> {
     // Check permissions
@@ -1001,8 +1005,9 @@ export class BusinessService {
         }
       },
       data: {
-        ...data,
-        updatedAt: new Date()
+      ...data,
+      recurringPattern: data.recurringPattern as any,
+      updatedAt: new Date()
       }
     });
 
@@ -1075,7 +1080,7 @@ export class BusinessService {
     fromDate: Date,
     timezone: string
   ): Promise<string | undefined> {
-    const businessHours = business.businessHours as any;
+    const businessHours = business.businessHours as Record<string, unknown>;
     if (!businessHours) return undefined;
 
     const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -1087,10 +1092,10 @@ export class BusinessService {
       
       const dayOfWeek = checkDate.getDay();
       const dayName = dayNames[dayOfWeek];
-      const dayHours = businessHours[dayName];
+      const dayHours = (businessHours[dayName] as Record<string, unknown>) || {};
       
       if (dayHours && dayHours.isOpen && dayHours.openTime) {
-        return `${checkDate.toISOString().split('T')[0]}T${dayHours.openTime}:00`;
+        return `${checkDate.toISOString().split('T')[0]}T${dayHours.openTime as string}:00`;
       }
     }
     
@@ -1115,7 +1120,7 @@ export class BusinessService {
     state: string | null;
     country: string | null;
     postalCode: string | null;
-    businessHours: any;
+    businessHours: Record<string, unknown>;
     timezone: string;
     logoUrl: string | null;
     coverImageUrl: string | null;
@@ -1150,8 +1155,8 @@ export class BusinessService {
     }
 
     // Extract price visibility settings
-    const settings = (businessWithServices.settings as any) || {};
-    const priceVisibility = settings.priceVisibility || {};
+    const settings = (businessWithServices.settings as Record<string, unknown>) || {};
+    const priceVisibility = (settings.priceVisibility as Record<string, unknown>) || {};
     const hideAllServicePrices = priceVisibility.hideAllServicePrices === true;
 
     // Apply price visibility logic to services
@@ -1161,7 +1166,7 @@ export class BusinessService {
           ...service,
           price: null, // Hide the actual price
           showPrice: false, // Add flag to indicate price is hidden
-          priceDisplayMessage: priceVisibility.priceDisplayMessage || 'Price available on request'
+          priceDisplayMessage: (priceVisibility.priceDisplayMessage as string) || 'Price available on request'
         };
       }
 
@@ -1836,7 +1841,7 @@ export class BusinessService {
   /**
    * Add a new payment method for a business
    */
-  async addPaymentMethod(businessId: string, userId: string, paymentData: any): Promise<any> {
+  async addPaymentMethod(businessId: string, userId: string, paymentData: Record<string, unknown>): Promise<Record<string, unknown>> {
     // Verify user has access to this business
     const business = await this.prisma.business.findFirst({
       where: {
@@ -1852,7 +1857,7 @@ export class BusinessService {
     }
 
     // Extract payment method data
-    const { cardHolderName, cardNumber, expireMonth, expireYear, cvc, isDefault = false } = paymentData;
+    const { cardHolderName, cardNumber, expireMonth, expireYear, cvc, isDefault = false } = paymentData as any;
 
     // Validate required fields
     if (!cardHolderName || !cardNumber || !expireMonth || !expireYear || !cvc) {
@@ -1860,8 +1865,8 @@ export class BusinessService {
     }
 
     // Get last 4 digits and detect card brand
-    const lastFourDigits = cardNumber.slice(-4);
-    const cardBrand = this.detectCardBrand(cardNumber);
+    const lastFourDigits = (cardNumber as string).slice(-4);
+    const cardBrand = this.detectCardBrand(cardNumber as string);
 
     // Generate a unique ID for the payment method
     const paymentMethodId = `pm_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -1884,12 +1889,12 @@ export class BusinessService {
       data: {
         id: paymentMethodId,
         businessId: businessId,
-        cardHolderName: cardHolderName,
+        cardHolderName: cardHolderName as string,
         lastFourDigits: lastFourDigits,
         cardBrand: cardBrand,
-        expiryMonth: expireMonth,
-        expiryYear: expireYear,
-        isDefault: isDefault,
+        expiryMonth: expireMonth as string,
+        expiryYear: expireYear as string,
+        isDefault: isDefault as boolean,
         // Note: We don't store sensitive card data like full number or CVC
         // These should be tokenized by a payment processor
       },
