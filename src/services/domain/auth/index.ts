@@ -6,3 +6,5 @@ export {
 export { 
   AuthSanitizationService
 } from './authSanitizationService';
+
+export { AuthService } from './authService';

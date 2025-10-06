@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { DiscountCodeService } from '../services/discountCodeService';
+import { DiscountCodeService } from '../services/domain/discount';
 import { DiscountType } from '@prisma/client';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { requireAuthenticatedUser } from '../middleware/authUtils';

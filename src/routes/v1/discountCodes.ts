@@ -4,7 +4,7 @@ import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { validateBody } from '../../middleware/validation';
 import { createDiscountCodeSchema, validateDiscountCodeSchema, bulkDiscountCodeSchema } from '../../schemas/discountCode.schemas';
 import { AuthorizationMiddleware } from '../../middleware/authorization';
-import { RBACService } from '../../services/rbacService';
+import { RBACService } from '../../services/domain/rbac/rbacService';
 
 export function createDiscountCodeRoutes(discountCodeController: DiscountCodeController, rbacService: RBACService): Router {
   const router = Router();

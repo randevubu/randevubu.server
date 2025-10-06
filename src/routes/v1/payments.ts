@@ -1,11 +1,11 @@
 import express from 'express';
 import { PaymentController } from '../../controllers/paymentController';
-import { PaymentService } from '../../services/paymentService';
-import { DiscountCodeService } from '../../services/discountCodeService';
+import { PaymentService } from '../../services/domain/payment/paymentService';
+import { DiscountCodeService } from '../../services/domain/discount/discountCodeService';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { RepositoryContainer } from '../../repositories';
-import { RBACService } from '../../services/rbacService';
+import { RBACService } from '../../services/domain/rbac/rbacService';
 
 const router = express.Router();
 

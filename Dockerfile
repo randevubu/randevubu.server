@@ -31,7 +31,7 @@ COPY . .
 RUN npx prisma generate
 
 # Expose port
-EXPOSE 3000
+EXPOSE 3001
 
 # Start in development mode
 CMD ["npm", "run", "dev"]
@@ -65,8 +65,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install only production dependencies
+# Install only production dependencies including OpenTelemetry
 RUN npm ci --only=production --ignore-scripts && \
+    npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-prometheus @opentelemetry/instrumentation-express @opentelemetry/instrumentation-http @opentelemetry/instrumentation-prisma @opentelemetry/semantic-conventions @opentelemetry/exporter-trace-otlp-http && \
     npm cache clean --force
 
 # Generate Prisma client
@@ -79,11 +80,11 @@ COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 USER nodejs
 
 # Expose port
-EXPOSE 3000
+EXPOSE 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+  CMD node -e "require('http').get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
 # Start the application
 CMD ["node", "dist/index.js"]

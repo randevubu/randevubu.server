@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { z } from "zod";
 import { BusinessContextRequest } from "../middleware/businessContext";
-import { UsageService } from "../services/usageService";
+import { UsageService } from "../services/domain/usage";
 import { AuthenticatedRequest } from "../types/auth";
 import {
   BusinessErrors,

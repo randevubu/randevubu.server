@@ -6,3 +6,6 @@ export {
 export { 
   ClosureSanitizationService
 } from './closureSanitizationService';
+
+export { BusinessClosureService } from './businessClosureService';
+export { ClosureAnalyticsService } from './closureAnalyticsService';

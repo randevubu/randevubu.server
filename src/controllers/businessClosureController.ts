@@ -4,10 +4,9 @@ import {
   createBusinessClosureSchema,
   updateBusinessClosureSchema
 } from '../schemas/business.schemas';
-import { AppointmentRescheduleService } from '../services/appointmentRescheduleService';
-import { BusinessClosureService } from '../services/businessClosureService';
-import { ClosureAnalyticsService } from '../services/closureAnalyticsService';
-import { NotificationService } from '../services/notificationService';
+import { AppointmentRescheduleService } from '../services/domain/appointment';
+import { BusinessClosureService, ClosureAnalyticsService } from '../services/domain/closure';
+import { NotificationService } from '../services/domain/notification';
 import { AuthenticatedRequest } from '../types/auth';
 import {
   AvailabilityAlertRequest,
@@ -908,10 +907,15 @@ export class BusinessClosureController {
             businessId: closure.businessId,
             businessName: 'Business Name', // TODO: Get from business service
             startDate: closure.startDate,
-            endDate: closure.endDate || undefined,
+            endDate: closure.endDate || new Date(),
             reason: closure.reason,
-            type: closure.type,
-            message: closureData.notificationMessage
+            type: closure.type as any,
+            message: closureData.notificationMessage,
+            isRecurring: false,
+            affectedAppointments: 0,
+            rescheduledAppointments: 0,
+            cancelledAppointments: 0,
+            totalRevenueImpact: 0
           };
 
           await this.notificationService.sendClosureNotification(
@@ -950,9 +954,15 @@ export class BusinessClosureController {
           businessId: appointment.businessId,
           businessName: 'Business Name', // TODO: Get from included business relation
           startDate: appointment.startTime,
+          endDate: new Date(),
           reason: 'Business closure notification',
-          type: 'OTHER' as const,
-          message
+          type: 'OTHER' as any,
+          message,
+          isRecurring: false,
+          affectedAppointments: 0,
+          rescheduledAppointments: 0,
+          cancelledAppointments: 0,
+          totalRevenueImpact: 0
         };
 
         const result = await this.notificationService.sendClosureNotification(
@@ -1060,7 +1070,12 @@ export class BusinessClosureController {
 
       const results = await this.appointmentRescheduleService.autoRescheduleAppointments(
         closureId,
-        rescheduleOptions
+        {
+          ...rescheduleOptions,
+          businessHoursOnly: (rescheduleOptions as any).businessHoursOnly ?? true,
+          respectStaffAvailability: (rescheduleOptions as any).respectStaffAvailability ?? true,
+          maxSuggestions: (rescheduleOptions as any).maxSuggestions ?? 3
+        }
       );
 
       const stats = {

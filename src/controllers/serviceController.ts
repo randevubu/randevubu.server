@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { ServiceService } from '../services/serviceService';
+import { ServiceService } from '../services/domain/service';
 import { 
   createServiceSchema, 
   updateServiceSchema 

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { BusinessTypeService } from "../services/businessTypeService";
+import { BusinessTypeService } from "../services/domain/service";
 import {
   getErrorMessage,
   sendSimpleErrorResponse,

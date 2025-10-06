@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { UsageService } from '../services/usageService';
+import { UsageService } from '../services/domain/usage';
 import { BusinessContextRequest } from './businessContext';
 import { sendAppErrorResponse, BusinessErrors, createErrorContext, InternalError } from '../utils/errorResponse';
 import { ERROR_CODES } from '../constants/errorCodes';
