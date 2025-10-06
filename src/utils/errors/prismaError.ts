@@ -20,12 +20,12 @@ const prismaErrorHandler = (
         statusCode = 500;
         message = "Cannot reach database server";
         break;
-      case "p1002":
+      case "P1002":
         statusCode = 408;
         message = "Database server timeout";
         break;
       case "P2002":
-        statusCode = 400;
+        statusCode = 409;
         message = "Unique constraint violation";
         break;
       case "P2003":
@@ -59,6 +59,7 @@ const prismaErrorHandler = (
       requestId: (req as any).requestId || "unknown",
       errorCode: err.code,
     });
+    return; // Prevent calling next(err) after sending response
   } else {
     next(err);
   }
