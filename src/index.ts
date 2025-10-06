@@ -1,5 +1,7 @@
 // Load environment variables first
 import { config } from "./config/environment";
+// Initialize telemetry early (no-op unless OTEL_ENABLED=true)
+import "./telemetry/opentelemetry";
 
 import compression from "compression";
 import cookieParser from "cookie-parser";
@@ -9,6 +11,7 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import morgan from "morgan";
 import swaggerUi from "swagger-ui-express";
+import { getMetrics, metricsMiddleware } from "./utils/metrics";
 import { swaggerSpec, swaggerUiOptions } from "./config/swagger";
 import { ControllerContainer } from "./controllers";
 import prisma from "./lib/prisma";
@@ -22,8 +25,15 @@ import logger from "./utils/Logger/logger";
 import {
   gracefulShutdown,
   setServicesForShutdown,
+  isReadyForShutdown,
 } from "./utils/gracefulShutdown";
-// import { getMetrics, metricsMiddleware } from "./utils/metrics";
+import {
+  requestLogger,
+  performanceMonitor,
+  securityMonitor,
+  errorMonitor,
+  createHealthCheck,
+} from "./utils/monitoring";
 
 const app: Express = express();
 const PORT = config.PORT;
@@ -89,13 +99,10 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Request ID middleware (should be early in the chain)
 app.use(requestIdMiddleware);
 
-// Metrics collection middleware (before route handlers)
-// app.use(metricsMiddleware);
-
-app.use((req: Request, res: Response, next: NextFunction) => {
-  (req as any).startTime = Date.now();
-  next();
-});
+// Monitoring middleware (after requestId, before routes)
+app.use(requestLogger);
+app.use(performanceMonitor(1000)); // 1 second threshold
+app.use(securityMonitor);
 
 /**
  * @swagger
@@ -168,7 +175,7 @@ app.get("/health", async (req: Request, res: Response) => {
   const startTime = Date.now();
   let status = "healthy";
   let httpStatus = 200;
-  const checks: any = {};
+  const checks: Record<string, unknown> = {};
 
   try {
     // Database connectivity check
@@ -188,23 +195,18 @@ app.get("/health", async (req: Request, res: Response) => {
       httpStatus = 503;
     }
 
-    // Memory and system metrics
-    const memUsage = process.memoryUsage();
-    checks.memory = {
-      status:
-        memUsage.heapUsed / memUsage.heapTotal < 0.9 ? "healthy" : "warning",
-      used: Math.round(memUsage.heapUsed / 1024 / 1024),
-      total: Math.round(memUsage.heapTotal / 1024 / 1024),
-      external: Math.round(memUsage.external / 1024 / 1024),
-      rss: Math.round(memUsage.rss / 1024 / 1024),
-    };
-
-    // CPU load (basic check)
-    const cpuUsage = process.cpuUsage();
-    checks.cpu = {
-      status: "healthy",
-      user: cpuUsage.user,
-      system: cpuUsage.system,
+    // Use monitoring health check for system metrics
+    const monitoringHealth = createHealthCheck();
+    const systemHealth = {
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+        external: Math.round(process.memoryUsage().external / 1024 / 1024),
+        rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      },
+      uptime: Math.floor(process.uptime()),
+      version: process.version,
+      environment: process.env.NODE_ENV || "development",
     };
 
     // Service availability checks
@@ -222,6 +224,12 @@ app.get("/health", async (req: Request, res: Response) => {
       payment: services.paymentService ? "available" : "unavailable",
     };
 
+    // Shutdown readiness check
+    checks.shutdown = {
+      status: isReadyForShutdown() ? "ready" : "shutting_down",
+      ready: isReadyForShutdown(),
+    };
+
     const healthData = {
       status,
       uptime: Math.floor(process.uptime()),
@@ -229,6 +237,7 @@ app.get("/health", async (req: Request, res: Response) => {
       version: config.API_VERSION,
       environment: config.NODE_ENV,
       responseTime: Date.now() - startTime + "ms",
+      system: systemHealth,
       checks,
     };
 
@@ -264,7 +273,8 @@ app.get("/health", async (req: Request, res: Response) => {
  *             schema:
  *               type: string
  */
-// app.get("/metrics", getMetrics);
+app.use(metricsMiddleware);
+app.get("/metrics", getMetrics);
 
 // API Documentation
 app.use(
@@ -294,11 +304,19 @@ setServicesForShutdown(services);
 app.use("/api", createRoutes(controllers, services));
 
 app.use(notFoundHandler);
+app.use(errorMonitor); // Add error monitoring before error handler
 app.use(errorHandler);
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   // Use structured logging for startup
   logger.info(`System startup on port ${PORT}`);
+
+  // Initialize application startup procedures
+  try {
+    await services.startupService.initialize();
+  } catch (error) {
+    logger.error('Failed to initialize application startup:', error);
+  }
 
   logger.info(`🚀 Server is running on port ${PORT}`);
   logger.info(`📱 Health check: http://localhost:${PORT}/health`);
@@ -342,7 +360,7 @@ const server = app.listen(PORT, () => {
   }
 });
 
-process.on("SIGTERM", () => gracefulShutdown(server));
-process.on("SIGINT", () => gracefulShutdown(server));
+process.on("SIGTERM", async () => await gracefulShutdown(server));
+process.on("SIGINT", async () => await gracefulShutdown(server));
 
 export default app;

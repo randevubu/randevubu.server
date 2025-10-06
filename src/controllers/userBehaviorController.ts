@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { UserBehaviorService } from '../services/userBehaviorService';
+import { UserBehaviorService } from '../services/domain/userBehavior';
 import { GuaranteedAuthRequest } from '../types/auth';
 
 export class UserBehaviorController {

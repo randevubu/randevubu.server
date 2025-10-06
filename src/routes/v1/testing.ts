@@ -7,10 +7,10 @@ import {
 import { requireAuth } from "../../middleware/authUtils";
 import { BusinessContextRequest } from "../../middleware/businessContext";
 import { UsageRepository } from "../../repositories/usageRepository";
-import { AppointmentSchedulerService } from "../../services/appointmentSchedulerService";
-import { RBACService } from "../../services/rbacService";
-import { SMSService } from "../../services/smsService";
-import { UsageService } from "../../services/usageService";
+import { AppointmentSchedulerService } from "../../services/domain/appointment/appointmentSchedulerService";
+import { RBACService } from "../../services/domain/rbac/rbacService";
+import { SMSService } from "../../services/domain/sms/smsService";
+import { UsageService } from "../../services/domain/usage/usageService";
 import logger from "../../utils/Logger/logger";
 import { TestSubscriptionHelper } from "../../utils/testSubscriptionHelper";
 

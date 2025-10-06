@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { SubscriptionService } from '../services/subscriptionService';
+import { SubscriptionService } from '../services/domain/subscription';
 import { subscribeBusinessSchema } from '../schemas/business.schemas';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { SubscriptionStatus } from '../types/business';

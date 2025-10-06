@@ -7,7 +7,7 @@ import {
   createAppointmentSchema,
   updateAppointmentSchema,
 } from "../schemas/business.schemas";
-import { AppointmentService } from "../services/appointmentService";
+import { AppointmentService } from "../services/domain/appointment";
 import { AuthenticatedRequest, BusinessOwnershipRequest } from "../types/auth";
 import { AppointmentStatus, AppointmentWithDetails } from "../types/business";
 import logger from "../utils/Logger/logger";

@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { RBACService } from "../services/rbacService";
+import { RBACService } from "../services/domain/rbac";
 import { ErrorContext, ForbiddenError } from "../types/errors";
 import logger from "../utils/Logger/logger";
 import { AuthenticatedRequest } from "./auth";

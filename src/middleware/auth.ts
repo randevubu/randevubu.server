@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { RepositoryContainer } from "../repositories";
-import { RBACService } from "../services/rbacService";
-import { TokenService } from "../services/tokenService";
+import { RBACService } from "../services/domain/rbac";
+import { TokenService } from "../services/domain/token";
 import { AuthenticatedUser, JWTPayload } from "../types/auth";
 import {
   ErrorContext,

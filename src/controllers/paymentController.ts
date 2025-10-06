@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PaymentService, CreatePaymentRequest } from '../services/paymentService';
+import { PaymentService, CreatePaymentRequest } from '../services/domain/payment';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { z } from 'zod';
 

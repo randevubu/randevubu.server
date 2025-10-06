@@ -6,3 +6,5 @@ export {
 export { 
   BusinessSanitizationService
 } from './businessSanitizationService';
+
+export { BusinessService } from './businessService';

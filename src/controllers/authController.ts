@@ -13,7 +13,7 @@ import {
   PhoneVerificationService,
   TokenService
 } from '../services';
-import { RBACService } from '../services/rbacService';
+import { RBACService } from '../services/domain/rbac';
 import {
   ApiResponse,
   ChangePhoneRequest,

@@ -10,10 +10,10 @@ import {
   deleteImageSchema,
   deleteGalleryImageSchema
 } from '../schemas/business.schemas';
-import { BusinessService } from '../services/businessService';
-import { RBACService } from '../services/rbacService';
-import { TokenService } from '../services/tokenService';
-import { StaffService } from '../services/staffService';
+import { BusinessService } from '../services/domain/business';
+import { RBACService } from '../services/domain/rbac';
+import { TokenService } from '../services/domain/token';
+import { StaffService } from '../services/domain/staff';
 import { AuthenticatedRequest, AuthenticatedRequestWithFile } from '../types/auth';
 import {
   handleRouteError,
@@ -1510,8 +1510,8 @@ export class BusinessController {
       }
 
       // Import the services dynamically to avoid circular dependencies
-      const { NotificationService } = await import('../services/notificationService');
-      const { UsageService } = await import('../services/usageService');
+      const { NotificationService } = await import('../services/domain/notification/notificationService');
+      const { UsageService } = await import('../services/domain/usage/usageService');
       const { UsageRepository } = await import('../repositories/usageRepository');
 
       // Create usage service for SMS tracking

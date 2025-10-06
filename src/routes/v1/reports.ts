@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { ReportsController } from '../../controllers/reportsController';
-import { ReportsService } from '../../services/reportsService';
+import { ReportsService } from '../../services/domain/reports/reportsService';
 import { RepositoryContainer } from '../../repositories';
 import { AuthMiddleware, rateLimitByUser } from '../../middleware/auth';
 import { ServiceContainer } from '../../services';

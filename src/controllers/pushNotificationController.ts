@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { NotificationService } from '../services/notificationService';
+import { NotificationService } from '../services/domain/notification';
 import {
   pushSubscriptionRequestSchema,
   unsubscribePushRequestSchema,
@@ -298,7 +298,7 @@ export class PushNotificationController {
       const options = {
         page: query.page,
         limit: query.limit,
-        status: query.status as NotificationStatus | undefined,
+        status: query.status as any,
         appointmentId: query.appointmentId,
         businessId: query.businessId,
         from: query.from ? new Date(query.from) : undefined,

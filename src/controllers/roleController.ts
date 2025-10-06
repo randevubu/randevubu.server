@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { RoleService } from "../services/roleService";
+import { RoleService } from "../services/domain/staff";
 import {
   AssignRoleRequest,
   CreatePermissionRequest,

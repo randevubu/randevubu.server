@@ -1,28 +1,24 @@
 import { PrismaClient } from '@prisma/client';
 import { RepositoryContainer } from '../repositories';
 import { RoleRepository } from '../repositories/roleRepository';
-import { AuthService } from './authService';
-import { PhoneVerificationService } from './phoneVerificationService';
-import { TokenService } from './tokenService';
-import { RBACService } from './rbacService';
-import { RoleService } from './roleService';
-import { BusinessService } from './businessService';
-import { BusinessTypeService } from './businessTypeService';
-import { ServiceService } from './serviceService';
-import { AppointmentService } from './appointmentService';
-import { UserBehaviorService } from './userBehaviorService';
-import { BusinessClosureService } from './businessClosureService';
-import { SubscriptionService } from './subscriptionService';
-import { PaymentService } from './paymentService';
-import { NotificationService } from './notificationService';
-import { ClosureAnalyticsService } from './closureAnalyticsService';
-import { AppointmentRescheduleService } from './appointmentRescheduleService';
-import { DiscountCodeService } from './discountCodeService';
-import { UsageService } from './usageService';
-import { SubscriptionSchedulerService } from './subscriptionSchedulerService';
-import { AppointmentSchedulerService } from './appointmentSchedulerService';
-import { StaffService } from './staffService';
-import { AppointmentReminderService } from './appointmentReminderService';
+// Import services from domain folders
+import { AuthService } from './domain/auth';
+import { PhoneVerificationService } from './domain/sms';
+import { TokenService } from './domain/token';
+import { RBACService } from './domain/rbac';
+import { RoleService } from './domain/staff';
+import { BusinessService } from './domain/business';
+import { BusinessTypeService, ServiceService } from './domain/service';
+import { AppointmentService, AppointmentSchedulerService, AppointmentRescheduleService, AppointmentReminderService } from './domain/appointment';
+import { UserBehaviorService } from './domain/userBehavior';
+import { BusinessClosureService, ClosureAnalyticsService } from './domain/closure';
+import { SubscriptionService, SubscriptionSchedulerService } from './domain/subscription';
+import { PaymentService } from './domain/payment';
+import { NotificationService } from './domain/notification';
+import { DiscountCodeService } from './domain/discount';
+import { UsageService } from './domain/usage';
+import { StaffService } from './domain/staff';
+import { StartupService } from './startupService';
 
 // Service container for dependency injection
 export class ServiceContainer {
@@ -49,8 +45,9 @@ export class ServiceContainer {
   public readonly appointmentSchedulerService: AppointmentSchedulerService;
   public readonly staffService: StaffService;
   public readonly appointmentReminderService: AppointmentReminderService;
+  public readonly startupService: StartupService;
 
-  constructor(repositories: RepositoryContainer, private prisma: PrismaClient) {
+  constructor(repositories: RepositoryContainer, public readonly prisma: PrismaClient) {
     this.tokenService = new TokenService(repositories);
     this.phoneVerificationService = new PhoneVerificationService(repositories, this.tokenService);
     
@@ -145,6 +142,9 @@ export class ServiceContainer {
       this.appointmentService,
       this.businessService
     );
+
+    // Startup service
+    this.startupService = new StartupService(this.prisma);
   }
 }
 
@@ -171,5 +171,6 @@ export {
   SubscriptionSchedulerService,
   AppointmentSchedulerService,
   StaffService,
-  AppointmentReminderService
+  AppointmentReminderService,
+  StartupService
 };
