@@ -35,7 +35,6 @@ export const ERROR_CODES = {
   ACCOUNT_NOT_VERIFIED: 'ACCOUNT_NOT_VERIFIED',
   TOO_MANY_LOGIN_ATTEMPTS: 'TOO_MANY_LOGIN_ATTEMPTS',
   SESSION_EXPIRED: 'SESSION_EXPIRED',
-
   // =============================================================================
   // BUSINESS ERRORS
   // =============================================================================
@@ -161,7 +160,7 @@ export const ERROR_CODES = {
   SUBSCRIPTION_RENEWAL_CONFIRMATION: 'SUBSCRIPTION_RENEWAL_CONFIRMATION',
   SUBSCRIPTION_RENEWAL_REMINDER: 'SUBSCRIPTION_RENEWAL_REMINDER',
   PAYMENT_FAILURE_NOTIFICATION: 'PAYMENT_FAILURE_NOTIFICATION',
-
+ 
 } as const;
 
 // =============================================================================

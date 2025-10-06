@@ -23,7 +23,12 @@ import prismaErrorHandler from "./prismaError";
 /**
  * Handle Zod validation errors using existing handler
  */
-function handleZodError(error: ZodError, req: Request, res: Response): void {
+function handleZodError(
+  error: ZodError,
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
   zodErrorHandler(error, req, res, () => {});
 }
 
@@ -58,7 +63,7 @@ function handleCustomError(
     res
   );
   
-  sendErrorResponse(res, error.message, error.statusCode || 500, error.data);
+  sendErrorResponse(res, error.message, error.statusCode || 500, error);
 }
 
 /**
@@ -89,21 +94,32 @@ function handleUnexpectedError(
 /**
  * Main error handler for controllers
  *
- * This function should be used in controller catch blocks to handle
- * all types of errors in a standardized way.
+ * This function can be used in two ways:
+ * 1. With a string source: handleError(error, req, res, next, 'ControllerName.method')
+ * 2. With a context object: handleError(error, req, res, next, { source: '...', ... })
  */
 export function handleControllerError(
   error: unknown,
   req: Request,
   res: Response,
   next: NextFunction,
-  context: {
+  sourceOrContext: string | {
     source: string;
     requestId?: string;
     userId?: string;
     requestDetails?: any;
   }
 ): void {
+  // Normalize the context parameter
+  const context = typeof sourceOrContext === 'string' 
+    ? {
+        source: sourceOrContext,
+        requestId: (req as any).requestId,
+        userId: (req as any).user?.id,
+        requestDetails: req.body || req.query || req.params,
+      }
+    : sourceOrContext;
+
   // Log the error using the existing logging utility
   logError(
     `Error in ${context.source}`,
@@ -120,7 +136,7 @@ export function handleControllerError(
 
   // Handle different error types
   if (error instanceof ZodError) {
-    handleZodError(error, req, res);
+    handleZodError(error, req, res, next);
   } else if (error instanceof Prisma.PrismaClientKnownRequestError) {
     handlePrismaError(error, req, res);
   } else if (error instanceof CustomError) {
@@ -128,24 +144,4 @@ export function handleControllerError(
   } else {
     handleUnexpectedError(error, req, res);
   }
-}
-
-/**
- * Simplified error handler for common controller patterns
- *
- * This is a more convenient version that extracts common context automatically.
- */
-export function handleError(
-  error: unknown,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-  source: string
-): void {
-  handleControllerError(error, req, res, next, {
-    source,
-    requestId: (req as any).requestId,
-    userId: (req as any).user?.id,
-    requestDetails: req.body || req.query || req.params,
-  });
 }

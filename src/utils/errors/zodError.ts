@@ -20,6 +20,7 @@ const zodErrorHandler = (
       requestId: (req as any).requestId || "unknown",
       details: formattedErrors,
     });
+    return; // Prevent calling next(err) after sending response
   }
 
   next(err);

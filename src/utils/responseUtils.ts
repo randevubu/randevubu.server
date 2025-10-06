@@ -34,13 +34,29 @@ export function sendErrorResponse(
   statusCode: number = 400,
   error?: any
 ): void {
+  // Determine error code and key based on error type
+  let errorCode = "INTERNAL_SERVER_ERROR";
+  let errorKey = "errors.system.internalError";
+  
+  if (error?.name) {
+    // Use the error class name as code
+    errorCode = error.name;
+    // Create a more specific key based on error name and status code
+    errorKey = `errors.${error.name.toLowerCase()}.${statusCode}`;
+  } else if (error?.code) {
+    errorCode = error.code;
+    errorKey = `errors.${error.code.toLowerCase()}`;
+  }
+
   const response: ErrorResponse = {
     success: false,
     statusCode,
     error: {
-      code: "INTERNAL_SERVER_ERROR",
-      key: "errors.system.internalError",
+      code: errorCode,
+      key: errorKey,
       details: message,
+      // Include additional data if available
+      ...(error?.data && { data: error.data })
     },
   };
   res.status(statusCode).json(response);
