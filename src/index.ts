@@ -16,8 +16,10 @@ import { swaggerSpec, swaggerUiOptions } from "./config/swagger";
 import { ControllerContainer } from "./controllers";
 import prisma from "./lib/prisma";
 import { initializeBusinessContextMiddleware } from "./middleware/attachBusinessContext";
+import { csrfMiddleware } from "./middleware/csrf";
 import { errorHandler, notFoundHandler } from "./middleware/error";
 import { requestIdMiddleware } from "./middleware/requestId";
+import { sanitizeBody, sanitizeQuery } from "./middleware/sanitization";
 import { RepositoryContainer } from "./repositories";
 import { createRoutes } from "./routes";
 import { ServiceContainer } from "./services";
@@ -41,6 +43,25 @@ const PORT = config.PORT;
 // Trust proxy headers when running behind reverse proxy (e.g., Render, Heroku, etc.)
 app.set("trust proxy", 1);
 
+// HTTPS enforcement in production
+if (config.NODE_ENV === "production") {
+  app.use((req, res, next) => {
+    // Check if request is already HTTPS
+    const protocol = req.header("x-forwarded-proto") || req.protocol;
+
+    if (protocol !== "https") {
+      // Redirect to HTTPS
+      logger.warn("HTTP request redirected to HTTPS", {
+        ip: req.ip,
+        path: req.path,
+        userAgent: req.get("user-agent"),
+      });
+      return res.redirect(301, `https://${req.header("host")}${req.url}`);
+    }
+    next();
+  });
+}
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: config.NODE_ENV === "development" ? 1000 : 100, // Much higher limit in dev
@@ -57,16 +78,28 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        styleSrc: ["'self'"],
+        scriptSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "https:"],
         fontSrc: ["'self'", "https:", "data:"],
+        connectSrc: ["'self'"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
       },
     },
     hsts: {
       maxAge: 31536000,
       includeSubDomains: true,
       preload: true,
+    },
+    frameguard: {
+      action: "deny",
+    },
+    xContentTypeOptions: false,
+    referrerPolicy: {
+      policy: "strict-origin-when-cross-origin",
     },
   })
 );
@@ -98,6 +131,13 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Request ID middleware (should be early in the chain)
 app.use(requestIdMiddleware);
+
+// XSS Protection: Sanitize user input (after body parsing, before processing)
+app.use(sanitizeQuery('strict'));
+app.use(sanitizeBody('strict'));
+
+// CSRF protection for state-changing operations
+app.use(csrfMiddleware.generateTokenMiddleware);
 
 // Monitoring middleware (after requestId, before routes)
 app.use(requestLogger);
@@ -139,7 +179,13 @@ app.use(securityMonitor);
  *                   example: "5ms"
  */
 app.get("/", (req: Request, res: Response) => {
-  const responseTime = Date.now() - (req as any).startTime;
+  // Calculate response time if startTime was set by monitoring middleware
+  interface RequestWithTiming extends Request {
+    startTime?: number;
+  }
+  const startTime = (req as RequestWithTiming).startTime;
+  const responseTime = startTime ? Date.now() - startTime : 0;
+
   res.json({
     message: "Welcome to RandevuBu Server!",
     status: "running",

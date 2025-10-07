@@ -246,18 +246,20 @@ export function createBusinessRoutes(businessController: BusinessController, sub
   router.use(requireAuth);
   router.use(attachBusinessContext);
 
-  // Debug middleware to track route matching
-  router.use((req, res, next) => {
-    if (req.method === 'GET' && req.path.includes('biz_')) {
-      console.log('🔍 DEBUG: Route matching attempt:', {
-        method: req.method,
-        path: req.path,
-        params: req.params,
-        originalUrl: req.originalUrl
-      });
-    }
-    next();
-  });
+  // Debug middleware to track route matching (development only)
+  if (process.env.NODE_ENV === 'development') {
+    router.use((req, res, next) => {
+      if (req.method === 'GET' && req.path.includes('biz_')) {
+        console.log('🔍 DEBUG: Route matching attempt:', {
+          method: req.method,
+          path: req.path,
+          params: req.params,
+          originalUrl: req.originalUrl
+        });
+      }
+      next();
+    });
+  }
 
   // User's business access
   /**
@@ -1036,23 +1038,12 @@ export function createBusinessRoutes(businessController: BusinessController, sub
         
         // Step 5: Test business context middleware
         console.log('🧪 TEST: Testing business context...');
-        const freshUserRoles = await businessController['businessService']['prisma'].userRole.findMany({
-          where: {
-            userId: userId,
-            isActive: true,
-            role: {
-              isActive: true
-            }
-          },
-          include: {
-            role: true
-          }
-        });
+        const freshUserRoles = await businessController['businessService']['repositories'].roleRepository.getUserRoles(userId);
         
-        const userRoles = freshUserRoles.map(ur => ur.role);
-        const isOwner = userRoles.some(role => role.name === 'OWNER');
+        const userRoles = freshUserRoles;
+        const isOwner = userRoles.some((role: { name: string }) => role.name === 'OWNER');
         
-        console.log('🧪 TEST: User roles after business creation:', userRoles.map(r => r.name));
+        console.log('🧪 TEST: User roles after business creation:', userRoles.map((r: { name: string }) => r.name));
         console.log('🧪 TEST: Is owner:', isOwner);
         
         res.json({
@@ -1064,7 +1055,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
               name: business.name
             },
             fetchedBusinesses: businesses.map(b => ({ id: b.id, name: b.name })),
-            userRoles: userRoles.map(r => r.name),
+            userRoles: userRoles.map((r: { name: string }) => r.name),
             isOwner,
             businessCount: businesses.length
           }

@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { SubscriptionStatus } from '../types/business';
+import { SubscriptionStatus } from '../../src/types/business';
 
 export class TestSubscriptionHelper {
   constructor(private prisma: PrismaClient) {}

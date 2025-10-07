@@ -47,6 +47,23 @@ export interface UsageSummary {
 export class UsageRepository {
   constructor(private prisma: PrismaClient) {}
 
+  private extractPlanFeatureLimits(features: unknown): {
+    smsQuota?: number;
+    maxCustomers?: number;
+    maxServices?: number;
+    storageGB?: number;
+  } {
+    if (features && typeof features === 'object' && !Array.isArray(features)) {
+      return features as {
+        smsQuota?: number;
+        maxCustomers?: number;
+        maxServices?: number;
+        storageGB?: number;
+      };
+    }
+    return {};
+  }
+
   async getOrCreateMonthlyUsage(businessId: string, month: number, year: number): Promise<UsageMetrics> {
     const existing = await this.prisma.businessUsage.findUnique({
       where: {
@@ -234,7 +251,7 @@ export class UsageRepository {
       return null;
     }
 
-    const planFeatures = business.subscription.plan.features as any;
+    const planFeatures = this.extractPlanFeatureLimits(business.subscription.plan.features);
 
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
@@ -278,11 +295,11 @@ export class UsageRepository {
     });
 
     const planLimits = {
-      smsQuota: planFeatures.smsQuota || 0,
+      smsQuota: Number(planFeatures.smsQuota) || 0,
       maxStaffPerBusiness: business.subscription.plan.maxStaffPerBusiness,
-      maxCustomers: planFeatures.maxCustomers || 0,
-      maxServices: planFeatures.maxServices || 0,
-      storageGB: planFeatures.storageGB || 0
+      maxCustomers: Number(planFeatures.maxCustomers) || 0,
+      maxServices: Number(planFeatures.maxServices) || 0,
+      storageGB: Number(planFeatures.storageGB) || 0
     };
 
     const currentUsage = currentMonthUsage ? {
@@ -398,5 +415,94 @@ export class UsageRepository {
       apiCallsCount: u.apiCallsCount,
       lastUpdatedAt: u.lastUpdatedAt
     }));
+  }
+
+  async upsertBusinessUsage(businessId: string): Promise<void> {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    
+    await this.prisma.businessUsage.upsert({
+      where: {
+        businessId_month_year: {
+          businessId,
+          month,
+          year
+        }
+      },
+      create: {
+        id: `usage_${businessId}_${year}${month.toString().padStart(2, '0')}`,
+        businessId,
+        month,
+        year,
+        servicesActive: 0,
+        appointmentsCreated: 0,
+        staffMembersActive: 0,
+        customersAdded: 0,
+        lastUpdatedAt: new Date()
+      },
+      update: {
+        lastUpdatedAt: new Date()
+      }
+    });
+  }
+
+  async recordCustomerUsage(businessId: string, count: number = 1): Promise<void> {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+
+    await this.prisma.businessUsage.upsert({
+      where: {
+        businessId_month_year: {
+          businessId,
+          month,
+          year
+        }
+      },
+      update: {
+        customersAdded: {
+          increment: count
+        }
+      },
+      create: {
+        id: `usage_${businessId}_${year}${month.toString().padStart(2, '0')}`,
+        businessId,
+        month,
+        year,
+        customersAdded: count
+      }
+    });
+  }
+
+  async updateServiceUsage(businessId: string): Promise<void> {
+    const activeServiceCount = await this.prisma.service.count({
+      where: {
+        businessId,
+        isActive: true
+      }
+    });
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    await this.prisma.businessUsage.upsert({
+      where: {
+        businessId_month_year: {
+          businessId,
+          month,
+          year
+        }
+      },
+      update: {
+        servicesActive: activeServiceCount
+      },
+      create: {
+        id: `usage_${businessId}_${year}${month.toString().padStart(2, '0')}`,
+        businessId,
+        month,
+        year,
+        servicesActive: activeServiceCount
+      }
+    });
   }
 }

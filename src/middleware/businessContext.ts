@@ -56,16 +56,21 @@ export class BusinessContextMiddleware {
       const isStaff = userRoles.some(role => role.name === 'STAFF');
       const isCustomer = userRoles.some(role => role.name === 'CUSTOMER');
 
-      console.log('🔍 BusinessContext Debug:', {
-        userId,
-        userRoles: userRoles.map(r => r.name),
-        isOwner,
-        isStaff,
-        isCustomer
-      });
+      // Debug logging (development only)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 BusinessContext Debug:', {
+          userId,
+          userRoles: userRoles.map(r => r.name),
+          isOwner,
+          isStaff,
+          isCustomer
+        });
+      }
 
       if (!isOwner && !isStaff && !isCustomer) {
-        console.log('🔍 BusinessContext: No relevant roles, exiting early');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔍 BusinessContext: No relevant roles, exiting early');
+        }
         return next();
       }
 
@@ -73,7 +78,9 @@ export class BusinessContextMiddleware {
       let primaryBusinessId: string | null = null;
 
       if (isOwner) {
-        console.log('🔍 BusinessContext: Fetching owned businesses for userId:', userId);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔍 BusinessContext: Fetching owned businesses for userId:', userId);
+        }
         const ownedBusinesses = await this.prisma.business.findMany({
           where: {
             ownerId: userId,
@@ -83,7 +90,9 @@ export class BusinessContextMiddleware {
           select: { id: true, name: true },
           orderBy: { createdAt: 'asc' }
         });
-        console.log('🔍 BusinessContext: Found owned businesses:', ownedBusinesses);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔍 BusinessContext: Found owned businesses:', ownedBusinesses);
+        }
         businessIds.push(...ownedBusinesses.map(b => b.id));
         primaryBusinessId = ownedBusinesses[0]?.id || null;
       }
@@ -123,7 +132,9 @@ export class BusinessContextMiddleware {
         isCustomer: isCustomer || false
       };
 
-      console.log('🔍 BusinessContext: Final context for userId:', userId, req.businessContext);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 BusinessContext: Final context for userId:', userId, req.businessContext);
+      }
 
       next();
     } catch (error) {

@@ -14,6 +14,9 @@ import { RoleRepository } from './roleRepository';
 import { DiscountCodeRepository } from './discountCodeRepository';
 import { UsageRepository } from './usageRepository';
 import { StaffRepository } from './staffRepository';
+import { PaymentRepository } from './paymentRepository';
+import { BusinessNotificationSettingsRepository } from './businessNotificationSettingsRepository';
+import { NotificationRepository } from './notificationRepository';
 
 // Repository container for dependency injection
 export class RepositoryContainer {
@@ -32,6 +35,9 @@ export class RepositoryContainer {
   public readonly discountCodeRepository: DiscountCodeRepository;
   public readonly usageRepository: UsageRepository;
   public readonly staffRepository: StaffRepository;
+  public readonly paymentRepository: PaymentRepository;
+  public readonly businessNotificationSettingsRepository: BusinessNotificationSettingsRepository;
+  public readonly notificationRepository: NotificationRepository;
 
   constructor(private prisma: PrismaClient) {
     this.userRepository = new PrismaUserRepository(prisma);
@@ -49,6 +55,9 @@ export class RepositoryContainer {
     this.discountCodeRepository = new DiscountCodeRepository(prisma);
     this.usageRepository = new UsageRepository(prisma);
     this.staffRepository = new StaffRepository(prisma);
+    this.paymentRepository = new PaymentRepository(prisma);
+    this.businessNotificationSettingsRepository = new BusinessNotificationSettingsRepository(prisma);
+    this.notificationRepository = new NotificationRepository(prisma);
   }
 
   get prismaClient(): PrismaClient {
@@ -72,7 +81,10 @@ export {
   RoleRepository,
   DiscountCodeRepository,
   UsageRepository,
-  StaffRepository
+  StaffRepository,
+  PaymentRepository,
+  BusinessNotificationSettingsRepository,
+  NotificationRepository
 };
 
 // Export interfaces for testing/mocking

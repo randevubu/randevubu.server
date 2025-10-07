@@ -62,7 +62,8 @@ export class AuthMiddleware {
 
       const decoded = await this.tokenService.verifyAccessToken(token, context);
 
-      const user = await this.repositories.userRepository.findById(
+      // Get user with security information in a single query
+      const user = await this.repositories.userRepository.findByIdWithSecurity(
         decoded.userId
       );
 
@@ -74,24 +75,16 @@ export class AuthMiddleware {
         throw new UserDeactivatedError("Account is deactivated", context);
       }
 
-      // Check for any security issues via the full user record
-      const userWithSecurity =
-        await this.repositories.userRepository.findByPhoneNumber(
-          user.phoneNumber
+      // Check for account lockout
+      if (user.lockedUntil && user.lockedUntil > new Date()) {
+        const retryAfter = Math.ceil(
+          (user.lockedUntil.getTime() - Date.now()) / 1000
         );
-
-      if (
-        userWithSecurity?.lockedUntil &&
-        userWithSecurity.lockedUntil > new Date()
-      ) {
-        const unlockTime = userWithSecurity.lockedUntil.toISOString();
         throw new UserLockedError(
-          `Account is temporarily locked until ${unlockTime}`,
+          "Account is temporarily locked due to multiple failed attempts",
           context,
           {
-            retryAfter: Math.ceil(
-              (userWithSecurity.lockedUntil.getTime() - Date.now()) / 1000
-            ),
+            retryAfter,
           }
         );
       }
@@ -191,20 +184,15 @@ export class AuthMiddleware {
           token,
           context
         );
-        const user = await this.repositories.userRepository.findById(
+        const user = await this.repositories.userRepository.findByIdWithSecurity(
           decoded.userId
         );
 
         if (user && user.isActive) {
-          const userWithSecurity =
-            await this.repositories.userRepository.findByPhoneNumber(
-              user.phoneNumber
-            );
-
           // Only set user if account is not locked
           if (
-            !userWithSecurity?.lockedUntil ||
-            userWithSecurity.lockedUntil <= new Date()
+            !user.lockedUntil ||
+            user.lockedUntil <= new Date()
           ) {
             // Get user roles and permissions if RBAC service is available
             let roles, permissions, effectiveLevel;
@@ -262,7 +250,7 @@ export class AuthMiddleware {
 }
 
 // Utility functions
-export const createUserContext = (user: any) => ({
+export const createUserContext = (user: { id: string; phoneNumber: string; isVerified: boolean; isActive: boolean; createdAt: Date }) => ({
   id: user.id,
   phoneNumber: user.phoneNumber,
   isVerified: user.isVerified,

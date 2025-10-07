@@ -1,6 +1,6 @@
 import { RepositoryContainer } from "../../../repositories";
 import { AppointmentStatus } from "../../../types/business";
-import { ReliabilityScoreCalculator } from "../../../utils/reliabilityScoreCalculator";
+import { ReliabilityScoreCalculator } from "../userBehavior/reliabilityScoreCalculator";
 
 import { BusinessOverviewReport } from '../../../types/reports';
 

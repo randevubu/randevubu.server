@@ -1,3 +1,4 @@
+import bcrypt from "bcrypt";
 import crypto from "crypto";
 import * as jwt from "jsonwebtoken";
 import { config } from "../../../config/environment";
@@ -25,17 +26,15 @@ export class TokenService {
     refreshTokenExpirySeconds: 30 * 24 * 60 * 60,
   };
 
+  // Bcrypt salt rounds for verification code hashing (12+ recommended for production)
+  private static readonly BCRYPT_SALT_ROUNDS = 12;
+
   constructor(
     private repositories: RepositoryContainer,
     private tokenConfig: TokenServiceConfig = TokenService.DEFAULT_CONFIG
   ) {}
 
-  async generateTokenPair(
-    userId: string,
-    phoneNumber: string,
-    deviceInfo?: DeviceInfo,
-    context?: ErrorContext
-  ): Promise<TokenPair> {
+  private validateSecrets(context?: ErrorContext): { accessSecret: string; refreshSecret: string } {
     const accessSecret = config.JWT_ACCESS_SECRET || config.JWT_SECRET;
     const refreshSecret = config.JWT_REFRESH_SECRET || config.JWT_SECRET;
 
@@ -46,6 +45,26 @@ export class TokenService {
         context
       );
     }
+
+    // Ensure access and refresh tokens use different secrets for security
+    if (accessSecret === refreshSecret) {
+      throw new ConfigurationError(
+        "JWT_SECRET",
+        "Access and refresh token secrets must be different for security",
+        context
+      );
+    }
+
+    return { accessSecret, refreshSecret };
+  }
+
+  async generateTokenPair(
+    userId: string,
+    phoneNumber: string,
+    deviceInfo?: DeviceInfo,
+    context?: ErrorContext
+  ): Promise<TokenPair> {
+    const { accessSecret, refreshSecret } = this.validateSecrets(context);
 
     const accessTokenPayload: JWTPayload = {
       userId,
@@ -139,15 +158,7 @@ export class TokenService {
     token: string,
     context?: ErrorContext
   ): Promise<JWTPayload> {
-    const accessSecret = config.JWT_ACCESS_SECRET || config.JWT_SECRET;
-
-    if (!accessSecret) {
-      throw new ConfigurationError(
-        "JWT_ACCESS_SECRET",
-        "JWT access secret is not configured",
-        context
-      );
-    }
+    const { accessSecret } = this.validateSecrets(context);
 
     try {
       const decoded = jwt.verify(token, accessSecret, {
@@ -180,15 +191,7 @@ export class TokenService {
     deviceInfo?: DeviceInfo,
     context?: ErrorContext
   ): Promise<TokenPair> {
-    const refreshSecret = config.JWT_REFRESH_SECRET || config.JWT_SECRET;
-
-    if (!refreshSecret) {
-      throw new ConfigurationError(
-        "JWT_REFRESH_SECRET",
-        "JWT refresh secret is not configured",
-        context
-      );
-    }
+    const { refreshSecret } = this.validateSecrets(context);
 
     try {
       logger.debug("Attempting JWT verification", {
@@ -259,17 +262,17 @@ export class TokenService {
         decoded.tokenValue
       );
 
-      // Revoke current refresh token (token rotation)
-      await this.repositories.refreshTokenRepository.revokeByToken(
-        decoded.tokenValue
-      );
-
-      // Generate new token pair
+      // Generate new token pair FIRST to ensure user doesn't lose access
       const newTokenPair = await this.generateTokenPair(
         decoded.userId,
         decoded.phoneNumber,
         deviceInfo,
         context
+      );
+
+      // Revoke current refresh token AFTER new tokens are generated (token rotation)
+      await this.repositories.refreshTokenRepository.revokeByToken(
+        decoded.tokenValue
       );
 
       // Log token refresh
@@ -309,7 +312,7 @@ export class TokenService {
         logger.error('Refresh token expired - TokenExpiredError', {
           errorName: error.name,
           errorMessage: error.message,
-          expiredAt: (error as any).expiredAt,
+          expiredAt: error.expiredAt?.toISOString(),
           requestId: context?.requestId,
         });
         throw new TokenExpiredError("Refresh token has expired", context);
@@ -478,26 +481,21 @@ export class TokenService {
     return code;
   }
 
-  hashCode(code: string): string {
-    return crypto.createHash("sha256").update(code).digest("hex");
+  async hashCode(code: string): Promise<string> {
+    // Use bcrypt for secure password hashing with automatic salting
+    return await bcrypt.hash(code, TokenService.BCRYPT_SALT_ROUNDS);
   }
 
-  verifyCode(plainCode: string, hashedCode: string): boolean {
-    const hashedPlain = crypto
-      .createHash("sha256")
-      .update(plainCode)
-      .digest("hex");
-    return crypto.timingSafeEqual(
-      Buffer.from(hashedPlain),
-      Buffer.from(hashedCode)
-    );
+  async verifyCode(plainCode: string, hashedCode: string): Promise<boolean> {
+    // Use bcrypt.compare for secure comparison with timing attack protection
+    return await bcrypt.compare(plainCode, hashedCode);
   }
 
   private generateSecureToken(): string {
     return crypto.randomBytes(64).toString("hex");
   }
 
-  private sanitizeDeviceInfo(deviceInfo?: DeviceInfo): any {
+  private sanitizeDeviceInfo(deviceInfo?: DeviceInfo): Record<string, unknown> | null {
     if (!deviceInfo) return null;
 
     return {

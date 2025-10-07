@@ -335,7 +335,7 @@ export class SubscriptionService {
       await this.subscriptionRepository.updateSubscriptionStatus(
         subscription.id,
         SubscriptionStatus.ACTIVE,
-        { ...subscription.metadata, paymentMethodId }
+        { ...(subscription.metadata as Record<string, unknown> || {}), paymentMethodId }
       );
     }
 
@@ -786,8 +786,8 @@ export class SubscriptionService {
 
     return {
       autoRenewal: subscription.autoRenewal,
-      nextBillingDate: subscription.nextBillingDate,
-      paymentMethodId: subscription.paymentMethodId,
+      nextBillingDate: subscription.nextBillingDate ?? undefined,
+      paymentMethodId: subscription.paymentMethodId ?? undefined,
       paymentMethod: paymentMethod ? {
         id: paymentMethod.id,
         lastFourDigits: paymentMethod.lastFourDigits,

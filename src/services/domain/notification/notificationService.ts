@@ -1,7 +1,8 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 // @ts-ignore - web-push is available in Docker container
 import * as webpush from 'web-push';
 import { UsageService } from '../usage/usageService';
+import { RepositoryContainer } from '../../../repositories';
 import { 
   NotificationChannel,
   PushSubscriptionData,
@@ -12,20 +13,16 @@ import {
   UpcomingAppointment
 } from '../../../types/business';
 import { NotificationStatus } from '../../../types/notification';
-import { 
-  translateNotification, 
-  getNotificationTranslationKey,
-  formatDateForLanguage,
-  formatTimeForLanguage,
-  formatDateTimeForLanguage,
-  NotificationTranslationParams
-} from '../../../utils/notificationTranslations';
+import { TranslationService, TranslationParams } from '../../translationServiceFallback';
 
 import { NotificationResult, EnhancedClosureData } from '../../../types/notification';
 import { TimeSlot, RescheduleSuggestion } from '../../../types/appointment';
 
 export class NotificationService {
-  constructor(private prisma: PrismaClient, private usageService?: UsageService) {
+  private translationService: TranslationService;
+
+  constructor(private repositories: RepositoryContainer, private usageService?: UsageService) {
+    this.translationService = new TranslationService();
     // Configure web-push if VAPID keys are available
     const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
     const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
@@ -74,7 +71,7 @@ export class NotificationService {
           closureData.id,
           customerId,
           channel,
-          closureData.message || this.generateClosureMessage(closureData, language),
+          closureData.message || await this.generateClosureMessage(closureData, language),
           result
         );
 
@@ -91,7 +88,7 @@ export class NotificationService {
           closureData.id,
           customerId,
           channel,
-          closureData.message || this.generateClosureMessage(closureData, language),
+          closureData.message || await this.generateClosureMessage(closureData, language),
           failedResult
         );
 
@@ -109,17 +106,10 @@ export class NotificationService {
   ): Promise<NotificationResult[]> {
     try {
       // Get user's notification preferences for this business
-      const availabilityAlert = await this.prisma.availabilityAlert.findFirst({
-        where: {
-          customerId,
-          businessId,
-          isActive: true
-        },
-        include: {
-          business: true,
-          service: true
-        }
-      });
+      const availabilityAlert = await this.repositories.notificationRepository.findAvailabilityAlertByCustomerAndBusiness(
+        customerId,
+        businessId
+      );
 
       if (!availabilityAlert) {
         return [{
@@ -130,14 +120,32 @@ export class NotificationService {
         }];
       }
 
+      // Fetch business details
+      const business = await this.repositories.businessRepository.findById(businessId);
+      if (!business) {
+        return [{
+          success: false,
+          error: 'Business not found',
+          channel: NotificationChannel.EMAIL,
+          status: NotificationStatus.FAILED
+        }];
+      }
+
+      // Fetch service details if serviceId is provided
+      let serviceName: string | undefined;
+      if (availabilityAlert.serviceId) {
+        const service = await this.repositories.serviceRepository.findById(availabilityAlert.serviceId);
+        serviceName = service?.name;
+      }
+
       const preferences = availabilityAlert.notificationPreferences as {
         channels: NotificationChannel[];
       };
 
-      const message = this.generateAvailabilityMessage(
-        availabilityAlert.business.name,
+      const message = await this.generateAvailabilityMessage(
+        business.name,
         availableSlots,
-        availabilityAlert.service?.name,
+        serviceName,
         'tr' // Default to Turkish for now
       );
 
@@ -148,7 +156,7 @@ export class NotificationService {
           customerId,
           channel,
           message,
-          availabilityAlert.business.name,
+          business.name,
           availableSlots
         );
         results.push(result);
@@ -170,14 +178,7 @@ export class NotificationService {
     suggestions: RescheduleSuggestion[]
   ): Promise<NotificationResult> {
     try {
-      const appointment = await this.prisma.appointment.findUnique({
-        where: { id: appointmentId },
-        include: {
-          customer: true,
-          business: true,
-          service: true
-        }
-      });
+      const appointment = await this.repositories.appointmentRepository.findByIdWithDetails(appointmentId);
 
       if (!appointment) {
         return {
@@ -188,7 +189,7 @@ export class NotificationService {
         };
       }
 
-      const message = this.generateRescheduleMessage(
+      const message = await this.generateRescheduleMessage(
         appointment.business.name,
         appointment.service.name,
         appointment.startTime,
@@ -200,7 +201,7 @@ export class NotificationService {
       return await this.sendEmailNotification(appointment.customerId, {
         id: appointmentId,
         businessId: appointment.businessId,
-        businessName: (appointment as any).business?.name || 'Business Name',
+        businessName: appointment.business?.name || 'Business Name',
         startDate: appointment.startTime,
         endDate: appointment.endTime,
         reason: 'Reschedule required due to business closure',
@@ -260,9 +261,7 @@ export class NotificationService {
       }
 
       // Get customer details for phone number
-      const customer = await this.prisma.user.findUnique({
-        where: { id: customerId }
-      });
+      const customer = await this.repositories.userRepository.findById(customerId);
 
       if (!customer?.phoneNumber) {
         return {
@@ -314,7 +313,7 @@ export class NotificationService {
     closureData: EnhancedClosureData,
     language: string = 'tr'
   ): Promise<NotificationResult> {
-    const message = closureData.message || this.generateClosureMessage(closureData, language);
+    const message = closureData.message || await this.generateClosureMessage(closureData, language);
     const title = language === 'tr' ? 'İş Yeri Kapanış Bildirimi' : 'Business Closure Notice';
     
     const results = await this.sendPushNotification({
@@ -370,64 +369,108 @@ export class NotificationService {
     message: string,
     result: NotificationResult
   ): Promise<void> {
-    await this.prisma.closureNotification.create({
-      data: {
-        id: `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        closureId,
-        customerId,
-        channel,
-        message,
-        sentAt: result.success ? new Date() : null,
-        status: (result.status ?? NotificationStatus.PENDING) as any,
-        errorMessage: result.error
-      }
+    await this.repositories.notificationRepository.createClosureNotification({
+      closureId,
+      customerId,
+      channel,
+      message,
+      status: (result.status ?? NotificationStatus.PENDING) as any
     });
   }
 
-  private generateClosureMessage(closureData: EnhancedClosureData, language: string = 'tr'): string {
-    const translationKey = getNotificationTranslationKey('BUSINESS_CLOSURE_NOTICE');
-    const translationParams: NotificationTranslationParams = {
+  private async generateClosureMessage(closureData: EnhancedClosureData, language: string = 'tr'): Promise<string> {
+    const translationParams: TranslationParams = {
       businessName: closureData.businessName,
-      startDate: formatDateForLanguage(closureData.startDate, language),
-      endDate: closureData.endDate ? formatDateForLanguage(closureData.endDate, language) : undefined,
+      startDate: this.formatDateForLanguage(closureData.startDate, language),
       reason: closureData.reason
     };
+
+    // Add endDate only if it exists
+    if (closureData.endDate) {
+      translationParams.endDate = this.formatDateForLanguage(closureData.endDate, language);
+    }
     
-    return translateNotification(translationKey, translationParams, language);
+    return await this.translationService.translate('notifications.businessClosureNotice', translationParams, language);
   }
 
-  private generateAvailabilityMessage(
+  private async generateAvailabilityMessage(
     businessName: string,
     slots: TimeSlot[],
     serviceName?: string,
     language: string = 'tr'
-  ): string {
-    const translationKey = getNotificationTranslationKey('AVAILABILITY_ALERT');
-    const translationParams: NotificationTranslationParams = {
+  ): Promise<string> {
+    const translationParams: TranslationParams = {
       businessName,
-      slotCount: slots.length,
-      serviceName
+      slotCount: slots.length
     };
+
+    // Add serviceName only if it exists
+    if (serviceName) {
+      translationParams.serviceName = serviceName;
+    }
     
-    return translateNotification(translationKey, translationParams, language);
+    return await this.translationService.translate('notifications.availabilityAlert', translationParams, language);
   }
 
-  private generateRescheduleMessage(
+  private async generateRescheduleMessage(
     businessName: string,
     serviceName: string,
     originalTime: Date,
     suggestions: RescheduleSuggestion[],
     language: string = 'tr'
-  ): string {
-    const translationKey = getNotificationTranslationKey('RESCHEDULE_NOTIFICATION');
-    const translationParams: NotificationTranslationParams = {
+  ): Promise<string> {
+    const translationParams: TranslationParams = {
       businessName,
       serviceName,
-      originalTime: formatDateTimeForLanguage(originalTime, language),
+      originalTime: this.formatDateTimeForLanguage(originalTime, language),
       suggestionCount: suggestions.length
     };
     
-    return translateNotification(translationKey, translationParams, language);
+    return await this.translationService.translate('notifications.rescheduleNotification', translationParams, language);
+  }
+
+  // Helper methods for date/time formatting
+  private formatDateForLanguage(date: Date, language: string = 'tr'): string {
+    if (language === 'tr') {
+      return date.toLocaleDateString('tr-TR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    }
+    return date.toLocaleDateString('en-US');
+  }
+
+  private formatTimeForLanguage(date: Date, language: string = 'tr'): string {
+    if (language === 'tr') {
+      return date.toLocaleTimeString('tr-TR', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  private formatDateTimeForLanguage(date: Date, language: string = 'tr'): string {
+    if (language === 'tr') {
+      return date.toLocaleString('tr-TR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   }
 
   async getNotificationDeliveryStats(closureId: string): Promise<{
@@ -437,9 +480,7 @@ export class NotificationService {
     pending: number;
     byChannel: Record<NotificationChannel, number>;
   }> {
-    const notifications = await this.prisma.closureNotification.findMany({
-      where: { closureId }
-    });
+    const notifications = await this.repositories.notificationRepository.findClosureNotificationsByClosure(closureId);
 
     const stats = {
       total: notifications.length,
@@ -465,16 +506,18 @@ export class NotificationService {
     notificationChannels: NotificationChannel[]
   ): Promise<string> {
     const alertId = `alert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    await this.prisma.availabilityAlert.create({
-      data: {
-        id: alertId,
-        customerId,
-        businessId,
-        serviceId,
-        preferredDates: JSON.stringify(preferredDates),
-        notificationPreferences: JSON.stringify({ channels: notificationChannels }),
-        isActive: true
+
+    await this.repositories.notificationRepository.createAvailabilityAlert({
+      customerId,
+      businessId,
+      serviceId: serviceId ?? undefined,
+      preferredDates: {
+        startDate: (preferredDates[0]?.startDate || new Date()).toISOString(),
+        endDate: (preferredDates[0]?.endDate || new Date()).toISOString()
+      },
+      notificationPreferences: { 
+        channels: notificationChannels,
+        timing: [60, 24 * 60]
       }
     });
 
@@ -482,15 +525,7 @@ export class NotificationService {
   }
 
   async deactivateAvailabilityAlert(alertId: string, customerId: string): Promise<void> {
-    await this.prisma.availabilityAlert.updateMany({
-      where: {
-        id: alertId,
-        customerId
-      },
-      data: {
-        isActive: false
-      }
-    });
+    await this.repositories.notificationRepository.updateAvailabilityAlertStatus(alertId, false);
   }
 
   // Subscription-related notification methods
@@ -501,14 +536,13 @@ export class NotificationService {
     nextBillingDate: Date,
     language: string = 'tr'
   ): Promise<NotificationResult> {
-    const translationKey = getNotificationTranslationKey('SUBSCRIPTION_RENEWAL_CONFIRMATION');
-    const translationParams: NotificationTranslationParams = {
+    const translationParams: TranslationParams = {
       businessName,
       planName,
-      nextBillingDate: formatDateForLanguage(nextBillingDate, language)
+      nextBillingDate: this.formatDateForLanguage(nextBillingDate, language)
     };
     
-    const message = translateNotification(translationKey, translationParams, language);
+    const message = await this.translationService.translate('notifications.subscriptionRenewalConfirmation', translationParams, language);
     
     try {
       // For now, just log the notification - implement actual SMS sending later
@@ -536,14 +570,13 @@ export class NotificationService {
     expiryDate: Date,
     language: string = 'tr'
   ): Promise<NotificationResult> {
-    const translationKey = getNotificationTranslationKey('SUBSCRIPTION_RENEWAL_REMINDER');
-    const translationParams: NotificationTranslationParams = {
+    const translationParams: TranslationParams = {
       businessName,
       planName,
-      expiryDate: formatDateForLanguage(expiryDate, language)
+      expiryDate: this.formatDateForLanguage(expiryDate, language)
     };
     
-    const message = translateNotification(translationKey, translationParams, language);
+    const message = await this.translationService.translate('notifications.subscriptionRenewalReminder', translationParams, language);
     
     try {
       // For now, just log the notification - implement actual SMS sending later
@@ -571,14 +604,13 @@ export class NotificationService {
     expiryDate: Date,
     language: string = 'tr'
   ): Promise<NotificationResult> {
-    const translationKey = getNotificationTranslationKey('PAYMENT_FAILURE_NOTIFICATION');
-    const translationParams: NotificationTranslationParams = {
+    const translationParams: TranslationParams = {
       businessName,
       failedPaymentCount,
-      expiryDate: formatDateForLanguage(expiryDate, language)
+      expiryDate: this.formatDateForLanguage(expiryDate, language)
     };
     
-    const message = translateNotification(translationKey, translationParams, language);
+    const message = await this.translationService.translate('notifications.paymentFailureNotification', translationParams, language);
     
     try {
       // For now, just log the notification - implement actual SMS sending later
@@ -610,34 +642,14 @@ export class NotificationService {
       subscriptionId
     });
 
-    // @ts-ignore - pushSubscription model exists in Prisma schema
-    const subscription = await this.prisma.pushSubscription.upsert({
-      where: {
-        userId_endpoint: {
-          userId,
-          endpoint: subscriptionData.endpoint
-        }
-      },
-      update: {
-        p256dh: subscriptionData.keys.p256dh,
-        auth: subscriptionData.keys.auth,
-        deviceName: subscriptionData.deviceName,
-        deviceType: subscriptionData.deviceType || 'web',
-        userAgent: subscriptionData.userAgent,
-        isActive: true,
-        lastUsedAt: new Date(),
-      },
-      create: {
-        id: subscriptionId,
-        userId,
-        endpoint: subscriptionData.endpoint,
-        p256dh: subscriptionData.keys.p256dh,
-        auth: subscriptionData.keys.auth,
-        deviceName: subscriptionData.deviceName,
-        deviceType: subscriptionData.deviceType || 'web',
-        userAgent: subscriptionData.userAgent,
-        isActive: true,
-      }
+    const subscription = await this.repositories.notificationRepository.upsertPushSubscription({
+      userId,
+      endpoint: subscriptionData.endpoint,
+      p256dh: subscriptionData.keys.p256dh,
+      auth: subscriptionData.keys.auth,
+      userAgent: subscriptionData.userAgent,
+      deviceName: subscriptionData.deviceName,
+      deviceType: subscriptionData.deviceType || 'web'
     });
 
     return subscription as PushSubscriptionData;
@@ -654,13 +666,7 @@ export class NotificationService {
       throw new Error('Either endpoint or subscriptionId must be provided');
     }
 
-    // @ts-ignore - pushSubscription model exists in Prisma schema
-    const result = await this.prisma.pushSubscription.updateMany({
-      where,
-      data: { isActive: false }
-    });
-
-    return result.count > 0;
+    return await this.repositories.notificationRepository.deactivatePushSubscription(userId, subscriptionId, endpoint);
   }
 
   async getUserPushSubscriptions(userId: string, activeOnly = true): Promise<PushSubscriptionData[]> {
@@ -669,68 +675,63 @@ export class NotificationService {
       where.isActive = true;
     }
 
-    // @ts-ignore - pushSubscription model exists in Prisma schema
-    const subscriptions = await this.prisma.pushSubscription.findMany({
-      where,
-      orderBy: { lastUsedAt: 'desc' }
-    });
-
-    return subscriptions as PushSubscriptionData[];
+    const subscriptions = await this.repositories.notificationRepository.findPushSubscriptionsByUser(userId);
+    // Map repository type to business type, converting null to undefined
+    return subscriptions.map(sub => ({
+      ...sub,
+      deviceName: sub.deviceName ?? undefined,
+      deviceType: sub.deviceType ?? undefined,
+      userAgent: sub.userAgent ?? undefined
+    }));
   }
 
   async updateNotificationPreferences(
-    userId: string, 
+    userId: string,
     preferences: NotificationPreferenceRequest
   ): Promise<NotificationPreferenceData> {
     const preferenceId = `pref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // @ts-ignore - notificationPreference model exists in Prisma schema
-    const result = await this.prisma.notificationPreference.upsert({
-      where: { userId },
-      create: {
-        id: preferenceId,
-        userId,
-        enableAppointmentReminders: preferences.enableAppointmentReminders ?? true,
-        enableBusinessNotifications: preferences.enableBusinessNotifications ?? true,
-        enablePromotionalMessages: preferences.enablePromotionalMessages ?? false,
-        reminderTiming: JSON.stringify(preferences.reminderTiming ?? { hours: [1, 24] }),
-        preferredChannels: JSON.stringify(preferences.preferredChannels ?? { channels: ['PUSH', 'SMS'] }),
-        quietHours: preferences.quietHours ? JSON.stringify(preferences.quietHours) : Prisma.JsonNull,
-        timezone: preferences.timezone ?? 'Europe/Istanbul',
-      },
-      update: {
-        enableAppointmentReminders: preferences.enableAppointmentReminders,
-        enableBusinessNotifications: preferences.enableBusinessNotifications,
-        enablePromotionalMessages: preferences.enablePromotionalMessages,
-        reminderTiming: preferences.reminderTiming ? JSON.stringify(preferences.reminderTiming) : undefined,
-        preferredChannels: preferences.preferredChannels ? JSON.stringify(preferences.preferredChannels) : undefined,
-        quietHours: preferences.quietHours ? JSON.stringify(preferences.quietHours) : undefined,
-        timezone: preferences.timezone,
-      }
-    });
 
+    const result = await this.repositories.notificationRepository.upsertUserNotificationPreference(userId, {
+      ...preferences,
+      quietHours: preferences.quietHours ? {
+        enabled: true,
+        startTime: preferences.quietHours.start,
+        endTime: preferences.quietHours.end,
+        days: [1, 2, 3, 4, 5, 6, 7],
+        timezone: preferences.quietHours.timezone
+      } : null
+    });
+    // Map repository type to business type
     return {
       ...result,
-      reminderTiming: JSON.parse(result.reminderTiming as string),
-      preferredChannels: JSON.parse(result.preferredChannels as string),
-      quietHours: result.quietHours ? JSON.parse(result.quietHours as string) : undefined,
-    } as NotificationPreferenceData;
+      preferredChannels: {
+        channels: result.preferredChannels.channels as NotificationChannel[]
+      },
+      quietHours: result.quietHours ? {
+        start: result.quietHours.startTime,
+        end: result.quietHours.endTime,
+        timezone: result.quietHours.timezone
+      } : undefined
+    };
   }
 
   async getNotificationPreferences(userId: string): Promise<NotificationPreferenceData | null> {
-    // @ts-ignore - notificationPreference model exists in Prisma schema
-    const preferences = await this.prisma.notificationPreference.findUnique({
-      where: { userId }
-    });
+    const preferences = await this.repositories.notificationRepository.findNotificationPreference(userId);
 
     if (!preferences) return null;
 
+    // Map repository type to business type
     return {
       ...preferences,
-      reminderTiming: JSON.parse(preferences.reminderTiming as string),
-      preferredChannels: JSON.parse(preferences.preferredChannels as string),
-      quietHours: preferences.quietHours ? JSON.parse(preferences.quietHours as string) : undefined,
-    } as NotificationPreferenceData;
+      preferredChannels: {
+        channels: preferences.preferredChannels.channels as NotificationChannel[]
+      },
+      quietHours: preferences.quietHours ? {
+        start: preferences.quietHours.startTime,
+        end: preferences.quietHours.endTime,
+        timezone: preferences.quietHours.timezone
+      } : undefined
+    };
   }
 
   async sendPushNotification(request: SendPushNotificationRequest): Promise<NotificationResult[]> {
@@ -759,20 +760,16 @@ export class NotificationService {
         // For test appointments, set appointmentId to null to avoid foreign key constraints
         const isTestAppointment = request.appointmentId?.startsWith('test-');
 
-        // @ts-ignore - pushNotification model exists in Prisma schema
-        await this.prisma.pushNotification.create({
-          data: {
-            id: notificationId,
-            subscriptionId: subscription.id,
-            appointmentId: isTestAppointment ? null : request.appointmentId,
-            businessId: request.businessId,
-            title: request.title,
-            body: request.body,
-            icon: request.icon,
-            badge: request.badge,
-            data: request.data ? JSON.stringify(request.data) : Prisma.JsonNull,
-            status: NotificationStatus.PENDING,
-          }
+        await this.repositories.notificationRepository.createPushNotification({
+          subscriptionId: subscription.id,
+          appointmentId: isTestAppointment ? null : request.appointmentId,
+          businessId: request.businessId,
+          title: request.title,
+          body: request.body,
+          icon: request.icon,
+          badge: request.badge,
+          data: request.data,
+          status: NotificationStatus.PENDING
         });
 
         // Prepare web-push payload
@@ -802,21 +799,10 @@ export class NotificationService {
         await webpush.sendNotification(pushSubscription, payload);
 
         // Update notification status
-        // @ts-ignore - pushNotification model exists in Prisma schema
-        await this.prisma.pushNotification.update({
-          where: { id: notificationId },
-          data: {
-            status: NotificationStatus.SENT,
-            sentAt: new Date(),
-          }
-        });
+        await this.repositories.notificationRepository.updatePushNotificationStatus(notificationId, NotificationStatus.SENT);
 
         // Update subscription last used
-        // @ts-ignore - pushSubscription model exists in Prisma schema
-        await this.prisma.pushSubscription.update({
-          where: { id: subscription.id },
-          data: { lastUsedAt: new Date() }
-        });
+        await this.repositories.notificationRepository.updatePushSubscriptionLastUsed(subscription.id);
 
         results.push({
           success: true,
@@ -837,8 +823,8 @@ export class NotificationService {
         });
 
         // Check if subscription is invalid
-        const statusCode = (error as any)?.statusCode;
-        const errorBody = (error as any)?.body || '';
+        const statusCode = (error as { statusCode?: number })?.statusCode;
+        const errorBody = (error as { body?: string })?.body || '';
 
         const isInvalidSubscription = statusCode === 410 ||
                                     statusCode === 404 ||
@@ -860,27 +846,14 @@ export class NotificationService {
           console.log(`Disabling invalid subscription: ${subscription.id}, endpoint: ${subscription.endpoint}`);
           // Disable invalid subscription
           // @ts-ignore - pushSubscription model exists in Prisma schema
-          await this.prisma.pushSubscription.update({
-            where: { id: subscription.id },
-            data: { isActive: false }
-          });
+          await this.repositories.notificationRepository.updatePushSubscriptionStatus(subscription.userId, subscription.endpoint, false);
           console.log(`Successfully disabled subscription: ${subscription.id}`);
         }
 
         // Update notification status
         if (subscription.id) {
           try {
-            // @ts-ignore - pushNotification model exists in Prisma schema
-            await this.prisma.pushNotification.updateMany({
-              where: {
-                subscriptionId: subscription.id,
-                status: NotificationStatus.PENDING
-              },
-              data: {
-                status: NotificationStatus.FAILED,
-                errorMessage,
-              }
-            });
+            await this.repositories.notificationRepository.updatePushNotificationStatusBySubscription(subscription.id, NotificationStatus.FAILED, errorMessage);
           } catch (dbError) {
             console.error('Failed to update notification status:', dbError);
           }
@@ -925,15 +898,14 @@ export class NotificationService {
     const userLanguage = preferences?.timezone?.includes('Istanbul') ? 'tr' : 'en';
     
     // Generate translated notification
-    const translationKey = getNotificationTranslationKey('APPOINTMENT_REMINDER');
-    const translationParams: NotificationTranslationParams = {
+    const translationParams: TranslationParams = {
       serviceName: appointment.service.name,
       businessName: appointment.business.name,
-      time: formatTimeForLanguage(appointment.startTime, userLanguage)
+      time: this.formatTimeForLanguage(appointment.startTime, userLanguage)
     };
     
     const title = userLanguage === 'tr' ? 'Randevu Hatırlatması' : 'Appointment Reminder';
-    const body = translateNotification(translationKey, translationParams, userLanguage);
+    const body = await this.translationService.translate('notifications.appointmentReminder', translationParams, userLanguage);
     
     const appointmentData = {
       appointmentId: appointment.id,
@@ -1156,11 +1128,7 @@ export class NotificationService {
     const skip = (page - 1) * limit;
 
     // Get user's subscriptions
-    // @ts-ignore - pushSubscription model exists in Prisma schema
-    const subscriptions = await this.prisma.pushSubscription.findMany({
-      where: { userId },
-      select: { id: true }
-    });
+    const subscriptions = await this.repositories.notificationRepository.findPushSubscriptionsByUser(userId);
 
     const subscriptionIds = subscriptions.map((s: any) => s.id);
 
@@ -1184,31 +1152,8 @@ export class NotificationService {
     }
 
     const [notifications, total] = await Promise.all([
-      // @ts-ignore - pushNotification model exists in Prisma schema
-      this.prisma.pushNotification.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          appointment: {
-            select: {
-              id: true,
-              startTime: true,
-              service: { select: { name: true } },
-              business: { select: { name: true } }
-            }
-          },
-          business: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        }
-      }),
-      // @ts-ignore - pushNotification model exists in Prisma schema
-      this.prisma.pushNotification.count({ where })
+      this.repositories.notificationRepository.findPushNotificationsByUser(userId, { page, limit, status: options?.status as any }),
+      this.repositories.notificationRepository.countPushNotificationsByUser(userId, { status: options?.status as any })
     ]);
 
     return {

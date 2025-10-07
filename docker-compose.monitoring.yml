@@ -34,7 +34,7 @@ services:
     image: grafana/grafana:latest
     container_name: randevubu-grafana
     ports:
-      - "3000:3000"
+      - "3003:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_USERS_ALLOW_SIGN_UP=false

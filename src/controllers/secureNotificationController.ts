@@ -1,12 +1,9 @@
 import { Request, Response } from 'express';
 import { SecureNotificationService, SecureNotificationRequest, BroadcastNotificationRequest } from '../services/domain/notification';
-import { NotificationValidationService } from '../services/domain/notification';
 import { AuthenticatedRequest } from '../types/auth';
 import { NotificationChannel } from '../types/business';
 
 export class SecureNotificationController {
-  private validationService = new NotificationValidationService();
-
   constructor(private secureNotificationService: SecureNotificationService) {}
 
   /**

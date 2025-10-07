@@ -701,13 +701,27 @@ export class AuthController {
       const userId = requireAuthenticatedUser(req).id;
       const { search, page, limit, status, sortBy, sortOrder } = req.query;
 
+      const allowedStatus = new Set(['all', 'banned', 'flagged', 'active']);
+      const allowedSortBy = new Set(['createdAt', 'updatedAt', 'firstName', 'lastName', 'lastLoginAt']);
+      const allowedSortOrder = new Set(['asc', 'desc']);
+
+      const parsedStatus = typeof status === 'string' && allowedStatus.has(status)
+        ? (status as 'all' | 'banned' | 'flagged' | 'active')
+        : undefined;
+      const parsedSortBy = typeof sortBy === 'string' && allowedSortBy.has(sortBy)
+        ? (sortBy as 'createdAt' | 'updatedAt' | 'firstName' | 'lastLoginAt' | 'lastName')
+        : undefined;
+      const parsedSortOrder = typeof sortOrder === 'string' && allowedSortOrder.has(sortOrder)
+        ? (sortOrder as 'asc' | 'desc')
+        : undefined;
+
       const filters = {
-        search: search as string,
+        search: (search as string) || undefined,
         page: page ? parseInt(page as string) : undefined,
         limit: limit ? parseInt(limit as string) : undefined,
-        status: status as string,
-        sortBy: sortBy as string,
-        sortOrder: sortOrder as string
+        status: parsedStatus,
+        sortBy: parsedSortBy,
+        sortOrder: parsedSortOrder
       };
 
       const result = await this.authService.getMyCustomers(userId, filters);

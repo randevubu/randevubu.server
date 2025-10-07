@@ -7,22 +7,29 @@ import {
   BusinessNotificationSettingsData,
   BusinessNotificationSettingsRequest,
   BusinessStaffPrivacySettings,
-  BusinessStaffPrivacySettingsRequest
+  BusinessStaffPrivacySettingsRequest,
+  ServiceData,
+  BusinessSubscriptionData,
+  BusinessHours,
+  BreakPeriod,
+  RecurringPattern,
+  NotificationChannel
 } from '../../../types/business';
 import { UpdateBusinessPriceSettingsSchema, UpdateBusinessStaffPrivacySettingsSchema } from '../../../schemas/business.schemas';
 import { BusinessRepository } from '../../../repositories/businessRepository';
 import { RBACService } from '../rbac/rbacService';
 import { PermissionName } from '../../../types/auth';
 import { BusinessContext } from '../../../middleware/businessContext';
-import { PrismaClient, BusinessStaffRole } from '@prisma/client';
+import { BusinessStaffRole, AuditAction } from '@prisma/client';
 import { ValidationError } from '../../../types/errors';
 import { UsageService } from '../usage/usageService';
+import { RepositoryContainer } from '../../../repositories';
 
 export class BusinessService {
   constructor(
     private businessRepository: BusinessRepository,
     private rbacService: RBACService,
-    private prisma: PrismaClient,
+    private repositories: RepositoryContainer,
     private usageService?: UsageService
   ) {}
 
@@ -30,9 +37,12 @@ export class BusinessService {
     userId: string,
     data: CreateBusinessRequest
   ): Promise<BusinessData> {
-    console.log('🔧 BUSINESS SERVICE: createBusiness called');
-    console.log('🔧 BUSINESS SERVICE: User ID:', userId);
-    console.log('🔧 BUSINESS SERVICE: Data:', data);
+    // Debug logging (development only)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔧 BUSINESS SERVICE: createBusiness called');
+      console.log('🔧 BUSINESS SERVICE: User ID:', userId);
+      console.log('🔧 BUSINESS SERVICE: Data:', data);
+    }
     
     // Check permissions
     await this.rbacService.requirePermission(userId, PermissionName.CREATE_BUSINESS);
@@ -54,131 +64,13 @@ export class BusinessService {
       sunday: { openTime: '10:00', closeTime: '16:00', isOpen: false }
     };
 
-    // Use transaction to ensure atomicity - either both business creation and role assignment succeed, or both fail
-    const business = await this.prisma.$transaction(async (tx) => {
-      // Create business directly using transaction client
-      const businessId = `biz_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-      const createdBusiness = await tx.business.create({
-        data: {
-          id: businessId,
-          ownerId: userId,
-          businessTypeId: data.businessTypeId,
-          name: data.name,
-          slug: slug,
-          description: data.description || '',
-          email: data.email,
-          phone: data.phone,
-          website: website,
-          address: data.address,
-          city: data.city,
-          state: data.state,
-          country: data.country,
-          postalCode: data.postalCode,
-          businessHours: defaultBusinessHours,
-          timezone: data.timezone,
-          primaryColor: data.primaryColor,
-          galleryImages: [],
-          isActive: true,
-          isVerified: false,
-          isClosed: false,
-          tags: data.tags || [],
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }
-      });
-
-      // Get the OWNER role
-      const ownerRole = await tx.role.findUnique({
-        where: { name: 'OWNER' }
-      });
-
-      if (!ownerRole || !ownerRole.isActive) {
-        throw new Error('OWNER role not found or inactive');
-      }
-
-      // Assign the role within the same transaction (upsert to handle existing roles)
-      await tx.userRole.upsert({
-        where: {
-          userId_roleId: {
-            userId: userId,
-            roleId: ownerRole.id
-          }
-        },
-        create: {
-          id: `urole_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-          userId: userId,
-          roleId: ownerRole.id,
-          grantedBy: userId,
-          grantedAt: new Date(),
-          isActive: true,
-          metadata: {
-            businessId: businessId
-          }
-        },
-        update: {
-          isActive: true,
-          grantedBy: userId,
-          grantedAt: new Date(),
-          metadata: {
-            businessId: businessId
-          },
-          updatedAt: new Date()
-        }
-      });
-
-      // Create owner as staff member in the business
-      await tx.businessStaff.create({
-        data: {
-          id: `staff_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-          businessId: businessId,
-          userId: userId,
-          role: BusinessStaffRole.OWNER,
-          permissions: {},
-          isActive: true,
-          joinedAt: new Date(),
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }
-      });
-
-      // Convert the result to BusinessData format
-      return {
-        id: createdBusiness.id,
-        ownerId: createdBusiness.ownerId,
-        businessTypeId: createdBusiness.businessTypeId,
-        name: createdBusiness.name,
-        slug: createdBusiness.slug,
-        description: createdBusiness.description,
-        email: createdBusiness.email,
-        phone: createdBusiness.phone,
-        website: createdBusiness.website,
-        address: createdBusiness.address,
-        city: createdBusiness.city,
-        state: createdBusiness.state,
-        country: createdBusiness.country,
-        postalCode: createdBusiness.postalCode,
-        latitude: createdBusiness.latitude,
-        longitude: createdBusiness.longitude,
-        businessHours: createdBusiness.businessHours,
-        timezone: createdBusiness.timezone,
-        logoUrl: createdBusiness.logoUrl,
-        coverImageUrl: createdBusiness.coverImageUrl,
-        profileImageUrl: createdBusiness.profileImageUrl,
-        galleryImages: createdBusiness.galleryImages || [],
-        primaryColor: createdBusiness.primaryColor,
-        theme: createdBusiness.theme,
-        settings: createdBusiness.settings,
-        isActive: createdBusiness.isActive,
-        isVerified: createdBusiness.isVerified,
-        verifiedAt: createdBusiness.verifiedAt,
-        isClosed: createdBusiness.isClosed,
-        closedUntil: createdBusiness.closedUntil,
-        closureReason: createdBusiness.closureReason,
-        tags: createdBusiness.tags,
-        createdAt: createdBusiness.createdAt,
-        updatedAt: createdBusiness.updatedAt,
-        deletedAt: createdBusiness.deletedAt
-      } as BusinessData;
+    // Use repository method that handles transaction and role assignment
+    const business = await this.businessRepository.createWithRoleAssignment({
+      ...data,
+      ownerId: userId,
+      slug: slug,
+      website: website,
+      businessHours: defaultBusinessHours
     });
 
     // Update staff usage to count the owner
@@ -360,7 +252,24 @@ export class BusinessService {
     // If user is an owner, get their owned businesses with subscription info
     if (roleNames.includes('OWNER')) {
       const ownedBusinesses = await this.businessRepository.findByOwnerIdWithSubscription(userId);
-      businesses.push(...ownedBusinesses);
+      // Map the subscription data to match BusinessSubscriptionData interface
+      const mappedBusinesses = ownedBusinesses.map(business => ({
+        ...business,
+        subscription: business.subscription ? {
+          id: business.subscription.id,
+          businessId: business.id,
+          planId: business.subscription.plan.id,
+          status: business.subscription.status as string,
+          currentPeriodStart: business.subscription.currentPeriodStart,
+          currentPeriodEnd: business.subscription.currentPeriodEnd,
+          cancelAtPeriodEnd: business.subscription.cancelAtPeriodEnd,
+          autoRenewal: true, // Default value
+          failedPaymentCount: 0, // Default value
+          createdAt: new Date(),
+          updatedAt: new Date()
+        } : undefined
+      }));
+      businesses.push(...mappedBusinesses);
     }
 
     // If user is staff, get businesses they work at (basic info only)
@@ -392,7 +301,7 @@ export class BusinessService {
     page: number;
     limit: number;
   }): Promise<{
-    services: any[];
+    services: ServiceData[];
     total: number;
     page: number;
     totalPages: number;
@@ -801,7 +710,7 @@ export class BusinessService {
   async updateBusinessHours(
     userId: string,
     businessId: string,
-    businessHours: any
+    businessHours: BusinessHours
   ): Promise<BusinessData> {
     // Check permissions
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
@@ -822,7 +731,7 @@ export class BusinessService {
   async getBusinessHours(
     userId: string,
     businessId: string
-  ): Promise<{ businessHours: any }> {
+  ): Promise<{ businessHours: BusinessHours }> {
     // Check permissions
     const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
     
@@ -839,7 +748,7 @@ export class BusinessService {
       throw new Error('Business not found');
     }
 
-    return { businessHours: business.businessHours };
+    return { businessHours: business.businessHours || {} as BusinessHours };
   }
 
   async getBusinessHoursStatus(
@@ -852,7 +761,7 @@ export class BusinessService {
     isOpen: boolean;
     openTime?: string;
     closeTime?: string;
-    breaks?: any[];
+    breaks?: BreakPeriod[];
     nextOpenTime?: string;
     nextCloseTime?: string;
     isOverride: boolean;
@@ -868,14 +777,7 @@ export class BusinessService {
     const businessTimezone = timezone || business.timezone || 'Europe/Istanbul';
     
     // Check for business hours override first
-    const override = await this.prisma.businessHoursOverride.findUnique({
-      where: {
-        businessId_date: {
-          businessId,
-          date: targetDate
-        }
-      }
-    });
+    const override = await this.repositories.businessRepository.findBusinessHoursOverride(businessId, targetDate.toISOString().split('T')[0]);
 
     if (override) {
       return {
@@ -884,7 +786,7 @@ export class BusinessService {
         isOpen: override.isOpen,
         openTime: override.openTime || undefined,
         closeTime: override.closeTime || undefined,
-        breaks: override.breaks as any[] || [],
+        breaks: (override.breaks as BreakPeriod[]) || [],
         isOverride: true,
         overrideReason: override.reason || undefined,
         timezone: businessTimezone
@@ -919,7 +821,7 @@ export class BusinessService {
       isOpen: true,
       openTime: dayHours.openTime as string,
       closeTime: dayHours.closeTime as string,
-      breaks: (dayHours.breaks as any[]) || [],
+      breaks: (dayHours.breaks as BreakPeriod[]) || [],
       isOverride: false,
       timezone: businessTimezone
     };
@@ -933,7 +835,7 @@ export class BusinessService {
       isOpen: boolean;
       openTime?: string;
       closeTime?: string;
-      breaks?: any[];
+      breaks?: BreakPeriod[];
       reason?: string;
       isRecurring?: boolean;
       recurringPattern?: Record<string, unknown>;
@@ -950,23 +852,20 @@ export class BusinessService {
       );
     }
 
-    const overrideId = `override_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    
-    const override = await this.prisma.businessHoursOverride.create({
-      data: {
-        id: overrideId,
-        businessId,
-        date: new Date(data.date),
-        isOpen: data.isOpen,
-        openTime: data.openTime,
-        closeTime: data.closeTime,
-        breaks: data.breaks,
-        reason: data.reason,
-        isRecurring: data.isRecurring || false,
-        recurringPattern: data.recurringPattern as any,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
+    const override = await this.repositories.businessRepository.createBusinessHoursOverride({
+      businessId,
+      date: new Date(data.date),
+      isOpen: data.isOpen,
+      openTime: data.openTime,
+      closeTime: data.closeTime,
+      breaks: data.breaks,
+      reason: data.reason,
+      isRecurring: data.isRecurring || false,
+      recurringPattern: data.recurringPattern ? {
+        frequency: ((data.recurringPattern as Record<string, unknown>).frequency as 'WEEKLY' | 'MONTHLY' | 'YEARLY') || 'WEEKLY',
+        interval: (data.recurringPattern as Record<string, unknown>).interval as number || 1,
+        endDate: (data.recurringPattern as Record<string, unknown>).endDate as string
+      } : undefined
     });
 
     return override;
@@ -980,7 +879,7 @@ export class BusinessService {
       isOpen?: boolean;
       openTime?: string;
       closeTime?: string;
-      breaks?: any[];
+      breaks?: BreakPeriod[];
       reason?: string;
       isRecurring?: boolean;
       recurringPattern?: Record<string, unknown>;
@@ -997,19 +896,28 @@ export class BusinessService {
       );
     }
 
-    const override = await this.prisma.businessHoursOverride.update({
-      where: {
-        businessId_date: {
-          businessId,
-          date: new Date(date)
-        }
-      },
-      data: {
+    const updateData: {
+      isOpen?: boolean;
+      openTime?: string;
+      closeTime?: string;
+      breaks?: BreakPeriod[];
+      reason?: string;
+      isRecurring?: boolean;
+      recurringPattern?: RecurringPattern;
+    } = {
       ...data,
-      recurringPattern: data.recurringPattern as any,
-      updatedAt: new Date()
-      }
-    });
+      recurringPattern: data.recurringPattern ? {
+        frequency: ((data.recurringPattern as Record<string, unknown>).frequency as 'WEEKLY' | 'MONTHLY' | 'YEARLY') || 'WEEKLY',
+        interval: (data.recurringPattern as Record<string, unknown>).interval as number || 1,
+        endDate: (data.recurringPattern as Record<string, unknown>).endDate as string
+      } : undefined
+    };
+
+    const override = await this.repositories.businessRepository.updateBusinessHoursOverride(
+      businessId,
+      new Date(date),
+      updateData
+    );
 
     return override;
   }
@@ -1030,14 +938,7 @@ export class BusinessService {
       );
     }
 
-    await this.prisma.businessHoursOverride.delete({
-      where: {
-        businessId_date: {
-          businessId,
-          date: new Date(date)
-        }
-      }
-    });
+    await this.repositories.businessRepository.deleteBusinessHoursOverride(businessId, new Date(date));
   }
 
   async getBusinessHoursOverrides(
@@ -1057,7 +958,7 @@ export class BusinessService {
       );
     }
 
-    const where: any = { businessId };
+    const where: { businessId: string; date?: { gte: Date; lte: Date } } = { businessId };
     
     if (startDate && endDate) {
       where.date = {
@@ -1066,10 +967,11 @@ export class BusinessService {
       };
     }
 
-    const overrides = await this.prisma.businessHoursOverride.findMany({
-      where,
-      orderBy: { date: 'asc' }
-    });
+    const overrides = await this.repositories.businessRepository.findBusinessHoursOverrides(
+      businessId,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined
+    );
 
     return overrides;
   }
@@ -1192,7 +1094,7 @@ export class BusinessService {
     businessId: string,
     staffUserId: string,
     role: string,
-    permissions?: any
+    permissions?: Record<string, boolean>
   ): Promise<void> {
     // Check permissions to manage staff
     const hasGlobalStaff = await this.rbacService.hasPermission(userId, 'staff', 'manage_all');
@@ -1371,19 +1273,24 @@ export class BusinessService {
       }
     }
 
-    // Import S3Service dynamically to avoid circular dependencies
-    const { getS3Service } = await import('../../../utils/s3Service');
-    const s3Service = getS3Service();
+    // Import ImageStorageService dynamically to avoid circular dependencies
+    const { getImageStorageService } = await import('../storage/imageStorageService');
+    const imageStorageService = getImageStorageService();
 
     try {
       // Upload image to S3
-      const imageUrl = await s3Service.uploadBusinessImage(
+      const uploadResult = await imageStorageService.uploadBusinessImage(
         businessId,
         imageType,
         imageBuffer,
         originalName,
-        contentType
+        contentType,
+        {
+          generatePresignedUrl: false, // We'll use the public URL
+        }
       );
+      
+      const imageUrl = uploadResult.publicUrl;
 
       if (imageType === 'gallery') {
         // Add to gallery
@@ -1449,9 +1356,9 @@ export class BusinessService {
     try {
       // Delete from S3 if image exists
       if (currentImageUrl) {
-        const { getS3Service } = await import('../../../utils/s3Service');
-        const s3Service = getS3Service();
-        await s3Service.deleteImageByUrl(currentImageUrl);
+        const { getImageStorageService } = await import('../storage/imageStorageService');
+        const imageStorageService = getImageStorageService();
+        await imageStorageService.deleteBusinessImageByUrl(currentImageUrl);
       }
 
       // Update business record
@@ -1491,9 +1398,9 @@ export class BusinessService {
 
     try {
       // Delete from S3
-      const { getS3Service } = await import('../../../utils/s3Service');
-      const s3Service = getS3Service();
-      await s3Service.deleteImageByUrl(imageUrl);
+      const { getImageStorageService } = await import('../storage/imageStorageService');
+      const imageStorageService = getImageStorageService();
+      await imageStorageService.deleteBusinessImageByUrl(imageUrl);
 
       // Remove from gallery
       return await this.businessRepository.removeGalleryImage(businessId, imageUrl);
@@ -1589,9 +1496,7 @@ export class BusinessService {
       }
     }
 
-    const settings = await this.prisma.businessNotificationSettings.findUnique({
-      where: { businessId }
-    });
+    const settings = await this.repositories.businessRepository.findBusinessNotificationSettings(businessId);
 
     if (!settings) return null;
 
@@ -1599,12 +1504,12 @@ export class BusinessService {
       id: settings.id,
       businessId: settings.businessId,
       enableAppointmentReminders: settings.enableAppointmentReminders,
-      reminderChannels: JSON.parse(settings.reminderChannels as string),
-      reminderTiming: JSON.parse(settings.reminderTiming as string),
+      reminderChannels: settings.reminderChannels as NotificationChannel[],
+      reminderTiming: settings.reminderTiming as number[],
       smsEnabled: settings.smsEnabled,
       pushEnabled: settings.pushEnabled,
       emailEnabled: settings.emailEnabled,
-      quietHours: settings.quietHours ? JSON.parse(settings.quietHours as string) : undefined,
+      quietHours: settings.quietHours as { start: string; end: string } | undefined,
       timezone: settings.timezone,
       createdAt: settings.createdAt,
       updatedAt: settings.updatedAt
@@ -1633,9 +1538,7 @@ export class BusinessService {
     }
 
     // Verify business exists
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId }
-    });
+    const business = await this.repositories.businessRepository.findById(businessId);
 
     if (!business) {
       throw new ValidationError('Business not found');
@@ -1679,18 +1582,18 @@ export class BusinessService {
     };
 
     // Prepare update data
-    const updateData: any = {};
+    const updateData: Partial<BusinessNotificationSettingsData> = {};
 
     if (validatedData.enableAppointmentReminders !== undefined) {
       updateData.enableAppointmentReminders = validatedData.enableAppointmentReminders;
     }
 
     if (validatedData.reminderChannels !== undefined) {
-      updateData.reminderChannels = JSON.stringify(validatedData.reminderChannels);
+      updateData.reminderChannels = validatedData.reminderChannels as NotificationChannel[];
     }
 
     if (validatedData.reminderTiming !== undefined) {
-      updateData.reminderTiming = JSON.stringify(validatedData.reminderTiming);
+      updateData.reminderTiming = validatedData.reminderTiming;
     }
 
     if (validatedData.smsEnabled !== undefined) {
@@ -1706,7 +1609,7 @@ export class BusinessService {
     }
 
     if (validatedData.quietHours !== undefined) {
-      updateData.quietHours = validatedData.quietHours ? JSON.stringify(validatedData.quietHours) : undefined;
+      updateData.quietHours = validatedData.quietHours;
     }
 
     if (validatedData.timezone !== undefined) {
@@ -1714,35 +1617,31 @@ export class BusinessService {
     }
 
     // Upsert notification settings
-    const settingsId = `bns_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-
-    const settings = await this.prisma.businessNotificationSettings.upsert({
-      where: { businessId },
-      create: {
-        id: settingsId,
-        businessId,
-        enableAppointmentReminders: validatedData.enableAppointmentReminders ?? true,
-        reminderChannels: JSON.stringify(validatedData.reminderChannels ?? ['PUSH']),
-        reminderTiming: JSON.stringify(validatedData.reminderTiming ?? [60, 1440]),
-        smsEnabled: validatedData.smsEnabled ?? false,
-        pushEnabled: validatedData.pushEnabled ?? true,
-        emailEnabled: validatedData.emailEnabled ?? false,
-        quietHours: validatedData.quietHours ? JSON.stringify(validatedData.quietHours) : undefined,
-        timezone: validatedData.timezone ?? business.timezone ?? 'Europe/Istanbul'
-      },
-      update: updateData
+    const settings = await this.repositories.businessRepository.upsertBusinessNotificationSettings(businessId, {
+      id: `bns_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      businessId: businessId,
+      enableAppointmentReminders: validatedData.enableAppointmentReminders ?? true,
+      reminderChannels: (validatedData.reminderChannels ?? ['PUSH']) as NotificationChannel[],
+      reminderTiming: validatedData.reminderTiming ?? [60, 1440],
+      smsEnabled: validatedData.smsEnabled ?? false,
+      pushEnabled: validatedData.pushEnabled ?? true,
+      emailEnabled: validatedData.emailEnabled ?? false,
+      quietHours: validatedData.quietHours,
+      timezone: validatedData.timezone ?? business.timezone ?? 'Europe/Istanbul',
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
 
     return {
       id: settings.id,
       businessId: settings.businessId,
       enableAppointmentReminders: settings.enableAppointmentReminders,
-      reminderChannels: JSON.parse(settings.reminderChannels as string),
-      reminderTiming: JSON.parse(settings.reminderTiming as string),
+      reminderChannels: settings.reminderChannels as NotificationChannel[],
+      reminderTiming: settings.reminderTiming as number[],
       smsEnabled: settings.smsEnabled,
       pushEnabled: settings.pushEnabled,
       emailEnabled: settings.emailEnabled,
-      quietHours: settings.quietHours ? JSON.parse(settings.quietHours as string) : undefined,
+      quietHours: settings.quietHours as { start: string; end: string } | undefined,
       timezone: settings.timezone,
       createdAt: settings.createdAt,
       updatedAt: settings.updatedAt
@@ -1753,32 +1652,27 @@ export class BusinessService {
     businessId: string
   ): Promise<BusinessNotificationSettingsData> {
     // This method is used internally by other services
-    let settings = await this.prisma.businessNotificationSettings.findUnique({
-      where: { businessId }
-    });
+    let settings = await this.repositories.businessRepository.findBusinessNotificationSettings(businessId);
 
     if (!settings) {
       // Get business timezone for defaults
-      const business = await this.prisma.business.findUnique({
-        where: { id: businessId },
-        select: { timezone: true }
-      });
+      const business = await this.repositories.businessRepository.findById(businessId);
 
       const settingsId = `bns_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
       // Create default settings
-      settings = await this.prisma.businessNotificationSettings.create({
-        data: {
-          id: settingsId,
-          businessId,
-          enableAppointmentReminders: true,
-          reminderChannels: JSON.stringify(['PUSH']),
-          reminderTiming: JSON.stringify([60, 1440]), // 1 hour and 24 hours
-          smsEnabled: false,
-          pushEnabled: true,
-          emailEnabled: false,
-          timezone: business?.timezone ?? 'Europe/Istanbul'
-        }
+      settings = await this.repositories.businessRepository.upsertBusinessNotificationSettings(businessId, {
+        id: `bns_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+        businessId: businessId,
+        enableAppointmentReminders: true,
+        reminderChannels: ['PUSH'] as NotificationChannel[],
+        reminderTiming: [60, 1440], // 1 hour and 24 hours
+        smsEnabled: false,
+        pushEnabled: true,
+        emailEnabled: false,
+        timezone: business?.timezone ?? 'Europe/Istanbul',
+        createdAt: new Date(),
+        updatedAt: new Date()
       });
     }
 
@@ -1786,12 +1680,12 @@ export class BusinessService {
       id: settings.id,
       businessId: settings.businessId,
       enableAppointmentReminders: settings.enableAppointmentReminders,
-      reminderChannels: JSON.parse(settings.reminderChannels as string),
-      reminderTiming: JSON.parse(settings.reminderTiming as string),
+      reminderChannels: settings.reminderChannels as NotificationChannel[],
+      reminderTiming: settings.reminderTiming as number[],
       smsEnabled: settings.smsEnabled,
       pushEnabled: settings.pushEnabled,
       emailEnabled: settings.emailEnabled,
-      quietHours: settings.quietHours ? JSON.parse(settings.quietHours as string) : undefined,
+      quietHours: settings.quietHours as { start: string; end: string } | undefined,
       timezone: settings.timezone,
       createdAt: settings.createdAt,
       updatedAt: settings.updatedAt
@@ -1803,37 +1697,14 @@ export class BusinessService {
    */
   async getPaymentMethods(businessId: string, userId: string): Promise<any[]> {
     // Verify user has access to this business
-    const business = await this.prisma.business.findFirst({
-      where: {
-        id: businessId,
-        ownerId: userId,
-        isActive: true,
-        deletedAt: null
-      }
-    });
+    const business = await this.repositories.businessRepository.findById(businessId);
 
     if (!business) {
       throw new Error('Business not found or access denied');
     }
 
     // Get stored payment methods for the business
-    const paymentMethods = await this.prisma.storedPaymentMethod.findMany({
-      where: {
-        businessId: businessId
-      },
-      select: {
-        id: true,
-        cardHolderName: true,
-        lastFourDigits: true,
-        cardBrand: true,
-        isDefault: true,
-        createdAt: true
-      },
-      orderBy: [
-        { isDefault: 'desc' }, // Default payment method first
-        { createdAt: 'desc' }   // Then by newest
-      ]
-    });
+    const paymentMethods = await this.repositories.businessRepository.findStoredPaymentMethods(businessId);
 
     return paymentMethods;
   }
@@ -1843,21 +1714,21 @@ export class BusinessService {
    */
   async addPaymentMethod(businessId: string, userId: string, paymentData: Record<string, unknown>): Promise<Record<string, unknown>> {
     // Verify user has access to this business
-    const business = await this.prisma.business.findFirst({
-      where: {
-        id: businessId,
-        ownerId: userId,
-        isActive: true,
-        deletedAt: null
-      }
-    });
+    const business = await this.repositories.businessRepository.findById(businessId);
 
     if (!business) {
       throw new Error('Business not found or access denied');
     }
 
     // Extract payment method data
-    const { cardHolderName, cardNumber, expireMonth, expireYear, cvc, isDefault = false } = paymentData as any;
+    const { cardHolderName, cardNumber, expireMonth, expireYear, cvc, isDefault = false } = paymentData as {
+      cardHolderName: string;
+      cardNumber: string;
+      expireMonth: number;
+      expireYear: number;
+      cvc: string;
+      isDefault?: boolean;
+    };
 
     // Validate required fields
     if (!cardHolderName || !cardNumber || !expireMonth || !expireYear || !cvc) {
@@ -1873,42 +1744,19 @@ export class BusinessService {
 
     // If this is set as default, unset other default payment methods
     if (isDefault) {
-      await this.prisma.storedPaymentMethod.updateMany({
-        where: {
-          businessId: businessId,
-          isDefault: true
-        },
-        data: {
-          isDefault: false
-        }
-      });
+      await this.repositories.businessRepository.updateStoredPaymentMethodsDefault(businessId);
     }
 
     // Create the stored payment method
-    const storedPaymentMethod = await this.prisma.storedPaymentMethod.create({
-      data: {
-        id: paymentMethodId,
-        businessId: businessId,
-        cardHolderName: cardHolderName as string,
-        lastFourDigits: lastFourDigits,
-        cardBrand: cardBrand,
-        expiryMonth: expireMonth as string,
-        expiryYear: expireYear as string,
-        isDefault: isDefault as boolean,
-        // Note: We don't store sensitive card data like full number or CVC
-        // These should be tokenized by a payment processor
-      },
-      select: {
-        id: true,
-        cardHolderName: true,
-        lastFourDigits: true,
-        cardBrand: true,
-        isDefault: true,
-        createdAt: true
-      }
+    const storedPaymentMethod = await this.repositories.businessRepository.createStoredPaymentMethod({
+      businessId: businessId,
+      cardHolderName: cardHolderName as string,
+      lastFourDigits: lastFourDigits,
+      cardBrand: cardBrand,
+      isDefault: isDefault as boolean
     });
 
-    return storedPaymentMethod;
+    return storedPaymentMethod as unknown as Record<string, unknown>;
   }
 
   /**
@@ -1928,5 +1776,37 @@ export class BusinessService {
     }
 
     return 'UNKNOWN';
+  }
+
+  // Audit logging methods
+  async logAuditEvent(data: {
+    userId: string;
+    action: string;
+    entity: string;
+    entityId: string;
+    details?: Record<string, unknown>;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<void> {
+    await this.repositories.auditLogRepository.create({
+      userId: data.userId,
+      action: data.action as AuditAction,
+      entity: data.entity,
+      entityId: data.entityId,
+      details: data.details,
+      ipAddress: data.ipAddress,
+      userAgent: data.userAgent,
+    });
+  }
+
+  async findRecentAuditEvents(userId: string, entity: string, minutes: number): Promise<any[]> {
+    // Use the existing findByUserId method and filter by entity and time
+    const logs = await this.repositories.auditLogRepository.findByUserId(userId, 100, 0);
+    const cutoffTime = new Date(Date.now() - minutes * 60 * 1000);
+    
+    return logs.filter(log => 
+      log.entity === entity && 
+      new Date(log.createdAt) >= cutoffTime
+    );
   }
 }

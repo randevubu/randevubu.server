@@ -1,6 +1,7 @@
 import Iyzipay from 'iyzipay';
-import { PrismaClient } from '@prisma/client';
 import { PaymentStatus, SubscriptionStatus } from '../../../types/business';
+import { RepositoryContainer } from '../../../repositories';
+import logger from '../../../utils/Logger/logger';
 
 export interface PaymentCardData {
   cardHolderName: string;
@@ -113,10 +114,37 @@ export interface PaymentResponse {
 export class PaymentService {
   private iyzipay: Iyzipay;
   
+  // Narrow contract for discount code operations to avoid any
+  private discountCodeService?: {
+    validateDiscountCode: (
+      code: string,
+      planId: string,
+      amount: number,
+      userId: string
+    ) => Promise<{
+      isValid: boolean;
+      calculatedDiscount?: {
+        originalAmount: number;
+        discountAmount: number;
+        finalAmount: number;
+      };
+      errorMessage?: string;
+    }>;
+    applyDiscountCode: (
+      code: string,
+      userId: string,
+      planId: string,
+      originalAmount: number,
+      subscriptionId: string,
+      paymentId?: string
+    ) => Promise<void>;
+  };
+  
   constructor(
-    private prisma: PrismaClient,
-    private discountCodeService?: any // Will be injected later to avoid circular dependency
+    private repositories: RepositoryContainer,
+    discountCodeService?: PaymentService['discountCodeService'] // avoid circular dep
   ) {
+    this.discountCodeService = discountCodeService;
     this.iyzipay = new Iyzipay({
       apiKey: process.env.IYZICO_API_KEY!,
       secretKey: process.env.IYZICO_SECRET_KEY!,
@@ -147,26 +175,19 @@ export class PaymentService {
     };
   }> {
     try {
-      const business = await this.prisma.business.findUnique({
-        where: { id: businessId },
-        include: { owner: true }
-      });
+      const business = await this.repositories.businessRepository.findByIdWithOwner(businessId);
 
       if (!business) {
         return { success: false, error: 'Business not found' };
       }
 
-      const plan = await this.prisma.subscriptionPlan.findUnique({
-        where: { id: planId }
-      });
+      const plan = await this.repositories.subscriptionRepository.findPlanById(planId);
 
       if (!plan) {
         return { success: false, error: 'Subscription plan not found' };
       }
 
-      const existingSubscription = await this.prisma.businessSubscription.findUnique({
-        where: { businessId }
-      });
+      const existingSubscription = await this.repositories.subscriptionRepository.findByBusinessId(businessId);
 
       if (existingSubscription && existingSubscription.status === 'ACTIVE') {
         return { success: false, error: 'Business already has an active subscription' };
@@ -183,7 +204,9 @@ export class PaymentService {
       let finalPrice = Number(plan.price);
       
       if (paymentData.discountCode && this.discountCodeService) {
-        console.log(`🔍 Processing discount code: ${paymentData.discountCode} for plan: ${planId}, amount: ${plan.price}`);
+        if (process.env.NODE_ENV === 'development') {
+          logger.debug('Processing discount code', { code: paymentData.discountCode, planId, amount: Number(plan.price) });
+        }
         const discountResult = await this.discountCodeService.validateDiscountCode(
           paymentData.discountCode,
           planId,
@@ -191,7 +214,9 @@ export class PaymentService {
           business.ownerId
         );
 
-        console.log(`🔍 Discount validation result:`, discountResult);
+        if (process.env.NODE_ENV === 'development') {
+          logger.debug('Discount validation result', { discountResult });
+        }
 
         if (discountResult.isValid && discountResult.calculatedDiscount) {
           finalPrice = discountResult.calculatedDiscount.finalAmount;
@@ -201,13 +226,17 @@ export class PaymentService {
             originalAmount: discountResult.calculatedDiscount.originalAmount,
             finalAmount: discountResult.calculatedDiscount.finalAmount
           };
-          console.log(`✅ Discount applied successfully:`, discountApplied);
+          if (process.env.NODE_ENV === 'development') {
+            logger.info('Discount applied successfully', { discountApplied });
+          }
         } else {
           // Don't fail the payment for invalid discount codes, just ignore them
-          console.warn(`❌ Invalid discount code: ${discountResult.errorMessage}`);
+          logger.warn('Invalid discount code', { error: discountResult.errorMessage, code: paymentData.discountCode });
         }
       } else {
-        console.log(`🔍 No discount code provided or discount service not available. Discount code: ${paymentData.discountCode}, Service available: ${!!this.discountCodeService}`);
+        if (process.env.NODE_ENV === 'development') {
+          logger.debug('No discount code provided or discount service not available', { code: paymentData.discountCode, serviceAvailable: !!this.discountCodeService });
+        }
       }
 
       const currentDate = new Date();
@@ -218,28 +247,15 @@ export class PaymentService {
         nextPeriod.setFullYear(currentDate.getFullYear() + 1);
       }
 
-      const subscription = await this.prisma.businessSubscription.upsert({
-        where: { businessId },
-        create: {
-          id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          businessId,
-          planId,
-          status: 'UNPAID',
-          currentPeriodStart: currentDate,
-          currentPeriodEnd: nextPeriod,
-          metadata: {
-            createdAt: currentDate.toISOString(),
-            source: 'payment_flow'
-          }
-        },
-        update: {
-          planId,
-          status: 'UNPAID',
-          currentPeriodStart: currentDate,
-          currentPeriodEnd: nextPeriod,
-          cancelAtPeriodEnd: false,
-          canceledAt: null,
-          updatedAt: new Date()
+      const subscription = await this.repositories.subscriptionRepository.createOrUpdateSubscription({
+        businessId,
+        planId,
+        status: SubscriptionStatus.UNPAID,
+        currentPeriodStart: currentDate,
+        currentPeriodEnd: nextPeriod,
+        metadata: {
+          createdAt: currentDate.toISOString(),
+          source: 'payment_flow'
         }
       });
 
@@ -306,7 +322,7 @@ export class PaymentService {
               paymentResult.paymentId
             );
           } catch (error) {
-            console.error('Failed to record discount code usage:', error);
+            logger.error('Failed to record discount code usage', { error: error instanceof Error ? error.message : String(error) });
             // Don't fail the payment for this, just log it
           }
         }
@@ -319,10 +335,7 @@ export class PaymentService {
           discountApplied
         };
       } else {
-        await this.prisma.businessSubscription.update({
-          where: { id: subscription.id },
-          data: { status: 'UNPAID' }
-        });
+        await this.repositories.subscriptionRepository.updateSubscriptionStatus(subscription.id, SubscriptionStatus.UNPAID);
 
         return {
           success: false,
@@ -330,7 +343,7 @@ export class PaymentService {
         };
       }
     } catch (error) {
-      console.error('Create subscription error:', error);
+      logger.error('Create subscription error', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to create subscription'
@@ -340,28 +353,7 @@ export class PaymentService {
 
   async getSubscriptionWithPayments(businessId: string) {
     try {
-      const subscription = await this.prisma.businessSubscription.findUnique({
-        where: { businessId },
-        include: {
-          plan: true,
-          payments: {
-            orderBy: { createdAt: 'desc' },
-            take: 10
-          },
-          business: {
-            select: {
-              name: true,
-              owner: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  phoneNumber: true
-                }
-              }
-            }
-          }
-        }
-      });
+      const subscription = await this.repositories.subscriptionRepository.findByBusinessIdWithDetails(businessId);
 
       if (!subscription) {
         return { success: false, error: 'Subscription not found' };
@@ -403,7 +395,31 @@ export class PaymentService {
     error?: string;
   }> {
     try {
-      const request: any = {
+      type IyziPaymentCreateRequest = {
+        locale: string;
+        conversationId: string;
+        price: string;
+        paidPrice: string;
+        currency: string;
+        installment: string;
+        basketId: string;
+        paymentChannel: string;
+        paymentGroup: string;
+        paymentCard: {
+          cardHolderName: string;
+          cardNumber: string;
+          expireMonth: string;
+          expireYear: string;
+          cvc: string;
+          registerCard: string;
+        };
+        buyer: PaymentBuyerData;
+        shippingAddress: CreatePaymentRequest['shippingAddress'];
+        billingAddress: CreatePaymentRequest['billingAddress'];
+        basketItems: PaymentBasketItem[];
+      };
+
+      const request: IyziPaymentCreateRequest = {
         locale: Iyzipay.LOCALE.TR,
         conversationId: paymentData.conversationId,
         price: paymentData.price,
@@ -428,54 +444,45 @@ export class PaymentService {
       };
 
       const result = await new Promise<any>((resolve, reject) => {
-        this.iyzipay.payment.create(request, (err: any, result: any) => {
+        this.iyzipay.payment.create(request as unknown as any, (err: unknown, result: unknown) => {
           if (err) reject(err);
           else resolve(result);
         });
       });
 
       if (result.status === 'success') {
-        const paymentRecord = await this.prisma.payment.create({
-          data: {
-            id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-            businessSubscriptionId,
-            amount: parseFloat(paymentData.paidPrice),
-            currency: paymentData.currency,
-            status: PaymentStatus.SUCCEEDED,
-            paymentMethod: 'card',
-            paymentProvider: 'iyzico',
-            providerPaymentId: result.paymentId,
-            paidAt: new Date(),
-            metadata: {
-              iyzicoResponse: result,
-              conversationId: paymentData.conversationId,
-              basketId: paymentData.basketId,
-              installment: paymentData.installment,
-              cardInfo: {
-                cardType: result.cardType,
-                cardAssociation: result.cardAssociation,
-                cardFamily: result.cardFamily,
-                lastFourDigits: result.lastFourDigits,
-                binNumber: result.binNumber
-              },
-              ...(discountApplied && {
-                discount: {
-                  code: discountApplied.code,
-                  originalAmount: discountApplied.originalAmount,
-                  discountAmount: discountApplied.discountAmount,
-                  finalAmount: discountApplied.finalAmount
-                }
-              })
-            }
+        const paymentRecord = await this.repositories.paymentRepository.create({
+          businessSubscriptionId,
+          amount: parseFloat(paymentData.paidPrice),
+          currency: paymentData.currency,
+          status: PaymentStatus.SUCCEEDED,
+          paymentMethod: 'card',
+          paymentProvider: 'iyzico',
+          providerPaymentId: result.paymentId,
+          metadata: {
+            iyzicoResponse: result,
+            conversationId: paymentData.conversationId,
+            basketId: paymentData.basketId,
+            installment: paymentData.installment,
+            cardInfo: {
+              cardType: result.cardType,
+              cardAssociation: result.cardAssociation,
+              cardFamily: result.cardFamily,
+              lastFourDigits: result.lastFourDigits,
+              binNumber: result.binNumber
+            },
+            ...(discountApplied && {
+              discount: {
+                code: discountApplied.code,
+                originalAmount: discountApplied.originalAmount,
+                discountAmount: discountApplied.discountAmount,
+                finalAmount: discountApplied.finalAmount
+              }
+            })
           }
         });
 
-        await this.prisma.businessSubscription.update({
-          where: { id: businessSubscriptionId },
-          data: {
-            status: SubscriptionStatus.ACTIVE
-          }
-        });
+        await this.repositories.subscriptionRepository.updateSubscriptionStatus(businessSubscriptionId, SubscriptionStatus.ACTIVE);
 
         return {
           success: true,
@@ -484,21 +491,17 @@ export class PaymentService {
           message: 'Payment successful'
         };
       } else {
-        await this.prisma.payment.create({
-          data: {
-            id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-            businessSubscriptionId,
-            amount: parseFloat(paymentData.paidPrice),
-            currency: paymentData.currency,
-            status: PaymentStatus.FAILED,
-            paymentMethod: 'card',
-            paymentProvider: 'iyzico',
-            failedAt: new Date(),
-            metadata: {
-              iyzicoResponse: result,
-              conversationId: paymentData.conversationId,
-              error: result.errorMessage || 'Payment failed'
-            }
+        await this.repositories.paymentRepository.create({
+          businessSubscriptionId,
+          amount: parseFloat(paymentData.paidPrice),
+          currency: paymentData.currency,
+          status: PaymentStatus.FAILED,
+          paymentMethod: 'card',
+          paymentProvider: 'iyzico',
+          metadata: {
+            iyzicoResponse: result,
+            conversationId: paymentData.conversationId,
+            error: result.errorMessage || 'Payment failed'
           }
         });
 
@@ -508,22 +511,18 @@ export class PaymentService {
         };
       }
     } catch (error) {
-      console.error('Payment error:', error);
+      logger.error('Payment error', { error: error instanceof Error ? error.message : String(error) });
       
-      await this.prisma.payment.create({
-        data: {
-          id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-          businessSubscriptionId,
-          amount: parseFloat(paymentData.paidPrice),
-          currency: paymentData.currency,
-          status: PaymentStatus.FAILED,
-          paymentMethod: 'card',
-          paymentProvider: 'iyzico',
-          failedAt: new Date(),
-          metadata: {
-            error: error instanceof Error ? error.message : 'Unknown error',
-            conversationId: paymentData.conversationId
-          }
+      await this.repositories.paymentRepository.create({
+        businessSubscriptionId,
+        amount: parseFloat(paymentData.paidPrice),
+        currency: paymentData.currency,
+        status: PaymentStatus.FAILED,
+        paymentMethod: 'card',
+        paymentProvider: 'iyzico',
+        metadata: {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          conversationId: paymentData.conversationId
         }
       });
 
@@ -545,9 +544,7 @@ export class PaymentService {
     error?: string;
   }> {
     try {
-      const payment = await this.prisma.payment.findUnique({
-        where: { id: paymentId }
-      });
+      const payment = await this.repositories.paymentRepository.findById(paymentId);
 
       if (!payment) {
         return { success: false, error: 'Payment not found' };
@@ -576,20 +573,17 @@ export class PaymentService {
       });
 
       if (result.status === 'success') {
-        await this.prisma.payment.update({
-          where: { id: paymentId },
-          data: {
-            status: PaymentStatus.REFUNDED,
-            refundedAt: new Date(),
-            metadata: {
-              ...payment.metadata as object,
-              refund: {
-                refundId: result.paymentId,
-                refundAmount,
-                refundReason: reason,
-                refundDate: new Date().toISOString(),
-                iyzicoRefundResponse: result
-              }
+        await this.repositories.paymentRepository.update(paymentId, {
+          status: PaymentStatus.REFUNDED,
+          refundedAt: new Date(),
+          metadata: {
+            ...payment.metadata as object,
+            refund: {
+              refundId: result.paymentId,
+              refundAmount,
+              refundReason: reason,
+              refundDate: new Date().toISOString(),
+              iyzicoRefundResponse: result
             }
           }
         });
@@ -606,7 +600,7 @@ export class PaymentService {
         };
       }
     } catch (error) {
-      console.error('Refund error:', error);
+      logger.error('Refund error', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Refund processing failed'
@@ -620,9 +614,7 @@ export class PaymentService {
     error?: string;
   }> {
     try {
-      const payment = await this.prisma.payment.findUnique({
-        where: { id: paymentId }
-      });
+      const payment = await this.repositories.paymentRepository.findById(paymentId);
 
       if (!payment || !payment.providerPaymentId) {
         return { success: false, error: 'Payment not found' };
@@ -635,7 +627,7 @@ export class PaymentService {
       };
 
       const result = await new Promise<any>((resolve, reject) => {
-        this.iyzipay.payment.retrieve(request, (err: any, result: any) => {
+        this.iyzipay.payment.retrieve(request as unknown as any, (err: unknown, result: unknown) => {
           if (err) reject(err);
           else resolve(result);
         });
@@ -647,7 +639,7 @@ export class PaymentService {
         error: result.status !== 'success' ? result.errorMessage : undefined
       };
     } catch (error) {
-      console.error('Retrieve payment error:', error);
+      logger.error('Retrieve payment error', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to retrieve payment'
@@ -661,10 +653,7 @@ export class PaymentService {
     error?: string;
   }> {
     try {
-      const payment = await this.prisma.payment.findUnique({
-        where: { id: paymentId },
-        include: { businessSubscription: true }
-      });
+      const payment = await this.repositories.paymentRepository.findByIdWithSubscription(paymentId);
 
       if (!payment) {
         return { success: false, error: 'Payment not found' };
@@ -678,27 +667,19 @@ export class PaymentService {
         return await this.refundPayment(paymentId, undefined, reason);
       }
 
-      await this.prisma.payment.update({
-        where: { id: paymentId },
-        data: {
-          status: PaymentStatus.CANCELED,
-          metadata: {
-            ...payment.metadata as object,
-            cancellation: {
-              canceledAt: new Date().toISOString(),
-              reason: reason || 'Manual cancellation'
-            }
+      await this.repositories.paymentRepository.update(paymentId, {
+        status: PaymentStatus.CANCELED,
+        metadata: {
+          ...payment.metadata as object,
+          cancellation: {
+            canceledAt: new Date().toISOString(),
+            reason: reason || 'Manual cancellation'
           }
         }
       });
 
       if (payment.businessSubscription) {
-        await this.prisma.businessSubscription.update({
-          where: { id: payment.businessSubscriptionId! },
-          data: {
-            status: SubscriptionStatus.CANCELED
-          }
-        });
+        await this.repositories.subscriptionRepository.updateSubscriptionStatus(payment.businessSubscriptionId!, SubscriptionStatus.CANCELED);
       }
 
       return {
@@ -706,7 +687,7 @@ export class PaymentService {
         message: 'Payment canceled successfully'
       };
     } catch (error) {
-      console.error('Cancel payment error:', error);
+      logger.error('Cancel payment error', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to cancel payment'
@@ -720,10 +701,7 @@ export class PaymentService {
     error?: string;
   }> {
     try {
-      const payments = await this.prisma.payment.findMany({
-        where: { businessSubscriptionId },
-        orderBy: { createdAt: 'desc' }
-      });
+      const payments = await this.repositories.paymentRepository.findBySubscriptionId(businessSubscriptionId);
 
       return {
         success: true,
@@ -839,29 +817,21 @@ export class PaymentService {
       
       if (makeDefault) {
         // Set all existing payment methods to non-default
-        await this.prisma.storedPaymentMethod.updateMany({
-          where: { businessId, isActive: true },
-          data: { isDefault: false }
-        });
+        await this.repositories.businessRepository.updateStoredPaymentMethodsDefault(businessId);
       }
 
-      const storedPaymentMethod = await this.prisma.storedPaymentMethod.create({
-        data: {
-          id: `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          businessId,
-          cardHolderName: cardData.cardHolderName,
-          lastFourDigits: cardData.cardNumber.slice(-4),
-          cardBrand: this.detectCardBrand(cardData.cardNumber),
-          expiryMonth: cardData.expireMonth,
-          expiryYear: cardData.expireYear,
-          isDefault: makeDefault,
-          isActive: true,
-          // In production, store tokenized version from payment provider
-          providerToken: `token_${Date.now()}`,
-          metadata: {
-            createdAt: new Date().toISOString(),
-            source: 'subscription_flow'
-          }
+      const storedPaymentMethod = await this.repositories.businessRepository.createStoredPaymentMethod({
+        businessId,
+        cardHolderName: cardData.cardHolderName,
+        lastFourDigits: cardData.cardNumber.slice(-4),
+        cardBrand: this.detectCardBrand(cardData.cardNumber),
+        expiryMonth: cardData.expireMonth,
+        expiryYear: cardData.expireYear,
+        isDefault: makeDefault,
+        providerToken: `token_${Date.now()}`,
+        metadata: {
+          createdAt: new Date().toISOString(),
+          source: 'subscription_flow'
         }
       });
 
@@ -880,13 +850,7 @@ export class PaymentService {
 
   async getStoredPaymentMethods(businessId: string) {
     try {
-      const paymentMethods = await this.prisma.storedPaymentMethod.findMany({
-        where: { businessId, isActive: true },
-        orderBy: [
-          { isDefault: 'desc' },
-          { createdAt: 'desc' }
-        ]
-      });
+      const paymentMethods = await this.repositories.businessRepository.findStoredPaymentMethods(businessId);
 
       return {
         success: true,
@@ -902,7 +866,7 @@ export class PaymentService {
         }))
       };
     } catch (error) {
-      console.error('Get payment methods error:', error);
+      logger.error('Get payment methods error', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to retrieve payment methods'
@@ -912,26 +876,18 @@ export class PaymentService {
 
   async deletePaymentMethod(businessId: string, paymentMethodId: string) {
     try {
-      const paymentMethod = await this.prisma.storedPaymentMethod.findFirst({
-        where: { id: paymentMethodId, businessId }
-      });
+      const paymentMethod = await this.repositories.businessRepository.findStoredPaymentMethodById(paymentMethodId, businessId);
 
       if (!paymentMethod) {
         return { success: false, error: 'Payment method not found' };
       }
 
       // Soft delete
-      await this.prisma.storedPaymentMethod.update({
-        where: { id: paymentMethodId },
-        data: {
-          isActive: false,
-          deletedAt: new Date()
-        }
-      });
+      await this.repositories.businessRepository.updateStoredPaymentMethodStatus(paymentMethodId, false);
 
       return { success: true };
     } catch (error) {
-      console.error('Delete payment method error:', error);
+      logger.error('Delete payment method error', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to delete payment method'
@@ -939,7 +895,7 @@ export class PaymentService {
     }
   }
 
-  private reconstructCardNumber(storedPaymentMethod: any): string {
+  private reconstructCardNumber(storedPaymentMethod: { cardHolderName: string; expiryMonth: string; expiryYear: string }): string {
     // In production, this would use the stored token to retrieve card info from provider
     // For demo purposes, return a test card number
     return '5528790000000008';
@@ -955,7 +911,7 @@ export class PaymentService {
     return 'UNKNOWN';
   }
 
-  private createBuyerFromBusiness(business: any): PaymentBuyerData {
+  private createBuyerFromBusiness(business: { ownerId: string; owner: { firstName?: string | null; lastName?: string | null; phoneNumber: string }; email?: string | null; phone?: string | null; address?: string | null; city?: string | null; country?: string | null; postalCode?: string | null; name?: string | null }): PaymentBuyerData {
     return {
       id: `BY${business.ownerId}`,
       name: business.owner.firstName || 'Business',
@@ -973,7 +929,7 @@ export class PaymentService {
     };
   }
 
-  private createAddressFromBusiness(business: any) {
+  private createAddressFromBusiness(business: { name?: string | null; city?: string | null; country?: string | null; address?: string | null; postalCode?: string | null }) {
     return {
       contactName: business.name || 'Business Owner',
       city: business.city || 'Istanbul',

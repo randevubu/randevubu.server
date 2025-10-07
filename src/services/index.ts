@@ -8,7 +8,7 @@ import { TokenService } from './domain/token';
 import { RBACService } from './domain/rbac';
 import { RoleService } from './domain/staff';
 import { BusinessService } from './domain/business';
-import { BusinessTypeService, ServiceService } from './domain/service';
+import { BusinessTypeService, OfferingService } from './domain/offering';
 import { AppointmentService, AppointmentSchedulerService, AppointmentRescheduleService, AppointmentReminderService } from './domain/appointment';
 import { UserBehaviorService } from './domain/userBehavior';
 import { BusinessClosureService, ClosureAnalyticsService } from './domain/closure';
@@ -18,6 +18,15 @@ import { NotificationService } from './domain/notification';
 import { DiscountCodeService } from './domain/discount';
 import { UsageService } from './domain/usage';
 import { StaffService } from './domain/staff';
+// Import shared services
+import { 
+  ErrorHandlingService, 
+  errorHandlingService,
+  SecureLoggingService, 
+  secureLoggingService,
+  ValidationService, 
+  createValidationService 
+} from './domain/shared';
 import { StartupService } from './startupService';
 
 // Service container for dependency injection
@@ -30,7 +39,7 @@ export class ServiceContainer {
   public readonly roleRepository: RoleRepository;
   public readonly businessService: BusinessService;
   public readonly businessTypeService: BusinessTypeService;
-  public readonly serviceService: ServiceService;
+  public readonly offeringService: OfferingService;
   public readonly appointmentService: AppointmentService;
   public readonly userBehaviorService: UserBehaviorService;
   public readonly businessClosureService: BusinessClosureService;
@@ -46,6 +55,11 @@ export class ServiceContainer {
   public readonly staffService: StaffService;
   public readonly appointmentReminderService: AppointmentReminderService;
   public readonly startupService: StartupService;
+  
+  // Shared services
+  public readonly errorHandlingService: ErrorHandlingService;
+  public readonly secureLoggingService: SecureLoggingService;
+  public readonly validationService: ValidationService;
 
   constructor(repositories: RepositoryContainer, public readonly prisma: PrismaClient) {
     this.tokenService = new TokenService(repositories);
@@ -66,17 +80,17 @@ export class ServiceContainer {
     this.usageService = new UsageService(
       repositories.usageRepository,
       this.rbacService,
-      this.prisma
+      repositories
     );
 
     // Business services (needs usage service for staff counting)
-    this.businessService = new BusinessService(repositories.businessRepository, this.rbacService, this.prisma, this.usageService);
+    this.businessService = new BusinessService(repositories.businessRepository, this.rbacService, repositories, this.usageService);
 
     // Create services that depend on usage service
-    this.serviceService = new ServiceService(repositories.serviceRepository, repositories.businessRepository, this.rbacService, this.usageService);
+    this.offeringService = new OfferingService(repositories.serviceRepository, repositories.businessRepository, this.rbacService, this.usageService);
 
     // Create notification service first for appointment service dependency
-    this.notificationService = new NotificationService(repositories.prismaClient, this.usageService);
+    this.notificationService = new NotificationService(repositories, this.usageService);
 
     this.appointmentService = new AppointmentService(
       repositories.appointmentRepository,
@@ -87,7 +101,6 @@ export class ServiceContainer {
       this.businessService,
       this.notificationService,
       this.usageService,
-      this.prisma,
       repositories
     );
     this.userBehaviorService = new UserBehaviorService(repositories.userBehaviorRepository, this.rbacService);
@@ -105,12 +118,17 @@ export class ServiceContainer {
     );
     
     // Then create payment service with discount code service dependency
-    this.paymentService = new PaymentService(repositories.prismaClient, this.discountCodeService);
+    this.paymentService = new PaymentService(repositories, {
+      validateDiscountCode: this.discountCodeService.validateDiscountCode.bind(this.discountCodeService),
+      applyDiscountCode: async (code, userId, planId, originalAmount, subscriptionId, paymentId) => {
+        await this.discountCodeService.applyDiscountCode(code, userId, planId, originalAmount, subscriptionId, paymentId);
+      }
+    });
 
     // Enhanced closure services
-    this.closureAnalyticsService = new ClosureAnalyticsService(repositories.prismaClient);
+    this.closureAnalyticsService = new ClosureAnalyticsService(this.prisma);
     this.appointmentRescheduleService = new AppointmentRescheduleService(
-      repositories.prismaClient,
+      this.prisma,
       this.notificationService
     );
 
@@ -145,6 +163,11 @@ export class ServiceContainer {
 
     // Startup service
     this.startupService = new StartupService(this.prisma);
+    
+    // Shared services
+    this.errorHandlingService = errorHandlingService;
+    this.secureLoggingService = secureLoggingService;
+    this.validationService = createValidationService(this.prisma, repositories);
   }
 }
 
@@ -157,7 +180,7 @@ export {
   RoleService,
   BusinessService,
   BusinessTypeService,
-  ServiceService,
+  OfferingService,
   AppointmentService,
   UserBehaviorService,
   BusinessClosureService,
@@ -172,5 +195,12 @@ export {
   AppointmentSchedulerService,
   StaffService,
   AppointmentReminderService,
-  StartupService
+  StartupService,
+  // Shared services
+  ErrorHandlingService,
+  errorHandlingService,
+  SecureLoggingService,
+  secureLoggingService,
+  ValidationService,
+  createValidationService
 };

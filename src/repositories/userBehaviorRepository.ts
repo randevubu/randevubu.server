@@ -1,22 +1,48 @@
 import { PrismaClient } from '@prisma/client';
 import { UserBehaviorData, UserBehaviorSummary } from '../types/business';
-import { convertBusinessData } from '../utils/prismaTypeHelpers';
-import { ReliabilityScoreCalculator } from '../utils/reliabilityScoreCalculator';
+import { ReliabilityScoreCalculator } from '../services/domain/userBehavior/reliabilityScoreCalculator';
 
 export class UserBehaviorRepository {
   constructor(private prisma: PrismaClient) {}
+
+  private mapToUserBehaviorData(record: any): UserBehaviorData {
+    return {
+      id: record.id,
+      userId: record.userId,
+      totalAppointments: record.totalAppointments,
+      canceledAppointments: record.canceledAppointments,
+      noShowAppointments: record.noShowAppointments,
+      completedAppointments: record.completedAppointments,
+      lastCancelDate: record.lastCancelDate ?? null,
+      cancelationsThisMonth: record.cancelationsThisMonth,
+      cancelationsThisWeek: record.cancelationsThisWeek,
+      lastNoShowDate: record.lastNoShowDate ?? null,
+      noShowsThisMonth: record.noShowsThisMonth,
+      noShowsThisWeek: record.noShowsThisWeek,
+      currentStrikes: record.currentStrikes,
+      lastStrikeDate: record.lastStrikeDate ?? null,
+      strikeResetDate: record.strikeResetDate ?? null,
+      isBanned: record.isBanned,
+      bannedUntil: record.bannedUntil ?? null,
+      banReason: record.banReason ?? null,
+      banCount: record.banCount,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt
+    };
+  }
 
   async findByUserId(userId: string): Promise<UserBehaviorData | null> {
     const result = await this.prisma.userBehavior.findUnique({
       where: { userId }
     });
-    return result ? convertBusinessData<UserBehaviorData>(result) : null;
+    return result ? this.mapToUserBehaviorData(result) : null;
   }
 
   async createOrUpdate(userId: string): Promise<UserBehaviorData> {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
 
     // Get appointment statistics
     const [total, canceled, noShow, completed] = await Promise.all([
@@ -111,7 +137,7 @@ export class UserBehaviorRepository {
         where: { userId },
         data
       });
-      return convertBusinessData<UserBehaviorData>(updated);
+      return this.mapToUserBehaviorData(updated);
     } else {
       const created = await this.prisma.userBehavior.create({
         data: {
@@ -122,7 +148,7 @@ export class UserBehaviorRepository {
           banCount: 0
         }
       });
-      return convertBusinessData<UserBehaviorData>(created);
+      return this.mapToUserBehaviorData(created);
     }
   }
 
@@ -162,7 +188,7 @@ export class UserBehaviorRepository {
         banCount
       }
     });
-    return convertBusinessData<UserBehaviorData>(result);
+    return this.mapToUserBehaviorData(result);
   }
 
   async removeStrike(userId: string): Promise<UserBehaviorData> {
@@ -183,7 +209,7 @@ export class UserBehaviorRepository {
         banReason: null
       }
     });
-    return convertBusinessData<UserBehaviorData>(result);
+    return this.mapToUserBehaviorData(result);
   }
 
   async banUser(userId: string, reason: string, durationDays?: number): Promise<UserBehaviorData> {
@@ -203,7 +229,7 @@ export class UserBehaviorRepository {
         currentStrikes: 3
       }
     });
-    return convertBusinessData<UserBehaviorData>(result);
+    return this.mapToUserBehaviorData(result);
   }
 
   async unbanUser(userId: string): Promise<UserBehaviorData> {
@@ -222,7 +248,7 @@ export class UserBehaviorRepository {
         strikeResetDate: null
       }
     });
-    return convertBusinessData<UserBehaviorData>(result);
+    return this.mapToUserBehaviorData(result);
   }
 
   async getUserSummary(userId: string): Promise<UserBehaviorSummary> {

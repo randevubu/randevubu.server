@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PaymentService, CreatePaymentRequest } from '../services/domain/payment';
+import { SubscriptionService } from '../services/domain/subscription/subscriptionService';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { z } from 'zod';
 
@@ -33,7 +34,8 @@ const refundPaymentSchema = z.object({
 
 export class PaymentController {
   constructor(
-    private paymentService: PaymentService
+    private paymentService: PaymentService,
+    private subscriptionService: SubscriptionService
   ) {}
 
   async createSubscriptionPayment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
@@ -236,24 +238,7 @@ export class PaymentController {
 
   async getSubscriptionPlans(req: Request, res: Response): Promise<void> {
     try {
-      const plans = await this.paymentService['prisma'].subscriptionPlan.findMany({
-        where: { isActive: true },
-        orderBy: { sortOrder: 'asc' },
-        select: {
-          id: true,
-          name: true,
-          displayName: true,
-          description: true,
-          price: true,
-          currency: true,
-          billingInterval: true,
-          maxBusinesses: true,
-          maxStaffPerBusiness: true,
-          features: true,
-          isPopular: true,
-          sortOrder: true
-        }
-      });
+      const plans = await this.subscriptionService.getAllPlans();
 
       res.json({
         success: true,

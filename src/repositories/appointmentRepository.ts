@@ -7,48 +7,57 @@ import {
   AppointmentSearchFilters,
   AppointmentStatus
 } from '../types/business';
-import { convertBusinessData, convertBusinessDataArray } from '../utils/prismaTypeHelpers';
+import { 
+  BusinessSettings, 
+  PriceVisibilitySettings, 
+  StaffPrivacySettings,
+  StaffDisplayInfo,
+  FilteredAppointmentData
+} from '../types/businessSettings';
 import { createDateTimeInIstanbul, getCurrentTimeInIstanbul, createDateRangeFilter } from '../utils/timezoneHelper';
 
 export class AppointmentRepository {
   constructor(private prisma: PrismaClient) {}
 
   // Helper method to check if prices should be hidden based on business settings
-  private shouldHidePrice(businessSettings: Record<string, unknown> | null, serviceShowPrice: boolean = true): boolean {
-    const hideAllServicePrices = (businessSettings as any)?.priceVisibility?.hideAllServicePrices === true;
+  private shouldHidePrice(businessSettings: BusinessSettings | null, serviceShowPrice: boolean = true): boolean {
+    const hideAllServicePrices = businessSettings?.priceVisibility?.hideAllServicePrices === true;
     return hideAllServicePrices || serviceShowPrice === false;
   }
 
   // Helper method to check if staff names should be hidden based on business settings
-  private shouldHideStaffNames(businessSettings: Record<string, unknown> | null): boolean {
-    return (businessSettings as any)?.staffPrivacy?.hideStaffNames === true;
+  private shouldHideStaffNames(businessSettings: BusinessSettings | null): boolean {
+    return businessSettings?.staffPrivacy?.hideStaffNames === true;
   }
 
   // Helper method to get staff display name based on privacy settings
-  private getStaffDisplayName(role: string, businessSettings: Record<string, unknown> | null): string {
-    const privacySettings = (businessSettings as any)?.staffPrivacy;
+  private getStaffDisplayName(role: string, businessSettings: BusinessSettings | null): string {
+    const privacySettings = businessSettings?.staffPrivacy;
     if (!privacySettings) return 'Staff';
 
     if (privacySettings.staffDisplayMode === 'ROLES') {
-      const roleNames = {
+      const roleNames: Record<string, string> = {
         'OWNER': 'Owner',
         'MANAGER': 'Manager',
         'STAFF': 'Staff Member',
         'RECEPTIONIST': 'Receptionist',
       };
-      return roleNames[role as keyof typeof roleNames] || 'Staff';
+      return roleNames[role] || 'Staff';
     }
 
     if (privacySettings.staffDisplayMode === 'GENERIC') {
       const customLabels = privacySettings.customStaffLabels || {};
-      return customLabels[role.toLowerCase() as keyof typeof customLabels] || 'Staff';
+      return customLabels[role.toLowerCase()] || 'Staff';
     }
 
     return 'Staff';
   }
 
   // Helper method to filter price information from appointment data
-  private filterPriceInfo(appointment: any, shouldHide: boolean): any {
+  private filterPriceInfo<T extends { price?: number | unknown; currency?: string; service?: { price?: number | unknown; currency?: string } }>(
+    appointment: T, 
+    shouldHide: boolean
+  ): T {
     if (!shouldHide) return appointment;
     
     return {
@@ -66,7 +75,11 @@ export class AppointmentRepository {
   }
 
   // Helper method to filter staff information from appointment data
-  private filterStaffInfo(appointment: any, shouldHide: boolean, businessSettings: Record<string, unknown> | null): any {
+  private filterStaffInfo<T extends { staff?: StaffDisplayInfo }>(
+    appointment: T, 
+    shouldHide: boolean, 
+    businessSettings: BusinessSettings | null
+  ): T {
     if (!shouldHide || !appointment.staff) return appointment;
     
     const staffRole = appointment.staff.role || 'STAFF';
@@ -82,7 +95,65 @@ export class AppointmentRepository {
           lastName: undefined,
         },
         ...(displayName && { displayName })
-      } as any
+      }
+    };
+  }
+
+  // Helper method to safely extract business settings
+  private extractBusinessSettings(settings: unknown): BusinessSettings | null {
+    if (!settings || typeof settings !== 'object') return null;
+    return settings as BusinessSettings;
+  }
+
+  // Mapper methods for type-safe conversions
+  private mapPrismaResultToAppointmentData(result: any): AppointmentData {
+    return {
+      id: result.id,
+      businessId: result.businessId,
+      serviceId: result.serviceId,
+      customerId: result.customerId,
+      staffId: result.staffId,
+      status: result.status,
+      startTime: result.startTime,
+      endTime: result.endTime,
+      date: result.startTime,
+      duration: result.duration || 0,
+      price: result.price,
+      currency: result.currency,
+      customerNotes: result.customerNotes,
+      internalNotes: result.internalNotes,
+      bookedAt: result.bookedAt,
+      reminderSent: result.reminderSent,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt
+    };
+  }
+
+  private mapPrismaResultToAppointmentWithDetails(result: any): AppointmentWithDetails {
+    return {
+      ...this.mapPrismaResultToAppointmentData(result),
+      service: result.service,
+      staff: result.staff,
+      customer: result.customer,
+      business: result.business
+    };
+  }
+
+  private mapToFilteredAppointmentData(appointment: any): FilteredAppointmentData {
+    return {
+      id: appointment.id,
+      date: appointment.startTime,
+      startTime: appointment.startTime,
+      endTime: appointment.endTime,
+      duration: appointment.duration || 0,
+      status: appointment.status,
+      price: appointment.price,
+      currency: appointment.currency,
+      customerNotes: appointment.customerNotes,
+      business: appointment.business,
+      service: appointment.service,
+      staff: appointment.staff,
+      customer: appointment.customer
     };
   }
 
@@ -92,7 +163,6 @@ export class AppointmentRepository {
     });
 
     if (!service) {
-      
       throw new Error('Service not found');
     }
 
@@ -112,21 +182,21 @@ export class AppointmentRepository {
         endTime: endDateTime,
         duration: service.duration,
         status: AppointmentStatus.CONFIRMED,
-        price: service.price as any,
+        price: service.price,
         currency: service.currency,
         customerNotes: data.customerNotes,
         bookedAt: getCurrentTimeInIstanbul(),
         reminderSent: false
       }
     });
-    return convertBusinessData<AppointmentData>(result);
+    return this.mapPrismaResultToAppointmentData(result);
   }
 
   async findById(id: string): Promise<AppointmentData | null> {
     const result = await this.prisma.appointment.findUnique({
       where: { id }
     });
-    return result ? convertBusinessData<AppointmentData>(result) : null;
+    return result ? this.mapPrismaResultToAppointmentData(result) : null;
   }
 
   async findByIdWithDetails(id: string): Promise<AppointmentWithDetails | null> {
@@ -155,7 +225,7 @@ export class AppointmentRepository {
         }
       }
     });
-    return result ? convertBusinessData<AppointmentWithDetails>(result) : null;
+    return result as AppointmentWithDetails | null;
   }
 
   async findByCustomerId(customerId: string, page = 1, limit = 20): Promise<{
@@ -231,12 +301,12 @@ export class AppointmentRepository {
 
     return {
       appointments: appointments.map(apt => {
-        const businessSettings = apt.business?.settings as any;
+        const businessSettings = this.extractBusinessSettings(apt.business?.settings);
         const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
         
         const filteredApt = this.filterPriceInfo(apt, shouldHide);
         
-        return filteredApt as AppointmentWithDetails;
+        return this.mapPrismaResultToAppointmentWithDetails(filteredApt);
       }),
       total,
       page,
@@ -252,14 +322,11 @@ export class AppointmentRepository {
     lastAppointmentDate: Date | null;
   }> {
     // Build where clause - if businessOwnerId provided, only count appointments from their businesses
-    let whereClause: Record<string, unknown> = { customerId };
+    const whereClause: Record<string, unknown> = { customerId };
     
     if (businessOwnerId) {
-      whereClause = {
-        customerId,
-        business: {
-          ownerId: businessOwnerId
-        }
+      whereClause.business = {
+        ownerId: businessOwnerId
       };
     }
 
@@ -431,10 +498,10 @@ export class AppointmentRepository {
 
     return {
       appointments: appointments.map(apt => {
-        const businessSettings = apt.business?.settings as any;
+        const businessSettings = this.extractBusinessSettings(apt.business?.settings);
         const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
         
-        return this.filterPriceInfo(apt, shouldHide) as AppointmentWithDetails;
+        return this.mapPrismaResultToAppointmentWithDetails(this.filterPriceInfo(apt, shouldHide));
       }),
       total,
       page,
@@ -489,7 +556,7 @@ export class AppointmentRepository {
     ]);
 
     return {
-      appointments: convertBusinessDataArray<AppointmentWithDetails>(appointments),
+      appointments: appointments.map(apt => this.mapPrismaResultToAppointmentWithDetails(apt)),
       total,
       page,
       totalPages: Math.ceil(total / limit)
@@ -582,7 +649,7 @@ export class AppointmentRepository {
     ]);
 
     return {
-      appointments: convertBusinessDataArray<AppointmentWithDetails>(appointments),
+      appointments: appointments.map(apt => this.mapPrismaResultToAppointmentWithDetails(apt)),
       total,
       page,
       totalPages: Math.ceil(total / limit)
@@ -623,7 +690,7 @@ export class AppointmentRepository {
       where: { id },
       data: updateData
     });
-    return convertBusinessData<AppointmentData>(result);
+    return this.mapPrismaResultToAppointmentData(result);
   }
 
   async cancel(id: string, cancelReason?: string): Promise<AppointmentData> {
@@ -635,7 +702,7 @@ export class AppointmentRepository {
         cancelReason
       }
     });
-    return convertBusinessData<AppointmentData>(result);
+    return this.mapPrismaResultToAppointmentData(result);
   }
 
   async markNoShow(id: string): Promise<AppointmentData> {
@@ -646,7 +713,7 @@ export class AppointmentRepository {
         canceledAt: new Date()
       }
     });
-    return convertBusinessData<AppointmentData>(result);
+    return this.mapPrismaResultToAppointmentData(result);
   }
 
   async findUpcomingByCustomerId(customerId: string, limit = 10): Promise<AppointmentWithDetails[]> {
@@ -687,7 +754,7 @@ export class AppointmentRepository {
         }
       }
     });
-    return convertBusinessDataArray<AppointmentWithDetails>(result);
+    return result.map(apt => this.mapPrismaResultToAppointmentWithDetails(apt));
   }
 
   async findNearestAppointmentInTimeRange(
@@ -730,7 +797,7 @@ export class AppointmentRepository {
         }
       }
     });
-    return result ? convertBusinessData<AppointmentWithDetails>(result) : null;
+    return result as AppointmentWithDetails | null;
   }
 
   async findAppointmentsInTimeRange(
@@ -773,7 +840,7 @@ export class AppointmentRepository {
         }
       }
     });
-    return convertBusinessDataArray<AppointmentWithDetails>(result);
+    return result.map(apt => this.mapPrismaResultToAppointmentWithDetails(apt));
   }
 
   async markReminderSent(appointmentId: string): Promise<void> {
@@ -786,7 +853,7 @@ export class AppointmentRepository {
     });
   }
 
-  async findTodaysAppointments(businessId: string): Promise<any[]> {
+  async findTodaysAppointments(businessId: string): Promise<FilteredAppointmentData[]> {
     const { getCurrentTimeInIstanbul } = require('../utils/timezoneHelper');
     const today = getCurrentTimeInIstanbul();
     today.setHours(0, 0, 0, 0);
@@ -851,13 +918,34 @@ export class AppointmentRepository {
     });
     
     return result.map(apt => {
-      const businessSettings = apt.business?.settings as any;
+      const businessSettings = this.extractBusinessSettings(apt.business?.settings);
       const shouldHidePrice = this.shouldHidePrice(businessSettings, apt.service.showPrice);
       const shouldHideStaffNames = this.shouldHideStaffNames(businessSettings);
       
-      let appointment = {
+      let appointment: FilteredAppointmentData = {
         ...apt,
-        staff: apt.staff?.user
+        price: Number(apt.price),
+        customerNotes: apt.customerNotes || undefined,
+        business: apt.business ? {
+          ...apt.business,
+          settings: this.extractBusinessSettings(apt.business.settings) || undefined
+        } : undefined,
+        service: apt.service ? {
+          ...apt.service,
+          price: Number(apt.service.price)
+        } : undefined,
+        staff: apt.staff ? {
+          role: apt.staff.role,
+          user: {
+            firstName: apt.staff.user?.firstName || undefined,
+            lastName: apt.staff.user?.lastName || undefined
+          }
+        } : undefined,
+        customer: apt.customer ? {
+          firstName: apt.customer.firstName || undefined,
+          lastName: apt.customer.lastName || undefined,
+          phoneNumber: apt.customer.phoneNumber
+        } : undefined
       };
       
       // Apply price filtering
@@ -866,11 +954,11 @@ export class AppointmentRepository {
       // Apply staff privacy filtering
       appointment = this.filterStaffInfo(appointment, shouldHideStaffNames, businessSettings);
       
-      return appointment;
+      return this.mapToFilteredAppointmentData(appointment);
     });
   }
 
-  async findTodaysAppointmentsForBusinesses(businessIds: string[]): Promise<any[]> {
+  async findTodaysAppointmentsForBusinesses(businessIds: string[]): Promise<FilteredAppointmentData[]> {
     const { getCurrentTimeInIstanbul } = require('../utils/timezoneHelper');
     const today = getCurrentTimeInIstanbul();
     today.setHours(0, 0, 0, 0);
@@ -935,13 +1023,34 @@ export class AppointmentRepository {
     });
     
     return result.map(apt => {
-      const businessSettings = apt.business?.settings as any;
+      const businessSettings = this.extractBusinessSettings(apt.business?.settings);
       const shouldHidePrice = this.shouldHidePrice(businessSettings, apt.service.showPrice);
       const shouldHideStaffNames = this.shouldHideStaffNames(businessSettings);
       
-      let appointment = {
+      let appointment: FilteredAppointmentData = {
         ...apt,
-        staff: apt.staff?.user
+        price: Number(apt.price),
+        customerNotes: apt.customerNotes || undefined,
+        business: apt.business ? {
+          ...apt.business,
+          settings: this.extractBusinessSettings(apt.business.settings) || undefined
+        } : undefined,
+        service: apt.service ? {
+          ...apt.service,
+          price: Number(apt.service.price)
+        } : undefined,
+        staff: apt.staff ? {
+          role: apt.staff.role,
+          user: {
+            firstName: apt.staff.user?.firstName || undefined,
+            lastName: apt.staff.user?.lastName || undefined
+          }
+        } : undefined,
+        customer: apt.customer ? {
+          firstName: apt.customer.firstName || undefined,
+          lastName: apt.customer.lastName || undefined,
+          phoneNumber: apt.customer.phoneNumber
+        } : undefined
       };
       
       // Apply price filtering
@@ -950,7 +1059,7 @@ export class AppointmentRepository {
       // Apply staff privacy filtering
       appointment = this.filterStaffInfo(appointment, shouldHideStaffNames, businessSettings);
       
-      return appointment;
+      return this.mapToFilteredAppointmentData(appointment);
     });
   }
 
@@ -992,7 +1101,7 @@ export class AppointmentRepository {
     }
 
     const result = await this.prisma.appointment.findMany({ where });
-    return convertBusinessDataArray<AppointmentData>(result);
+    return result.map(apt => this.mapPrismaResultToAppointmentData(apt));
   }
 
   async getAppointmentStats(businessId: string, startDate?: Date, endDate?: Date): Promise<{
@@ -1004,9 +1113,9 @@ export class AppointmentRepository {
     const where: Record<string, unknown> = { businessId };
     
     if (startDate || endDate) {
-      (where.date as any) = {};
-      if (startDate) (where.date as any).gte = startDate;
-      if (endDate) (where.date as any).lte = endDate;
+      (where.date as Record<string, unknown>) = {};
+      if (startDate) (where.date as Record<string, unknown>).gte = startDate;
+      if (endDate) (where.date as Record<string, unknown>).lte = endDate;
     }
 
     const appointments = await this.prisma.appointment.findMany({
@@ -1019,12 +1128,12 @@ export class AppointmentRepository {
 
     const total = appointments.length;
     const byStatus = appointments.reduce((acc, app) => {
-      (acc as any)[app.status] = ((acc as any)[app.status] || 0) + 1;
+      acc[app.status] = (acc[app.status] || 0) + 1;
       return acc;
     }, {} as Partial<Record<AppointmentStatus, number>>);
 
     const completedAppointments = appointments.filter(a => a.status === AppointmentStatus.COMPLETED);
-    const totalRevenue = completedAppointments.reduce((sum, a) => sum + (a.price as any), 0);
+    const totalRevenue = completedAppointments.reduce((sum, a) => sum + Number(a.price), 0);
     const averageValue = completedAppointments.length > 0 ? totalRevenue / completedAppointments.length : 0;
 
     return {
@@ -1044,9 +1153,9 @@ export class AppointmentRepository {
     const where: Record<string, unknown> = { businessId: { in: businessIds } };
     
     if (startDate || endDate) {
-      (where.date as any) = {};
-      if (startDate) (where.date as any).gte = startDate;
-      if (endDate) (where.date as any).lte = endDate;
+      (where.date as Record<string, unknown>) = {};
+      if (startDate) (where.date as Record<string, unknown>).gte = startDate;
+      if (endDate) (where.date as Record<string, unknown>).lte = endDate;
     }
 
     const appointments = await this.prisma.appointment.findMany({
@@ -1058,18 +1167,23 @@ export class AppointmentRepository {
       }
     });
 
-    const result: Record<string, any> = {};
+    const result: Record<string, {
+      total: number;
+      byStatus: Partial<Record<AppointmentStatus, number>>;
+      totalRevenue: number;
+      averageValue: number;
+    }> = {};
     
     businessIds.forEach(businessId => {
       const businessAppointments = appointments.filter(a => a.businessId === businessId);
       const total = businessAppointments.length;
       const byStatus = businessAppointments.reduce((acc, app) => {
-        (acc as any)[app.status] = ((acc as any)[app.status] || 0) + 1;
+        acc[app.status] = (acc[app.status] || 0) + 1;
         return acc;
       }, {} as Partial<Record<AppointmentStatus, number>>);
 
       const completedAppointments = businessAppointments.filter(a => a.status === AppointmentStatus.COMPLETED);
-      const totalRevenue = completedAppointments.reduce((sum, a) => sum + (a.price as any), 0);
+      const totalRevenue = completedAppointments.reduce((sum, a) => sum + Number(a.price), 0);
       const averageValue = completedAppointments.length > 0 ? totalRevenue / completedAppointments.length : 0;
 
       result[businessId] = {
@@ -1082,7 +1196,6 @@ export class AppointmentRepository {
 
     return result;
   }
-
 
   async findByBusinessAndDateRange(
     businessId: string,
@@ -1163,10 +1276,10 @@ export class AppointmentRepository {
     });
 
     return appointments.map(apt => {
-      const businessSettings = apt.business?.settings as any;
+      const businessSettings = this.extractBusinessSettings(apt.business?.settings);
       const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
       
       return this.filterPriceInfo(apt, shouldHide);
-    }) as unknown as AppointmentWithDetails[];
+    }).map(apt => this.mapPrismaResultToAppointmentWithDetails(apt));
   }
 }

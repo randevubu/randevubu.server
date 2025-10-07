@@ -76,7 +76,7 @@ export class PhoneVerificationService {
 
     // Generate new verification code
     const code = this.tokenService.generateSecureCode(6);
-    const hashedCode = this.tokenService.hashCode(code);
+    const hashedCode = await this.tokenService.hashCode(code);
     const expiresAt = new Date(
       Date.now() + PhoneVerificationService.CODE_EXPIRY_MINUTES * 60 * 1000
     );
@@ -167,7 +167,7 @@ export class PhoneVerificationService {
     }
 
     // Verify the code
-    const isValidCode = this.tokenService.verifyCode(code, verification.code);
+    const isValidCode = await this.tokenService.verifyCode(code, verification.code);
 
     // Update attempt count
     const newAttempts =
@@ -347,17 +347,29 @@ export class PhoneVerificationService {
     code: string,
     context?: ErrorContext
   ): Promise<void> {
-    // Show verification code in terminal
-    console.log(
-      `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
-        phoneNumber
-      )}`
-    );
-    logger.info(
-      `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
-        phoneNumber
-      )}`
-    );
+    // Show verification code in terminal (development only)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(
+        `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
+          phoneNumber
+        )}`
+      );
+    }
+    
+    // Log verification code (development only)
+    if (process.env.NODE_ENV === 'development') {
+      logger.info(
+        `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
+          phoneNumber
+        )}`
+      );
+    } else {
+      // Production logging - no sensitive data
+      logger.info("Verification code sent", {
+        phoneNumber: this.maskPhoneNumber(phoneNumber),
+        requestId: context?.requestId,
+      });
+    }
 
     // Send the working test message via SMS
     const testMessage = `RandevuBu SMS servisi test mesajıdır. Bu mesaj İleti Merkezi API entegrasyonunu test etmek için gönderilmiştir.`;

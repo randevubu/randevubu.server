@@ -36,7 +36,7 @@ export class ControllerContainer {
       services.staffService
     );
     this.businessTypeController = new BusinessTypeController(services.businessTypeService);
-    this.serviceController = new ServiceController(services.serviceService);
+    this.serviceController = new ServiceController(services.offeringService);
     this.appointmentController = new AppointmentController(services.appointmentService);
     this.userBehaviorController = new UserBehaviorController(services.userBehaviorService);
     this.businessClosureController = new BusinessClosureController(

@@ -9,6 +9,7 @@ import {
   UserProfile,
   UserStats,
 } from "../../../types/auth";
+import { BusinessSubscriptionData } from "../../../types/business";
 import {
   BusinessRuleViolationError,
   ErrorContext,
@@ -19,7 +20,7 @@ import {
   UserNotFoundError,
 } from "../../../types/errors";
 import logger from "../../../utils/Logger/logger";
-import { ReliabilityScoreCalculator } from "../../../utils/reliabilityScoreCalculator";
+import { ReliabilityScoreCalculator } from "../userBehavior/reliabilityScoreCalculator";
 import { PhoneVerificationService } from "../sms/phoneVerificationService";
 import { RBACService } from "../rbac/rbacService";
 import { TokenService } from "../token/tokenService";
@@ -53,20 +54,39 @@ export class AuthService {
       throw new UnauthorizedError(verificationResult.message, context);
     }
 
-    // Check if user exists
+    // Check if user exists and handle race conditions
     let user = await this.repositories.userRepository.findByPhoneNumber(
       normalizedPhone
     );
-    const isNewUser = !user;
+    let isNewUser = !user;
 
     if (!user) {
-      // Create new user
-      user = await this.createUser(
-        {
-          phoneNumber: normalizedPhone,
-        },
-        context
-      );
+      try {
+        // Create new user with proper error handling for race conditions
+        user = await this.createUser(
+          {
+            phoneNumber: normalizedPhone,
+          },
+          context
+        );
+      } catch (error: unknown) {
+        // Handle unique constraint violation (race condition)
+        if ((error as any).code === 'P2002' && (error as any).meta?.target?.includes('phoneNumber')) {
+          // Another request created the user, fetch it
+          user = await this.repositories.userRepository.findByPhoneNumber(
+            normalizedPhone
+          );
+          if (!user) {
+            throw new UnauthorizedError(
+              "User creation failed due to concurrent access",
+              context
+            );
+          }
+          isNewUser = false;
+        } else {
+          throw error;
+        }
+      }
     } else {
       // Validate existing user status
       await this.validateUserStatus(user, context);
@@ -218,43 +238,16 @@ export class AuthService {
       const roleNames = userPermissions?.roles.map((role) => role.name) || [];
 
       if (roleNames.includes("OWNER")) {
-        // Get owned businesses with subscription info using direct Prisma access
-        const prismaClient = this.repositories.prismaClient;
+        // Get owned businesses with subscription info using repositories
         const [ownedBusinesses, activeSubscriptions] = await Promise.all([
-          prismaClient.business.findMany({
-            where: {
-              ownerId: userId,
-              deletedAt: null,
-            },
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              isVerified: true,
-              isActive: true,
-              createdAt: true,
-            },
-            orderBy: { createdAt: "asc" },
-          }),
-          prismaClient.businessSubscription.findMany({
-            where: {
-              business: {
-                ownerId: userId,
-                deletedAt: null,
-              },
-              status: { in: ["ACTIVE", "TRIAL", "PAST_DUE"] },
-            },
-            select: {
-              status: true,
-              businessId: true,
-            },
-          }),
+          this.repositories.businessRepository.findByOwnerId(userId),
+          this.repositories.subscriptionRepository.findActiveByOwnerId(userId),
         ]);
 
         const businesses = ownedBusinesses || [];
         const subscriptions = activeSubscriptions || [];
-        const subscriptionStatuses = [
-          ...new Set(subscriptions.map((s) => s.status)),
+        const subscriptionStatuses: string[] = [
+          ...new Set(subscriptions.map((s: BusinessSubscriptionData) => s.status)),
         ];
 
         return {
@@ -572,14 +565,14 @@ export class AuthService {
     }
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
-      const unlockTime = user.lockedUntil.toISOString();
+      const retryAfter = Math.ceil(
+        (user.lockedUntil.getTime() - Date.now()) / 1000
+      );
       throw new UserLockedError(
-        `Account is temporarily locked until ${unlockTime}`,
+        "Account is temporarily locked due to multiple failed attempts",
         context,
         {
-          retryAfter: Math.ceil(
-            (user.lockedUntil.getTime() - Date.now()) / 1000
-          ),
+          retryAfter,
         }
       );
     }
@@ -735,9 +728,9 @@ export class AuthService {
       search?: string;
       page?: number;
       limit?: number;
-      status?: string;
-      sortBy?: string;
-      sortOrder?: string;
+      status?: 'all' | 'banned' | 'flagged' | 'active';
+      sortBy?: 'createdAt' | 'updatedAt' | 'firstName' | 'lastName' | 'lastLoginAt';
+      sortOrder?: 'asc' | 'desc';
     }
   ): Promise<{
     customers: UserProfile[];
@@ -761,7 +754,7 @@ export class AuthService {
     // Get customers who have appointments at user's businesses
     return await this.repositories.userRepository.findCustomersByUserBusinesses(
       userId,
-      filters
+      filters   
     );
   }
 
@@ -894,7 +887,7 @@ export class AuthService {
     };
   }
 
-  private sanitizeDeviceInfo(deviceInfo?: DeviceInfo): any {
+  private sanitizeDeviceInfo(deviceInfo?: DeviceInfo): Record<string, unknown> | null {
     if (!deviceInfo) return null;
 
     return {
