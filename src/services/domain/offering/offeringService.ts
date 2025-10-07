@@ -10,7 +10,7 @@ import { RBACService } from '../rbac/rbacService';
 import { UsageService } from '../usage/usageService';
 import { PermissionName } from '../../../types/auth';
 
-export class ServiceService {
+export class OfferingService {
   constructor(
     private serviceRepository: ServiceRepository,
     private businessRepository: BusinessRepository,

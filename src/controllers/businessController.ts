@@ -15,6 +15,7 @@ import { RBACService } from '../services/domain/rbac';
 import { TokenService } from '../services/domain/token';
 import { StaffService } from '../services/domain/staff';
 import { AuthenticatedRequest, AuthenticatedRequestWithFile } from '../types/auth';
+import { BusinessData, BusinessSubscriptionData } from '../types/business';
 import {
   handleRouteError,
   sendSuccessResponse,
@@ -249,7 +250,7 @@ export class BusinessController {
         
       }
 
-      const response: any = {
+      const response: { success: boolean; data: BusinessData; message?: string; tokens?: any } = {
         success: true,
         data: business,
         message: 'Business created successfully'
@@ -301,7 +302,7 @@ export class BusinessController {
       }
 
       // Format response based on what was requested
-      let responseData: any = business;
+      let responseData: BusinessData | (BusinessData & { subscription?: any }) = business;
       if (includeSubscription === 'true' && 'subscription' in business) {
         const businessWithSub = business as Record<string, unknown>;
         const subscription = businessWithSub.subscription as Record<string, unknown> | undefined;
@@ -1511,19 +1512,14 @@ export class BusinessController {
 
       // Import the services dynamically to avoid circular dependencies
       const { NotificationService } = await import('../services/domain/notification/notificationService');
-      const { UsageService } = await import('../services/domain/usage/usageService');
-      const { UsageRepository } = await import('../repositories/usageRepository');
-
-      // Create usage service for SMS tracking
-      const usageRepository = new UsageRepository(this.businessService['prisma']);
       
       if (!this.rbacService) {
         throw new Error('RBAC service not available');
       }
       
-      const usageService = new UsageService(usageRepository, this.rbacService, this.businessService['prisma']);
-
-      const notificationService = new NotificationService(this.businessService['prisma'], usageService);
+      // Use existing usage service from business service
+      const usageService = this.businessService['usageService'];
+      const notificationService = new NotificationService(this.businessService['repositories'], usageService);
 
       const testData = req.body || {};
 
@@ -1574,16 +1570,8 @@ export class BusinessController {
       if (channelsToTest.includes('SMS') && businessSettings.smsEnabled) {
         // Check SMS rate limiting (5 minutes between SMS tests per user)
         const SMS_RATE_LIMIT_MINUTES = 5;
-        const lastSmsTest = await this.businessService['prisma'].auditLog.findFirst({
-          where: {
-            userId,
-            entity: 'SMS_TEST',
-            createdAt: {
-              gte: new Date(Date.now() - SMS_RATE_LIMIT_MINUTES * 60 * 1000)
-            }
-          },
-          orderBy: { createdAt: 'desc' }
-        });
+        const recentSmsTests = await this.businessService.findRecentAuditEvents(userId, 'SMS_TEST', SMS_RATE_LIMIT_MINUTES);
+        const lastSmsTest = recentSmsTests.length > 0 ? recentSmsTests[0] : null;
 
         if (lastSmsTest) {
           const timeRemaining = Math.ceil((lastSmsTest.createdAt.getTime() + SMS_RATE_LIMIT_MINUTES * 60 * 1000 - Date.now()) / 1000 / 60);
@@ -1598,15 +1586,12 @@ export class BusinessController {
           results.push(...smsResults);
 
           // Log SMS test activity for rate limiting
-          await this.businessService['prisma'].auditLog.create({
-            data: {
-              id: `sms-test-${Date.now()}`,
-              action: 'USER_UPDATE',
-              entity: 'SMS_TEST',
-              entityId: testAppointment.id,
-              userId,
-              details: { businessId, testId: testAppointment.id }
-            }
+          await this.businessService.logAuditEvent({
+            userId,
+            action: 'USER_UPDATE',
+            entity: 'SMS_TEST',
+            entityId: testAppointment.id,
+            details: { businessId, testId: testAppointment.id }
           });
         }
       }

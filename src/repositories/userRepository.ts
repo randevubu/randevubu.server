@@ -1,4 +1,4 @@
-import { PrismaClient, User } from '@prisma/client';
+import { PrismaClient, User, Prisma } from '@prisma/client';
 import {
   UserRepository,
   UserProfile,
@@ -57,7 +57,40 @@ export class PrismaUserRepository implements UserRepository {
     return user;
   }
 
+  async findByIdWithSecurity(id: string): Promise<(UserProfile & UserSecurity) | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id, isActive: true },
+      select: {
+        id: true,
+        phoneNumber: true,
+        firstName: true,
+        lastName: true,
+        avatar: true,
+        timezone: true,
+        language: true,
+        isVerified: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        lastLoginAt: true,
+        failedLoginAttempts: true,
+        lockedUntil: true,
+      },
+    });
+
+    return user;
+  }
+
   async create(data: CreateUserData): Promise<UserProfile> {
+    if (!data.phoneNumber || !data.phoneNumber.trim()) {
+      throw new Error('phoneNumber is required');
+    }
+    if (!data.firstName || !data.firstName.trim()) {
+      throw new Error('firstName is required');
+    }
+    if (!data.lastName || !data.lastName.trim()) {
+      throw new Error('lastName is required');
+    }
     const user = await this.prisma.user.create({
       data: {
         id: crypto.randomUUID(),
@@ -90,6 +123,12 @@ export class PrismaUserRepository implements UserRepository {
   }
 
   async update(id: string, data: Partial<UpdateUserData>): Promise<UserProfile> {
+    if (data.firstName !== undefined && !data.firstName.trim()) {
+      throw new Error('firstName cannot be empty');
+    }
+    if (data.lastName !== undefined && !data.lastName.trim()) {
+      throw new Error('lastName cannot be empty');
+    }
     const user = await this.prisma.user.update({
       where: { id, isActive: true },
       data: {
@@ -203,9 +242,9 @@ export class PrismaUserRepository implements UserRepository {
     search?: string;
     page?: number;
     limit?: number;
-    status?: string;
-    sortBy?: string;
-    sortOrder?: string;
+    status?: 'all' | 'banned' | 'flagged' | 'active';
+    sortBy?: 'createdAt' | 'updatedAt' | 'firstName' | 'lastName' | 'lastLoginAt';
+    sortOrder?: 'asc' | 'desc';
   }): Promise<{
     customers: UserProfile[];
     total: number;
@@ -217,13 +256,12 @@ export class PrismaUserRepository implements UserRepository {
     const skip = (page - 1) * limit;
     
     // Build sort order
-    const sortBy = filters?.sortBy || 'createdAt';
-    const sortOrder = filters?.sortOrder || 'desc';
-    const orderBy: any = {};
-    orderBy[sortBy] = sortOrder;
+    const sortBy = filters?.sortBy ?? 'createdAt';
+    const sortOrder: 'asc' | 'desc' = filters?.sortOrder ?? 'desc';
+    const orderBy: Prisma.UserOrderByWithRelationInput = { [sortBy]: sortOrder };
 
     // Build where clause for customers with appointments at user's businesses
-    const whereClause: any = {
+    const whereClause: Prisma.UserWhereInput = {
       appointments: {
         some: {
           business: {
@@ -231,14 +269,14 @@ export class PrismaUserRepository implements UserRepository {
               // Businesses owned by user
               { ownerId: userId },
               // Businesses where user is active staff
-              { 
-                staff: { 
-                  some: { 
-                    userId, 
-                    isActive: true, 
-                    leftAt: null 
-                  } 
-                } 
+              {
+                staff: {
+                  some: {
+                    userId,
+                    isActive: true,
+                    leftAt: null
+                  }
+                }
               }
             ]
           }
@@ -248,7 +286,7 @@ export class PrismaUserRepository implements UserRepository {
     };
 
     // Build additional filters array
-    const additionalFilters = [];
+    const additionalFilters: Prisma.UserWhereInput[] = [];
 
     // Apply search filter
     if (filters?.search) {
@@ -294,7 +332,7 @@ export class PrismaUserRepository implements UserRepository {
     // Combine all filters with AND
     if (additionalFilters.length > 0) {
       whereClause.AND = [
-        ...(whereClause.AND || []),
+        ...(Array.isArray(whereClause.AND) ? whereClause.AND : whereClause.AND ? [whereClause.AND] : []),
         ...additionalFilters
       ];
     }
@@ -365,7 +403,7 @@ export class PrismaUserRepository implements UserRepository {
       activeUsers,
       verifiedUsers,
       newUsersToday,
-      verificationRate: totalUsers > 0 ? (verifiedUsers / totalUsers * 100).toFixed(2) : '0.00',
+      verificationRate: totalUsers > 0 ? ((verifiedUsers / totalUsers) * 100).toFixed(2) : '0.00',
     };
   }
 

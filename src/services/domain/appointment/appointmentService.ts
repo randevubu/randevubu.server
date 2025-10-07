@@ -18,7 +18,6 @@ import { BusinessContext } from '../../../middleware/businessContext';
 import { BusinessService } from '../business';
 import { NotificationService } from '../notification';
 import { UsageService } from '../usage';
-import { PrismaClient } from '@prisma/client';
 
 export class AppointmentService {
   constructor(
@@ -30,8 +29,7 @@ export class AppointmentService {
     private businessService: BusinessService,
     private notificationService: NotificationService,
     private usageService: UsageService,
-    private prisma: PrismaClient,
-    private repositories?: RepositoryContainer
+    private repositories: RepositoryContainer
   ) {}
 
   // Helper method to split permission name into resource and action
@@ -124,18 +122,21 @@ export class AppointmentService {
     const appointmentDateTime = createDateTimeInIstanbul(data.date, data.startTime);
     const now = getCurrentTimeInIstanbul();
 
-    console.log('🕐 Timezone Debug:', {
-      inputDate: data.date,
-      inputTime: data.startTime,
-      appointmentDateTime: appointmentDateTime.toISOString(),
-      now: now.toISOString(),
-      appointmentDateTimeLocal: appointmentDateTime.toString(),
-      nowLocal: now.toString(),
-      appointmentTimestamp: appointmentDateTime.getTime(),
-      nowTimestamp: now.getTime(),
-      diff: appointmentDateTime.getTime() - now.getTime(),
-      hoursUntil: (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
-    });
+    // Debug logging (development only)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🕐 Timezone Debug:', {
+        inputDate: data.date,
+        inputTime: data.startTime,
+        appointmentDateTime: appointmentDateTime.toISOString(),
+        now: now.toISOString(),
+        appointmentDateTimeLocal: appointmentDateTime.toString(),
+        nowLocal: now.toString(),
+        appointmentTimestamp: appointmentDateTime.getTime(),
+        nowTimestamp: now.getTime(),
+        diff: appointmentDateTime.getTime() - now.getTime(),
+        hoursUntil: (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
+      });
+    }
 
     // Check minimum advance booking
     const hoursUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -175,9 +176,13 @@ export class AppointmentService {
 
     // Send notification to business owner/staff about new appointment
     try {
-      console.log('🔍 APPOINTMENT CREATION - About to call notifyNewAppointment for appointment:', appointment.id);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 APPOINTMENT CREATION - About to call notifyNewAppointment for appointment:', appointment.id);
+      }
       await this.notifyNewAppointment(appointment, service);
-      console.log('🔍 APPOINTMENT CREATION - notifyNewAppointment completed for appointment:', appointment.id);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 APPOINTMENT CREATION - notifyNewAppointment completed for appointment:', appointment.id);
+      }
     } catch (notificationError) {
       // Log notification error but don't fail the appointment creation
       console.error('❌ APPOINTMENT CREATION - Failed to send appointment notification:', notificationError);
@@ -784,13 +789,12 @@ export class AppointmentService {
    */
   private async notifyNewAppointment(appointment: AppointmentData, service: { name: string; duration: number; price: number; currency: string }): Promise<void> {
     try {
-      console.log('🔍 NOTIFY NEW APPOINTMENT - Starting notification process for appointment:', appointment.id);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 NOTIFY NEW APPOINTMENT - Starting notification process for appointment:', appointment.id);
+      }
       
-      // Get business details to find owner/staff (direct Prisma query to avoid RBAC issues)
-      const business = await this.prisma.business.findUnique({
-        where: { id: appointment.businessId },
-        select: { id: true, name: true, ownerId: true, isActive: true }
-      });
+      // Get business details to find owner/staff
+      const business = await this.repositories.businessRepository.findById(appointment.businessId);
       
       if (!business) {
         console.error('Business not found for notification:', appointment.businessId);
@@ -798,22 +802,28 @@ export class AppointmentService {
       }
 
       if (!business.isActive) {
-        console.log('Business is inactive, skipping notification:', appointment.businessId);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Business is inactive, skipping notification:', appointment.businessId);
+        }
         return;
       }
 
       // Get business notification settings
-      console.log('🔍 Getting business notification settings for businessId:', appointment.businessId);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 Getting business notification settings for businessId:', appointment.businessId);
+      }
       const businessSettings = await this.businessService.getOrCreateBusinessNotificationSettings(appointment.businessId);
       
-      // Debug: Log current notification settings
-      console.log('🔍 Business notification settings retrieved:', {
-        businessId: appointment.businessId,
-        pushEnabled: businessSettings.pushEnabled,
-        smsEnabled: businessSettings.smsEnabled,
-        emailEnabled: businessSettings.emailEnabled,
-        settingsId: businessSettings.id
-      });
+      // Debug: Log current notification settings (development only)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 Business notification settings retrieved:', {
+          businessId: appointment.businessId,
+          pushEnabled: businessSettings.pushEnabled,
+          smsEnabled: businessSettings.smsEnabled,
+          emailEnabled: businessSettings.emailEnabled,
+          settingsId: businessSettings.id
+        });
+      }
       
       // Check if any notifications are enabled
       if (!businessSettings.pushEnabled && !businessSettings.smsEnabled) {
@@ -913,10 +923,7 @@ export class AppointmentService {
       console.log('🔍 SMS Notification Debug - Starting SMS notification process');
       
       // Get business owner's phone number
-      const businessOwner = await this.prisma.user.findUnique({
-        where: { id: business.ownerId },
-        select: { phoneNumber: true, firstName: true, lastName: true }
-      });
+      const businessOwner = await this.repositories.userRepository.findById(business.ownerId);
 
       console.log('🔍 SMS Notification Debug - Business owner data:', {
         ownerId: business.ownerId,

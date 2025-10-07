@@ -278,11 +278,7 @@ export class StaffController {
     try {
       const userId = req.user!.id;
 
-      // This would need a new method in StaffService to get user's staff positions
-      // For now, we'll use the repository directly through the service
-      const positions = await this.staffService[
-        "repositories"
-      ].staffRepository.findByUserId(userId);
+      const positions = await this.staffService.getUserStaffPositions(userId);
 
       sendSuccessResponse(res, 'Staff positions retrieved successfully', { positions });
     } catch (error) {

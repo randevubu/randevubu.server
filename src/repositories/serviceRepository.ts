@@ -1,13 +1,31 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma, Service as PrismaService } from '@prisma/client';
 import {
   ServiceData,
   CreateServiceRequest,
   UpdateServiceRequest
 } from '../types/business';
-import { convertBusinessData, convertBusinessDataArray } from '../utils/prismaTypeHelpers';
 
 export class ServiceRepository {
   constructor(private prisma: PrismaClient) {}
+
+  private mapPrismaServiceToServiceData(service: PrismaService): ServiceData {
+    return {
+      id: service.id,
+      businessId: service.businessId,
+      name: service.name,
+      description: service.description,
+      duration: service.duration,
+      price: Number(service.price),
+      currency: service.currency,
+      isActive: service.isActive,
+      sortOrder: service.sortOrder,
+      bufferTime: service.bufferTime,
+      maxAdvanceBooking: service.maxAdvanceBooking,
+      minAdvanceBooking: service.minAdvanceBooking,
+      createdAt: service.createdAt,
+      updatedAt: service.updatedAt
+    } as ServiceData;
+  }
 
   async create(businessId: string, data: CreateServiceRequest): Promise<ServiceData> {
     const maxSortOrder = await this.prisma.service.aggregate({
@@ -22,7 +40,9 @@ export class ServiceRepository {
         name: data.name,
         description: data.description,
         duration: data.duration,
-        price: data.price as any,
+        price: data.price !== null && data.price !== undefined 
+          ? new Prisma.Decimal(String(data.price))
+          : new Prisma.Decimal(0),
         currency: data.currency || 'TRY',
         isActive: true,
         sortOrder: (maxSortOrder._max.sortOrder || 0) + 1,
@@ -31,14 +51,14 @@ export class ServiceRepository {
         minAdvanceBooking: data.minAdvanceBooking || 0
       }
     });
-    return convertBusinessData<ServiceData>(result);
+    return this.mapPrismaServiceToServiceData(result);
   }
 
   async findById(id: string): Promise<ServiceData | null> {
     const result = await this.prisma.service.findUnique({
       where: { id }
     });
-    return result ? convertBusinessData<ServiceData>(result) : null;
+    return result ? this.mapPrismaServiceToServiceData(result) : null;
   }
 
   async findByBusinessId(businessId: string): Promise<ServiceData[]> {
@@ -49,7 +69,7 @@ export class ServiceRepository {
         { sortOrder: 'asc' }
       ]
     });
-    return convertBusinessDataArray<ServiceData>(result);
+    return result.map(s => this.mapPrismaServiceToServiceData(s));
   }
 
   async findActiveByBusinessId(businessId: string): Promise<ServiceData[]> {
@@ -60,7 +80,7 @@ export class ServiceRepository {
       },
       orderBy: { sortOrder: 'asc' }
     });
-    return convertBusinessDataArray<ServiceData>(result);
+    return result.map(s => this.mapPrismaServiceToServiceData(s));
   }
 
   async update(id: string, data: UpdateServiceRequest): Promise<ServiceData> {
@@ -68,7 +88,7 @@ export class ServiceRepository {
       where: { id },
       data
     });
-    return convertBusinessData<ServiceData>(result);
+    return this.mapPrismaServiceToServiceData(result);
   }
 
   async delete(id: string): Promise<void> {
@@ -108,7 +128,7 @@ export class ServiceRepository {
     const completedAppointments = appointments.filter(a => a.status === 'COMPLETED').length;
     const totalRevenue = appointments
       .filter(a => a.status === 'COMPLETED')
-      .reduce((sum, a) => sum + (a.price as any), 0);
+      .reduce((sum, a) => sum + (a.price ? Number(a.price) : 0), 0);
 
     return {
       totalAppointments,
@@ -154,9 +174,9 @@ export class ServiceRepository {
     });
 
     return result.map(service => ({
-      ...convertBusinessData<ServiceData>(service),
+      ...this.mapPrismaServiceToServiceData(service),
       appointmentCount: service._count.appointments
-    })) as Array<ServiceData & { appointmentCount: number }>;
+    }));
   }
 
   async checkServiceAvailability(

@@ -1,12 +1,4 @@
 // Notification Domain Services
-export { 
-  NotificationValidationService 
-} from './notificationValidationService';
-
-export { 
-  NotificationSanitizationService
-} from './notificationSanitizationService';
-
 export { NotificationService } from './notificationService';
 export { NotificationAuditService } from './notificationAuditService';
 export { NotificationMonitoringService } from './notificationMonitoringService';
@@ -14,8 +6,8 @@ export { NotificationRateLimitService } from './notificationRateLimitService';
 export { SecureNotificationService } from './secureNotificationService';
 
 // Export types
-export { 
-  SecureNotificationRequest, 
+export {
+  SecureNotificationRequest,
   SecureNotificationResult,
 } from '../../../types/notification';
 

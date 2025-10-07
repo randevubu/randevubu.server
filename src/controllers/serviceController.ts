@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
-import { ServiceService } from '../services/domain/service';
-import { 
-  createServiceSchema, 
-  updateServiceSchema 
+import { OfferingService } from '../services/domain/offering';
+import {
+  createServiceSchema,
+  updateServiceSchema
 } from '../schemas/business.schemas';
 import { AuthenticatedRequest, GuaranteedAuthRequest } from '../types/auth';
 
 export class ServiceController {
-  constructor(private serviceService: ServiceService) {}
+  constructor(private offeringService: OfferingService) {}
 
   async createService(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
@@ -15,7 +15,7 @@ export class ServiceController {
       const validatedData = createServiceSchema.parse(req.body);
       const userId = req.user.id;
 
-      const service = await this.serviceService.createService(userId, businessId, validatedData);
+      const service = await this.offeringService.createService(userId, businessId, validatedData);
 
       res.status(201).json({
         success: true,
@@ -35,7 +35,7 @@ export class ServiceController {
       const { id } = req.params;
       const userId = req.user!.id;
 
-      const service = await this.serviceService.getServiceById(userId, id);
+      const service = await this.offeringService.getServiceById(userId, id);
 
       if (!service) {
         res.status(404).json({
@@ -63,7 +63,7 @@ export class ServiceController {
       const { activeOnly } = req.query;
       const userId = req.user!.id;
 
-      const services = await this.serviceService.getServicesByBusinessId(
+      const services = await this.offeringService.getServicesByBusinessId(
         userId,
         businessId,
         activeOnly === 'true'
@@ -90,7 +90,7 @@ export class ServiceController {
     try {
       const { businessId } = req.params;
 
-      const services = await this.serviceService.getPublicServicesByBusinessId(businessId);
+      const services = await this.offeringService.getPublicServicesByBusinessId(businessId);
 
       res.json({
         success: true,
@@ -114,7 +114,7 @@ export class ServiceController {
       const validatedData = updateServiceSchema.parse(req.body);
       const userId = req.user!.id;
 
-      const service = await this.serviceService.updateService(userId, id, validatedData);
+      const service = await this.offeringService.updateService(userId, id, validatedData);
 
       res.json({
         success: true,
@@ -134,7 +134,7 @@ export class ServiceController {
       const { id } = req.params;
       const userId = req.user!.id;
 
-      await this.serviceService.deleteService(userId, id);
+      await this.offeringService.deleteService(userId, id);
 
       res.json({
         success: true,
@@ -173,7 +173,7 @@ export class ServiceController {
         }
       }
 
-      await this.serviceService.reorderServices(userId, businessId, serviceOrders);
+      await this.offeringService.reorderServices(userId, businessId, serviceOrders);
 
       res.json({
         success: true,
@@ -193,7 +193,7 @@ export class ServiceController {
       const { id } = req.params;
       const userId = req.user!.id;
 
-      const stats = await this.serviceService.getServiceStats(userId, id);
+      const stats = await this.offeringService.getServiceStats(userId, id);
 
       res.json({
         success: true,
@@ -221,7 +221,7 @@ export class ServiceController {
         return;
       }
 
-      await this.serviceService.bulkUpdatePrices(userId, businessId, priceMultiplier);
+      await this.offeringService.bulkUpdatePrices(userId, businessId, priceMultiplier);
 
       res.json({
         success: true,
@@ -241,7 +241,7 @@ export class ServiceController {
       const limit = parseInt(req.query.limit as string) || 5;
       const userId = req.user!.id;
 
-      const services = await this.serviceService.getPopularServices(userId, businessId, limit);
+      const services = await this.offeringService.getPopularServices(userId, businessId, limit);
 
       res.json({
         success: true,
@@ -283,7 +283,7 @@ export class ServiceController {
         return;
       }
 
-      const result = await this.serviceService.checkServiceAvailability(
+      const result = await this.offeringService.checkServiceAvailability(
         id,
         appointmentDate,
         appointmentStartTime
@@ -321,7 +321,7 @@ export class ServiceController {
         return;
       }
 
-      const service = await this.serviceService.toggleServiceStatus(userId, id, isActive);
+      const service = await this.offeringService.toggleServiceStatus(userId, id, isActive);
 
       res.json({
         success: true,
@@ -350,7 +350,7 @@ export class ServiceController {
         return;
       }
 
-      const service = await this.serviceService.duplicateService(userId, id, newName.trim());
+      const service = await this.offeringService.duplicateService(userId, id, newName.trim());
 
       res.status(201).json({
         success: true,
@@ -388,7 +388,7 @@ export class ServiceController {
         return;
       }
 
-      await this.serviceService.batchToggleServices(userId, businessId, serviceIds, isActive);
+      await this.offeringService.batchToggleServices(userId, businessId, serviceIds, isActive);
 
       res.json({
         success: true,
@@ -416,7 +416,7 @@ export class ServiceController {
         return;
       }
 
-      await this.serviceService.batchDeleteServices(userId, businessId, serviceIds);
+      await this.offeringService.batchDeleteServices(userId, businessId, serviceIds);
 
       res.json({
         success: true,

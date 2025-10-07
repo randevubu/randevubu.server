@@ -1,11 +1,11 @@
 import { VerificationPurpose as PrismaVerificationPurpose, BusinessStaffRole } from '@prisma/client';
-import { BusinessStaffData, BusinessStaffPrivacySettings } from '../../../types/business';
+import { BusinessStaffData, BusinessStaffPrivacySettings, BusinessNotificationSettingsData } from '../../../types/business';
 import { StaffRepository, CreateStaffRequest, UpdateStaffRequest, StaffWithUser } from '../../../repositories/staffRepository';
 import { RepositoryContainer } from '../../../repositories';
 import { PhoneVerificationService } from '../sms/phoneVerificationService';
 import { RBACService } from '../rbac/rbacService';
 import { UsageService } from '../usage/usageService';
-import { PermissionName, CreateUserData, UpdateUserData } from '../../../types/auth';
+import { PermissionName, CreateUserData, UpdateUserData, UserProfile, UserSecurity } from '../../../types/auth';
 import { ErrorContext } from '../../../types/errors';
 import { ForbiddenError } from '../../../types/errors';
 import { ERROR_CODES } from '../../../constants/errorCodes';
@@ -16,7 +16,7 @@ export interface InviteStaffRequest {
   businessId: string;
   phoneNumber: string;
   role: BusinessStaffRole;
-  permissions?: any;
+  permissions?: Record<string, boolean>;
   firstName?: string;
   lastName?: string;
 }
@@ -26,7 +26,7 @@ export interface VerifyStaffInvitationRequest {
   phoneNumber: string;
   verificationCode: string;
   role: BusinessStaffRole;
-  permissions?: any;
+  permissions?: Record<string, boolean>;
   firstName?: string;
   lastName?: string;
 }
@@ -174,7 +174,7 @@ export class StaffService {
     await this.validateStaffLimit(request.businessId);
 
     // Find or create user with this phone number
-    let staffUser: any = await this.repositories.userRepository.findByPhoneNumber(normalizedPhone);
+    let staffUser: (UserProfile & UserSecurity) | null = await this.repositories.userRepository.findByPhoneNumber(normalizedPhone);
 
     if (!staffUser) {
       // Create new user account for staff member
@@ -183,15 +183,22 @@ export class StaffService {
         firstName: request.firstName || undefined,
         lastName: request.lastName || undefined,
       };
-      staffUser = await this.repositories.userRepository.create(createUserData);
-      
+      const newUser = await this.repositories.userRepository.create(createUserData);
+
       // Mark user as verified since phone was verified through invitation
-      await this.repositories.userRepository.update(staffUser!.id, {
+      await this.repositories.userRepository.update(newUser.id, {
         isVerified: true,
       });
 
+      // Fetch the full user data with security info
+      staffUser = await this.repositories.userRepository.findByPhoneNumber(normalizedPhone);
+
+      if (!staffUser) {
+        throw new Error('Failed to fetch newly created user');
+      }
+
       logger.info('New user account created for staff member', {
-        userId: staffUser.id,
+        userId: newUser.id,
         phoneNumber: this.maskPhoneNumber(normalizedPhone),
         businessId: request.businessId,
         requestId: context?.requestId,
@@ -291,6 +298,10 @@ export class StaffService {
     // Get staff with user details
     const staffList = await this.repositories.staffRepository.findByBusinessId(staff.businessId);
     return staffList.find(s => s.id === staffId) || null;
+  }
+
+  async getUserStaffPositions(userId: string): Promise<StaffWithUser[]> {
+    return this.repositories.staffRepository.findByUserId(userId);
   }
 
   async updateStaff(
@@ -454,8 +465,9 @@ export class StaffService {
     return maskedPart + phoneNumber.slice(-visibleDigits);
   }
 
-  private getStaffPrivacySettings(businessSettings: any): BusinessStaffPrivacySettings {
-    const defaultSettings: BusinessStaffPrivacySettings = {
+  private getStaffPrivacySettings(businessSettings: BusinessNotificationSettingsData): BusinessStaffPrivacySettings {
+    // Return default settings since staffPrivacy is not part of BusinessNotificationSettingsData
+    return {
       hideStaffNames: false,
       staffDisplayMode: 'NAMES',
       customStaffLabels: {
@@ -463,21 +475,6 @@ export class StaffService {
         manager: 'Manager',
         staff: 'Staff',
         receptionist: 'Receptionist',
-      },
-    };
-
-    if (!businessSettings?.staffPrivacy) {
-      return defaultSettings;
-    }
-
-    return {
-      hideStaffNames: businessSettings.staffPrivacy.hideStaffNames ?? defaultSettings.hideStaffNames,
-      staffDisplayMode: businessSettings.staffPrivacy.staffDisplayMode ?? defaultSettings.staffDisplayMode,
-      customStaffLabels: {
-        owner: businessSettings.staffPrivacy.customStaffLabels?.owner ?? defaultSettings.customStaffLabels.owner,
-        manager: businessSettings.staffPrivacy.customStaffLabels?.manager ?? defaultSettings.customStaffLabels.manager,
-        staff: businessSettings.staffPrivacy.customStaffLabels?.staff ?? defaultSettings.customStaffLabels.staff,
-        receptionist: businessSettings.staffPrivacy.customStaffLabels?.receptionist ?? defaultSettings.customStaffLabels.receptionist,
       },
     };
   }

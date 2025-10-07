@@ -12,6 +12,9 @@ interface Config {
   JWT_ACCESS_SECRET?: string;
   JWT_REFRESH_SECRET?: string;
   REDIS_URL?: string;
+  AWS_REGION?: string;
+  AWS_S3_BUCKET_NAME?: string;
+  PUBLIC_ASSET_BASE_URL?: string;
 }
 
 const getConfig = (): Config => {
@@ -38,6 +41,9 @@ const getConfig = (): Config => {
     JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
     JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
     REDIS_URL: process.env.REDIS_URL,
+    AWS_REGION: process.env.AWS_REGION,
+    AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME,
+    PUBLIC_ASSET_BASE_URL: process.env.PUBLIC_ASSET_BASE_URL,
   };
 };
 
@@ -53,7 +59,7 @@ export const validateConfig = (): void => {
   }
 
   if (config.NODE_ENV === 'production') {
-    const productionVars = ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'DATABASE_URL'];
+    const productionVars = ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'DATABASE_URL', 'AWS_REGION', 'AWS_S3_BUCKET_NAME'];
     const missingVars = productionVars.filter(varName => !process.env[varName]);
 
     if (missingVars.length > 0) {

@@ -1,4 +1,6 @@
 // Business Domain Types - Enterprise Architecture
+import { Prisma } from '@prisma/client';
+
 export interface BusinessTypeData {
   id: string;
   name: string;
@@ -11,8 +13,14 @@ export interface BusinessTypeData {
   updatedAt: Date;
 }
 
+// JSON helper types for Prisma compatibility
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonObject | JsonArray;
+type JsonArray = Array<JsonValue>;
+interface JsonObject { [key: string]: JsonValue | undefined }
+
 // Business Hours Types
-export interface BusinessHours {
+export type BusinessHours = JsonObject & {
   monday?: DayHours;
   tuesday?: DayHours;
   wednesday?: DayHours;
@@ -20,16 +28,16 @@ export interface BusinessHours {
   friday?: DayHours;
   saturday?: DayHours;
   sunday?: DayHours;
-}
+};
 
-export interface DayHours {
+export interface DayHours extends JsonObject {
   isOpen: boolean;
   openTime?: string; // Format: "HH:MM" (24-hour)
   closeTime?: string; // Format: "HH:MM" (24-hour)
   breaks?: BreakPeriod[];
 }
 
-export interface BreakPeriod {
+export interface BreakPeriod extends JsonObject {
   startTime: string; // Format: "HH:MM" (24-hour)
   endTime: string; // Format: "HH:MM" (24-hour)
   description?: string;
@@ -250,14 +258,14 @@ export interface BusinessSubscriptionData {
   currentPeriodStart: Date;
   currentPeriodEnd: Date;
   cancelAtPeriodEnd: boolean;
-  canceledAt?: Date;
-  trialStart?: Date;
-  trialEnd?: Date;
+  canceledAt?: Date | null;
+  trialStart?: Date | null;
+  trialEnd?: Date | null;
   autoRenewal: boolean;
-  paymentMethodId?: string;
-  nextBillingDate?: Date;
+  paymentMethodId?: string | null;
+  nextBillingDate?: Date | null;
   failedPaymentCount: number;
-  metadata?: any;
+  metadata?: Prisma.JsonValue;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -615,13 +623,13 @@ export enum CustomerResponse {
   NO_RESPONSE = 'NO_RESPONSE'
 }
 
-export interface RecurringPattern {
+export interface RecurringPattern extends JsonObject {
   frequency: 'WEEKLY' | 'MONTHLY' | 'YEARLY';
   interval: number;
   endDate?: string;
   daysOfWeek?: number[]; // For weekly patterns
-  dayOfMonth?: number; // For monthly patterns
-  monthOfYear?: number; // For yearly patterns
+  dayOfMonth?: number;   // For monthly patterns
+  monthOfYear?: number;  // For yearly patterns
 }
 
 export interface EnhancedClosureData {

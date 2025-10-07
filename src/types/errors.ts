@@ -596,7 +596,29 @@ export const isRateLimitError = (error: any): error is RateLimitError => {
 };
 
 export const isSystemError = (error: any): error is InternalServerError | DatabaseError | ExternalServiceError => {
-  return error instanceof InternalServerError || 
-         error instanceof DatabaseError || 
+  return error instanceof InternalServerError ||
+         error instanceof DatabaseError ||
          error instanceof ExternalServiceError;
 };
+
+// Generic NotFound Error
+export class NotFoundError extends BaseError {
+  constructor(
+    message: string = 'Resource not found',
+    context?: ErrorContext,
+    details?: ErrorDetails
+  ) {
+    super(message, 404, ErrorCode.BUSINESS_RULE_VIOLATION, true, context, details);
+  }
+}
+
+// Business-specific Error
+export class BusinessError extends BaseError {
+  constructor(
+    message: string,
+    context?: ErrorContext,
+    details?: ErrorDetails
+  ) {
+    super(message, 400, ErrorCode.BUSINESS_RULE_VIOLATION, true, context, details);
+  }
+}

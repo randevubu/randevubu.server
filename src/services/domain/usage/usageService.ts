@@ -6,7 +6,7 @@ import {
 } from '../../../repositories/usageRepository';
 import { RBACService } from '../rbac';
 import { PermissionName } from '../../../types/auth';
-import { PrismaClient } from '@prisma/client';
+import { RepositoryContainer } from '../../../repositories';
 
 import { UsageAlerts } from '../../../types/usage';
 
@@ -14,7 +14,7 @@ export class UsageService {
   constructor(
     private usageRepository: UsageRepository,
     private rbacService: RBACService,
-    private prisma: PrismaClient
+    private repositories: RepositoryContainer
   ) {}
 
   async getBusinessUsageSummary(
@@ -138,61 +138,12 @@ export class UsageService {
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
 
-    await this.prisma.businessUsage.upsert({
-      where: {
-        businessId_month_year: {
-          businessId,
-          month,
-          year
-        }
-      },
-      update: {
-        customersAdded: {
-          increment: count
-        }
-      },
-      create: {
-        id: `usage_${businessId}_${year}${month.toString().padStart(2, '0')}`,
-        businessId,
-        month,
-        year,
-        customersAdded: count
-      }
-    });
+    await this.repositories.usageRepository.recordCustomerUsage(businessId, count);
   }
 
   // Method to be called when service is added/removed  
   async updateServiceUsage(businessId: string): Promise<void> {
-    const activeServiceCount = await this.prisma.service.count({
-      where: {
-        businessId,
-        isActive: true
-      }
-    });
-
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-
-    await this.prisma.businessUsage.upsert({
-      where: {
-        businessId_month_year: {
-          businessId,
-          month,
-          year
-        }
-      },
-      update: {
-        servicesActive: activeServiceCount
-      },
-      create: {
-        id: `usage_${businessId}_${year}${month.toString().padStart(2, '0')}`,
-        businessId,
-        month,
-        year,
-        servicesActive: activeServiceCount
-      }
-    });
+    await this.repositories.usageRepository.updateServiceUsage(businessId);
   }
 
   // Check if business can perform action based on limits

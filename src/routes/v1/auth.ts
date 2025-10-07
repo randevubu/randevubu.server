@@ -4,6 +4,7 @@ import { AuthController } from '../../controllers/authController';
 import prisma from '../../lib/prisma';
 import { AuthMiddleware } from '../../middleware/auth';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
+import { csrfMiddleware } from '../../middleware/csrf';
 import { validateBody } from '../../middleware/validation';
 import { RepositoryContainer } from '../../repositories';
 import {
@@ -167,6 +168,7 @@ router.post(
 router.post(
   '/verify-login',
   authRateLimit,
+  csrfMiddleware.requireCSRF,
   validateBody(verifyLoginSchema),
   authController.verifyLogin
 );
@@ -243,6 +245,7 @@ router.post(
 router.post(
   '/logout',
   requireAuth,
+  csrfMiddleware.requireCSRF,
   validateBody(logoutSchema),
   withAuth((req, res, next) => {
     return authController.logout(req, res).catch(next);

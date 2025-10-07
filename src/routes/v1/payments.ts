@@ -1,6 +1,7 @@
 import express from 'express';
 import { PaymentController } from '../../controllers/paymentController';
 import { PaymentService } from '../../services/domain/payment/paymentService';
+import { SubscriptionService } from '../../services/domain/subscription/subscriptionService';
 import { DiscountCodeService } from '../../services/domain/discount/discountCodeService';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
@@ -13,8 +14,14 @@ const prisma = new PrismaClient();
 const repositories = new RepositoryContainer(prisma);
 const rbacService = new RBACService(repositories);
 const discountCodeService = new DiscountCodeService(repositories.discountCodeRepository, rbacService);
-const paymentService = new PaymentService(prisma, discountCodeService);
-const paymentController = new PaymentController(paymentService);
+const subscriptionService = new SubscriptionService(repositories.subscriptionRepository, rbacService);
+const paymentService = new PaymentService(repositories, {
+  validateDiscountCode: discountCodeService.validateDiscountCode.bind(discountCodeService),
+  applyDiscountCode: async (code, userId, planId, originalAmount, subscriptionId, paymentId) => {
+    await discountCodeService.applyDiscountCode(code, userId, planId, originalAmount, subscriptionId, paymentId);
+  }
+});
+const paymentController = new PaymentController(paymentService, subscriptionService);
 
 /**
  * @swagger

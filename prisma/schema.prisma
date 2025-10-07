@@ -26,6 +26,25 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model Translation {
+  id        String   @id @default(cuid())
+  key       String
+  language  String
+  value     String
+  namespace String   @default("notifications")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  @@unique([key, language, namespace])
+  @@index([language])
+  @@index([namespace])
+  @@index([isActive])
+  @@map("translations")
+}
+
 model PhoneVerification {
   id          String              @id
   code        String
@@ -227,23 +246,23 @@ model SubscriptionPlan {
 }
 
 model StoredPaymentMethod {
-  id                    String                 @id
-  businessId            String
-  cardHolderName        String
-  lastFourDigits        String
-  cardBrand             String?
-  expiryMonth           String
-  expiryYear            String
-  isDefault             Boolean                @default(false)
-  isActive              Boolean                @default(true)
-  providerToken         String?
-  providerCardId        String?
-  metadata              Json?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  deletedAt             DateTime?
-  business              Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  subscriptions         BusinessSubscription[]
+  id             String                 @id
+  businessId     String
+  cardHolderName String
+  lastFourDigits String
+  cardBrand      String?
+  expiryMonth    String
+  expiryYear     String
+  isDefault      Boolean                @default(false)
+  isActive       Boolean                @default(true)
+  providerToken  String?
+  providerCardId String?
+  metadata       Json?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  deletedAt      DateTime?
+  business       Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subscriptions  BusinessSubscription[]
 
   @@index([businessId])
   @@index([isDefault, isActive])
@@ -251,25 +270,25 @@ model StoredPaymentMethod {
 }
 
 model BusinessSubscription {
-  id                 String             @id
-  businessId         String             @unique
+  id                 String               @id
+  businessId         String               @unique
   planId             String
   status             SubscriptionStatus
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
-  cancelAtPeriodEnd  Boolean            @default(false)
+  cancelAtPeriodEnd  Boolean              @default(false)
   canceledAt         DateTime?
   trialStart         DateTime?
   trialEnd           DateTime?
-  autoRenewal        Boolean            @default(true)
+  autoRenewal        Boolean              @default(true)
   paymentMethodId    String?
   nextBillingDate    DateTime?
-  failedPaymentCount Int               @default(0)
+  failedPaymentCount Int                  @default(0)
   metadata           Json?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  business           Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  plan               SubscriptionPlan   @relation(fields: [planId], references: [id])
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  business           Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan               SubscriptionPlan     @relation(fields: [planId], references: [id])
   paymentMethod      StoredPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
   payments           Payment[]
   discountCodeUsages DiscountCodeUsage[]
@@ -281,59 +300,59 @@ model BusinessSubscription {
 }
 
 model Business {
-  id                 String                @id
-  ownerId            String
-  businessTypeId     String
-  name               String
-  slug               String                @unique
-  description        String?
-  email              String?
-  phone              String?
-  website            String?
-  address            String?
-  city               String?
-  state              String?
-  country            String?
-  postalCode         String?
-  latitude           Float?
-  longitude          Float?
-  businessHours      Json?
-  timezone           String                @default("Europe/Istanbul")
-  primaryColor       String?
-  theme              Json?
-  settings           Json?
-  isActive           Boolean               @default(true)
-  isVerified         Boolean               @default(false)
-  verifiedAt         DateTime?
-  tags               String[]
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
-  deletedAt          DateTime?
-  closedUntil        DateTime?
-  closureReason      String?
-  coverImageUrl      String?
-  isClosed           Boolean               @default(false)
-  logoUrl            String?
-  profileImageUrl    String?
-  galleryImages      String[]              @default([])
-  appointments       Appointment[]
-  availabilityAlerts AvailabilityAlert[]
-  closures           BusinessClosure[]
-  businessImages     BusinessImage[]
-  staff              BusinessStaff[]
-  subscription       BusinessSubscription?
+  id                   String                        @id
+  ownerId              String
+  businessTypeId       String
+  name                 String
+  slug                 String                        @unique
+  description          String?
+  email                String?
+  phone                String?
+  website              String?
+  address              String?
+  city                 String?
+  state                String?
+  country              String?
+  postalCode           String?
+  latitude             Float?
+  longitude            Float?
+  businessHours        Json?
+  timezone             String                        @default("Europe/Istanbul")
+  primaryColor         String?
+  theme                Json?
+  settings             Json?
+  isActive             Boolean                       @default(true)
+  isVerified           Boolean                       @default(false)
+  verifiedAt           DateTime?
+  tags                 String[]
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
+  deletedAt            DateTime?
+  closedUntil          DateTime?
+  closureReason        String?
+  coverImageUrl        String?
+  isClosed             Boolean                       @default(false)
+  logoUrl              String?
+  profileImageUrl      String?
+  galleryImages        String[]                      @default([])
+  appointments         Appointment[]
+  availabilityAlerts   AvailabilityAlert[]
+  closures             BusinessClosure[]
+  businessImages       BusinessImage[]
+  staff                BusinessStaff[]
+  subscription         BusinessSubscription?
   storedPaymentMethods StoredPaymentMethod[]
-  businessType       BusinessType          @relation(fields: [businessTypeId], references: [id])
-  owner              User                  @relation(fields: [ownerId], references: [id])
-  services           Service[]
-  workingHours       WorkingHours[]
-  usageRecords       BusinessUsage[]       @relation("BusinessUsage")
-  dailySmsUsage      DailySmsUsage[]       @relation("DailySmsUsage")
-  hoursOverrides     BusinessHoursOverride[]
-  pushNotifications  PushNotification[]
+  businessType         BusinessType                  @relation(fields: [businessTypeId], references: [id])
+  owner                User                          @relation(fields: [ownerId], references: [id])
+  services             Service[]
+  workingHours         WorkingHours[]
+  usageRecords         BusinessUsage[]               @relation("BusinessUsage")
+  dailySmsUsage        DailySmsUsage[]               @relation("DailySmsUsage")
+  hoursOverrides       BusinessHoursOverride[]
+  pushNotifications    PushNotification[]
   notificationSettings BusinessNotificationSettings?
-  notificationAudits NotificationAudit[]
-  notificationUsage  NotificationUsage[]
+  notificationAudits   NotificationAudit[]
+  notificationUsage    NotificationUsage[]
 
   @@index([ownerId])
   @@index([businessTypeId])
@@ -451,6 +470,10 @@ model Appointment {
   @@index([date])
   @@index([status])
   @@index([startTime, endTime])
+  // Composite indexes for common queries
+  @@index([businessId, date, status])
+  @@index([customerId, status, startTime])
+  @@index([businessId, staffId, date])
   @@map("appointments")
 }
 
@@ -513,6 +536,9 @@ model Payment {
   @@index([businessSubscriptionId])
   @@index([status])
   @@index([paidAt])
+  // Composite indexes for payment history queries
+  @@index([businessSubscriptionId, status, createdAt])
+  @@index([status, paidAt])
   @@map("payments")
 }
 
@@ -795,26 +821,26 @@ enum CustomerResponse {
 }
 
 model DiscountCode {
-  id              String                   @id
-  code            String                   @unique
-  name            String?
-  description     String?
-  discountType    DiscountType
-  discountValue   Decimal                  @db.Decimal(10, 2)
-  maxUsages       Int                      @default(1)
-  currentUsages   Int                      @default(0)
-  isActive        Boolean                  @default(true)
-  validFrom       DateTime                 @default(now())
-  validUntil      DateTime?
-  minPurchaseAmount Decimal?               @db.Decimal(10, 2)
-  applicablePlans String[]                 @default([])
-  metadata        Json?
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
-  createdById     String?
-  createdBy       User?                    @relation("DiscountCodeCreatedBy", fields: [createdById], references: [id])
-  usages          DiscountCodeUsage[]
-  
+  id                String              @id
+  code              String              @unique
+  name              String?
+  description       String?
+  discountType      DiscountType
+  discountValue     Decimal             @db.Decimal(10, 2)
+  maxUsages         Int                 @default(1)
+  currentUsages     Int                 @default(0)
+  isActive          Boolean             @default(true)
+  validFrom         DateTime            @default(now())
+  validUntil        DateTime?
+  minPurchaseAmount Decimal?            @db.Decimal(10, 2)
+  applicablePlans   String[]            @default([])
+  metadata          Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  createdById       String?
+  createdBy         User?               @relation("DiscountCodeCreatedBy", fields: [createdById], references: [id])
+  usages            DiscountCodeUsage[]
+
   @@index([code])
   @@index([isActive])
   @@index([validFrom, validUntil])
@@ -822,21 +848,21 @@ model DiscountCode {
 }
 
 model DiscountCodeUsage {
-  id                    String               @id
-  discountCodeId        String
-  discountCode          DiscountCode         @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
+  id                     String                @id
+  discountCodeId         String
+  discountCode           DiscountCode          @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
   businessSubscriptionId String?
-  businessSubscription  BusinessSubscription? @relation(fields: [businessSubscriptionId], references: [id])
-  paymentId             String?
-  payment               Payment?             @relation(fields: [paymentId], references: [id])
-  userId                String
-  user                  User                 @relation("DiscountCodeUsedBy", fields: [userId], references: [id])
-  discountAmount        Decimal              @db.Decimal(10, 2)
-  originalAmount        Decimal              @db.Decimal(10, 2)
-  finalAmount           Decimal              @db.Decimal(10, 2)
-  usedAt                DateTime             @default(now())
-  metadata              Json?
-  
+  businessSubscription   BusinessSubscription? @relation(fields: [businessSubscriptionId], references: [id])
+  paymentId              String?
+  payment                Payment?              @relation(fields: [paymentId], references: [id])
+  userId                 String
+  user                   User                  @relation("DiscountCodeUsedBy", fields: [userId], references: [id])
+  discountAmount         Decimal               @db.Decimal(10, 2)
+  originalAmount         Decimal               @db.Decimal(10, 2)
+  finalAmount            Decimal               @db.Decimal(10, 2)
+  usedAt                 DateTime              @default(now())
+  metadata               Json?
+
   @@index([discountCodeId])
   @@index([userId])
   @@index([usedAt])
@@ -851,24 +877,26 @@ enum DiscountType {
 }
 
 model BusinessUsage {
-  id                     String    @id
-  businessId             String
-  business               Business  @relation("BusinessUsage", fields: [businessId], references: [id], onDelete: Cascade)
-  month                  Int       // 1-12
-  year                   Int
-  smssSent               Int       @default(0)
-  appointmentsCreated    Int       @default(0)
-  staffMembersActive     Int       @default(0)
-  customersAdded         Int       @default(0)
-  servicesActive         Int       @default(0)
-  storageUsedMB          Int       @default(0)
-  apiCallsCount          Int       @default(0)
-  lastUpdatedAt          DateTime  @updatedAt
-  createdAt              DateTime  @default(now())
-  
+  id                  String   @id
+  businessId          String
+  business            Business @relation("BusinessUsage", fields: [businessId], references: [id], onDelete: Cascade)
+  month               Int // 1-12
+  year                Int
+  smssSent            Int      @default(0)
+  appointmentsCreated Int      @default(0)
+  staffMembersActive  Int      @default(0)
+  customersAdded      Int      @default(0)
+  servicesActive      Int      @default(0)
+  storageUsedMB       Int      @default(0)
+  apiCallsCount       Int      @default(0)
+  lastUpdatedAt       DateTime @updatedAt
+  createdAt           DateTime @default(now())
+
   @@unique([businessId, month, year])
   @@index([businessId])
   @@index([month, year])
+  // Composite index for usage reporting queries
+  @@index([businessId, year, month])
   @@map("business_usage")
 }
 
@@ -880,7 +908,7 @@ model DailySmsUsage {
   smsCount   Int      @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  
+
   @@unique([businessId, date])
   @@index([businessId])
   @@index([date])
@@ -888,19 +916,19 @@ model DailySmsUsage {
 }
 
 model BusinessHoursOverride {
-  id                String   @id
-  businessId        String
-  date              DateTime @db.Date
-  isOpen            Boolean
-  openTime          String?
-  closeTime         String?
-  breaks            Json?
-  reason            String?
-  isRecurring       Boolean  @default(false)
-  recurringPattern  Json?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  id               String   @id
+  businessId       String
+  date             DateTime @db.Date
+  isOpen           Boolean
+  openTime         String?
+  closeTime        String?
+  breaks           Json?
+  reason           String?
+  isRecurring      Boolean  @default(false)
+  recurringPattern Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@unique([businessId, date])
   @@index([businessId])
@@ -910,21 +938,21 @@ model BusinessHoursOverride {
 }
 
 model PushSubscription {
-  id                String                    @id
+  id                String             @id
   userId            String
   endpoint          String
   p256dh            String
   auth              String
   deviceName        String?
-  deviceType        String?                   @default("web")
+  deviceType        String?            @default("web")
   userAgent         String?
-  isActive          Boolean                   @default(true)
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
-  lastUsedAt        DateTime                  @default(now())
-  user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  lastUsedAt        DateTime           @default(now())
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   pushNotifications PushNotification[]
-  
+
   @@unique([userId, endpoint])
   @@index([userId])
   @@index([isActive])
@@ -933,46 +961,46 @@ model PushSubscription {
 }
 
 model NotificationPreference {
-  id                           String   @id
-  userId                       String   @unique
-  enableAppointmentReminders   Boolean  @default(true)
-  enableBusinessNotifications  Boolean  @default(true)
-  enablePromotionalMessages    Boolean  @default(false)
-  reminderTiming               Json     @default("{\"hours\": [1, 24]}")
-  preferredChannels            Json     @default("{\"channels\": [\"PUSH\", \"SMS\"]}")
-  quietHours                   Json?
-  timezone                     String   @default("Europe/Istanbul")
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
-  user                         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id                          String   @id
+  userId                      String   @unique
+  enableAppointmentReminders  Boolean  @default(true)
+  enableBusinessNotifications Boolean  @default(true)
+  enablePromotionalMessages   Boolean  @default(false)
+  reminderTiming              Json     @default("{\"hours\": [1, 24]}")
+  preferredChannels           Json     @default("{\"channels\": [\"PUSH\", \"SMS\"]}")
+  quietHours                  Json?
+  timezone                    String   @default("Europe/Istanbul")
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  user                        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@map("notification_preferences")
 }
 
 model PushNotification {
-  id                 String              @id
-  subscriptionId     String
-  appointmentId      String?
-  businessId         String?
-  title              String
-  body               String
-  icon               String?
-  badge              String?
-  data               Json?
-  status             NotificationStatus  @default(PENDING)
-  sentAt             DateTime?
-  deliveredAt        DateTime?
-  readAt             DateTime?
-  errorMessage       String?
-  retryCount         Int                 @default(0)
-  maxRetries         Int                 @default(3)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  subscription       PushSubscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  appointment        Appointment?        @relation(fields: [appointmentId], references: [id])
-  business           Business?           @relation(fields: [businessId], references: [id])
-  
+  id             String             @id
+  subscriptionId String
+  appointmentId  String?
+  businessId     String?
+  title          String
+  body           String
+  icon           String?
+  badge          String?
+  data           Json?
+  status         NotificationStatus @default(PENDING)
+  sentAt         DateTime?
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  errorMessage   String?
+  retryCount     Int                @default(0)
+  maxRetries     Int                @default(3)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  subscription   PushSubscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  appointment    Appointment?       @relation(fields: [appointmentId], references: [id])
+  business       Business?          @relation(fields: [businessId], references: [id])
+
   @@index([subscriptionId])
   @@index([appointmentId])
   @@index([businessId])
@@ -983,40 +1011,40 @@ model PushNotification {
 }
 
 model BusinessNotificationSettings {
-  id                           String   @id
-  businessId                   String   @unique
-  enableAppointmentReminders   Boolean  @default(true)
-  reminderChannels             Json     @default("[\"PUSH\"]")
-  reminderTiming               Json     @default("[60, 1440]")
-  smsEnabled                   Boolean  @default(false)
-  pushEnabled                  Boolean  @default(true)
-  emailEnabled                 Boolean  @default(false)
-  quietHours                   Json?
-  timezone                     String   @default("Europe/Istanbul")
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
-  business                     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  id                         String   @id
+  businessId                 String   @unique
+  enableAppointmentReminders Boolean  @default(true)
+  reminderChannels           Json     @default("[\"PUSH\"]")
+  reminderTiming             Json     @default("[60, 1440]")
+  smsEnabled                 Boolean  @default(false)
+  pushEnabled                Boolean  @default(true)
+  emailEnabled               Boolean  @default(false)
+  quietHours                 Json?
+  timezone                   String   @default("Europe/Istanbul")
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+  business                   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([businessId])
   @@map("business_notification_settings")
 }
 
 model NotificationAudit {
-  id            String   @id
-  businessId    String
-  userId        String
-  eventType     String
-  action        String
-  details       Json?
+  id             String   @id
+  businessId     String
+  userId         String
+  eventType      String
+  action         String
+  details        Json?
   recipientCount Int?
-  success       Boolean
-  errorCode     String?
-  errorMessage  String?
-  ipAddress     String?
-  userAgent     String?
-  createdAt     DateTime @default(now())
-  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  success        Boolean
+  errorCode      String?
+  errorMessage   String?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([businessId])
   @@index([userId])
@@ -1027,12 +1055,12 @@ model NotificationAudit {
 }
 
 model NotificationUsage {
-  id         String   @id
-  businessId String
-  sentAt     DateTime @default(now())
-  type       String   // 'SMS', 'PUSH', 'EMAIL'
-  recipientCount Int  @default(1)
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  id             String   @id
+  businessId     String
+  sentAt         DateTime @default(now())
+  type           String // 'SMS', 'PUSH', 'EMAIL'
+  recipientCount Int      @default(1)
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([businessId])
   @@index([sentAt])
