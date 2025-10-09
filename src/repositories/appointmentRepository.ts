@@ -1282,4 +1282,39 @@ export class AppointmentRepository {
       return this.filterPriceInfo(apt, shouldHide);
     }).map(apt => this.mapPrismaResultToAppointmentWithDetails(apt));
   }
+
+  // Count appointments with filters
+  async getAppointmentsCount(filters: {
+    businessId?: string;
+    customerId?: string;
+    date?: {
+      gte?: Date;
+      lte?: Date;
+    };
+    status?: {
+      not?: string;
+    };
+  }): Promise<number> {
+    const whereClause: any = {};
+    
+    if (filters.businessId) {
+      whereClause.businessId = filters.businessId;
+    }
+    
+    if (filters.customerId) {
+      whereClause.customerId = filters.customerId;
+    }
+    
+    if (filters.date) {
+      whereClause.date = filters.date;
+    }
+    
+    if (filters.status) {
+      whereClause.status = filters.status;
+    }
+
+    return await this.prisma.appointment.count({
+      where: whereClause
+    });
+  }
 }

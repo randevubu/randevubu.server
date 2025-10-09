@@ -1747,4 +1747,78 @@ export class BusinessController {
       handleRouteError(error, req, res);
     }
   }
+
+  // Business Reservation Settings Methods
+
+  async getReservationSettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const settings = await this.businessService.getBusinessReservationSettings(userId, businessId);
+
+      if (!settings) {
+        // Return default settings if none exist
+        res.status(200).json({
+          success: true,
+          data: {
+            businessId,
+            maxAdvanceBookingDays: 30,
+            minNotificationHours: 2,
+            maxDailyAppointments: 50,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          },
+          message: 'Default reservation settings (not yet configured)'
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: settings,
+        message: 'Reservation settings retrieved successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async updateReservationSettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const settingsData = req.body;
+      const updatedSettings = await this.businessService.updateBusinessReservationSettings(
+        userId,
+        businessId,
+        settingsData
+      );
+
+      res.status(200).json({
+        success: true,
+        data: updatedSettings,
+        message: 'Reservation settings updated successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
 }

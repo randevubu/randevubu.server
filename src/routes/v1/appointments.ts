@@ -11,6 +11,7 @@ import {
   initializeBusinessOwnershipMiddleware,
   requireBusinessAccess as requireBusinessOwnershipAccess,
 } from "../../middleware/businessOwnership";
+import { createReservationValidationMiddleware } from "../../middleware/reservationValidation";
 import { RepositoryContainer } from "../../repositories";
 import { ServiceContainer } from "../../services";
 
@@ -28,6 +29,9 @@ const authorizationMiddleware = new AuthorizationMiddleware(
 
 // Initialize business ownership middleware
 initializeBusinessOwnershipMiddleware(prisma);
+
+// Initialize reservation validation middleware
+const reservationValidation = createReservationValidationMiddleware(prisma);
 
 export function createAppointmentRoutes(
   appointmentController: AppointmentController
@@ -207,6 +211,7 @@ export function createAppointmentRoutes(
    */
   router.post(
     "/",
+    reservationValidation.validateReservationRules,
     appointmentController.createAppointment.bind(appointmentController)
   );
 
@@ -505,6 +510,7 @@ export function createAppointmentRoutes(
    */
   router.put(
     "/:id",
+    reservationValidation.validateAdvanceBooking,
     appointmentController.updateAppointment.bind(appointmentController)
   );
 

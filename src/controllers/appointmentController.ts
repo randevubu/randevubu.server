@@ -15,7 +15,7 @@ import {
   handleRouteError,
   sendSuccessResponse
 } from '../utils/responseUtils';
-import { handleControllerError, handleError } from '../utils/errors/errorHandler';
+import { handleControllerError } from '../utils/errors/errorHandler';
 import { formatDateForAPI, formatTimeForAPI } from '../utils/timezoneHelper';
 
 export class AppointmentController {

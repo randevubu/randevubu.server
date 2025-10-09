@@ -37,6 +37,7 @@ docker-compose*
 # Documentation
 README.md
 *.md
+src/docs/
 
 # Test files
 coverage
@@ -94,4 +95,8 @@ jspm_packages/
 
 # Temporary folders
 tmp/
-temp/.claude
+temp/
+.claude
+
+# Monitoring files
+monitoring/

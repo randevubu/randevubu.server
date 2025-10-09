@@ -10,6 +10,7 @@ import { AppointmentRepository } from '../../../repositories/appointmentReposito
 import { ServiceRepository } from '../../../repositories/serviceRepository';
 import { UserBehaviorRepository } from '../../../repositories/userBehaviorRepository';
 import { BusinessClosureRepository } from '../../../repositories/businessClosureRepository';
+import { BusinessRepository } from '../../../repositories/businessRepository';
 import { RepositoryContainer } from '../../../repositories';
 import { RBACService } from '../rbac';
 import { PermissionName } from '../../../types/auth';
@@ -17,7 +18,9 @@ import { createDateTimeInIstanbul, getCurrentTimeInIstanbul } from '../../../uti
 import { BusinessContext } from '../../../middleware/businessContext';
 import { BusinessService } from '../business';
 import { NotificationService } from '../notification';
+import { ReservationSettings, BusinessSettings } from '../../../types/reservationSettings';
 import { UsageService } from '../usage';
+import { PrismaClient } from '@prisma/client';
 
 export class AppointmentService {
   constructor(
@@ -25,17 +28,211 @@ export class AppointmentService {
     private serviceRepository: ServiceRepository,
     private userBehaviorRepository: UserBehaviorRepository,
     private businessClosureRepository: BusinessClosureRepository,
+    private businessRepository: BusinessRepository,
     private rbacService: RBACService,
     private businessService: BusinessService,
     private notificationService: NotificationService,
     private usageService: UsageService,
-    private repositories: RepositoryContainer
+    private repositories: RepositoryContainer,
+    private prisma?: PrismaClient
   ) {}
 
   // Helper method to split permission name into resource and action
   private splitPermissionName(permissionName: string): { resource: string; action: string } {
     const [resource, action] = permissionName.split(':');
     return { resource, action };
+  }
+
+  // Helper method to validate business reservation rules (for non-transaction use)
+  private async validateBusinessReservationRules(
+    businessId: string,
+    appointmentDateTime: Date,
+    customerId?: string,
+    serviceDuration?: number
+  ): Promise<void> {
+    const business = await this.businessRepository.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    const settings = (business.settings as BusinessSettings) || {};
+    const reservationSettings = settings.reservationSettings;
+
+    // Use default values if settings not configured
+    const rules: ReservationSettings = {
+      maxAdvanceBookingDays: reservationSettings?.maxAdvanceBookingDays || 30,
+      minNotificationHours: reservationSettings?.minNotificationHours || 2,
+      maxDailyAppointments: reservationSettings?.maxDailyAppointments || 50
+    };
+
+    const now = new Date();
+
+    // 0. Check if appointment is in the past
+    if (appointmentDateTime <= now) {
+      throw new Error('Appointments cannot be booked in the past');
+    }
+
+    // 1. Check maximum advance booking days
+    const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDifference > rules.maxAdvanceBookingDays) {
+      throw new Error(`Appointments cannot be booked more than ${rules.maxAdvanceBookingDays} days in advance`);
+    }
+
+    // 2. Check minimum notification period
+    const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    
+    if (hoursDifference < rules.minNotificationHours) {
+      throw new Error(`Appointments must be booked at least ${rules.minNotificationHours} hours in advance`);
+    }
+
+    // 3. Check maximum daily appointments for this specific business
+    const appointmentDateStart = new Date(appointmentDateTime);
+    appointmentDateStart.setHours(0, 0, 0, 0);
+    
+    const appointmentDateEnd = new Date(appointmentDateTime);
+    appointmentDateEnd.setHours(23, 59, 59, 999);
+
+    // Get existing appointments count for this business on this day
+    const existingAppointments = await this.appointmentRepository.findByBusinessAndDateRange(
+      businessId,
+      appointmentDateStart,
+      appointmentDateEnd
+    );
+    
+    // Filter out cancelled appointments
+    const activeAppointmentsCount = existingAppointments.filter(
+      apt => apt.status !== 'CANCELED'
+    ).length;
+
+    if (activeAppointmentsCount >= rules.maxDailyAppointments) {
+      throw new Error(`Maximum daily appointments (${rules.maxDailyAppointments}) has been reached for this business on this date`);
+    }
+
+    // 4. Check if customer already has a conflicting appointment with this business
+    if (customerId) {
+      const customerAppointmentsOnSameDay = existingAppointments.filter(
+        (apt: any) => apt.customerId === customerId && apt.status !== 'CANCELED'
+      );
+
+      // Check for time conflicts with existing appointments
+      const hasTimeConflict = customerAppointmentsOnSameDay.some((apt: any) => {
+        const existingStart = new Date(apt.startTime);
+        const existingEnd = new Date(apt.endTime);
+        const newStart = appointmentDateTime;
+        const duration = serviceDuration || 60; // Default to 60 minutes if not provided
+        const newEnd = new Date(appointmentDateTime.getTime() + duration * 60000);
+        
+        // Check if appointments overlap
+        return (newStart < existingEnd && newEnd > existingStart);
+      });
+
+      if (hasTimeConflict) {
+        throw new Error('You already have an appointment at this time with this business');
+      }
+    }
+
+    // 5. Additional business-specific validations could be added here
+    // For example: business-specific customer limits, time restrictions, etc.
+  }
+
+  // Helper method to validate business reservation rules within transaction
+  private async validateBusinessReservationRulesInTransaction(
+    tx: any,
+    businessId: string,
+    appointmentDateTime: Date,
+    customerId?: string,
+    serviceDuration?: number
+  ): Promise<void> {
+    const business = await tx.business.findUnique({
+      where: { id: businessId },
+      select: { id: true, settings: true }
+    });
+    
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    const settings = (business.settings as BusinessSettings) || {};
+    const reservationSettings = settings.reservationSettings;
+
+    // Use default values if settings not configured
+    const rules: ReservationSettings = {
+      maxAdvanceBookingDays: reservationSettings?.maxAdvanceBookingDays || 30,
+      minNotificationHours: reservationSettings?.minNotificationHours || 2,
+      maxDailyAppointments: reservationSettings?.maxDailyAppointments || 50
+    };
+
+    const now = new Date();
+
+    // 0. Check if appointment is in the past
+    if (appointmentDateTime <= now) {
+      throw new Error('Appointments cannot be booked in the past');
+    }
+
+    // 1. Check maximum advance booking days
+    const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDifference > rules.maxAdvanceBookingDays) {
+      throw new Error(`Appointments cannot be booked more than ${rules.maxAdvanceBookingDays} days in advance`);
+    }
+
+    // 2. Check minimum notification period
+    const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    
+    if (hoursDifference < rules.minNotificationHours) {
+      throw new Error(`Appointments must be booked at least ${rules.minNotificationHours} hours in advance`);
+    }
+
+    // 3. Check maximum daily appointments for this specific business
+    const appointmentDateStart = new Date(appointmentDateTime);
+    appointmentDateStart.setHours(0, 0, 0, 0);
+    
+    const appointmentDateEnd = new Date(appointmentDateTime);
+    appointmentDateEnd.setHours(23, 59, 59, 999);
+
+    // Get existing appointments count for this business on this day using transaction client
+    const existingAppointments = await tx.appointment.findMany({
+      where: {
+        businessId,
+        startTime: {
+          gte: appointmentDateStart,
+          lte: appointmentDateEnd
+        }
+      }
+    });
+    
+    // Filter out cancelled appointments
+    const activeAppointmentsCount = existingAppointments.filter(
+      (apt: any) => apt.status !== 'CANCELED'
+    ).length;
+
+    if (activeAppointmentsCount >= rules.maxDailyAppointments) {
+      throw new Error(`Maximum daily appointments (${rules.maxDailyAppointments}) has been reached for this business on this date`);
+    }
+
+    // 4. Check if customer already has a conflicting appointment with this business
+    if (customerId) {
+      const customerAppointmentsOnSameDay = existingAppointments.filter(
+        (apt: any) => apt.customerId === customerId && apt.status !== 'CANCELED'
+      );
+
+      // Check for time conflicts with existing appointments
+      const hasTimeConflict = customerAppointmentsOnSameDay.some((apt: any) => {
+        const existingStart = new Date(apt.startTime);
+        const existingEnd = new Date(apt.endTime);
+        const newStart = appointmentDateTime;
+        const duration = serviceDuration || 60; // Default to 60 minutes if not provided
+        const newEnd = new Date(appointmentDateTime.getTime() + duration * 60000);
+        
+        // Check if appointments overlap
+        return (newStart < existingEnd && newEnd > existingStart);
+      });
+
+      if (hasTimeConflict) {
+        throw new Error('You already have an appointment at this time with this business');
+      }
+    }
   }
 
   async createAppointment(
@@ -138,13 +335,16 @@ export class AppointmentService {
       });
     }
 
-    // Check minimum advance booking
+    // Validate business-level reservation rules (NEW)
+    await this.validateBusinessReservationRules(data.businessId, appointmentDateTime, customerId);
+
+    // Check service-level minimum advance booking (keep existing logic as fallback)
     const hoursUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     if (hoursUntilAppointment < service.minAdvanceBooking) {
       throw new Error(`Appointments must be booked at least ${service.minAdvanceBooking} hours in advance`);
     }
 
-    // Check maximum advance booking
+    // Check service-level maximum advance booking (keep existing logic as fallback)
     const daysUntilAppointment = hoursUntilAppointment / 24;
     if (daysUntilAppointment > service.maxAdvanceBooking) {
       throw new Error(`Appointments cannot be booked more than ${service.maxAdvanceBooking} days in advance`);
@@ -165,8 +365,75 @@ export class AppointmentService {
       throw new Error('Staff member is not available at the selected time');
     }
 
-    // Create appointment
-    const appointment = await this.appointmentRepository.create(customerId, data);
+    // CRITICAL: Use transaction to prevent race conditions
+    if (!this.prisma) {
+      throw new Error('Prisma client not available for transaction');
+    }
+    
+    const appointment = await this.prisma.$transaction(async (tx) => {
+      // Create appointment within transaction using the transaction client
+      const service = await tx.service.findUnique({
+        where: { id: data.serviceId }
+      });
+
+      if (!service) {
+        throw new Error('Service not found');
+      }
+
+      // CRITICAL: Re-validate business rules within transaction using transaction client
+      await this.validateBusinessReservationRulesInTransaction(tx, data.businessId, appointmentDateTime, customerId, service.duration);
+
+      const startDateTime = createDateTimeInIstanbul(data.date, data.startTime);
+      const endDateTime = new Date(startDateTime.getTime() + service.duration * 60000);
+      const appointmentId = `apt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      const result = await tx.appointment.create({
+        data: {
+          id: appointmentId,
+          businessId: data.businessId,
+          serviceId: data.serviceId,
+          staffId: data.staffId,
+          customerId,
+          date: createDateTimeInIstanbul(data.date, '00:00'),
+          startTime: startDateTime,
+          endTime: endDateTime,
+          duration: service.duration,
+          status: AppointmentStatus.CONFIRMED,
+          price: service.price,
+          currency: service.currency,
+          customerNotes: data.customerNotes,
+          bookedAt: getCurrentTimeInIstanbul(),
+          reminderSent: false
+        }
+      });
+      
+      // Map the result to AppointmentData format
+      return {
+        id: result.id,
+        businessId: result.businessId,
+        serviceId: result.serviceId,
+        staffId: result.staffId || undefined,
+        customerId: result.customerId,
+        date: result.date,
+        startTime: result.startTime,
+        endTime: result.endTime,
+        duration: result.duration,
+        status: result.status as AppointmentStatus,
+        price: Number(result.price),
+        currency: result.currency,
+        customerNotes: result.customerNotes || undefined,
+        internalNotes: result.internalNotes || undefined,
+        bookedAt: result.bookedAt,
+        confirmedAt: result.confirmedAt || undefined,
+        completedAt: result.completedAt || undefined,
+        canceledAt: result.canceledAt || undefined,
+        cancelReason: result.cancelReason || undefined,
+        reminderSent: result.reminderSent,
+        reminderSentAt: result.reminderSentAt || undefined,
+        createdAt: result.createdAt,
+        updatedAt: result.updatedAt
+      };
+    });
 
     // Record appointment usage for subscription tracking
     await this.usageService.recordAppointmentUsage(data.businessId);
@@ -399,11 +666,14 @@ export class AppointmentService {
       }
     }
 
-    // If rescheduling, check availability
+    // If rescheduling, check availability and business rules
     if (data.date || data.startTime) {
       const newDate = data.date ? createDateTimeInIstanbul(data.date, '00:00') : appointment.date;
       const dateStr = data.date || appointment.date.toISOString().split('T')[0];
       const newStartTime = data.startTime ? createDateTimeInIstanbul(dateStr, data.startTime) : appointment.startTime;
+      
+      // CRITICAL: Validate business reservation rules for rescheduling
+      await this.validateBusinessReservationRules(appointment.businessId, newStartTime, appointment.customerId);
       
       const service = await this.serviceRepository.findById(appointment.serviceId);
       if (service) {
