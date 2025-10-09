@@ -948,6 +948,54 @@ export const updateBusinessNotificationSettingsSchema = z.object({
     .describe('Business timezone for scheduling reminders')
 });
 
+// Business Reservation Settings schemas
+export const businessReservationSettingsSchema = z.object({
+  maxAdvanceBookingDays: z.number()
+    .int('Max advance booking days must be an integer')
+    .min(1, 'Minimum advance booking is 1 day')
+    .max(365, 'Maximum advance booking is 365 days')
+    .default(30)
+    .describe('Maximum days in advance appointments can be booked'),
+
+  minNotificationHours: z.number()
+    .int('Min notification hours must be an integer')
+    .min(1, 'Minimum notification period is 1 hour')
+    .max(168, 'Maximum notification period is 1 week (168 hours)')
+    .default(2)
+    .describe('Minimum hours before appointment for notification'),
+
+  maxDailyAppointments: z.number()
+    .int('Max daily appointments must be an integer')
+    .min(1, 'Minimum daily appointments is 1')
+    .max(1000, 'Maximum daily appointments is 1000')
+    .default(50)
+    .describe('Maximum number of appointments per day')
+});
+
+// Partial update schema for reservation settings
+export const updateBusinessReservationSettingsSchema = z.object({
+  maxAdvanceBookingDays: z.number()
+    .int('Max advance booking days must be an integer')
+    .min(1, 'Minimum advance booking is 1 day')
+    .max(365, 'Maximum advance booking is 365 days')
+    .optional()
+    .describe('Maximum days in advance appointments can be booked'),
+
+  minNotificationHours: z.number()
+    .int('Min notification hours must be an integer')
+    .min(1, 'Minimum notification period is 1 hour')
+    .max(168, 'Maximum notification period is 1 week (168 hours)')
+    .optional()
+    .describe('Minimum hours before appointment for notification'),
+
+  maxDailyAppointments: z.number()
+    .int('Max daily appointments must be an integer')
+    .min(1, 'Minimum daily appointments is 1')
+    .max(1000, 'Maximum daily appointments is 1000')
+    .optional()
+    .describe('Maximum number of appointments per day')
+});
+
 export const testReminderSchema = z.object({
   appointmentId: z.string()
     .optional()

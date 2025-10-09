@@ -1,6 +1,8 @@
 import { PrismaClient, Appointment, BusinessClosure, AppointmentStatus } from '@prisma/client';
 import { NotificationService } from '../notification';
 import { AppointmentData } from '../../../types/business';
+import { BusinessRepository } from '../../../repositories/businessRepository';
+import { ReservationSettings, BusinessSettings } from '../../../types/reservationSettings';
 
 import {
   TimeSlot,
@@ -12,10 +14,90 @@ import {
 } from '../../../types/appointment';
 
 export class AppointmentRescheduleService {
+  private businessRepository: BusinessRepository;
+
   constructor(
     private prisma: PrismaClient,
     private notificationService: NotificationService
-  ) {}
+  ) {
+    this.businessRepository = new BusinessRepository(prisma);
+  }
+
+  // Helper method to validate business reservation rules for rescheduling
+  private async validateBusinessReservationRules(
+    businessId: string,
+    appointmentDateTime: Date,
+    customerId?: string
+  ): Promise<void> {
+    const business = await this.businessRepository.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    const settings = (business.settings as BusinessSettings) || {};
+    const reservationSettings = settings.reservationSettings;
+
+    // Use default values if settings not configured
+    const rules: ReservationSettings = {
+      maxAdvanceBookingDays: reservationSettings?.maxAdvanceBookingDays || 30,
+      minNotificationHours: reservationSettings?.minNotificationHours || 2,
+      maxDailyAppointments: reservationSettings?.maxDailyAppointments || 50
+    };
+
+    const now = new Date();
+
+    // 1. Check maximum advance booking days
+    const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDifference > rules.maxAdvanceBookingDays) {
+      throw new Error(`Appointments cannot be rescheduled more than ${rules.maxAdvanceBookingDays} days in advance`);
+    }
+
+    // 2. Check minimum notification period
+    const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    
+    if (hoursDifference < rules.minNotificationHours) {
+      throw new Error(`Appointments must be rescheduled at least ${rules.minNotificationHours} hours in advance`);
+    }
+
+    // 3. Check maximum daily appointments for this specific business
+    const appointmentDateStart = new Date(appointmentDateTime);
+    appointmentDateStart.setHours(0, 0, 0, 0);
+    
+    const appointmentDateEnd = new Date(appointmentDateTime);
+    appointmentDateEnd.setHours(23, 59, 59, 999);
+
+    // Get existing appointments count for this business on this day
+    const existingAppointments = await this.prisma.appointment.findMany({
+      where: {
+        businessId,
+        date: {
+          gte: appointmentDateStart,
+          lte: appointmentDateEnd
+        }
+      }
+    });
+    
+    // Filter out cancelled appointments
+    const activeAppointmentsCount = existingAppointments.filter(
+      apt => apt.status !== 'CANCELED'
+    ).length;
+
+    if (activeAppointmentsCount >= rules.maxDailyAppointments) {
+      throw new Error(`Maximum daily appointments (${rules.maxDailyAppointments}) has been reached for this business on this date`);
+    }
+
+    // 4. Check if customer already has an appointment with this business on the same day
+    if (customerId) {
+      const customerAppointmentsOnSameDay = existingAppointments.filter(
+        apt => apt.customerId === customerId && apt.status !== 'CANCELED'
+      );
+
+      if (customerAppointmentsOnSameDay.length > 0) {
+        throw new Error('You already have an appointment with this business on this date');
+      }
+    }
+  }
 
   async getAffectedAppointments(closureId: string): Promise<any[]> {
     try {
@@ -312,6 +394,20 @@ export class AppointmentRescheduleService {
         const selectedSlot = suggestedSlots[selectedSlotIndex];
 
         if (selectedSlot) {
+          // CRITICAL: Validate business reservation rules before rescheduling
+          const appointment = await this.prisma.appointment.findUnique({
+            where: { id: suggestion.originalAppointmentId },
+            include: { business: true }
+          });
+          
+          if (appointment) {
+            await this.validateBusinessReservationRules(
+              appointment.businessId,
+              new Date(selectedSlot.startTime),
+              appointment.customerId
+            );
+          }
+
           // Update the original appointment with new time
           await this.prisma.appointment.update({
             where: { id: suggestion.originalAppointmentId },
@@ -371,6 +467,13 @@ export class AppointmentRescheduleService {
     if (options.autoReschedule && suggestions[0]?.suggestedSlots.length > 0) {
       try {
         const bestSlot = suggestions[0].suggestedSlots[0]; // Use first available slot
+        
+        // CRITICAL: Validate business reservation rules before auto-rescheduling
+        await this.validateBusinessReservationRules(
+          appointment.businessId,
+          new Date(bestSlot.startTime),
+          appointment.customerId
+        );
         
         await this.prisma.appointment.update({
           where: { id: appointment.id },

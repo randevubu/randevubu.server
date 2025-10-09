@@ -168,7 +168,6 @@ router.post(
 router.post(
   '/verify-login',
   authRateLimit,
-  csrfMiddleware.requireCSRF,
   validateBody(verifyLoginSchema),
   authController.verifyLogin
 );

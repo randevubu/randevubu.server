@@ -97,11 +97,13 @@ export class ServiceContainer {
       repositories.serviceRepository,
       repositories.userBehaviorRepository,
       repositories.businessClosureRepository,
+      repositories.businessRepository,
       this.rbacService,
       this.businessService,
       this.notificationService,
       this.usageService,
-      repositories
+      repositories,
+      this.prisma
     );
     this.userBehaviorService = new UserBehaviorService(repositories.userBehaviorRepository, this.rbacService);
     this.businessClosureService = new BusinessClosureService(

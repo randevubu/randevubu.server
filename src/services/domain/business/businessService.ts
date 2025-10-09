@@ -1037,6 +1037,11 @@ export class BusinessService {
       icon: string | null;
       category: string;
     };
+    reservationSettings: {
+      maxAdvanceBookingDays: number;
+      minNotificationHours: number;
+      maxDailyAppointments: number;
+    };
     services: {
       id: string;
       name: string;
@@ -1061,6 +1066,12 @@ export class BusinessService {
     const priceVisibility = (settings.priceVisibility as Record<string, unknown>) || {};
     const hideAllServicePrices = priceVisibility.hideAllServicePrices === true;
 
+    // Extract reservation settings with defaults
+    const reservationSettings = (settings.reservationSettings as Record<string, unknown>) || {};
+    const maxAdvanceBookingDays = (reservationSettings.maxAdvanceBookingDays as number) || 30;
+    const minNotificationHours = (reservationSettings.minNotificationHours as number) || 2;
+    const maxDailyAppointments = (reservationSettings.maxDailyAppointments as number) || 50;
+
     // Apply price visibility logic to services
     const processedServices = businessWithServices.services.map(service => {
       if (hideAllServicePrices) {
@@ -1080,6 +1091,11 @@ export class BusinessService {
 
     return {
       ...businessWithServices,
+      reservationSettings: {
+        maxAdvanceBookingDays,
+        minNotificationHours,
+        maxDailyAppointments
+      },
       services: processedServices
     };
   }
@@ -1808,5 +1824,90 @@ export class BusinessService {
       log.entity === entity && 
       new Date(log.createdAt) >= cutoffTime
     );
+  }
+
+  // Business Reservation Settings Methods
+
+  async getBusinessReservationSettings(userId: string, businessId: string): Promise<any> {
+    // Check permissions
+    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
+    
+    if (!hasGlobalEdit) {
+      await this.rbacService.requirePermission(
+        userId, 
+        PermissionName.EDIT_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    const business = await this.businessRepository.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    // Get reservation settings from business settings JSON
+    const settings = (business.settings as Record<string, unknown>) || {};
+    const reservationSettings = (settings.reservationSettings as Record<string, unknown>) || {};
+
+    if (Object.keys(reservationSettings).length === 0) {
+      return null; // No settings configured yet
+    }
+
+    return {
+      businessId,
+      maxAdvanceBookingDays: reservationSettings.maxAdvanceBookingDays || 30,
+      minNotificationHours: reservationSettings.minNotificationHours || 2,
+      maxDailyAppointments: reservationSettings.maxDailyAppointments || 50,
+      createdAt: business.createdAt,
+      updatedAt: business.updatedAt
+    };
+  }
+
+  async updateBusinessReservationSettings(
+    userId: string,
+    businessId: string,
+    settingsData: any
+  ): Promise<any> {
+    // Check permissions
+    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
+    
+    if (!hasGlobalEdit) {
+      await this.rbacService.requirePermission(
+        userId, 
+        PermissionName.EDIT_OWN_BUSINESS,
+        { businessId }
+      );
+    }
+
+    const business = await this.businessRepository.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    // Merge reservation settings into existing business settings
+    const currentSettings = (business.settings as Record<string, unknown>) || {};
+    const currentReservationSettings = (currentSettings.reservationSettings as Record<string, unknown>) || {};
+    const updatedSettings = {
+      ...currentSettings,
+      reservationSettings: {
+        maxAdvanceBookingDays: settingsData.maxAdvanceBookingDays ?? currentReservationSettings.maxAdvanceBookingDays ?? 30,
+        minNotificationHours: settingsData.minNotificationHours ?? currentReservationSettings.minNotificationHours ?? 2,
+        maxDailyAppointments: settingsData.maxDailyAppointments ?? currentReservationSettings.maxDailyAppointments ?? 50
+      }
+    };
+
+    // Update business with new settings
+    const updatedBusiness = await this.businessRepository.update(businessId, {
+      settings: updatedSettings
+    });
+
+    return {
+      businessId,
+      maxAdvanceBookingDays: updatedSettings.reservationSettings.maxAdvanceBookingDays,
+      minNotificationHours: updatedSettings.reservationSettings.minNotificationHours,
+      maxDailyAppointments: updatedSettings.reservationSettings.maxDailyAppointments,
+      createdAt: business.createdAt,
+      updatedAt: new Date()
+    };
   }
 }

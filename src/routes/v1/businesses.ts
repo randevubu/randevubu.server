@@ -16,6 +16,7 @@ import {
   testReminderSchema,
   updateBusinessNotificationSettingsSchema,
   updateBusinessPriceSettingsSchema,
+  updateBusinessReservationSettingsSchema,
   updateBusinessStaffPrivacySettingsSchema
 } from '../../schemas/business.schemas';
 import {
@@ -806,6 +807,102 @@ export function createBusinessRoutes(businessController: BusinessController, sub
     requireBusinessAccess,
     validateBody(testReminderSchema),
     businessController.testReminder.bind(businessController)
+  );
+
+  // Business Reservation Settings routes
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/reservation-settings:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get business reservation settings
+   *     description: Get current reservation rules and limits for your business
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Reservation settings retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     businessId:
+   *                       type: string
+   *                       example: "biz_123456789"
+   *                     maxAdvanceBookingDays:
+   *                       type: integer
+   *                       example: 30
+   *                       description: "Maximum days in advance appointments can be booked"
+   *                     minNotificationHours:
+   *                       type: integer
+   *                       example: 2
+   *                       description: "Minimum hours before appointment for notification"
+   *                     maxDailyAppointments:
+   *                       type: integer
+   *                       example: 50
+   *                       description: "Maximum number of appointments per day"
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/reservation-settings',
+    requireBusinessAccess,
+    businessController.getReservationSettings.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/reservation-settings:
+   *   put:
+   *     tags: [Businesses]
+   *     summary: Update business reservation settings
+   *     description: Configure reservation rules and limits for your business
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               maxAdvanceBookingDays:
+   *                 type: integer
+   *                 minimum: 1
+   *                 maximum: 365
+   *                 description: "Maximum days in advance appointments can be booked"
+   *               minNotificationHours:
+   *                 type: integer
+   *                 minimum: 1
+   *                 maximum: 168
+   *                 description: "Minimum hours before appointment for notification"
+   *               maxDailyAppointments:
+   *                 type: integer
+   *                 minimum: 1
+   *                 maximum: 1000
+   *                 description: "Maximum number of appointments per day"
+   *     responses:
+   *       200:
+   *         description: Reservation settings updated successfully
+   *       400:
+   *         description: Invalid input data
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.put('/my-business/reservation-settings',
+    requireBusinessAccess,
+    validateBody(updateBusinessReservationSettingsSchema),
+    businessController.updateReservationSettings.bind(businessController)
   );
 
   // User's services access
