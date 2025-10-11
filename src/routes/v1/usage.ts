@@ -2,9 +2,14 @@ import { Router } from 'express';
 import { UsageController } from '../../controllers/usageController';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { attachBusinessContext, requireBusinessAccess } from '../../middleware/attachBusinessContext';
+import { dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
 export function createUsageRoutes(usageController: UsageController): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   /**
    * @swagger
@@ -73,6 +78,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
    */
   router.get(
     '/:businessId/usage/summary',
+    dynamicCache,
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,
@@ -130,6 +136,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
    */
   router.get(
     '/:businessId/usage/alerts',
+    realTimeCache,
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,
@@ -184,6 +191,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
    */
   router.get(
     '/:businessId/usage/sms-daily',
+    dynamicCache,
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,
@@ -220,6 +228,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
    */
   router.get(
     '/:businessId/usage/monthly-history',
+    dynamicCache,
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,
@@ -291,6 +300,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
    */
   router.get(
     '/:businessId/usage/limits-check',
+    realTimeCache,
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,

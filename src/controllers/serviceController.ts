@@ -4,7 +4,17 @@ import {
   createServiceSchema,
   updateServiceSchema
 } from '../schemas/business.schemas';
-import { AuthenticatedRequest, GuaranteedAuthRequest } from '../types/auth';
+import { AuthenticatedRequest, GuaranteedAuthRequest } from '../types/request';
+import {
+  handleRouteError,
+  sendSuccessResponse,
+  createErrorContext,
+  sendAppErrorResponse,
+} from '../utils/responseUtils';
+import { AppError } from '../types/responseTypes';
+import { ERROR_CODES } from '../constants/errorCodes';
+import { ZodError } from 'zod';
+// Cache invalidation handled by routes, not controllers
 
 export class ServiceController {
   constructor(private offeringService: OfferingService) {}
@@ -12,21 +22,55 @@ export class ServiceController {
   async createService(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
-      const validatedData = createServiceSchema.parse(req.body);
       const userId = req.user.id;
+
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate request body with Zod
+      let validatedData;
+      try {
+        validatedData = createServiceSchema.parse(req.body);
+      } catch (zodError) {
+        if (zodError instanceof ZodError) {
+          const error = new AppError(
+            `Invalid service data: ${zodError.errors.map(e => e.message).join(', ')}`,
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+        throw zodError;
+      }
 
       const service = await this.offeringService.createService(userId, businessId, validatedData);
 
-      res.status(201).json({
-        success: true,
-        data: service,
-        message: 'Service created successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Service created successfully',
+        service,
+        201
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create service'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -35,25 +79,45 @@ export class ServiceController {
       const { id } = req.params;
       const userId = req.user!.id;
 
+      // Validate service ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Service ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate service ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid service ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const service = await this.offeringService.getServiceById(userId, id);
 
       if (!service) {
-        res.status(404).json({
-          success: false,
-          error: 'Service not found'
-        });
-        return;
+        const error = new AppError(
+          'Service not found',
+          404,
+          ERROR_CODES.SERVICE_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
       }
 
-      res.json({
-        success: true,
-        data: service
-      });
+      sendSuccessResponse(
+        res,
+        'Service retrieved successfully',
+        service
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -63,26 +127,56 @@ export class ServiceController {
       const { activeOnly } = req.query;
       const userId = req.user!.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate activeOnly query parameter
+      const activeOnlyBool = activeOnly === 'true';
+      if (activeOnly && activeOnly !== 'true' && activeOnly !== 'false') {
+        const error = new AppError(
+          'activeOnly must be true or false',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const services = await this.offeringService.getServicesByBusinessId(
         userId,
         businessId,
-        activeOnly === 'true'
+        activeOnlyBool
       );
 
-      res.json({
-        success: true,
-        data: services,
-        meta: {
+      sendSuccessResponse(
+        res,
+        'Business services retrieved successfully',
+        {
+          services,
           total: services.length,
           businessId,
-          activeOnly: activeOnly === 'true'
+          activeOnly: activeOnlyBool
         }
-      });
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -90,42 +184,94 @@ export class ServiceController {
     try {
       const { businessId } = req.params;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const services = await this.offeringService.getPublicServicesByBusinessId(businessId);
 
-      res.json({
-        success: true,
-        data: services,
-        meta: {
+      sendSuccessResponse(
+        res,
+        'Public business services retrieved successfully',
+        {
+          services,
           total: services.length,
           businessId
         }
-      });
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
   async updateService(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const validatedData = updateServiceSchema.parse(req.body);
       const userId = req.user!.id;
+
+      // Validate service ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Service ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate service ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid service ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate request body with Zod
+      let validatedData;
+      try {
+        validatedData = updateServiceSchema.parse(req.body);
+      } catch (zodError) {
+        if (zodError instanceof ZodError) {
+          const error = new AppError(
+            `Invalid service update data: ${zodError.errors.map(e => e.message).join(', ')}`,
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+        throw zodError;
+      }
 
       const service = await this.offeringService.updateService(userId, id, validatedData);
 
-      res.json({
-        success: true,
-        data: service,
-        message: 'Service updated successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Service updated successfully',
+        service
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update service'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -134,17 +280,35 @@ export class ServiceController {
       const { id } = req.params;
       const userId = req.user!.id;
 
+      // Validate service ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Service ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate service ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid service ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       await this.offeringService.deleteService(userId, id);
 
-      res.json({
-        success: true,
-        message: 'Service deleted successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Service deleted successfully'
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete service'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -154,36 +318,106 @@ export class ServiceController {
       const { serviceOrders } = req.body;
       const userId = req.user!.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate serviceOrders array
       if (!Array.isArray(serviceOrders)) {
-        res.status(400).json({
-          success: false,
-          error: 'serviceOrders must be an array'
-        });
-        return;
+        const error = new AppError(
+          'serviceOrders must be an array',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate array length
+      if (serviceOrders.length === 0) {
+        const error = new AppError(
+          'serviceOrders array cannot be empty',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate array size limit
+      if (serviceOrders.length > 100) {
+        const error = new AppError(
+          'serviceOrders array cannot exceed 100 items',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       // Validate each order item
-      for (const order of serviceOrders) {
-        if (!order.id || typeof order.sortOrder !== 'number') {
-          res.status(400).json({
-            success: false,
-            error: 'Each order item must have id and sortOrder'
-          });
-          return;
+      for (let i = 0; i < serviceOrders.length; i++) {
+        const order = serviceOrders[i];
+        if (!order || typeof order !== 'object') {
+          const error = new AppError(
+            `serviceOrders[${i}] must be an object`,
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+
+        if (!order.id || typeof order.id !== 'string') {
+          const error = new AppError(
+            `serviceOrders[${i}].id is required and must be a string`,
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+
+        if (typeof order.sortOrder !== 'number' || order.sortOrder < 0) {
+          const error = new AppError(
+            `serviceOrders[${i}].sortOrder must be a non-negative number`,
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+
+        // Validate service ID format
+        if (!idRegex.test(order.id) || order.id.length < 1 || order.id.length > 50) {
+          const error = new AppError(
+            `serviceOrders[${i}].id has invalid format`,
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
         }
       }
 
       await this.offeringService.reorderServices(userId, businessId, serviceOrders);
 
-      res.json({
-        success: true,
-        message: 'Services reordered successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Services reordered successfully'
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to reorder services'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -193,17 +427,36 @@ export class ServiceController {
       const { id } = req.params;
       const userId = req.user!.id;
 
+      // Validate service ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Service ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate service ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid service ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const stats = await this.offeringService.getServiceStats(userId, id);
 
-      res.json({
-        success: true,
-        data: stats
-      });
+      sendSuccessResponse(
+        res,
+        'Service statistics retrieved successfully',
+        stats
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -213,49 +466,121 @@ export class ServiceController {
       const { priceMultiplier } = req.body;
       const userId = req.user!.id;
 
-      if (typeof priceMultiplier !== 'number' || priceMultiplier <= 0) {
-        res.status(400).json({
-          success: false,
-          error: 'priceMultiplier must be a positive number'
-        });
-        return;
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate priceMultiplier
+      if (typeof priceMultiplier !== 'number') {
+        const error = new AppError(
+          'priceMultiplier must be a number',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (priceMultiplier <= 0) {
+        const error = new AppError(
+          'priceMultiplier must be a positive number',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate reasonable multiplier range
+      if (priceMultiplier < 0.1 || priceMultiplier > 10) {
+        const error = new AppError(
+          'priceMultiplier must be between 0.1 and 10',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       await this.offeringService.bulkUpdatePrices(userId, businessId, priceMultiplier);
 
-      res.json({
-        success: true,
-        message: `Prices updated with multiplier ${priceMultiplier}`
-      });
+      sendSuccessResponse(
+        res,
+        `Prices updated with multiplier ${priceMultiplier}`
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update prices'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
   async getPopularServices(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
-      const limit = parseInt(req.query.limit as string) || 5;
+      const { limit } = req.query;
       const userId = req.user!.id;
 
-      const services = await this.offeringService.getPopularServices(userId, businessId, limit);
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
 
-      res.json({
-        success: true,
-        data: services,
-        meta: {
-          businessId,
-          limit
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate and parse limit
+      let limitNum = 5; // default
+      if (limit) {
+        limitNum = parseInt(limit as string, 10);
+        if (isNaN(limitNum) || limitNum < 1 || limitNum > 50) {
+          const error = new AppError(
+            'limit must be a number between 1 and 50',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
         }
-      });
+      }
+
+      const services = await this.offeringService.getPopularServices(userId, businessId, limitNum);
+
+      sendSuccessResponse(
+        res,
+        'Popular services retrieved successfully',
+        {
+          services,
+          businessId,
+          limit: limitNum
+        }
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -264,23 +589,68 @@ export class ServiceController {
       const { id } = req.params;
       const { date, startTime } = req.query;
 
-      if (!date || !startTime) {
-        res.status(400).json({
-          success: false,
-          error: 'date and startTime are required'
-        });
-        return;
+      // Validate service ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Service ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
       }
 
-      const appointmentDate = new Date(date as string);
-      const appointmentStartTime = new Date(`${date}T${startTime}`);
+      // Validate service ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid service ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
 
-      if (isNaN(appointmentDate.getTime()) || isNaN(appointmentStartTime.getTime())) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid date or time format'
-        });
-        return;
+      // Validate required query parameters
+      if (!date || !startTime) {
+        const error = new AppError(
+          'date and startTime are required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date format
+      const appointmentDate = new Date(date as string);
+      if (isNaN(appointmentDate.getTime())) {
+        const error = new AppError(
+          'Invalid date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate time format
+      const appointmentStartTime = new Date(`${date}T${startTime}`);
+      if (isNaN(appointmentStartTime.getTime())) {
+        const error = new AppError(
+          'Invalid time format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date is not in the past
+      const now = new Date();
+      if (appointmentDate < now) {
+        const error = new AppError(
+          'Date cannot be in the past',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const result = await this.offeringService.checkServiceAvailability(
@@ -289,21 +659,19 @@ export class ServiceController {
         appointmentStartTime
       );
 
-      res.json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        'Service availability checked successfully',
+        {
           serviceId: id,
           date: date as string,
           startTime: startTime as string,
           isAvailable: result.isAvailable,
           service: result.service
         }
-      });
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -313,26 +681,46 @@ export class ServiceController {
       const { isActive } = req.body;
       const userId = req.user!.id;
 
+      // Validate service ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Service ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate service ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid service ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate isActive parameter
       if (typeof isActive !== 'boolean') {
-        res.status(400).json({
-          success: false,
-          error: 'isActive must be a boolean'
-        });
-        return;
+        const error = new AppError(
+          'isActive must be a boolean',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const service = await this.offeringService.toggleServiceStatus(userId, id, isActive);
 
-      res.json({
-        success: true,
-        data: service,
-        message: `Service ${isActive ? 'activated' : 'deactivated'} successfully`
-      });
+      sendSuccessResponse(
+        res,
+        `Service ${isActive ? 'activated' : 'deactivated'} successfully`,
+        service
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to toggle service status'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -342,26 +730,57 @@ export class ServiceController {
       const { newName } = req.body;
       const userId = req.user!.id;
 
-      if (!newName || typeof newName !== 'string' || newName.trim().length < 2) {
-        res.status(400).json({
-          success: false,
-          error: 'newName is required and must be at least 2 characters'
-        });
-        return;
+      // Validate service ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Service ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
       }
 
-      const service = await this.offeringService.duplicateService(userId, id, newName.trim());
+      // Validate service ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid service ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
 
-      res.status(201).json({
-        success: true,
-        data: service,
-        message: 'Service duplicated successfully'
-      });
+      // Validate newName parameter
+      if (!newName || typeof newName !== 'string') {
+        const error = new AppError(
+          'newName is required and must be a string',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      const trimmedName = newName.trim();
+      if (trimmedName.length < 2 || trimmedName.length > 100) {
+        const error = new AppError(
+          'newName must be between 2 and 100 characters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      const service = await this.offeringService.duplicateService(userId, id, trimmedName);
+
+      sendSuccessResponse(
+        res,
+        'Service duplicated successfully',
+        service,
+        201
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to duplicate service'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -372,33 +791,96 @@ export class ServiceController {
       const { serviceIds, isActive } = req.body;
       const userId = req.user!.id;
 
-      if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
-        res.status(400).json({
-          success: false,
-          error: 'serviceIds array is required'
-        });
-        return;
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
       }
 
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate serviceIds array
+      if (!Array.isArray(serviceIds)) {
+        const error = new AppError(
+          'serviceIds must be an array',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (serviceIds.length === 0) {
+        const error = new AppError(
+          'serviceIds array cannot be empty',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate array size limit
+      if (serviceIds.length > 100) {
+        const error = new AppError(
+          'serviceIds array cannot exceed 100 items',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate each service ID
+      for (let i = 0; i < serviceIds.length; i++) {
+        const serviceId = serviceIds[i];
+        if (!serviceId || typeof serviceId !== 'string') {
+          const error = new AppError(
+            `serviceIds[${i}] must be a non-empty string`,
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+
+        if (!idRegex.test(serviceId) || serviceId.length < 1 || serviceId.length > 50) {
+          const error = new AppError(
+            `serviceIds[${i}] has invalid format`,
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+      }
+
+      // Validate isActive parameter
       if (typeof isActive !== 'boolean') {
-        res.status(400).json({
-          success: false,
-          error: 'isActive must be a boolean'
-        });
-        return;
+        const error = new AppError(
+          'isActive must be a boolean',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       await this.offeringService.batchToggleServices(userId, businessId, serviceIds, isActive);
 
-      res.json({
-        success: true,
-        message: `${serviceIds.length} services ${isActive ? 'activated' : 'deactivated'} successfully`
-      });
+      sendSuccessResponse(
+        res,
+        `${serviceIds.length} services ${isActive ? 'activated' : 'deactivated'} successfully`
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to toggle services'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -408,25 +890,86 @@ export class ServiceController {
       const { serviceIds } = req.body;
       const userId = req.user!.id;
 
-      if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
-        res.status(400).json({
-          success: false,
-          error: 'serviceIds array is required'
-        });
-        return;
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate serviceIds array
+      if (!Array.isArray(serviceIds)) {
+        const error = new AppError(
+          'serviceIds must be an array',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (serviceIds.length === 0) {
+        const error = new AppError(
+          'serviceIds array cannot be empty',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate array size limit
+      if (serviceIds.length > 100) {
+        const error = new AppError(
+          'serviceIds array cannot exceed 100 items',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate each service ID
+      for (let i = 0; i < serviceIds.length; i++) {
+        const serviceId = serviceIds[i];
+        if (!serviceId || typeof serviceId !== 'string') {
+          const error = new AppError(
+            `serviceIds[${i}] must be a non-empty string`,
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+
+        if (!idRegex.test(serviceId) || serviceId.length < 1 || serviceId.length > 50) {
+          const error = new AppError(
+            `serviceIds[${i}] has invalid format`,
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
       }
 
       await this.offeringService.batchDeleteServices(userId, businessId, serviceIds);
 
-      res.json({
-        success: true,
-        message: `${serviceIds.length} services deleted successfully`
-      });
+      sendSuccessResponse(
+        res,
+        `${serviceIds.length} services deleted successfully`
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete services'
-      });
+      handleRouteError(error, req, res);
     }
   }
 

@@ -6,6 +6,7 @@
 
 import { Response } from "express";
 import { ErrorResponse, SuccessResponse } from "../types/responseTypes";
+import { BaseError } from "../types/errors";
 
 /**
  * Send a standardized success response
@@ -60,6 +61,23 @@ export function sendErrorResponse(
     },
   };
   res.status(statusCode).json(response);
+}
+
+/**
+ * Send a BaseError response with proper error handling
+ */
+export function sendBaseErrorResponse(res: Response, error: BaseError): void {
+  const response: ErrorResponse = {
+    success: false,
+    statusCode: error.statusCode,
+    error: {
+      code: error.code as any, // Type assertion needed due to enum vs string type mismatch
+      key: `errors.${error.code.toLowerCase()}` as any,
+      details: error.details,
+      message: error.message,
+    },
+  };
+  res.status(error.statusCode).json(response);
 }
 
 /**

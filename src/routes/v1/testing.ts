@@ -14,8 +14,13 @@ import { UsageService } from "../../services/domain/usage/usageService";
 import logger from "../../utils/Logger/logger";
 // import { TestSubscriptionHelper } from "../../../tests/fixtures/testSubscriptionHelper";
 import { RepositoryContainer } from "../../repositories";
+import { realTimeCache } from "../../middleware/cacheMiddleware";
+import { trackCachePerformance } from "../../middleware/cacheMonitoring";
 
 const router = Router();
+
+// Apply cache monitoring to all routes
+router.use(trackCachePerformance);
 
 // Only enable testing routes in development
 if (process.env.NODE_ENV === "development") {
@@ -121,6 +126,7 @@ if (process.env.NODE_ENV === "development") {
    */
   router.get(
     "/subscription/list",
+    realTimeCache,
     requireAuth,
     async (req: Request, res: Response): Promise<Response> => {
       try {
@@ -202,6 +208,7 @@ if (process.env.NODE_ENV === "development") {
    */
   router.get(
     "/scheduler/status",
+    realTimeCache,
     async (req: Request, res: Response): Promise<Response> => {
       try {
         // Get scheduler status from the service container
@@ -410,6 +417,7 @@ if (process.env.NODE_ENV === "development") {
    */
   router.get(
     "/appointments/scheduler-status",
+    realTimeCache,
     async (req: Request, res: Response): Promise<Response> => {
       try {
         const status = appointmentScheduler.getStatus();

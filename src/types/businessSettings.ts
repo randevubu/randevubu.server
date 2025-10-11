@@ -3,6 +3,8 @@
  * Defines the structure of business settings stored in the database
  */
 
+import { CustomerManagementSettings } from './customerManagement';
+
 export interface PriceVisibilitySettings {
   hideAllServicePrices?: boolean;
   showPricesToCustomers?: boolean;
@@ -15,9 +17,22 @@ export interface StaffPrivacySettings {
   customStaffLabels?: Record<string, string>;
 }
 
+export interface CancellationPolicySettings {
+  minCancellationHours: number;
+  maxMonthlyCancellations: number;
+  maxMonthlyNoShows: number;
+  enablePolicyEnforcement: boolean;
+  policyWarningMessage?: string;
+  gracePeriodDays?: number;
+  autoBanEnabled?: boolean;
+  banDurationDays?: number;
+}
+
 export interface BusinessSettings {
   priceVisibility?: PriceVisibilitySettings;
   staffPrivacy?: StaffPrivacySettings;
+  cancellationPolicies?: CancellationPolicySettings;
+  customerManagement?: CustomerManagementSettings;
   timezone?: string;
   currency?: string;
   language?: string;

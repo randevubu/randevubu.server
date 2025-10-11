@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { config } from '../../config/environment';
 import { ControllerContainer } from '../../controllers';
 import { ServiceContainer } from '../../services';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import authRoutes from './auth';
 import { createRoleRoutes } from './roles';
 import { createBusinessRoutes } from './businesses';
@@ -19,10 +20,14 @@ import { createUsageRoutes } from './usage';
 import { createStaffRoutes } from './staff';
 import { createPublicRoutes } from './public';
 import { createPushNotificationRoutes } from './pushNotifications';
+import { createCacheRoutes } from './cache';
 import testingRouter from './testing';
 
 export function createV1Routes(controllers: ControllerContainer, services: ServiceContainer): Router {
   const router = Router();
+
+  // Apply cache monitoring to all v1 routes
+  router.use(trackCachePerformance);
 
   router.get('/status', (req, res) => {
     res.json({
@@ -82,6 +87,7 @@ export function createV1Routes(controllers: ControllerContainer, services: Servi
   router.use('/reports', createReportsRoutes());
   router.use('/businesses', createUsageRoutes(controllers.usageController));
   router.use('/notifications/push', createPushNotificationRoutes(controllers.pushNotificationController));
+  router.use('/cache', createCacheRoutes());
   router.use('/', paymentRoutes);
   
   // Public routes (no authentication required) 

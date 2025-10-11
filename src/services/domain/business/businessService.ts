@@ -15,7 +15,7 @@ import {
   RecurringPattern,
   NotificationChannel
 } from '../../../types/business';
-import { UpdateBusinessPriceSettingsSchema, UpdateBusinessStaffPrivacySettingsSchema } from '../../../schemas/business.schemas';
+import { UpdateBusinessPriceSettingsSchema, UpdateBusinessStaffPrivacySettingsSchema, updateBusinessCancellationPolicySchema } from '../../../schemas/business.schemas';
 import { BusinessRepository } from '../../../repositories/businessRepository';
 import { RBACService } from '../rbac/rbacService';
 import { PermissionName } from '../../../types/auth';
@@ -24,14 +24,32 @@ import { BusinessStaffRole, AuditAction } from '@prisma/client';
 import { ValidationError } from '../../../types/errors';
 import { UsageService } from '../usage/usageService';
 import { RepositoryContainer } from '../../../repositories';
+import { CancellationPolicyService } from './cancellationPolicyService';
+import { CustomerManagementService } from './customerManagementService';
+import { CancellationPolicySettings } from '../../../types/businessSettings';
+import { CustomerPolicyStatus } from '../../../types/cancellationPolicy';
+import { CustomerManagementSettings, CustomerNote, CustomerEvaluation, CustomerLoyaltyStatus } from '../../../types/customerManagement';
 
 export class BusinessService {
+  private cancellationPolicyService: CancellationPolicyService;
+  private customerManagementService: CustomerManagementService;
+
   constructor(
     private businessRepository: BusinessRepository,
     private rbacService: RBACService,
     private repositories: RepositoryContainer,
     private usageService?: UsageService
-  ) {}
+  ) {
+    this.cancellationPolicyService = new CancellationPolicyService(
+      this.repositories.userBehaviorRepository,
+      this.businessRepository
+    );
+    this.customerManagementService = new CustomerManagementService(
+      this.businessRepository,
+      this.repositories.userBehaviorRepository,
+      this.repositories.prismaClient
+    );
+  }
 
   async createBusiness(
     userId: string,
@@ -1909,5 +1927,244 @@ export class BusinessService {
       createdAt: business.createdAt,
       updatedAt: new Date()
     };
+  }
+
+  // Business Cancellation Policy Methods
+
+  async getBusinessCancellationPolicies(
+    userId: string,
+    businessId: string
+  ): Promise<CancellationPolicySettings> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    return await this.cancellationPolicyService.getBusinessPolicySettings(businessId);
+  }
+
+  async updateBusinessCancellationPolicies(
+    userId: string,
+    businessId: string,
+    policyData: Partial<CancellationPolicySettings>
+  ): Promise<CancellationPolicySettings> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    // Validate the policy data
+    const validatedData = updateBusinessCancellationPolicySchema.parse(policyData);
+
+    return await this.cancellationPolicyService.updateBusinessPolicySettings(businessId, validatedData);
+  }
+
+  async getCustomerPolicyStatus(
+    userId: string,
+    businessId: string,
+    customerId: string
+  ): Promise<CustomerPolicyStatus> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    return await this.cancellationPolicyService.getCustomerPolicyStatus(customerId, businessId);
+  }
+
+  // Business Customer Management Methods
+
+  async getBusinessCustomerManagementSettings(
+    userId: string,
+    businessId: string
+  ): Promise<CustomerManagementSettings> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    return await this.customerManagementService.getBusinessCustomerManagementSettings(businessId);
+  }
+
+  async updateBusinessCustomerManagementSettings(
+    userId: string,
+    businessId: string,
+    settings: Partial<CustomerManagementSettings>
+  ): Promise<CustomerManagementSettings> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    return await this.customerManagementService.updateBusinessCustomerManagementSettings(businessId, settings);
+  }
+
+  async getCustomerNotes(
+    userId: string,
+    businessId: string,
+    customerId: string,
+    noteType?: 'STAFF' | 'INTERNAL' | 'CUSTOMER'
+  ): Promise<CustomerNote[]> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    return await this.customerManagementService.getCustomerNotes(businessId, customerId, noteType);
+  }
+
+  async addCustomerNote(
+    userId: string,
+    businessId: string,
+    customerId: string,
+    noteData: {
+      content: string;
+      noteType: 'STAFF' | 'INTERNAL' | 'CUSTOMER';
+      isPrivate?: boolean;
+    }
+  ): Promise<CustomerNote> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    return await this.customerManagementService.addCustomerNote(businessId, customerId, userId, noteData);
+  }
+
+  async getCustomerLoyaltyStatus(
+    userId: string,
+    businessId: string,
+    customerId: string
+  ): Promise<CustomerLoyaltyStatus | null> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    return await this.customerManagementService.getCustomerLoyaltyStatus(businessId, customerId);
+  }
+
+  async isCustomerActive(
+    userId: string,
+    businessId: string,
+    customerId: string
+  ): Promise<boolean> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    return await this.customerManagementService.isCustomerActive(businessId, customerId);
+  }
+
+  async getCustomerEvaluation(
+    userId: string,
+    businessId: string,
+    appointmentId: string
+  ): Promise<CustomerEvaluation | null> {
+    // Check permissions
+    await this.rbacService.requireAny(userId, [
+      PermissionName.VIEW_ALL_BUSINESSES,
+      PermissionName.VIEW_OWN_BUSINESS
+    ]);
+
+    // If user doesn't have global permission, check business-specific access
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    return await this.customerManagementService.getCustomerEvaluation(businessId, appointmentId);
+  }
+
+  async submitCustomerEvaluation(
+    userId: string,
+    businessId: string,
+    appointmentId: string,
+    evaluationData: {
+      customerId: string;
+      rating: number;
+      comment?: string;
+      answers: Array<{
+        questionId: string;
+        answer: string | number;
+      }>;
+      isAnonymous?: boolean;
+    }
+  ): Promise<CustomerEvaluation> {
+    // Check permissions - customers can submit evaluations for their own appointments
+    const hasGlobalPermission = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalPermission) {
+      // Check if this is the customer's own appointment
+      const appointment = await this.repositories.appointmentRepository.findById(appointmentId);
+      if (!appointment || appointment.customerId !== userId) {
+        await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+      }
+    }
+
+    return await this.customerManagementService.submitCustomerEvaluation(businessId, appointmentId, evaluationData);
   }
 }

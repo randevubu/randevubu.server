@@ -3,9 +3,14 @@ import { PushNotificationController } from '../../controllers/pushNotificationCo
 import { requireAuth } from '../../middleware/authUtils';
 import { requirePermission } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
+import { staticCache, dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
 export function createPushNotificationRoutes(controller: PushNotificationController): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   /**
    * @swagger
@@ -69,7 +74,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       503:
    *         description: Push notifications not configured
    */
-  router.get('/vapid-key', controller.getVapidPublicKey);
+  router.get('/vapid-key', staticCache, controller.getVapidPublicKey);
 
   /**
    * @swagger
@@ -82,7 +87,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       200:
    *         description: Health check successful
    */
-  router.get('/health', controller.healthCheck);
+  router.get('/health', realTimeCache, controller.healthCheck);
 
   /**
    * @swagger
@@ -167,7 +172,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       401:
    *         description: Unauthorized
    */
-  router.get('/subscriptions', requireAuth, controller.getSubscriptions);
+  router.get('/subscriptions', dynamicCache, requireAuth, controller.getSubscriptions);
 
   /**
    * @swagger
@@ -184,7 +189,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       401:
    *         description: Unauthorized
    */
-  router.get('/preferences', requireAuth, controller.getPreferences);
+  router.get('/preferences', dynamicCache, requireAuth, controller.getPreferences);
 
   /**
    * @swagger
@@ -344,7 +349,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       401:
    *         description: Unauthorized
    */
-  router.get('/history', requireAuth, controller.getNotificationHistory);
+  router.get('/history', dynamicCache, requireAuth, controller.getNotificationHistory);
 
   // Admin-only routes
   /**

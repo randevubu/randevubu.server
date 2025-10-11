@@ -6,17 +6,10 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { AuthenticatedRequest } from '../types/auth';
+import { BusinessOwnershipRequest } from '../types/request';
 import { sendAppErrorResponse, BusinessErrors, createErrorContext, InternalError } from '../utils/errorResponse';
 import { BusinessRuleViolationError } from '../types/errors';
-
-export interface BusinessOwnershipRequest extends AuthenticatedRequest {
-  business: {
-    id: string;
-    name: string;
-    ownerId: string;
-  };
-}
+import { AuthenticatedRequest } from './auth';
 
 let prismaInstance: PrismaClient;
 
@@ -57,7 +50,8 @@ export async function requireBusinessOwnership(
       select: {
         id: true,
         name: true,
-        ownerId: true
+        ownerId: true,
+        isActive: true
       }
     });
 
@@ -120,7 +114,8 @@ export async function requireBusinessAccess(
       select: {
         id: true,
         name: true,
-        ownerId: true
+        ownerId: true,
+        isActive: true
       }
     });
 

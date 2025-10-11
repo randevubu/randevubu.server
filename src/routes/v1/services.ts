@@ -3,6 +3,9 @@ import { ServiceController } from '../../controllers/serviceController';
 import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
 import { attachBusinessContext, requireSpecificBusinessAccess } from '../../middleware/attachBusinessContext';
+import { semiDynamicCache, dynamicCache, serviceCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
+import { invalidateServiceCache } from '../../middleware/cacheInvalidation';
 import prisma from '../../lib/prisma';
 import { RepositoryContainer } from '../../repositories';
 
@@ -13,6 +16,9 @@ initializeBusinessContextMiddleware(repositories);
 
 export function createServiceRoutes(serviceController: ServiceController): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   // Public routes
   /**
@@ -31,7 +37,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *       200:
    *         description: List of public services
    */
-  router.get('/business/:businessId/public', serviceController.getPublicBusinessServices.bind(serviceController));
+  router.get('/business/:businessId/public', semiDynamicCache, serviceController.getPublicBusinessServices.bind(serviceController));
   /**
    * @swagger
    * /api/v1/services/{id}/availability:
@@ -48,7 +54,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *       200:
    *         description: Availability information
    */
-  router.get('/:id/availability', serviceController.checkServiceAvailability.bind(serviceController));
+  router.get('/:id/availability', dynamicCache, serviceController.checkServiceAvailability.bind(serviceController));
 
   // Protected routes
   router.use(requireAuth);
@@ -131,6 +137,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.post(
     '/business/:businessId',
+    invalidateServiceCache,
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
@@ -163,6 +170,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.get(
     '/:id',
+    serviceCache,
     requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),
     serviceController.getServiceById.bind(serviceController)
   );
@@ -338,6 +346,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.put(
     '/:id',
+    invalidateServiceCache,
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     serviceController.updateService.bind(serviceController)
   );
@@ -475,6 +484,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.delete(
     '/:id',
+    invalidateServiceCache,
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     serviceController.deleteService.bind(serviceController)
   );
@@ -504,6 +514,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.get(
     '/business/:businessId',
+    serviceCache,
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),
@@ -565,6 +576,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.get(
     '/business/:businessId/popular',
+    serviceCache,
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
@@ -596,6 +608,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.get(
     '/:id/stats',
+    serviceCache,
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
     serviceController.getServiceStats.bind(serviceController)
   );

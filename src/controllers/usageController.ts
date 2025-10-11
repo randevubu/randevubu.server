@@ -2,16 +2,15 @@ import { Response } from "express";
 import { z } from "zod";
 import { BusinessContextRequest } from "../middleware/businessContext";
 import { UsageService } from "../services/domain/usage";
-import { AuthenticatedRequest } from "../types/auth";
+import { AuthenticatedRequest } from "../types/request";
 import {
-  BusinessErrors,
-  ValidationErrors,
   createErrorContext,
   handleRouteError,
   sendAppErrorResponse,
   sendSuccessResponse,
 } from "../utils/responseUtils";
-import { BusinessRuleViolationError } from "../types/errors";
+import { AppError } from "../types/responseTypes";
+import { ERROR_CODES } from "../constants/errorCodes";
 
 const usageQuerySchema = z.object({
   days: z.coerce.number().min(1).max(365).optional().default(30),
@@ -33,22 +32,42 @@ export class UsageController {
       const userId = req.user!.id;
       const businessId = req.params.businessId;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const summary = await this.usageService.getBusinessUsageSummary(
         userId,
         businessId
       );
 
       if (!summary) {
-        const error = new BusinessRuleViolationError(
-          'BUSINESS_NOT_FOUND',
-          'Business not found'
+        const error = new AppError(
+          'Business not found',
+          404,
+          ERROR_CODES.BUSINESS_NOT_FOUND
         );
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(res, "Usage summary retrieved successfully", {
-        data: summary
-      });
+      sendSuccessResponse(res, "Usage summary retrieved successfully", summary);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -66,19 +85,39 @@ export class UsageController {
       const userId = req.user!.id;
       const businessId = req.params.businessId;
 
-      const alerts = await this.usageService.getUsageAlerts(userId, businessId);
-
-      if (!alerts) {
-        const error = new BusinessRuleViolationError(
-          'BUSINESS_NOT_FOUND',
-          'Business not found'
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
         );
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(res, "Usage alerts retrieved successfully", {
-        data: alerts
-      });
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      const alerts = await this.usageService.getUsageAlerts(userId, businessId);
+
+      if (!alerts) {
+        const error = new AppError(
+          'Business not found',
+          404,
+          ERROR_CODES.BUSINESS_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      sendSuccessResponse(res, "Usage alerts retrieved successfully", alerts);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -97,11 +136,33 @@ export class UsageController {
       const userId = req.user!.id;
       const businessId = req.params.businessId;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const queryResult = usageQuerySchema.safeParse(req.query);
       if (!queryResult.success) {
-        const error = new BusinessRuleViolationError(
-          'VALIDATION_ERROR',
-          'Invalid query parameters'
+        const error = new AppError(
+          'Invalid query parameters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
         );
         return sendAppErrorResponse(res, error);
       }
@@ -113,9 +174,7 @@ export class UsageController {
         days
       );
 
-      sendSuccessResponse(res, `Daily SMS usage for last ${days} days retrieved successfully`, {
-        data: usage
-      });
+      sendSuccessResponse(res, `Daily SMS usage for last ${days} days retrieved successfully`, usage);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -134,11 +193,33 @@ export class UsageController {
       const userId = req.user!.id;
       const businessId = req.params.businessId;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const queryResult = usageQuerySchema.safeParse(req.query);
       if (!queryResult.success) {
-        const error = new BusinessRuleViolationError(
-          'VALIDATION_ERROR',
-          'Invalid query parameters'
+        const error = new AppError(
+          'Invalid query parameters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
         );
         return sendAppErrorResponse(res, error);
       }
@@ -150,9 +231,7 @@ export class UsageController {
         months
       );
 
-      sendSuccessResponse(res, `Monthly usage history for last ${months} months retrieved successfully`, {
-        data: history
-      });
+      sendSuccessResponse(res, `Monthly usage history for last ${months} months retrieved successfully`, history);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -167,6 +246,27 @@ export class UsageController {
       const userId = req.user!.id;
       const businessId = req.params.businessId;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const [smsCheck, staffCheck, serviceCheck, customerCheck] =
         await Promise.all([
           this.usageService.canSendSms(businessId),
@@ -176,12 +276,10 @@ export class UsageController {
         ]);
 
       sendSuccessResponse(res, "Usage limits check completed successfully", {
-        data: {
-          sms: smsCheck,
-          staff: staffCheck,
-          service: serviceCheck,
-          customer: customerCheck,
-        }
+        sms: smsCheck,
+        staff: staffCheck,
+        service: serviceCheck,
+        customer: customerCheck,
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -195,6 +293,27 @@ export class UsageController {
     try {
       const businessId = req.params.businessId;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       // Update all usage counters based on current database state
       await Promise.all([
         this.usageService.updateStaffUsage(businessId),
@@ -202,10 +321,8 @@ export class UsageController {
       ]);
 
       sendSuccessResponse(res, "Usage data refreshed successfully", {
-        data: {
-          refreshedCounters: ["staff", "services"],
-          updatedAt: new Date().toISOString(),
-        }
+        refreshedCounters: ["staff", "services"],
+        updatedAt: new Date().toISOString(),
       });
     } catch (error) {
       handleRouteError(error, req, res);

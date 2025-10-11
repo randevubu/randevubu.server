@@ -417,32 +417,13 @@ export interface AuthenticatedUser {
   effectiveLevel?: number;
 }
 
-export interface AuthenticatedRequest extends Request {
-  user?: AuthenticatedUser;
-  token?: JWTPayload;
-}
-
-// Authenticated request with file upload
-export interface AuthenticatedRequestWithFile extends AuthenticatedRequest {
-  file?: Express.Multer.File;
-}
-
-// Guaranteed authenticated request - user is always present
-export interface GuaranteedAuthRequest extends Request {
-  user: AuthenticatedUser;
-  token: JWTPayload;
-}
-
-// Business ownership request - includes validated business data
-export interface BusinessOwnershipRequest extends AuthenticatedRequest {
-  business: {
-    id: string;
-    name: string;
-    ownerId: string;
-    isActive: boolean;
-    slug?: string;
-  };
-}
+// Re-export from unified request types
+export { 
+  AuthenticatedRequest, 
+  AuthenticatedRequestWithFile, 
+  GuaranteedAuthRequest, 
+  BusinessOwnershipRequest 
+} from './request';
 
 // Business Permission Names
 export enum PermissionName {

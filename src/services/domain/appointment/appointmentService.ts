@@ -6,6 +6,7 @@ import {
   AppointmentSearchFilters,
   AppointmentStatus
 } from '../../../types/business';
+// Removed DTO imports - keeping service layer focused on business logic
 import { AppointmentRepository } from '../../../repositories/appointmentRepository';
 import { ServiceRepository } from '../../../repositories/serviceRepository';
 import { UserBehaviorRepository } from '../../../repositories/userBehaviorRepository';
@@ -14,15 +15,19 @@ import { BusinessRepository } from '../../../repositories/businessRepository';
 import { RepositoryContainer } from '../../../repositories';
 import { RBACService } from '../rbac';
 import { PermissionName } from '../../../types/auth';
-import { createDateTimeInIstanbul, getCurrentTimeInIstanbul } from '../../../utils/timezoneHelper';
+import { createDateTimeInIstanbul, getCurrentTimeInIstanbul, formatDateTimeForAPI } from '../../../utils/timezoneHelper';
 import { BusinessContext } from '../../../middleware/businessContext';
 import { BusinessService } from '../business';
 import { NotificationService } from '../notification';
 import { ReservationSettings, BusinessSettings } from '../../../types/reservationSettings';
 import { UsageService } from '../usage';
 import { PrismaClient } from '@prisma/client';
+import { CancellationPolicyService } from '../business/cancellationPolicyService';
+import { PolicyEnforcementContext, PolicyCheckResult } from '../../../types/cancellationPolicy';
 
 export class AppointmentService {
+  private cancellationPolicyService: CancellationPolicyService;
+
   constructor(
     private appointmentRepository: AppointmentRepository,
     private serviceRepository: ServiceRepository,
@@ -35,7 +40,12 @@ export class AppointmentService {
     private usageService: UsageService,
     private repositories: RepositoryContainer,
     private prisma?: PrismaClient
-  ) {}
+  ) {
+    this.cancellationPolicyService = new CancellationPolicyService(
+      this.userBehaviorRepository,
+      this.businessRepository
+    );
+  }
 
   // Helper method to split permission name into resource and action
   private splitPermissionName(permissionName: string): { resource: string; action: string } {
@@ -48,7 +58,8 @@ export class AppointmentService {
     businessId: string,
     appointmentDateTime: Date,
     customerId?: string,
-    serviceDuration?: number
+    serviceDuration?: number,
+    serviceMinAdvanceBooking?: number
   ): Promise<void> {
     const business = await this.businessRepository.findById(businessId);
     if (!business) {
@@ -79,11 +90,12 @@ export class AppointmentService {
       throw new Error(`Appointments cannot be booked more than ${rules.maxAdvanceBookingDays} days in advance`);
     }
 
-    // 2. Check minimum notification period
+    // 2. Check minimum advance booking - use service setting if provided, otherwise business setting
     const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const minAdvanceHours = serviceMinAdvanceBooking !== undefined ? serviceMinAdvanceBooking : rules.minNotificationHours;
     
-    if (hoursDifference < rules.minNotificationHours) {
-      throw new Error(`Appointments must be booked at least ${rules.minNotificationHours} hours in advance`);
+    if (hoursDifference < minAdvanceHours) {
+      throw new Error(`Appointments must be booked at least ${minAdvanceHours} hours in advance`);
     }
 
     // 3. Check maximum daily appointments for this specific business
@@ -281,6 +293,25 @@ export class AppointmentService {
       throw new Error(`Cannot book appointment: ${banMessage}. Reason: ${userBehavior.banReason}`);
     }
 
+    // Check cancellation policies before allowing appointment booking
+    const appointmentDateTime = createDateTimeInIstanbul(data.date, data.startTime);
+    const policyContext: PolicyEnforcementContext = {
+      customerId,
+      businessId: data.businessId,
+      appointmentDate: appointmentDateTime,
+      action: 'BOOK',
+      currentTime: getCurrentTimeInIstanbul()
+    };
+
+    const policyCheck = await this.cancellationPolicyService.checkPolicyViolations(policyContext);
+    if (!policyCheck.allowed) {
+      const violationMessages = policyCheck.violations
+        .filter(v => v.isViolation)
+        .map(v => v.message)
+        .join('; ');
+      throw new Error(`Cannot book appointment: ${violationMessages}`);
+    }
+
     // Check if business is closed
     const { isClosed, closure } = await this.businessClosureRepository.isBusinessClosed(
       data.businessId,
@@ -316,7 +347,6 @@ export class AppointmentService {
     }
 
     // Check appointment time constraints - convert to Istanbul timezone
-    const appointmentDateTime = createDateTimeInIstanbul(data.date, data.startTime);
     const now = getCurrentTimeInIstanbul();
 
     // Debug logging (development only)
@@ -335,16 +365,11 @@ export class AppointmentService {
       });
     }
 
-    // Validate business-level reservation rules (NEW)
-    await this.validateBusinessReservationRules(data.businessId, appointmentDateTime, customerId);
-
-    // Check service-level minimum advance booking (keep existing logic as fallback)
-    const hoursUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-    if (hoursUntilAppointment < service.minAdvanceBooking) {
-      throw new Error(`Appointments must be booked at least ${service.minAdvanceBooking} hours in advance`);
-    }
+    // Validate business-level reservation rules (includes service-level validation)
+    await this.validateBusinessReservationRules(data.businessId, appointmentDateTime, customerId, service.duration, service.minAdvanceBooking);
 
     // Check service-level maximum advance booking (keep existing logic as fallback)
+    const hoursUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     const daysUntilAppointment = hoursUntilAppointment / 24;
     if (daysUntilAppointment > service.maxAdvanceBooking) {
       throw new Error(`Appointments cannot be booked more than ${service.maxAdvanceBooking} days in advance`);
@@ -741,11 +766,37 @@ export class AppointmentService {
       throw new Error('Appointment is already cancelled');
     }
 
+    // Check cancellation policies before allowing cancellation
+    const policyContext: PolicyEnforcementContext = {
+      customerId: appointment.customerId,
+      businessId: appointment.businessId,
+      appointmentDate: appointment.startTime,
+      action: 'CANCEL',
+      currentTime: getCurrentTimeInIstanbul()
+    };
+
+    const policyCheck = await this.cancellationPolicyService.checkPolicyViolations(policyContext);
+    if (!policyCheck.allowed) {
+      const violationMessages = policyCheck.violations
+        .filter(v => v.isViolation)
+        .map(v => v.message)
+        .join('; ');
+      throw new Error(`Cannot cancel appointment: ${violationMessages}`);
+    }
+
     const cancelledAppointment = await this.appointmentRepository.cancel(appointmentId, reason);
 
     // Update user behavior if customer cancelled
     if (isCustomer) {
       await this.handleCustomerCancellation(userId, appointment);
+      
+      // Handle policy violation if customer exceeded limits
+      await this.cancellationPolicyService.handlePolicyViolation(
+        appointment.customerId,
+        appointment.businessId,
+        'CANCELLATION',
+        'Customer exceeded monthly cancellation limit'
+      );
     }
 
     return cancelledAppointment;
@@ -772,12 +823,38 @@ export class AppointmentService {
       );
     }
 
+    // Check no-show policies before marking as no-show
+    const policyContext: PolicyEnforcementContext = {
+      customerId: appointment.customerId,
+      businessId: appointment.businessId,
+      appointmentDate: appointment.startTime,
+      action: 'NO_SHOW',
+      currentTime: getCurrentTimeInIstanbul()
+    };
+
+    const policyCheck = await this.cancellationPolicyService.checkPolicyViolations(policyContext);
+    if (!policyCheck.allowed) {
+      const violationMessages = policyCheck.violations
+        .filter(v => v.isViolation)
+        .map(v => v.message)
+        .join('; ');
+      throw new Error(`Cannot mark as no-show: ${violationMessages}`);
+    }
+
     const updatedAppointment = await this.appointmentRepository.markNoShow(appointmentId);
 
-    // Add strike to customer for no-show
+    // Add strike to customer for no-show and handle policy violation
     await this.userBehaviorRepository.addStrike(
       appointment.customerId,
       'No-show for appointment'
+    );
+
+    // Handle policy violation if customer exceeded limits
+    await this.cancellationPolicyService.handlePolicyViolation(
+      appointment.customerId,
+      appointment.businessId,
+      'NO_SHOW',
+      'Customer exceeded monthly no-show limit'
     );
 
     return updatedAppointment;
@@ -1273,4 +1350,250 @@ export class AppointmentService {
       // Don't throw error to avoid breaking the appointment creation process
     }
   }
+
+  /**
+   * Get monitor appointments - Optimized endpoint for real-time queue display
+   * Returns current, next, and waiting queue appointments for a business
+   */
+  async getMonitorAppointments(
+    businessId: string,
+    date?: string,
+    includeStats: boolean = true,
+    maxQueueSize: number = 10
+  ): Promise<{
+    current: {
+      appointment: AppointmentWithDetails | null;
+      room?: string;
+      startedAt: string | null;
+      estimatedEndTime: string | null;
+    } | null;
+    next: {
+      appointment: AppointmentWithDetails | null;
+      room?: string;
+      estimatedStartTime: string | null;
+      waitTimeMinutes: number | null;
+    } | null;
+    queue: Array<{
+      appointment: AppointmentWithDetails;
+      room?: string;
+      estimatedStartTime: string;
+      waitTimeMinutes: number;
+      position: number;
+    }>;
+    stats: {
+      completedToday: number;
+      inProgress: number;
+      waiting: number;
+      averageWaitTime: number;
+      averageServiceTime: number;
+      totalScheduled: number;
+    };
+    lastUpdated: string;
+    businessInfo: {
+      name: string;
+      timezone: string;
+    };
+  }> {
+    // Validate business exists
+    const business = await this.businessRepository.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    // Parse date or default to today
+    const targetDate = date
+      ? createDateTimeInIstanbul(date, '00:00')
+      : getCurrentTimeInIstanbul();
+
+    // Set date range for the day
+    const dayStart = new Date(targetDate);
+    dayStart.setHours(0, 0, 0, 0);
+
+    const dayEnd = new Date(targetDate);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    // Fetch all appointments for the day with full details
+    const appointmentsWithDetails = await this.appointmentRepository.findByBusinessAndDateRange(
+      businessId,
+      dayStart,
+      dayEnd
+    );
+
+    const now = getCurrentTimeInIstanbul();
+
+    // Debug logging to see what appointments we have
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 Monitor Debug - Total appointments found:', appointmentsWithDetails.length);
+      console.log('🔍 Monitor Debug - Current time:', formatDateTimeForAPI(now));
+      console.log('🔍 Monitor Debug - Day range:', {
+        start: formatDateTimeForAPI(dayStart),
+        end: formatDateTimeForAPI(dayEnd)
+      });
+      appointmentsWithDetails.forEach(apt => {
+        const aptStartTime = new Date(apt.startTime);
+        const aptEndTime = new Date(apt.endTime);
+        console.log('🔍 Appointment:', {
+          id: apt.id,
+          status: apt.status,
+          startTime: formatDateTimeForAPI(aptStartTime),
+          endTime: formatDateTimeForAPI(aptEndTime),
+          isInProgress: aptStartTime <= now && aptEndTime > now,
+          isFuture: aptStartTime > now,
+          customerName: `${apt.customer.firstName} ${apt.customer.lastName}`
+        });
+      });
+    }
+
+    // Auto-update appointments to IN_PROGRESS if their time has arrived
+    // Find CONFIRMED appointments that should be IN_PROGRESS
+    const appointmentsToUpdate = appointmentsWithDetails.filter(
+      apt => apt.status === AppointmentStatus.CONFIRMED &&
+      new Date(apt.startTime) <= now &&
+      new Date(apt.endTime) > now
+    );
+
+    // Update them to IN_PROGRESS
+    if (appointmentsToUpdate.length > 0 && this.prisma) {
+      const updatePromises = appointmentsToUpdate.map(apt =>
+        this.prisma!.appointment.update({
+          where: { id: apt.id },
+          data: { status: AppointmentStatus.IN_PROGRESS }
+        })
+      );
+      await Promise.all(updatePromises);
+
+      // Update the status in our local array
+      appointmentsToUpdate.forEach(apt => {
+        apt.status = AppointmentStatus.IN_PROGRESS;
+      });
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 Monitor Debug - Auto-updated appointments to IN_PROGRESS:', appointmentsToUpdate.length);
+      }
+    }
+
+    // Filter appointments - show IN_PROGRESS and CONFIRMED appointments
+    // Current appointment: IN_PROGRESS (currently happening)
+    const inProgressAppointments = appointmentsWithDetails.filter(
+      apt => apt.status === AppointmentStatus.IN_PROGRESS &&
+      new Date(apt.startTime) <= now &&
+      new Date(apt.endTime) > now
+    );
+
+    // Future appointments: CONFIRMED and starting in the future
+    const confirmedAppointments = appointmentsWithDetails.filter(
+      apt => apt.status === AppointmentStatus.CONFIRMED &&
+      new Date(apt.startTime) > now
+    ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 Monitor Debug - Filtered results:', {
+        inProgress: inProgressAppointments.length,
+        confirmed: confirmedAppointments.length
+      });
+    }
+
+    const completedAppointments = appointmentsWithDetails.filter(
+      apt => apt.status === AppointmentStatus.COMPLETED
+    );
+
+    // Determine current appointment
+    const current = inProgressAppointments.length > 0 ? {
+      appointment: inProgressAppointments[0],
+      room: undefined,
+      startedAt: formatDateTimeForAPI(inProgressAppointments[0].startTime),
+      estimatedEndTime: formatDateTimeForAPI(inProgressAppointments[0].endTime)
+    } : null;
+
+    // Determine next appointment
+    const next = confirmedAppointments.length > 0 ? {
+      appointment: confirmedAppointments[0],
+      room: undefined,
+      estimatedStartTime: formatDateTimeForAPI(confirmedAppointments[0].startTime),
+      waitTimeMinutes: Math.max(0, Math.round(
+        (new Date(confirmedAppointments[0].startTime).getTime() - now.getTime()) / (1000 * 60)
+      ))
+    } : null;
+
+    // Build waiting queue
+    const queueAppointments = confirmedAppointments.slice(1, maxQueueSize + 1);
+    const queue = queueAppointments.map((apt, index) => ({
+      appointment: apt,
+      room: undefined,
+      estimatedStartTime: formatDateTimeForAPI(apt.startTime),
+      waitTimeMinutes: Math.max(0, Math.round(
+        (new Date(apt.startTime).getTime() - now.getTime()) / (1000 * 60)
+      )),
+      position: index + 2 // Position 1 is "next"
+    }));
+
+    // Calculate statistics
+    const stats = includeStats ? {
+      completedToday: completedAppointments.length,
+      inProgress: inProgressAppointments.length,
+      waiting: confirmedAppointments.length,
+      averageWaitTime: this.calculateAverageWaitTime(appointmentsWithDetails),
+      averageServiceTime: this.calculateAverageServiceTime(completedAppointments),
+      totalScheduled: appointmentsWithDetails.filter(
+        apt => apt.status !== AppointmentStatus.CANCELED
+      ).length
+    } : {
+      completedToday: 0,
+      inProgress: 0,
+      waiting: 0,
+      averageWaitTime: 0,
+      averageServiceTime: 0,
+      totalScheduled: 0
+    };
+
+    return {
+      current,
+      next,
+      queue,
+      stats,
+      lastUpdated: formatDateTimeForAPI(now),
+      businessInfo: {
+        name: business.name,
+        timezone: business.timezone || 'Europe/Istanbul'
+      }
+    };
+  }
+
+  /**
+   * Calculate average wait time for appointments
+   */
+  private calculateAverageWaitTime(appointments: AppointmentWithDetails[]): number {
+    const completedAppointments = appointments.filter(
+      apt => apt.status === AppointmentStatus.COMPLETED && apt.startTime && apt.bookedAt
+    );
+
+    if (completedAppointments.length === 0) {
+      return 0;
+    }
+
+    const totalWaitTime = completedAppointments.reduce((sum, apt) => {
+      const waitTime = new Date(apt.startTime).getTime() - new Date(apt.bookedAt).getTime();
+      return sum + (waitTime / (1000 * 60)); // Convert to minutes
+    }, 0);
+
+    return Math.round(totalWaitTime / completedAppointments.length);
+  }
+
+  /**
+   * Calculate average service time for completed appointments
+   */
+  private calculateAverageServiceTime(completedAppointments: AppointmentWithDetails[]): number {
+    if (completedAppointments.length === 0) {
+      return 0;
+    }
+
+    const totalServiceTime = completedAppointments.reduce((sum, apt) => {
+      return sum + apt.duration;
+    }, 0);
+
+    return Math.round(totalServiceTime / completedAppointments.length);
+  }
+
+  // Removed formatting methods - keeping service layer focused on business logic
+  // Data transformation handled in controller layer for consistency
 }

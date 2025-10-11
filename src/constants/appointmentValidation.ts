@@ -124,7 +124,8 @@ export const APPOINTMENT_ERROR_MESSAGES = {
 
 // Appointment status transitions
 export const APPOINTMENT_STATUS_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
-  [AppointmentStatus.CONFIRMED]: [AppointmentStatus.COMPLETED, AppointmentStatus.CANCELED, AppointmentStatus.NO_SHOW],
+  [AppointmentStatus.CONFIRMED]: [AppointmentStatus.IN_PROGRESS, AppointmentStatus.COMPLETED, AppointmentStatus.CANCELED, AppointmentStatus.NO_SHOW],
+  [AppointmentStatus.IN_PROGRESS]: [AppointmentStatus.COMPLETED, AppointmentStatus.CANCELED, AppointmentStatus.NO_SHOW],
   [AppointmentStatus.COMPLETED]: [], // Terminal state
   [AppointmentStatus.CANCELED]: [], // Terminal state
   [AppointmentStatus.NO_SHOW]: [AppointmentStatus.CONFIRMED] // Can be rescheduled

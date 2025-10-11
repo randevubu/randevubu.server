@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { BusinessController } from '../../controllers/businessController';
 import { SubscriptionController } from '../../controllers/subscriptionController';
+import { semiDynamicCache, dynamicCache, staticCache, businessCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
+import { invalidateBusinessCache, invalidateServiceCache } from '../../middleware/cacheInvalidation';
 import {
   allowEmptyBusinessContext,
   attachBusinessContext,
@@ -17,17 +20,23 @@ import {
   updateBusinessNotificationSettingsSchema,
   updateBusinessPriceSettingsSchema,
   updateBusinessReservationSettingsSchema,
-  updateBusinessStaffPrivacySettingsSchema
+  updateBusinessStaffPrivacySettingsSchema,
+  updateBusinessCancellationPolicySchema,
+  updateBusinessCustomerManagementSchema
 } from '../../schemas/business.schemas';
 import {
   getBusinessStaffQuerySchema,
   inviteStaffSchema,
   verifyStaffInvitationSchema
 } from '../../schemas/staff.schemas';
-import { AuthenticatedRequest, PermissionName } from '../../types/auth';
+import { PermissionName } from '../../types/auth';
+import { AuthenticatedRequest } from '../../types/request';
 
 export function createBusinessRoutes(businessController: BusinessController, subscriptionController: SubscriptionController): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   // Public routes (no authentication required)
   /**
@@ -165,7 +174,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *                   type: string
    *                   example: "Failed to retrieve businesses"
    */
-  router.get('/', businessController.getAllBusinessesMinimalDetails.bind(businessController));
+  router.get('/', semiDynamicCache, businessController.getAllBusinessesMinimalDetails.bind(businessController));
   
   /**
    * @swagger
@@ -177,7 +186,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       200:
    *         description: Search results
    */
-  router.get('/search', businessController.searchBusinesses.bind(businessController));
+  router.get('/search', semiDynamicCache, businessController.searchBusinesses.bind(businessController));
   /**
    * @swagger
    * /api/v1/businesses/nearby:
@@ -188,7 +197,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       200:
    *         description: Nearby businesses
    */
-  router.get('/nearby', businessController.getNearbyBusinesses.bind(businessController));
+  router.get('/nearby', semiDynamicCache, businessController.getNearbyBusinesses.bind(businessController));
   /**
    * @swagger
    * /api/v1/businesses/slug/{slug}:
@@ -207,7 +216,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       404:
    *         description: Not found
    */
-  router.get('/slug/:slug', businessController.getBusinessBySlug.bind(businessController));
+  router.get('/slug/:slug', semiDynamicCache, businessController.getBusinessBySlug.bind(businessController));
   /**
    * @swagger
    * /api/v1/businesses/types/{businessTypeId}:
@@ -224,7 +233,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       200:
    *         description: List of businesses
    */
-  router.get('/types/:businessTypeId', businessController.getBusinessesByType.bind(businessController));
+  router.get('/types/:businessTypeId', semiDynamicCache, businessController.getBusinessesByType.bind(businessController));
   /**
    * @swagger
    * /api/v1/businesses/slug-availability/{slug}:
@@ -241,7 +250,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       200:
    *         description: Availability status
    */
-  router.get('/slug-availability/:slug', businessController.checkSlugAvailability.bind(businessController));
+  router.get('/slug-availability/:slug', staticCache, businessController.checkSlugAvailability.bind(businessController));
 
   // Protected routes (authentication required) - MUST come before catch-all route
   router.use(requireAuth);
@@ -313,7 +322,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *                       type: string
    *                       example: "BUSINESS_ACCESS_DENIED"
    */
-  router.get('/my-business', requireBusinessAccess, businessController.getMyBusiness.bind(businessController));
+  router.get('/my-business', dynamicCache, requireBusinessAccess, businessController.getMyBusiness.bind(businessController));
 
   /**
    * @swagger
@@ -355,7 +364,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       404:
    *         description: Business not found
    */
-  router.put('/my-business', requireBusinessAccess, businessController.updateMyBusiness.bind(businessController));
+  router.put('/my-business', invalidateBusinessCache, requireBusinessAccess, businessController.updateMyBusiness.bind(businessController));
 
   /**
    * @swagger
@@ -421,11 +430,13 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *         description: Internal server error
    */
   router.get('/my-business/price-settings',
+    dynamicCache,
     requireBusinessAccess,
     businessController.getPriceSettings.bind(businessController)
   );
   
   router.put('/my-business/price-settings',
+    invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessPriceSettingsSchema),
     businessController.updatePriceSettings.bind(businessController)
@@ -482,6 +493,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *         description: Internal server error
    */
   router.get('/my-business/staff-privacy-settings',
+    dynamicCache,
     requireBusinessAccess,
     businessController.getStaffPrivacySettings.bind(businessController)
   );
@@ -542,6 +554,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *         description: Internal server error
    */
   router.put('/my-business/staff-privacy-settings',
+    invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessStaffPrivacySettingsSchema),
     businessController.updateStaffPrivacySettings.bind(businessController)
@@ -654,6 +667,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *         description: Internal server error
    */
   router.get('/my-business/notification-settings',
+    dynamicCache,
     requireBusinessAccess,
     businessController.getNotificationSettings.bind(businessController)
   );
@@ -757,6 +771,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *         description: Internal server error
    */
   router.put('/my-business/notification-settings',
+    invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessNotificationSettingsSchema),
     validateNotificationSettings,
@@ -804,6 +819,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *         description: Internal server error
    */
   router.post('/my-business/test-reminder',
+    invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(testReminderSchema),
     businessController.testReminder.bind(businessController)
@@ -854,6 +870,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *         description: Internal server error
    */
   router.get('/my-business/reservation-settings',
+    dynamicCache,
     requireBusinessAccess,
     businessController.getReservationSettings.bind(businessController)
   );
@@ -900,6 +917,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *         description: Internal server error
    */
   router.put('/my-business/reservation-settings',
+    invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessReservationSettingsSchema),
     businessController.updateReservationSettings.bind(businessController)
@@ -985,7 +1003,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *                       type: string
    *                       example: "BUSINESS_ACCESS_DENIED"
    */
-  router.get('/my-services', requireBusinessAccess, businessController.getMyServices.bind(businessController));
+  router.get('/my-services', dynamicCache, requireBusinessAccess, businessController.getMyServices.bind(businessController));
 
   // Business CRUD operations
   /**
@@ -1193,6 +1211,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    */
   router.get(
     '/id/:id',
+    businessCache,
     requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
     businessController.getBusinessById.bind(businessController)
   );
@@ -1542,6 +1561,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    */
   router.get(
     '/:businessId/hours',
+    businessCache,
     requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
     requireSpecificBusinessAccess('businessId'),
     businessController.getBusinessHours.bind(businessController)
@@ -1579,6 +1599,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    */
   router.get(
     '/:businessId/hours/status',
+    semiDynamicCache,
     businessController.getBusinessHoursStatus.bind(businessController)
   );
 
@@ -1808,6 +1829,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    */
   router.get(
     '/:businessId/hours/overrides',
+    businessCache,
     requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
     requireSpecificBusinessAccess('businessId'),
     businessController.getBusinessHoursOverrides.bind(businessController)
@@ -2745,6 +2767,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
   // MUST be last to avoid conflicting with specific routes
   router.get(
     '/:slugOrId',
+    semiDynamicCache,
     async (req, res, next) => {
       try {
         const slugOrId = req.params.slugOrId;
@@ -2806,6 +2829,775 @@ export function createBusinessRoutes(businessController: BusinessController, sub
         return next(error);
       }
     }
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/cancellation-policies:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get business cancellation policies
+   *     description: Retrieve current cancellation and no-show policy settings for your business
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Cancellation policies retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     minCancellationHours:
+   *                       type: number
+   *                       example: 4
+   *                       description: Minimum hours before appointment that cancellation is allowed
+   *                     maxMonthlyCancellations:
+   *                       type: number
+   *                       example: 3
+   *                       description: Maximum cancellations allowed per month per customer
+   *                     maxMonthlyNoShows:
+   *                       type: number
+   *                       example: 2
+   *                       description: Maximum no-shows allowed per month per customer
+   *                     enablePolicyEnforcement:
+   *                       type: boolean
+   *                       example: true
+   *                       description: Whether policy enforcement is enabled
+   *                     policyWarningMessage:
+   *                       type: string
+   *                       example: "Bu kuralları aşan müşteriler sistemden otomatik olarak engellenecek..."
+   *                       description: Custom warning message for policy violations
+   *                     gracePeriodDays:
+   *                       type: number
+   *                       example: 0
+   *                       description: Grace period in days for new customers
+   *                     autoBanEnabled:
+   *                       type: boolean
+   *                       example: false
+   *                       description: Whether automatic banning is enabled
+   *                     banDurationDays:
+   *                       type: number
+   *                       example: 30
+   *                       description: Duration of automatic ban in days
+   *                 message:
+   *                   type: string
+   *                   example: "Cancellation policies retrieved successfully"
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/cancellation-policies',
+    requireBusinessAccess,
+    businessController.getCancellationPolicies.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/cancellation-policies:
+   *   put:
+   *     tags: [Businesses]
+   *     summary: Update business cancellation policies
+   *     description: Update cancellation and no-show policy settings for your business
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               minCancellationHours:
+   *                 type: number
+   *                 minimum: 1
+   *                 maximum: 168
+   *                 example: 4
+   *                 description: Minimum hours before appointment that cancellation is allowed
+   *               maxMonthlyCancellations:
+   *                 type: number
+   *                 minimum: 0
+   *                 maximum: 50
+   *                 example: 3
+   *                 description: Maximum cancellations allowed per month per customer
+   *               maxMonthlyNoShows:
+   *                 type: number
+   *                 minimum: 0
+   *                 maximum: 20
+   *                 example: 2
+   *                 description: Maximum no-shows allowed per month per customer
+   *               enablePolicyEnforcement:
+   *                 type: boolean
+   *                 example: true
+   *                 description: Enable enforcement of cancellation and no-show policies
+   *               policyWarningMessage:
+   *                 type: string
+   *                 maxLength: 500
+   *                 example: "Bu kuralları aşan müşteriler sistemden otomatik olarak engellenecek..."
+   *                 description: Custom warning message for policy violations
+   *               gracePeriodDays:
+   *                 type: number
+   *                 minimum: 0
+   *                 maximum: 30
+   *                 example: 0
+   *                 description: Grace period in days for new customers
+   *               autoBanEnabled:
+   *                 type: boolean
+   *                 example: false
+   *                 description: Automatically ban customers who exceed policy limits
+   *               banDurationDays:
+   *                 type: number
+   *                 minimum: 1
+   *                 maximum: 365
+   *                 example: 30
+   *                 description: Duration of automatic ban in days when auto-ban is enabled
+   *     responses:
+   *       200:
+   *         description: Cancellation policies updated successfully
+   *       400:
+   *         description: Invalid policy settings
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.put('/my-business/cancellation-policies',
+    requireBusinessAccess,
+    validateBody(updateBusinessCancellationPolicySchema),
+    businessController.updateCancellationPolicies.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/customer-policy-status/{customerId}:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get customer policy status
+   *     description: Check a customer's current policy status and violations for your business
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: customerId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: ID of the customer to check policy status for
+   *     responses:
+   *       200:
+   *         description: Customer policy status retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     customerId:
+   *                       type: string
+   *                       example: "cust_123456789"
+   *                     businessId:
+   *                       type: string
+   *                       example: "bus_123456789"
+   *                     currentCancellations:
+   *                       type: number
+   *                       example: 1
+   *                       description: Current monthly cancellation count
+   *                     currentNoShows:
+   *                       type: number
+   *                       example: 0
+   *                       description: Current monthly no-show count
+   *                     isBanned:
+   *                       type: boolean
+   *                       example: false
+   *                       description: Whether the customer is currently banned
+   *                     bannedUntil:
+   *                       type: string
+   *                       format: date-time
+   *                       nullable: true
+   *                       description: When the ban expires (if banned)
+   *                     banReason:
+   *                       type: string
+   *                       nullable: true
+   *                       description: Reason for the ban (if banned)
+   *                     gracePeriodActive:
+   *                       type: boolean
+   *                       example: false
+   *                       description: Whether the customer is in grace period
+   *                     gracePeriodEndsAt:
+   *                       type: string
+   *                       format: date-time
+   *                       nullable: true
+   *                       description: When grace period ends (if active)
+   *                     policySettings:
+   *                       type: object
+   *                       description: Current business policy settings
+   *                     violations:
+   *                       type: array
+   *                       items:
+   *                         type: object
+   *                       description: Current policy violations
+   *                 message:
+   *                   type: string
+   *                   example: "Customer policy status retrieved successfully"
+   *       400:
+   *         description: Customer ID is required
+   *       403:
+   *         description: Access denied - business role required
+   *       404:
+   *         description: Customer not found
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/customer-policy-status/:customerId',
+    requireBusinessAccess,
+    businessController.getCustomerPolicyStatus.bind(businessController)
+  );
+
+  // Customer Management Settings Routes
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/customer-management-settings:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get business customer management settings
+   *     description: Retrieve current customer management settings for your business
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Customer management settings retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     activeCustomerDefinition:
+   *                       type: object
+   *                       properties:
+   *                         monthsThreshold:
+   *                           type: number
+   *                           example: 3
+   *                           description: Number of months to consider a customer active
+   *                         enabled:
+   *                           type: boolean
+   *                           example: true
+   *                           description: Enable active customer definition
+   *                     loyaltyProgram:
+   *                       type: object
+   *                       properties:
+   *                         appointmentThreshold:
+   *                           type: number
+   *                           example: 5
+   *                           description: Number of appointments required for loyalty program
+   *                         enabled:
+   *                           type: boolean
+   *                           example: true
+   *                           description: Enable loyalty program
+   *                     customerNotes:
+   *                       type: object
+   *                       properties:
+   *                         allowStaffNotes:
+   *                           type: boolean
+   *                           example: true
+   *                           description: Allow staff to add notes about customers
+   *                         allowInternalNotes:
+   *                           type: boolean
+   *                           example: true
+   *                           description: Allow internal notes (not visible to customers)
+   *                         maxNoteLength:
+   *                           type: number
+   *                           example: 1000
+   *                           description: Maximum length for customer notes
+   *                     appointmentHistory:
+   *                       type: object
+   *                       properties:
+   *                         allowCustomerView:
+   *                           type: boolean
+   *                           example: true
+   *                           description: Allow customers to view their appointment history
+   *                         showCancelledAppointments:
+   *                           type: boolean
+   *                           example: true
+   *                           description: Show cancelled appointments in customer history
+   *                         showNoShowAppointments:
+   *                           type: boolean
+   *                           example: false
+   *                           description: Show no-show appointments in customer history
+   *                     birthdayReminders:
+   *                       type: object
+   *                       properties:
+   *                         enabled:
+   *                           type: boolean
+   *                           example: false
+   *                           description: Enable birthday reminders
+   *                         reminderDays:
+   *                           type: array
+   *                           items:
+   *                             type: number
+   *                           example: [1, 3, 7]
+   *                           description: Days before birthday to send reminders
+   *                         messageTemplate:
+   *                           type: string
+   *                           example: "Doğum gününüz kutlu olsun! Size özel indirimli randevu fırsatı için bizimle iletişime geçin."
+   *                           description: Template for birthday reminder messages
+   *                     customerEvaluations:
+   *                       type: object
+   *                       properties:
+   *                         enabled:
+   *                           type: boolean
+   *                           example: false
+   *                           description: Enable customer evaluations
+   *                         requiredForCompletion:
+   *                           type: boolean
+   *                           example: false
+   *                           description: Require evaluation for appointment completion
+   *                         allowAnonymous:
+   *                           type: boolean
+   *                           example: true
+   *                           description: Allow anonymous evaluations
+   *                         questions:
+   *                           type: array
+   *                           items:
+   *                             type: object
+   *                           description: Evaluation questions
+   *                 message:
+   *                   type: string
+   *                   example: "Customer management settings retrieved successfully"
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/customer-management-settings',
+    requireBusinessAccess,
+    businessController.getCustomerManagementSettings.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/customer-management-settings:
+   *   put:
+   *     tags: [Businesses]
+   *     summary: Update business customer management settings
+   *     description: Update customer management settings for your business
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               activeCustomerDefinition:
+   *                 type: object
+   *                 properties:
+   *                   monthsThreshold:
+   *                     type: number
+   *                     minimum: 1
+   *                     maximum: 24
+   *                     example: 3
+   *                     description: Number of months to consider a customer active
+   *                   enabled:
+   *                     type: boolean
+   *                     example: true
+   *                     description: Enable active customer definition
+   *               loyaltyProgram:
+   *                 type: object
+   *                 properties:
+   *                   appointmentThreshold:
+   *                     type: number
+   *                     minimum: 1
+   *                     maximum: 100
+   *                     example: 5
+   *                     description: Number of appointments required for loyalty program
+   *                   enabled:
+   *                     type: boolean
+   *                     example: true
+   *                     description: Enable loyalty program
+   *               customerNotes:
+   *                 type: object
+   *                 properties:
+   *                   allowStaffNotes:
+   *                     type: boolean
+   *                     example: true
+   *                     description: Allow staff to add notes about customers
+   *                   allowInternalNotes:
+   *                     type: boolean
+   *                     example: true
+   *                     description: Allow internal notes (not visible to customers)
+   *                   maxNoteLength:
+   *                     type: number
+   *                     minimum: 100
+   *                     maximum: 5000
+   *                     example: 1000
+   *                     description: Maximum length for customer notes
+   *               appointmentHistory:
+   *                 type: object
+   *                 properties:
+   *                   allowCustomerView:
+   *                     type: boolean
+   *                     example: true
+   *                     description: Allow customers to view their appointment history
+   *                   showCancelledAppointments:
+   *                     type: boolean
+   *                     example: true
+   *                     description: Show cancelled appointments in customer history
+   *                   showNoShowAppointments:
+   *                     type: boolean
+   *                     example: false
+   *                     description: Show no-show appointments in customer history
+   *               birthdayReminders:
+   *                 type: object
+   *                 properties:
+   *                   enabled:
+   *                     type: boolean
+   *                     example: false
+   *                     description: Enable birthday reminders
+   *                   reminderDays:
+   *                     type: array
+   *                     items:
+   *                       type: number
+   *                       minimum: 1
+   *                       maximum: 30
+   *                     minItems: 1
+   *                     maxItems: 5
+   *                     example: [1, 3, 7]
+   *                     description: Days before birthday to send reminders
+   *                   messageTemplate:
+   *                     type: string
+   *                     maxLength: 500
+   *                     example: "Doğum gününüz kutlu olsun! Size özel indirimli randevu fırsatı için bizimle iletişime geçin."
+   *                     description: Template for birthday reminder messages
+   *               customerEvaluations:
+   *                 type: object
+   *                 properties:
+   *                   enabled:
+   *                     type: boolean
+   *                     example: false
+   *                     description: Enable customer evaluations
+   *                   requiredForCompletion:
+   *                     type: boolean
+   *                     example: false
+   *                     description: Require evaluation for appointment completion
+   *                   allowAnonymous:
+   *                     type: boolean
+   *                     example: true
+   *                     description: Allow anonymous evaluations
+   *                   questions:
+   *                     type: array
+   *                     items:
+   *                       type: object
+   *                       properties:
+   *                         id:
+   *                           type: string
+   *                           minLength: 1
+   *                           maxLength: 50
+   *                           example: "overall_rating"
+   *                           description: Question ID
+   *                         question:
+   *                           type: string
+   *                           minLength: 5
+   *                           maxLength: 200
+   *                           example: "Genel memnuniyetinizi değerlendirin"
+   *                           description: Question text
+   *                         type:
+   *                           type: string
+   *                           enum: [RATING, TEXT, CHOICE]
+   *                           example: "RATING"
+   *                           description: Type of evaluation question
+   *                         required:
+   *                           type: boolean
+   *                           example: true
+   *                           description: Whether the question is required
+   *                         options:
+   *                           type: array
+   *                           items:
+   *                             type: string
+   *                           maxItems: 10
+   *                           description: Options for CHOICE type questions
+   *                         minRating:
+   *                           type: number
+   *                           minimum: 1
+   *                           maximum: 5
+   *                           description: Minimum rating for RATING type questions
+   *                         maxRating:
+   *                           type: number
+   *                           minimum: 1
+   *                           maximum: 10
+   *                           description: Maximum rating for RATING type questions
+   *                     maxItems: 20
+   *                     description: Evaluation questions
+   *     responses:
+   *       200:
+   *         description: Customer management settings updated successfully
+   *       400:
+   *         description: Invalid settings data
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.put('/my-business/customer-management-settings',
+    requireBusinessAccess,
+    validateBody(updateBusinessCustomerManagementSchema),
+    businessController.updateCustomerManagementSettings.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/customers/{customerId}/notes:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get customer notes
+   *     description: Retrieve notes for a specific customer
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: customerId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: ID of the customer
+   *       - in: query
+   *         name: noteType
+   *         schema:
+   *           type: string
+   *           enum: [STAFF, INTERNAL, CUSTOMER]
+   *         description: Filter by note type
+   *     responses:
+   *       200:
+   *         description: Customer notes retrieved successfully
+   *       400:
+   *         description: Customer ID is required
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/customers/:customerId/notes',
+    requireBusinessAccess,
+    businessController.getCustomerNotes.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/customers/{customerId}/notes:
+   *   post:
+   *     tags: [Businesses]
+   *     summary: Add customer note
+   *     description: Add a note to a customer
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: customerId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: ID of the customer
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - content
+   *               - noteType
+   *             properties:
+   *               content:
+   *                 type: string
+   *                 minLength: 1
+   *                 maxLength: 5000
+   *                 example: "Customer prefers morning appointments"
+   *                 description: Note content
+   *               noteType:
+   *                 type: string
+   *                 enum: [STAFF, INTERNAL, CUSTOMER]
+   *                 example: "STAFF"
+   *                 description: Type of note
+   *               isPrivate:
+   *                 type: boolean
+   *                 example: false
+   *                 description: Whether the note is private
+   *     responses:
+   *       201:
+   *         description: Customer note added successfully
+   *       400:
+   *         description: Invalid note data
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.post('/my-business/customers/:customerId/notes',
+    requireBusinessAccess,
+    businessController.addCustomerNote.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/customers/{customerId}/loyalty-status:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get customer loyalty status
+   *     description: Check a customer's loyalty program status
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: customerId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: ID of the customer
+   *     responses:
+   *       200:
+   *         description: Customer loyalty status retrieved successfully
+   *       400:
+   *         description: Customer ID is required
+   *       403:
+   *         description: Access denied - business role required
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/customers/:customerId/loyalty-status',
+    requireBusinessAccess,
+    businessController.getCustomerLoyaltyStatus.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/appointments/{appointmentId}/evaluation:
+   *   get:
+   *     tags: [Businesses]
+   *     summary: Get customer evaluation
+   *     description: Retrieve customer evaluation for an appointment
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: appointmentId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: ID of the appointment
+   *     responses:
+   *       200:
+   *         description: Customer evaluation retrieved successfully
+   *       400:
+   *         description: Appointment ID is required
+   *       403:
+   *         description: Access denied - business role required
+   *       404:
+   *         description: Evaluation not found
+   *       500:
+   *         description: Internal server error
+   */
+  router.get('/my-business/appointments/:appointmentId/evaluation',
+    requireBusinessAccess,
+    businessController.getCustomerEvaluation.bind(businessController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/businesses/my-business/appointments/{appointmentId}/evaluation:
+   *   post:
+   *     tags: [Businesses]
+   *     summary: Submit customer evaluation
+   *     description: Submit customer evaluation for an appointment
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: appointmentId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: ID of the appointment
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - customerId
+   *               - rating
+   *               - answers
+   *             properties:
+   *               customerId:
+   *                 type: string
+   *                 example: "cust_123456789"
+   *                 description: ID of the customer
+   *               rating:
+   *                 type: number
+   *                 minimum: 1
+   *                 maximum: 5
+   *                 example: 5
+   *                 description: Overall rating
+   *               comment:
+   *                 type: string
+   *                 maxLength: 1000
+   *                 example: "Excellent service, very professional staff"
+   *                 description: Optional comment
+   *               answers:
+   *                 type: array
+   *                 items:
+   *                   type: object
+   *                   required:
+   *                     - questionId
+   *                     - answer
+   *                   properties:
+   *                     questionId:
+   *                       type: string
+   *                       example: "overall_rating"
+   *                       description: ID of the question
+   *                     answer:
+   *                       oneOf:
+   *                         - type: string
+   *                         - type: number
+   *                       example: 5
+   *                       description: Answer to the question
+   *                 description: Answers to evaluation questions
+   *               isAnonymous:
+   *                 type: boolean
+   *                 example: false
+   *                 description: Whether the evaluation is anonymous
+   *     responses:
+   *       201:
+   *         description: Customer evaluation submitted successfully
+   *       400:
+   *         description: Invalid evaluation data
+   *       403:
+   *         description: Access denied
+   *       500:
+   *         description: Internal server error
+   */
+  router.post('/my-business/appointments/:appointmentId/evaluation',
+    requireBusinessAccess,
+    businessController.submitCustomerEvaluation.bind(businessController)
   );
 
   return router;

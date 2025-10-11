@@ -34,6 +34,8 @@ import {
   TokenExpiredError
 } from '../types/errors';
 import logger from '../utils/Logger/logger';
+import { extractDeviceInfo, createErrorContext } from '../utils/requestUtils';
+import { sendSuccessResponse, sendBaseErrorResponse } from '../utils/responseUtils';
 
 export class AuthController {
   constructor(
@@ -43,53 +45,6 @@ export class AuthController {
     private rbacService?: RBACService
   ) {}
 
-  private createErrorContext(req: Request, userId?: string): ErrorContext {
-    return {
-      userId,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId: Math.random().toString(36).substring(7),
-      timestamp: new Date(),
-      endpoint: req.path,
-      method: req.method,
-    };
-  }
-
-  private extractDeviceInfo(req: Request): DeviceInfo {
-    return {
-      deviceId: req.headers['x-device-id'] as string,
-      userAgent: req.get('user-agent'),
-      ipAddress: req.ip,
-    };
-  }
-
-  private sendSuccessResponse<T>(
-    res: Response, 
-    message: string, 
-    data?: T, 
-    statusCode: number = 200
-  ): void {
-    const response: ApiResponse<T> = {
-      success: true,
-      message,
-      data,
-    };
-    res.status(statusCode).json(response);
-  }
-
-  private sendErrorResponse(res: Response, error: BaseError): void {
-    const response: ApiResponse = {
-      success: false,
-      message: error.message,
-      error: {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        requestId: error.context?.requestId,
-      },
-    };
-    res.status(error.statusCode).json(response);
-  }
 
   private clearAuthCookies(res: Response, context: ErrorContext): void {
     const cookieDomain = process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost';
@@ -117,8 +72,8 @@ export class AuthController {
   sendVerificationCode = async (req: Request, res: Response): Promise<void> => {
     try {
       const body = sendVerificationSchema.parse(req.body) as SendVerificationRequest;
-      const deviceInfo = this.extractDeviceInfo(req);
-      const context = this.createErrorContext(req);
+      const deviceInfo = extractDeviceInfo(req);
+      const context = createErrorContext(req);
 
       logger.info('Verification code request', {
         phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
@@ -146,7 +101,7 @@ export class AuthController {
         return;
       }
 
-      this.sendSuccessResponse(res, result.message, {
+      sendSuccessResponse(res, result.message, {
         phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
         expiresIn: 600, // 10 minutes
         purpose: body.purpose || 'REGISTRATION',
@@ -156,18 +111,18 @@ export class AuthController {
       logger.error('Send verification code error', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
-        requestId: this.createErrorContext(req).requestId,
+        requestId: createErrorContext(req).requestId,
       });
 
       if (error instanceof BaseError) {
-        this.sendErrorResponse(res, error);
+        sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Failed to send verification code',
           error instanceof Error ? error : new Error(String(error)),
-          this.createErrorContext(req)
+          createErrorContext(req)
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };
@@ -179,8 +134,8 @@ export class AuthController {
   verifyLogin = async (req: Request, res: Response): Promise<void> => {
     try {
       const body = verifyLoginSchema.parse(req.body) as VerifyLoginRequest;
-      const deviceInfo = this.extractDeviceInfo(req);
-      const context = this.createErrorContext(req);
+      const deviceInfo = extractDeviceInfo(req);
+      const context = createErrorContext(req);
 
       logger.info('Login verification attempt', {
         phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
@@ -228,7 +183,7 @@ export class AuthController {
         });
       }
 
-      this.sendSuccessResponse(
+      sendSuccessResponse(
         res,
         result.isNewUser ? 'Registration successful' : 'Login successful',
         {
@@ -260,18 +215,18 @@ export class AuthController {
       logger.error('Verify login error', {
         error: error instanceof Error ? error.message : String(error),
         phoneNumber: req.body.phoneNumber?.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
-        requestId: this.createErrorContext(req).requestId,
+        requestId: createErrorContext(req).requestId,
       });
 
       if (error instanceof BaseError) {
-        this.sendErrorResponse(res, error);
+        sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Login verification failed',
           error instanceof Error ? error : new Error(String(error)),
-          this.createErrorContext(req)
+          createErrorContext(req)
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };
@@ -289,8 +244,8 @@ export class AuthController {
     const bodyRefreshToken = req.body?.refreshToken;
     const refreshToken = isMobileClient ? bodyRefreshToken : (cookieRefreshToken || bodyRefreshToken);
 
-    const deviceInfo = this.extractDeviceInfo(req);
-    const context = this.createErrorContext(req);
+    const deviceInfo = extractDeviceInfo(req);
+    const context = createErrorContext(req);
 
     logger.info('Refresh token debug info', {
       hasCookieToken: !!cookieRefreshToken,
@@ -364,7 +319,7 @@ export class AuthController {
           requestId: context.requestId,
         });
 
-        this.sendSuccessResponse(res, 'Token refreshed successfully', {
+        sendSuccessResponse(res, 'Token refreshed successfully', {
           tokens: {
             accessToken: tokens.accessToken,
             refreshToken: tokens.refreshToken, // Mobile apps need this for secure storage
@@ -399,7 +354,7 @@ export class AuthController {
           requestId: context.requestId,
         });
 
-        this.sendSuccessResponse(res, 'Token refreshed successfully', {
+        sendSuccessResponse(res, 'Token refreshed successfully', {
           tokens: {
             accessToken: tokens.accessToken,
             expiresIn: tokens.expiresIn
@@ -441,14 +396,14 @@ export class AuthController {
           return;
         }
         
-        this.sendErrorResponse(res, error);
+        sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Token refresh failed',
           error instanceof Error ? error : new Error(String(error)),
           context
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };
@@ -460,8 +415,8 @@ export class AuthController {
   logout = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const body = logoutSchema.parse(req.body) as LogoutRequest;
-      const deviceInfo = this.extractDeviceInfo(req);
-      const context = this.createErrorContext(req, req.user.id);
+      const deviceInfo = extractDeviceInfo(req);
+      const context = createErrorContext(req, req.user.id);
 
       await this.authService.logout(
         requireAuthenticatedUser(req).id,
@@ -484,24 +439,24 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      this.sendSuccessResponse(res, 'Logged out successfully');
+      sendSuccessResponse(res, 'Logged out successfully');
 
     } catch (error) {
       logger.error('Logout error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
-        requestId: this.createErrorContext(req, req.user.id).requestId,
+        requestId: createErrorContext(req, req.user.id).requestId,
       });
 
       if (error instanceof BaseError) {
-        this.sendErrorResponse(res, error);
+        sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Logout failed',
           error instanceof Error ? error : new Error(String(error)),
-          this.createErrorContext(req, req.user.id)
+          createErrorContext(req, req.user.id)
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };
@@ -512,7 +467,7 @@ export class AuthController {
    */
   getProfile = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
-      const context = this.createErrorContext(req, req.user.id);
+      const context = createErrorContext(req, req.user.id);
       const includeBusinessSummary = req.query.includeBusinessSummary === 'true';
       const forceRefresh = req.headers['x-role-update'] === 'true';
 
@@ -528,7 +483,7 @@ export class AuthController {
         profile = await this.authService.getUserProfile(requireAuthenticatedUser(req).id, context);
       }
 
-      this.sendSuccessResponse(res, 'Profile retrieved successfully', { 
+      sendSuccessResponse(res, 'Profile retrieved successfully', { 
         user: profile,
         meta: {
           includesBusinessSummary: includeBusinessSummary
@@ -539,18 +494,18 @@ export class AuthController {
       logger.error('Get profile error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
-        requestId: this.createErrorContext(req, req.user.id).requestId,
+        requestId: createErrorContext(req, req.user.id).requestId,
       });
 
       if (error instanceof BaseError) {
-        this.sendErrorResponse(res, error);
+        sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Failed to retrieve profile',
           error instanceof Error ? error : new Error(String(error)),
-          this.createErrorContext(req, req.user.id)
+          createErrorContext(req, req.user.id)
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };
@@ -562,8 +517,8 @@ export class AuthController {
   updateProfile = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const body = updateProfileSchema.parse(req.body) as UpdateProfileRequest;
-      const deviceInfo = this.extractDeviceInfo(req);
-      const context = this.createErrorContext(req, req.user.id);
+      const deviceInfo = extractDeviceInfo(req);
+      const context = createErrorContext(req, req.user.id);
 
       const profile = await this.authService.updateUserProfile(
         requireAuthenticatedUser(req).id,
@@ -579,25 +534,25 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      this.sendSuccessResponse(res, 'Profile updated successfully', { user: profile });
+      sendSuccessResponse(res, 'Profile updated successfully', { user: profile });
 
     } catch (error) {
       logger.error('Update profile error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
         updates: Object.keys(req.body),
-        requestId: this.createErrorContext(req, req.user.id).requestId,
+        requestId: createErrorContext(req, req.user.id).requestId,
       });
 
       if (error instanceof BaseError) {
-        this.sendErrorResponse(res, error);
+        sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Failed to update profile',
           error instanceof Error ? error : new Error(String(error)),
-          this.createErrorContext(req, req.user.id)
+          createErrorContext(req, req.user.id)
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };
@@ -609,8 +564,8 @@ export class AuthController {
   changePhone = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const body = changePhoneSchema.parse(req.body) as ChangePhoneRequest;
-      const deviceInfo = this.extractDeviceInfo(req);
-      const context = this.createErrorContext(req, req.user.id);
+      const deviceInfo = extractDeviceInfo(req);
+      const context = createErrorContext(req, req.user.id);
 
       await this.authService.changePhoneNumber(
         requireAuthenticatedUser(req).id,
@@ -627,7 +582,7 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      this.sendSuccessResponse(
+      sendSuccessResponse(
         res,
         'Phone number changed successfully. Please login again with new number.'
       );
@@ -637,18 +592,18 @@ export class AuthController {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
         newPhone: req.body.newPhoneNumber?.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
-        requestId: this.createErrorContext(req, req.user.id).requestId,
+        requestId: createErrorContext(req, req.user.id).requestId,
       });
 
       if (error instanceof BaseError) {
-        this.sendErrorResponse(res, error);
+        sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Failed to change phone number',
           error instanceof Error ? error : new Error(String(error)),
-          this.createErrorContext(req, req.user.id)
+          createErrorContext(req, req.user.id)
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };
@@ -659,8 +614,8 @@ export class AuthController {
    */
   deleteAccount = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
-      const deviceInfo = this.extractDeviceInfo(req);
-      const context = this.createErrorContext(req, req.user.id);
+      const deviceInfo = extractDeviceInfo(req);
+      const context = createErrorContext(req, req.user.id);
 
       await this.authService.deactivateUser(requireAuthenticatedUser(req).id, deviceInfo, context);
 
@@ -670,24 +625,24 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      this.sendSuccessResponse(res, 'Account deactivated successfully');
+      sendSuccessResponse(res, 'Account deactivated successfully');
 
     } catch (error) {
       logger.error('Account deactivation error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
-        requestId: this.createErrorContext(req, req.user.id).requestId,
+        requestId: createErrorContext(req, req.user.id).requestId,
       });
 
       if (error instanceof BaseError) {
-        this.sendErrorResponse(res, error);
+        sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Failed to deactivate account',
           error instanceof Error ? error : new Error(String(error)),
-          this.createErrorContext(req, req.user.id)
+          createErrorContext(req, req.user.id)
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };
@@ -726,13 +681,13 @@ export class AuthController {
 
       const result = await this.authService.getMyCustomers(userId, filters);
 
-      this.sendSuccessResponse(res, 'Customers retrieved successfully', result);
+      sendSuccessResponse(res, 'Customers retrieved successfully', result);
 
     } catch (error) {
       logger.error('Get my customers error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
-        requestId: this.createErrorContext(req, req.user.id).requestId,
+        requestId: createErrorContext(req, req.user.id).requestId,
       });
 
       if (error instanceof Error && error.message.includes('Access denied')) {
@@ -742,7 +697,7 @@ export class AuthController {
           error: {
             message: 'Access denied. Business role required.',
             code: 'CUSTOMER_ACCESS_DENIED',
-            requestId: this.createErrorContext(req, req.user.id).requestId,
+            requestId: createErrorContext(req, req.user.id).requestId,
           },
         };
         res.status(403).json(response);
@@ -750,9 +705,9 @@ export class AuthController {
         const internalError = new InternalServerError(
           'Failed to retrieve customers',
           error instanceof Error ? error : new Error(String(error)),
-          this.createErrorContext(req, req.user.id)
+          createErrorContext(req, req.user.id)
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };
@@ -768,37 +723,37 @@ export class AuthController {
 
       const customerDetails = await this.authService.getCustomerDetails(userId, customerId);
 
-      this.sendSuccessResponse(res, 'Customer details retrieved successfully', customerDetails);
+      sendSuccessResponse(res, 'Customer details retrieved successfully', customerDetails);
 
     } catch (error) {
       logger.error('Get customer details error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
         customerId: req.params.customerId,
-        requestId: this.createErrorContext(req, req.user.id).requestId,
+        requestId: createErrorContext(req, req.user.id).requestId,
       });
 
       if (error instanceof Error && error.message.includes('not found')) {
         const notFoundError = new UserNotFoundError(
           'Customer not found or not accessible',
-          this.createErrorContext(req, req.user.id)
+          createErrorContext(req, req.user.id)
         );
-        this.sendErrorResponse(res, notFoundError);
+        sendBaseErrorResponse(res, notFoundError);
       } else if (error instanceof Error && error.message.includes('Access denied')) {
         const accessError = new ForbiddenError(
           'Access denied. You can only view customers from your own businesses.',
-          this.createErrorContext(req, req.user.id)
+          createErrorContext(req, req.user.id)
         );
-        this.sendErrorResponse(res, accessError);
+        sendBaseErrorResponse(res, accessError);
       } else if (error instanceof BaseError) {
-        this.sendErrorResponse(res, error);
+        sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Failed to retrieve customer details',
           error instanceof Error ? error : undefined,
-          this.createErrorContext(req, req.user.id)
+          createErrorContext(req, req.user.id)
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };
@@ -809,28 +764,28 @@ export class AuthController {
    */
   getStats = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
-      const context = this.createErrorContext(req, req.user.id);
+      const context = createErrorContext(req, req.user.id);
 
       const stats = await this.authService.getUserStats(context);
 
-      this.sendSuccessResponse(res, 'Stats retrieved successfully', { stats });
+      sendSuccessResponse(res, 'Stats retrieved successfully', { stats });
 
     } catch (error) {
       logger.error('Get stats error', {
         error: error instanceof Error ? error.message : String(error),
         userId: req.user.id,
-        requestId: this.createErrorContext(req, req.user.id).requestId,
+        requestId: createErrorContext(req, req.user.id).requestId,
       });
 
       if (error instanceof BaseError) {
-        this.sendErrorResponse(res, error);
+        sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
           'Failed to retrieve stats',
           error instanceof Error ? error : new Error(String(error)),
-          this.createErrorContext(req, req.user.id)
+          createErrorContext(req, req.user.id)
         );
-        this.sendErrorResponse(res, internalError);
+        sendBaseErrorResponse(res, internalError);
       }
     }
   };

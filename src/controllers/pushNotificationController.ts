@@ -9,8 +9,16 @@ import {
   batchSendPushNotificationRequestSchema,
   getNotificationsQuerySchema,
 } from '../schemas/pushNotification.schemas';
-import { AuthenticatedRequest } from '../types/auth';
+import { AuthenticatedRequest } from '../types/request';
 import { NotificationStatus } from '../types/business';
+import {
+  handleRouteError,
+  sendSuccessResponse,
+  createErrorContext,
+  sendAppErrorResponse,
+} from '../utils/responseUtils';
+import { AppError } from '../types/responseTypes';
+import { ERROR_CODES } from '../constants/errorCodes';
 
 export class PushNotificationController {
   constructor(private notificationService: NotificationService) {}
@@ -26,21 +34,27 @@ export class PushNotificationController {
         subscriptionData
       );
 
-      res.status(201).json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        'Successfully subscribed to push notifications',
+        {
           id: subscription.id,
           isActive: subscription.isActive,
           deviceName: subscription.deviceName,
           createdAt: subscription.createdAt,
         },
-        message: 'Successfully subscribed to push notifications'
-      });
+        201
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to subscribe to push notifications'
-      });
+      if (error instanceof Error && error.name === 'ZodError') {
+        const error = new AppError(
+          'Invalid subscription data',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      handleRouteError(error, req, res);
     }
   };
 
@@ -57,21 +71,28 @@ export class PushNotificationController {
       );
 
       if (result) {
-        res.json({
-          success: true,
-          message: 'Successfully unsubscribed from push notifications'
-        });
+        sendSuccessResponse(
+          res,
+          'Successfully unsubscribed from push notifications'
+        );
       } else {
-        res.status(404).json({
-          success: false,
-          error: 'Subscription not found'
-        });
+        const error = new AppError(
+          'Subscription not found',
+          404,
+          ERROR_CODES.BUSINESS_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
       }
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to unsubscribe from push notifications'
-      });
+      if (error instanceof Error && error.name === 'ZodError') {
+        const error = new AppError(
+          'Invalid unsubscribe data',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      handleRouteError(error, req, res);
     }
   };
 
@@ -79,16 +100,29 @@ export class PushNotificationController {
   getSubscriptions = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
+      
+      // Validate and sanitize query parameters
       const activeOnly = req.query.activeOnly !== 'false';
+      
+      // Additional validation for activeOnly parameter
+      if (req.query.activeOnly && !['true', 'false'].includes(req.query.activeOnly as string)) {
+        const error = new AppError(
+          'activeOnly must be true or false',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
 
       const subscriptions = await this.notificationService.getUserPushSubscriptions(
         userId,
         activeOnly
       );
 
-      res.json({
-        success: true,
-        data: subscriptions.map(sub => ({
+      sendSuccessResponse(
+        res,
+        'Push subscriptions retrieved successfully',
+        subscriptions.map(sub => ({
           id: sub.id,
           deviceName: sub.deviceName,
           deviceType: sub.deviceType,
@@ -96,12 +130,9 @@ export class PushNotificationController {
           createdAt: sub.createdAt,
           lastUsedAt: sub.lastUsedAt,
         }))
-      });
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get subscriptions'
-      });
+      handleRouteError(error, req, res);
     }
   };
 
@@ -116,9 +147,10 @@ export class PushNotificationController {
         preferences
       );
 
-      res.json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        'Notification preferences updated successfully',
+        {
           id: updatedPreferences.id,
           enableAppointmentReminders: updatedPreferences.enableAppointmentReminders,
           enableBusinessNotifications: updatedPreferences.enableBusinessNotifications,
@@ -127,14 +159,18 @@ export class PushNotificationController {
           preferredChannels: updatedPreferences.preferredChannels,
           quietHours: updatedPreferences.quietHours,
           timezone: updatedPreferences.timezone,
-        },
-        message: 'Notification preferences updated successfully'
-      });
+        }
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update notification preferences'
-      });
+      if (error instanceof Error && error.name === 'ZodError') {
+        const error = new AppError(
+          'Invalid preferences data',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      handleRouteError(error, req, res);
     }
   };
 
@@ -147,9 +183,10 @@ export class PushNotificationController {
 
       if (!preferences) {
         // Return default preferences
-        res.json({
-          success: true,
-          data: {
+        sendSuccessResponse(
+          res,
+          'Default notification preferences retrieved',
+          {
             enableAppointmentReminders: true,
             enableBusinessNotifications: true,
             enablePromotionalMessages: false,
@@ -158,13 +195,14 @@ export class PushNotificationController {
             quietHours: null,
             timezone: 'Europe/Istanbul',
           }
-        });
+        );
         return;
       }
 
-      res.json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        'Notification preferences retrieved successfully',
+        {
           id: preferences.id,
           enableAppointmentReminders: preferences.enableAppointmentReminders,
           enableBusinessNotifications: preferences.enableBusinessNotifications,
@@ -174,12 +212,9 @@ export class PushNotificationController {
           quietHours: preferences.quietHours,
           timezone: preferences.timezone,
         }
-      });
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get notification preferences'
-      });
+      handleRouteError(error, req, res);
     }
   };
 
@@ -193,23 +228,28 @@ export class PushNotificationController {
       const successful = results.filter(r => r.success).length;
       const failed = results.filter(r => !r.success).length;
 
-      res.json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        `Push notification sent. ${successful} successful, ${failed} failed.`,
+        {
           results,
           summary: {
             total: results.length,
             successful,
             failed
           }
-        },
-        message: `Push notification sent. ${successful} successful, ${failed} failed.`
-      });
+        }
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to send push notification'
-      });
+      if (error instanceof Error && error.name === 'ZodError') {
+        const error = new AppError(
+          'Invalid notification data',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      handleRouteError(error, req, res);
     }
   };
 
@@ -232,23 +272,28 @@ export class PushNotificationController {
       const successful = results.filter(r => r.success).length;
       const failed = results.filter(r => !r.success).length;
 
-      res.json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        `Test notification sent. ${successful} successful, ${failed} failed.`,
+        {
           results,
           summary: {
             total: results.length,
             successful,
             failed
           }
-        },
-        message: `Test notification sent. ${successful} successful, ${failed} failed.`
-      });
+        }
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to send test notification'
-      });
+      if (error instanceof Error && error.name === 'ZodError') {
+        const error = new AppError(
+          'Invalid test notification data',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      handleRouteError(error, req, res);
     }
   };
 
@@ -256,6 +301,25 @@ export class PushNotificationController {
   sendBatchNotification = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const batchData = batchSendPushNotificationRequestSchema.parse(req.body);
+
+      // Additional validation for batch size
+      if (batchData.userIds.length > 1000) {
+        const error = new AppError(
+          'Batch size cannot exceed 1000 users',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (batchData.userIds.length === 0) {
+        const error = new AppError(
+          'At least one user ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
 
       const result = await this.notificationService.sendBatchPushNotifications(
         batchData.userIds,
@@ -269,23 +333,28 @@ export class PushNotificationController {
         }
       );
 
-      res.json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        `Batch notification sent to ${batchData.userIds.length} users. ${result.successful} successful, ${result.failed} failed.`,
+        {
           summary: {
             total: batchData.userIds.length,
             successful: result.successful,
             failed: result.failed
           },
           results: result.results
-        },
-        message: `Batch notification sent to ${batchData.userIds.length} users. ${result.successful} successful, ${result.failed} failed.`
-      });
+        }
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to send batch notification'
-      });
+      if (error instanceof Error && error.name === 'ZodError') {
+        const error = new AppError(
+          'Invalid batch notification data',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      handleRouteError(error, req, res);
     }
   };
 
@@ -294,6 +363,16 @@ export class PushNotificationController {
     try {
       const userId = req.user!.id;
       const query = getNotificationsQuerySchema.parse(req.query);
+
+      // Additional validation for date ranges
+      if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
+        const error = new AppError(
+          'From date cannot be after to date',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
 
       const options = {
         page: query.page,
@@ -307,9 +386,10 @@ export class PushNotificationController {
 
       const result = await this.notificationService.getNotificationHistory(userId, options);
 
-      res.json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        'Notification history retrieved successfully',
+        {
           notifications: result.notifications,
           pagination: {
             total: result.total,
@@ -318,12 +398,17 @@ export class PushNotificationController {
             limit: options.limit
           }
         }
-      });
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get notification history'
-      });
+      if (error instanceof Error && error.name === 'ZodError') {
+        const error = new AppError(
+          'Invalid query parameters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      handleRouteError(error, req, res);
     }
   };
 
@@ -333,22 +418,21 @@ export class PushNotificationController {
       const publicKey = await this.notificationService.getVapidPublicKey();
 
       if (!publicKey) {
-        res.status(503).json({
-          success: false,
-          error: 'Push notifications are not configured on this server'
-        });
-        return;
+        const error = new AppError(
+          'Push notifications are not configured on this server',
+          503,
+          ERROR_CODES.SERVICE_UNAVAILABLE
+        );
+        return sendAppErrorResponse(res, error);
       }
 
-      res.json({
-        success: true,
-        data: { publicKey }
-      });
+      sendSuccessResponse(
+        res,
+        'VAPID public key retrieved successfully',
+        { publicKey }
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get VAPID public key'
-      });
+      handleRouteError(error, req, res);
     }
   };
 
@@ -358,19 +442,17 @@ export class PushNotificationController {
       const publicKey = await this.notificationService.getVapidPublicKey();
       const isConfigured = !!publicKey;
       
-      res.json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        'Push notification service health check completed',
+        {
           pushNotificationsEnabled: isConfigured,
           vapidConfigured: isConfigured,
           timestamp: new Date().toISOString()
         }
-      });
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Health check failed'
-      });
+      handleRouteError(error, req, res);
     }
   };
 }

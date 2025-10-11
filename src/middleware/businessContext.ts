@@ -1,6 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { AuthenticatedRequest, GuaranteedAuthRequest } from '../types/auth';
+import { 
+  AuthenticatedRequest, 
+  GuaranteedAuthRequest,
+  BusinessContextRequest as BaseBusinessContextRequest,
+  GuaranteedBusinessContextRequest as BaseGuaranteedBusinessContextRequest
+} from '../types/request';
 import {
   createErrorContext,
   sendAppErrorResponse,
@@ -10,17 +15,21 @@ import {
 export interface BusinessContext {
   businessIds: string[];
   primaryBusinessId: string | null;
+  businessId?: string;
+  userRole?: string;
+  hasAccess?: boolean;
   isOwner: boolean;
   isStaff: boolean;
   isCustomer?: boolean;
 }
 
-export interface BusinessContextRequest extends AuthenticatedRequest {
+// Extend the base types with our specific BusinessContext
+export interface BusinessContextRequest extends BaseBusinessContextRequest {
   businessContext?: BusinessContext;
 }
 
 // Guaranteed business context request - user and business context are always present
-export interface GuaranteedBusinessContextRequest extends GuaranteedAuthRequest {
+export interface GuaranteedBusinessContextRequest extends BaseGuaranteedBusinessContextRequest {
   businessContext: BusinessContext;
 }
 

@@ -3,6 +3,14 @@ import { DiscountCodeService } from '../services/domain/discount';
 import { DiscountType } from '@prisma/client';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { requireAuthenticatedUser } from '../middleware/authUtils';
+import {
+  handleRouteError,
+  sendSuccessResponse,
+  createErrorContext,
+  sendAppErrorResponse,
+} from '../utils/responseUtils';
+import { AppError } from '../types/responseTypes';
+import { ERROR_CODES } from '../constants/errorCodes';
 
 export class DiscountCodeController {
   constructor(private discountCodeService: DiscountCodeService) {}
@@ -113,18 +121,58 @@ export class DiscountCodeController {
   async createDiscountCode(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const userId = requireAuthenticatedUser(req).id;
+      
+      // Validate required fields
+      const { discountType, discountValue } = req.body;
+      if (!discountType || !discountValue) {
+        const error = new AppError(
+          'Discount type and value are required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate discount type
+      if (!['PERCENTAGE', 'FIXED_AMOUNT'].includes(discountType)) {
+        const error = new AppError(
+          'Invalid discount type. Must be PERCENTAGE or FIXED_AMOUNT',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate discount value
+      if (typeof discountValue !== 'number' || discountValue <= 0) {
+        const error = new AppError(
+          'Discount value must be a positive number',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate percentage discount
+      if (discountType === 'PERCENTAGE' && discountValue > 100) {
+        const error = new AppError(
+          'Percentage discount cannot exceed 100%',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const discountCode = await this.discountCodeService.createDiscountCode(userId, req.body);
       
-      res.status(201).json({
-        success: true,
-        data: discountCode,
-        message: 'Discount code created successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Discount code created successfully',
+        discountCode,
+        201
+      );
     } catch (error) {
-      res.status(error instanceof Error && error.message.includes('permission') ? 403 : 400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create discount code'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -181,23 +229,45 @@ export class DiscountCodeController {
       const userId = requireAuthenticatedUser(req).id;
       const { page, limit, isActive } = req.query;
       
+      // Validate and sanitize query parameters
+      const pageNum = page ? parseInt(page as string, 10) : 1;
+      const limitNum = limit ? parseInt(limit as string, 10) : 20;
+      const isActiveFilter = isActive !== undefined ? isActive === 'true' : undefined;
+
+      // Validate pagination parameters
+      if (isNaN(pageNum) || pageNum < 1) {
+        const error = new AppError(
+          'Page must be a positive integer',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+        const error = new AppError(
+          'Limit must be between 1 and 100',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const params = {
-        page: page ? parseInt(page as string) : undefined,
-        limit: limit ? parseInt(limit as string) : undefined,
-        isActive: isActive !== undefined ? isActive === 'true' : undefined
+        page: pageNum,
+        limit: limitNum,
+        isActive: isActiveFilter
       };
 
       const result = await this.discountCodeService.getAllDiscountCodes(userId, params);
       
-      res.json({
-        success: true,
-        data: result
-      });
+      sendSuccessResponse(
+        res,
+        'Discount codes retrieved successfully',
+        result
+      );
     } catch (error) {
-      res.status(error instanceof Error && error.message.includes('permission') ? 403 : 500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve discount codes'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -236,20 +306,36 @@ export class DiscountCodeController {
       const userId = requireAuthenticatedUser(req).id;
       const { id } = req.params;
       
+      // Validate ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Discount code ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid discount code ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      
       const discountCode = await this.discountCodeService.getDiscountCode(userId, id);
       
-      res.json({
-        success: true,
-        data: discountCode
-      });
+      sendSuccessResponse(
+        res,
+        'Discount code retrieved successfully',
+        discountCode
+      );
     } catch (error) {
-      const statusCode = error instanceof Error && error.message.includes('not found') ? 404 :
-                        error instanceof Error && error.message.includes('permission') ? 403 : 500;
-      
-      res.status(statusCode).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve discount code'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -285,21 +371,65 @@ export class DiscountCodeController {
       const userId = requireAuthenticatedUser(req).id;
       const { id } = req.params;
       
+      // Validate ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Discount code ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid discount code ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate request body if provided
+      const { discountType, discountValue } = req.body;
+      if (discountType && !['PERCENTAGE', 'FIXED_AMOUNT'].includes(discountType)) {
+        const error = new AppError(
+          'Invalid discount type. Must be PERCENTAGE or FIXED_AMOUNT',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (discountValue !== undefined && (typeof discountValue !== 'number' || discountValue <= 0)) {
+        const error = new AppError(
+          'Discount value must be a positive number',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (discountType === 'PERCENTAGE' && discountValue > 100) {
+        const error = new AppError(
+          'Percentage discount cannot exceed 100%',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      
       const discountCode = await this.discountCodeService.updateDiscountCode(userId, id, req.body);
       
-      res.json({
-        success: true,
-        data: discountCode,
-        message: 'Discount code updated successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Discount code updated successfully',
+        discountCode
+      );
     } catch (error) {
-      const statusCode = error instanceof Error && error.message.includes('not found') ? 404 :
-                        error instanceof Error && error.message.includes('permission') ? 403 : 400;
-      
-      res.status(statusCode).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update discount code'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -329,25 +459,44 @@ export class DiscountCodeController {
       const userId = requireAuthenticatedUser(req).id;
       const { id } = req.params;
       
+      // Validate ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Discount code ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid discount code ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      
       const success = await this.discountCodeService.deactivateDiscountCode(userId, id);
       
       if (!success) {
-        res.status(404).json({
-          success: false,
-          error: 'Discount code not found'
-        });
-        return;
+        const error = new AppError(
+          'Discount code not found',
+          404,
+          ERROR_CODES.BUSINESS_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
       }
       
-      res.json({
-        success: true,
-        message: 'Discount code deactivated successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Discount code deactivated successfully'
+      );
     } catch (error) {
-      res.status(error instanceof Error && error.message.includes('permission') ? 403 : 500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to deactivate discount code'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -379,28 +528,44 @@ export class DiscountCodeController {
       const userId = requireAuthenticatedUser(req).id;
       const { id } = req.params;
       
+      // Validate ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Discount code ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid discount code ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      
       const success = await this.discountCodeService.deleteDiscountCode(userId, id);
       
       if (!success) {
-        res.status(404).json({
-          success: false,
-          error: 'Discount code not found'
-        });
-        return;
+        const error = new AppError(
+          'Discount code not found',
+          404,
+          ERROR_CODES.BUSINESS_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
       }
       
-      res.json({
-        success: true,
-        message: 'Discount code deleted successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Discount code deleted successfully'
+      );
     } catch (error) {
-      const statusCode = error instanceof Error && error.message.includes('already used') ? 400 :
-                        error instanceof Error && error.message.includes('permission') ? 403 : 500;
-      
-      res.status(statusCode).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete discount code'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -457,31 +622,65 @@ export class DiscountCodeController {
       const { code, planId, amount } = req.body;
       const userId = (req as GuaranteedAuthRequest).user?.id; // Optional for validation
       
+      // Validate required fields
       if (!code || !planId || !amount) {
-        res.status(400).json({
-          success: false,
-          error: 'Code, planId, and amount are required'
-        });
-        return;
+        const error = new AppError(
+          'Code, planId, and amount are required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
       }
+
+      // Validate code format
+      if (typeof code !== 'string' || code.trim().length < 3 || code.trim().length > 50) {
+        const error = new AppError(
+          'Code must be between 3 and 50 characters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate planId format
+      if (typeof planId !== 'string' || planId.trim().length < 1 || planId.trim().length > 50) {
+        const error = new AppError(
+          'Plan ID must be between 1 and 50 characters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate amount
+      if (typeof amount !== 'number' || amount <= 0) {
+        const error = new AppError(
+          'Amount must be a positive number',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Sanitize inputs
+      const sanitizedCode = code.trim().toUpperCase();
+      const sanitizedPlanId = planId.trim();
       
-      const validation = await this.discountCodeService.validateDiscountCode(code, planId, amount, userId);
+      const validation = await this.discountCodeService.validateDiscountCode(sanitizedCode, sanitizedPlanId, amount, userId);
       
-      res.json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        'Discount code validation completed',
+        {
           isValid: validation.isValid,
           discountAmount: validation.calculatedDiscount?.discountAmount,
           originalAmount: validation.calculatedDiscount?.originalAmount,
           finalAmount: validation.calculatedDiscount?.finalAmount,
           errorMessage: validation.errorMessage
         }
-      });
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to validate discount code'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -520,25 +719,63 @@ export class DiscountCodeController {
       const { id } = req.params;
       const { page, limit } = req.query;
       
+      // Validate ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Discount code ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid discount code ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate pagination parameters
+      const pageNum = page ? parseInt(page as string, 10) : 1;
+      const limitNum = limit ? parseInt(limit as string, 10) : 20;
+
+      if (isNaN(pageNum) || pageNum < 1) {
+        const error = new AppError(
+          'Page must be a positive integer',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+        const error = new AppError(
+          'Limit must be between 1 and 100',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+      
       const params = {
-        page: page ? parseInt(page as string) : undefined,
-        limit: limit ? parseInt(limit as string) : undefined
+        page: pageNum,
+        limit: limitNum
       };
       
       const result = await this.discountCodeService.getDiscountCodeUsageHistory(userId, id, params);
       
-      res.json({
-        success: true,
-        data: result
-      });
+      sendSuccessResponse(
+        res,
+        'Usage history retrieved successfully',
+        result
+      );
     } catch (error) {
-      const statusCode = error instanceof Error && error.message.includes('not found') ? 404 :
-                        error instanceof Error && error.message.includes('permission') ? 403 : 500;
-      
-      res.status(statusCode).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve usage history'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -580,15 +817,13 @@ export class DiscountCodeController {
       const userId = requireAuthenticatedUser(req).id;
       const statistics = await this.discountCodeService.getDiscountCodeStatistics(userId);
       
-      res.json({
-        success: true,
-        data: statistics
-      });
+      sendSuccessResponse(
+        res,
+        'Statistics retrieved successfully',
+        statistics
+      );
     } catch (error) {
-      res.status(error instanceof Error && error.message.includes('permission') ? 403 : 500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve statistics'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -644,21 +879,71 @@ export class DiscountCodeController {
   async generateBulkDiscountCodes(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const userId = requireAuthenticatedUser(req).id;
+      
+      // Validate required fields
+      const { count, discountType, discountValue } = req.body;
+      if (!count || !discountType || !discountValue) {
+        const error = new AppError(
+          'Count, discount type, and discount value are required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate count
+      if (typeof count !== 'number' || count < 1 || count > 1000) {
+        const error = new AppError(
+          'Count must be between 1 and 1000',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate discount type
+      if (!['PERCENTAGE', 'FIXED_AMOUNT'].includes(discountType)) {
+        const error = new AppError(
+          'Invalid discount type. Must be PERCENTAGE or FIXED_AMOUNT',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate discount value
+      if (typeof discountValue !== 'number' || discountValue <= 0) {
+        const error = new AppError(
+          'Discount value must be a positive number',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate percentage discount
+      if (discountType === 'PERCENTAGE' && discountValue > 100) {
+        const error = new AppError(
+          'Percentage discount cannot exceed 100%',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const codes = await this.discountCodeService.generateBulkDiscountCodes(userId, req.body);
       
-      res.status(201).json({
-        success: true,
-        data: {
+      sendSuccessResponse(
+        res,
+        `Successfully generated ${codes.length} discount codes`,
+        {
           codes,
           count: codes.length
         },
-        message: `Successfully generated ${codes.length} discount codes`
-      });
+        201
+      );
     } catch (error) {
-      res.status(error instanceof Error && error.message.includes('permission') ? 403 : 400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate bulk discount codes'
-      });
+      handleRouteError(error, req, res);
     }
   }
 }

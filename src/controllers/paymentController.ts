@@ -3,6 +3,14 @@ import { PaymentService, CreatePaymentRequest } from '../services/domain/payment
 import { SubscriptionService } from '../services/domain/subscription/subscriptionService';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { z } from 'zod';
+import {
+  handleRouteError,
+  sendSuccessResponse,
+  createErrorContext,
+  sendAppErrorResponse,
+} from '../utils/responseUtils';
+import { AppError } from '../types/responseTypes';
+import { ERROR_CODES } from '../constants/errorCodes';
 
 const createSubscriptionPaymentSchema = z.object({
   planId: z.string(),
@@ -41,8 +49,30 @@ export class PaymentController {
   async createSubscriptionPayment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
-      const validatedData = createSubscriptionPaymentSchema.parse(req.body);
       const userId = req.user.id;
+
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      const validatedData = createSubscriptionPaymentSchema.parse(req.body);
 
       const result = await this.paymentService.createSubscriptionForBusiness(
         businessId,
@@ -60,35 +90,36 @@ export class PaymentController {
         }
       );
 
-
       if (result.success) {
-        res.status(201).json({
-          success: true,
-          data: {
+        sendSuccessResponse(
+          res,
+          'Subscription payment created successfully',
+          {
             subscriptionId: result.subscriptionId,
             paymentId: result.paymentId,
             message: result.message,
             discountApplied: result.discountApplied
-          }
-        });
+          },
+          201
+        );
       } else {
-        res.status(400).json({
-          success: false,
-          error: result.error
-        });
+        const error = new AppError(
+          result.error || 'Payment creation failed',
+          400,
+          ERROR_CODES.PAYMENT_PROCESSING_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid request data',
-          details: error.errors
-        });
+        const error = new AppError(
+          'Invalid request data',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       } else {
-        res.status(500).json({
-          success: false,
-          error: error instanceof Error ? error.message : 'Internal server error'
-        });
+        handleRouteError(error, req, res);
       }
     }
   }
@@ -96,8 +127,30 @@ export class PaymentController {
   async refundPayment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { paymentId } = req.params;
-      const validatedData = refundPaymentSchema.parse(req.body);
       const userId = req.user.id;
+
+      // Validate paymentId parameter
+      if (!paymentId || typeof paymentId !== 'string') {
+        const error = new AppError(
+          'Payment ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate paymentId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(paymentId) || paymentId.length < 1 || paymentId.length > 50) {
+        const error = new AppError(
+          'Invalid payment ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      const validatedData = refundPaymentSchema.parse(req.body);
 
       const result = await this.paymentService.refundPayment(
         paymentId,
@@ -106,31 +159,32 @@ export class PaymentController {
       );
 
       if (result.success) {
-        res.json({
-          success: true,
-          data: {
+        sendSuccessResponse(
+          res,
+          'Payment refunded successfully',
+          {
             refundId: result.refundId,
             message: result.message
           }
-        });
+        );
       } else {
-        res.status(400).json({
-          success: false,
-          error: result.error
-        });
+        const error = new AppError(
+          result.error || 'Refund failed',
+          400,
+          ERROR_CODES.PAYMENT_PROCESSING_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid request data',
-          details: error.errors
-        });
+        const error = new AppError(
+          'Invalid request data',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       } else {
-        res.status(500).json({
-          success: false,
-          error: error instanceof Error ? error.message : 'Internal server error'
-        });
+        handleRouteError(error, req, res);
       }
     }
   }
@@ -141,24 +195,54 @@ export class PaymentController {
       const { reason } = req.body;
       const userId = req.user.id;
 
+      // Validate paymentId parameter
+      if (!paymentId || typeof paymentId !== 'string') {
+        const error = new AppError(
+          'Payment ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate paymentId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(paymentId) || paymentId.length < 1 || paymentId.length > 50) {
+        const error = new AppError(
+          'Invalid payment ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate reason if provided
+      if (reason && (typeof reason !== 'string' || reason.trim().length < 3)) {
+        const error = new AppError(
+          'Reason must be at least 3 characters long',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const result = await this.paymentService.cancelPayment(paymentId, reason);
 
       if (result.success) {
-        res.json({
-          success: true,
-          message: result.message
-        });
+        sendSuccessResponse(
+          res,
+          result.message || 'Payment cancelled successfully'
+        );
       } else {
-        res.status(400).json({
-          success: false,
-          error: result.error
-        });
+        const error = new AppError(
+          result.error || 'Payment cancellation failed',
+          400,
+          ERROR_CODES.PAYMENT_PROCESSING_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -167,24 +251,45 @@ export class PaymentController {
       const { paymentId } = req.params;
       const userId = req.user.id;
 
+      // Validate paymentId parameter
+      if (!paymentId || typeof paymentId !== 'string') {
+        const error = new AppError(
+          'Payment ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate paymentId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(paymentId) || paymentId.length < 1 || paymentId.length > 50) {
+        const error = new AppError(
+          'Invalid payment ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const result = await this.paymentService.retrievePayment(paymentId);
 
       if (result.success) {
-        res.json({
-          success: true,
-          data: result.payment
-        });
+        sendSuccessResponse(
+          res,
+          'Payment retrieved successfully',
+          result.payment
+        );
       } else {
-        res.status(404).json({
-          success: false,
-          error: result.error
-        });
+        const error = new AppError(
+          result.error || 'Payment not found',
+          404,
+          ERROR_CODES.BUSINESS_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
       }
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -193,24 +298,45 @@ export class PaymentController {
       const { businessId } = req.params;
       const userId = req.user.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const result = await this.paymentService.getSubscriptionWithPayments(businessId);
 
       if (result.success) {
-        res.json({
-          success: true,
-          data: result.subscription
-        });
+        sendSuccessResponse(
+          res,
+          'Payment history retrieved successfully',
+          result.subscription
+        );
       } else {
-        res.status(404).json({
-          success: false,
-          error: result.error
-        });
+        const error = new AppError(
+          result.error || 'Payment history not found',
+          404,
+          ERROR_CODES.BUSINESS_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
       }
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -218,21 +344,20 @@ export class PaymentController {
     try {
       const testCards = this.paymentService.getTestCards();
 
-      res.json({
-        success: true,
-        data: testCards,
-        message: 'Test cards for Iyzico sandbox environment',
-        usage: {
-          success: 'Use success card for successful test payments',
-          failure: 'Use failure card to test payment failures',
-          threeDsSuccess: 'Use for 3DS authentication test'
+      sendSuccessResponse(
+        res,
+        'Test cards for Iyzico sandbox environment',
+        {
+          testCards,
+          usage: {
+            success: 'Use success card for successful test payments',
+            failure: 'Use failure card to test payment failures',
+            threeDsSuccess: 'Use for 3DS authentication test'
+          }
         }
-      });
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -240,42 +365,61 @@ export class PaymentController {
     try {
       const plans = await this.subscriptionService.getAllPlans();
 
-      res.json({
-        success: true,
-        data: plans,
-        message: 'Subscription plans retrieved successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Subscription plans retrieved successfully',
+        plans
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
   async webhookHandler(req: Request, res: Response): Promise<void> {
     try {
       const iyzicoData = req.body;
-      
+
+      // Validate webhook data
+      if (!iyzicoData || typeof iyzicoData !== 'object') {
+        const error = new AppError(
+          'Invalid webhook data',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
 
       if (iyzicoData.status === 'success') {
         const paymentId = iyzicoData.paymentId;
         
+        if (!paymentId) {
+          const error = new AppError(
+            'Payment ID is required in webhook data',
+            400,
+            ERROR_CODES.REQUIRED_FIELD_MISSING
+          );
+          return sendAppErrorResponse(res, error);
+        }
+        
         const payment = await this.paymentService.retrievePayment(paymentId);
         
         if (payment.success) {
+          // Process successful payment webhook
+          // Add your webhook processing logic here
+          console.log('Payment webhook processed successfully:', paymentId);
+        } else {
+          console.error('Failed to retrieve payment for webhook:', paymentId);
         }
       }
 
-      res.status(200).json({
-        status: 'success',
-        message: 'Webhook processed'
-      });
+      sendSuccessResponse(
+        res,
+        'Webhook processed successfully',
+        { status: 'success' }
+      );
     } catch (error) {
-      res.status(400).json({
-        status: 'error',
-        message: 'Webhook processing failed'
-      });
+      console.error('Webhook processing error:', error);
+      handleRouteError(error, req, res);
     }
   }
 }

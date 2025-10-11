@@ -3,6 +3,14 @@ import { ReportsService } from "../services/domain/reports";
 import { GuaranteedAuthRequest } from "../types/auth";
 import { BaseError } from "../types/errors";
 import logger from "../utils/Logger/logger";
+import {
+  handleRouteError,
+  sendSuccessResponse,
+  createErrorContext,
+  sendAppErrorResponse,
+} from '../utils/responseUtils';
+import { AppError } from '../types/responseTypes';
+import { ERROR_CODES } from '../constants/errorCodes';
 
 export class ReportsController {
   constructor(private reportsService: ReportsService) {}
@@ -19,71 +27,73 @@ export class ReportsController {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
 
       // Validate date range
       if (start && end && start > end) {
-        res.status(400).json({
-          success: false,
-          error: {
-            message: "Start date must be before end date",
-            code: "INVALID_DATE_RANGE",
-          },
-        });
-        return;
+        const error = new AppError(
+          'Start date must be before end date',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date formats
+      if (startDate && start && isNaN(start.getTime())) {
+        const error = new AppError(
+          'Invalid start date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (endDate && end && isNaN(end.getTime())) {
+        const error = new AppError(
+          'Invalid end date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const report = await this.reportsService.getBusinessOverview(
         userId,
-        businessId as string,
+        businessId,
         start,
         end
       );
 
-      res.json({
-        success: true,
-        message: "Business overview report retrieved successfully",
-        data: report,
-      });
+      sendSuccessResponse(
+        res,
+        'Business overview report retrieved successfully',
+        report
+      );
     } catch (error) {
-      logger.error("Get business overview error", {
-        error: error instanceof Error ? error.message : String(error),
-        userId: req.user.id,
-        requestId: this.createRequestId(),
-      });
-
-      if (
-        error instanceof Error &&
-        error.message.includes("No accessible businesses")
-      ) {
-        res.status(403).json({
-          success: false,
-          error: {
-            message: "No accessible businesses found",
-            code: "NO_BUSINESS_ACCESS",
-          },
-        });
-        return;
-      }
-
-      if (error instanceof BaseError) {
-        res.status(error.statusCode).json({
-          success: false,
-          error: {
-            message: error.message,
-            code: error.code,
-          },
-        });
-      } else {
-        res.status(500).json({
-          success: false,
-          error: {
-            message: "Failed to retrieve business overview report",
-            code: "REPORT_ERROR",
-          },
-        });
-      }
+      handleRouteError(error, req, res);
     }
   };
 
@@ -99,23 +109,73 @@ export class ReportsController {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
 
+      // Validate date range
+      if (start && end && start > end) {
+        const error = new AppError(
+          'Start date must be before end date',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date formats
+      if (startDate && start && isNaN(start.getTime())) {
+        const error = new AppError(
+          'Invalid start date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (endDate && end && isNaN(end.getTime())) {
+        const error = new AppError(
+          'Invalid end date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const report = await this.reportsService.getRevenueReport(
         userId,
-        businessId as string,
+        businessId,
         start,
         end
       );
 
-      res.json({
-        success: true,
-        message: "Revenue report retrieved successfully",
-        data: report,
-      });
+      sendSuccessResponse(
+        res,
+        'Revenue report retrieved successfully',
+        report
+      );
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve revenue report");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -131,23 +191,73 @@ export class ReportsController {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
 
+      // Validate date range
+      if (start && end && start > end) {
+        const error = new AppError(
+          'Start date must be before end date',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date formats
+      if (startDate && start && isNaN(start.getTime())) {
+        const error = new AppError(
+          'Invalid start date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (endDate && end && isNaN(end.getTime())) {
+        const error = new AppError(
+          'Invalid end date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const report = await this.reportsService.getAppointmentReport(
         userId,
-        businessId as string,
+        businessId,
         start,
         end
       );
 
-      res.json({
-        success: true,
-        message: "Appointment report retrieved successfully",
-        data: report,
-      });
+      sendSuccessResponse(
+        res,
+        'Appointment report retrieved successfully',
+        report
+      );
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve appointment report");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -163,23 +273,73 @@ export class ReportsController {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
 
+      // Validate date range
+      if (start && end && start > end) {
+        const error = new AppError(
+          'Start date must be before end date',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date formats
+      if (startDate && start && isNaN(start.getTime())) {
+        const error = new AppError(
+          'Invalid start date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (endDate && end && isNaN(end.getTime())) {
+        const error = new AppError(
+          'Invalid end date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const report = await this.reportsService.getCustomerReport(
         userId,
-        businessId as string,
+        businessId,
         start,
         end
       );
 
-      res.json({
-        success: true,
-        message: "Customer report retrieved successfully",
-        data: report,
-      });
+      sendSuccessResponse(
+        res,
+        'Customer report retrieved successfully',
+        report
+      );
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve customer report");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -242,7 +402,7 @@ export class ReportsController {
         },
       });
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve dashboard report");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -259,30 +419,95 @@ export class ReportsController {
       const { reportType } = req.params;
       const { businessId, startDate, endDate, format = "json" } = req.query;
 
-      if (
-        !["overview", "revenue", "appointments", "customers"].includes(
-          reportType
-        )
-      ) {
-        res.status(400).json({
-          success: false,
-          error: {
-            message: "Invalid report type",
-            code: "INVALID_REPORT_TYPE",
-          },
-        });
-        return;
+      // Validate reportType parameter
+      if (!reportType || typeof reportType !== 'string') {
+        const error = new AppError(
+          'Report type is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      const validReportTypes = ["overview", "revenue", "appointments", "customers"];
+      if (!validReportTypes.includes(reportType)) {
+        const error = new AppError(
+          'Invalid report type. Must be one of: overview, revenue, appointments, customers',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate format parameter
+      if (format && !['json', 'csv'].includes(format as string)) {
+        const error = new AppError(
+          'Invalid format. Must be json or csv',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
+
+      // Validate date range
+      if (start && end && start > end) {
+        const error = new AppError(
+          'Start date must be before end date',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date formats
+      if (startDate && start && isNaN(start.getTime())) {
+        const error = new AppError(
+          'Invalid start date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (endDate && end && isNaN(end.getTime())) {
+        const error = new AppError(
+          'Invalid end date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
 
       let report: any;
       switch (reportType) {
         case "overview":
           report = await this.reportsService.getBusinessOverview(
             userId,
-            businessId as string,
+            businessId,
             start,
             end
           );
@@ -290,7 +515,7 @@ export class ReportsController {
         case "revenue":
           report = await this.reportsService.getRevenueReport(
             userId,
-            businessId as string,
+            businessId,
             start,
             end
           );
@@ -298,7 +523,7 @@ export class ReportsController {
         case "appointments":
           report = await this.reportsService.getAppointmentReport(
             userId,
-            businessId as string,
+            businessId,
             start,
             end
           );
@@ -306,7 +531,7 @@ export class ReportsController {
         case "customers":
           report = await this.reportsService.getCustomerReport(
             userId,
-            businessId as string,
+            businessId,
             start,
             end
           );
@@ -327,15 +552,17 @@ export class ReportsController {
         res.send(csv);
       } else {
         // Return JSON format
-        res.json({
-          success: true,
-          message: `${reportType} report exported successfully`,
-          data: report,
-          exportedAt: new Date().toISOString(),
-        });
+        sendSuccessResponse(
+          res,
+          `${reportType} report exported successfully`,
+          {
+            ...report,
+            exportedAt: new Date().toISOString(),
+          }
+        );
       }
     } catch (error) {
-      this.handleError(error, res, "Failed to export report");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -394,58 +621,12 @@ export class ReportsController {
         },
       });
     } catch (error) {
-      this.handleError(
-        error,
-        res,
-        "Failed to retrieve business comparison report"
-      );
+      handleRouteError(error, req, res);
     }
   };
 
   // Helper methods
 
-  private handleError(
-    error: unknown,
-    res: Response,
-    defaultMessage: string
-  ): void {
-    logger.error("Reports controller error", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-
-    if (
-      error instanceof Error &&
-      error.message.includes("No accessible businesses")
-    ) {
-      res.status(403).json({
-        success: false,
-        error: {
-          message: "No accessible businesses found",
-          code: "NO_BUSINESS_ACCESS",
-        },
-      });
-      return;
-    }
-
-    if (error instanceof BaseError) {
-      res.status(error.statusCode).json({
-        success: false,
-        error: {
-          message: error.message,
-          code: error.code,
-        },
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        error: {
-          message: defaultMessage,
-          code: "REPORT_ERROR",
-        },
-      });
-    }
-  }
 
   private createRequestId(): string {
     return Math.random().toString(36).substring(2, 15);
@@ -566,7 +747,7 @@ export class ReportsController {
         data: report,
       });
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve financial report");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -598,7 +779,7 @@ export class ReportsController {
         data: report,
       });
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve operational report");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -630,11 +811,7 @@ export class ReportsController {
         data: report,
       });
     } catch (error) {
-      this.handleError(
-        error,
-        res,
-        "Failed to retrieve customer analytics report"
-      );
+      handleRouteError(error, req, res);
     }
   };
 
@@ -662,7 +839,7 @@ export class ReportsController {
         data: report,
       });
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve trends analysis report");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -694,7 +871,7 @@ export class ReportsController {
         data: report,
       });
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve quality metrics report");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -733,7 +910,7 @@ export class ReportsController {
         },
       });
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve executive summary");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -794,7 +971,7 @@ export class ReportsController {
         data: metrics,
       });
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve real-time metrics");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -818,6 +995,16 @@ export class ReportsController {
         groupBy = "day",
       } = req.body;
 
+      // Validate required fields
+      if (!reportType || !businessId) {
+        const error = new AppError(
+          'Report type and business ID are required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       // Validate report type
       const validReportTypes = [
         "overview",
@@ -828,18 +1015,67 @@ export class ReportsController {
         "operational",
       ];
       if (!validReportTypes.includes(reportType)) {
-        res.status(400).json({
-          success: false,
-          error: {
-            message: "Invalid report type",
-            code: "INVALID_REPORT_TYPE",
-          },
-        });
-        return;
+        const error = new AppError(
+          'Invalid report type. Must be one of: overview, revenue, appointments, customers, financial, operational',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate groupBy parameter
+      const validGroupBy = ['day', 'week', 'month', 'year'];
+      if (groupBy && !validGroupBy.includes(groupBy)) {
+        const error = new AppError(
+          'Invalid groupBy value. Must be one of: day, week, month, year',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const start = startDate ? new Date(startDate) : undefined;
       const end = endDate ? new Date(endDate) : undefined;
+
+      // Validate date range
+      if (start && end && start > end) {
+        const error = new AppError(
+          'Start date must be before end date',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date formats
+      if (startDate && start && isNaN(start.getTime())) {
+        const error = new AppError(
+          'Invalid start date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (endDate && end && isNaN(end.getTime())) {
+        const error = new AppError(
+          'Invalid end date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
 
       // Get base report based on type
       let report: any;
@@ -884,13 +1120,13 @@ export class ReportsController {
         },
       };
 
-      res.json({
-        success: true,
-        message: "Custom report generated successfully",
-        data: customReport,
-      });
+      sendSuccessResponse(
+        res,
+        'Custom report generated successfully',
+        customReport
+      );
     } catch (error) {
-      this.handleError(error, res, "Failed to generate custom report");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -949,7 +1185,7 @@ export class ReportsController {
         },
       });
     } catch (error) {
-      this.handleError(error, res, "Failed to retrieve report templates");
+      handleRouteError(error, req, res);
     }
   };
 
@@ -976,15 +1212,97 @@ export class ReportsController {
 
       // Validate required fields
       if (!reportType || !name || !schedule || !recipients?.length) {
-        res.status(400).json({
-          success: false,
-          error: {
-            message:
-              "Missing required fields: reportType, name, schedule, recipients",
-            code: "MISSING_REQUIRED_FIELDS",
-          },
-        });
-        return;
+        const error = new AppError(
+          'Missing required fields: reportType, name, schedule, recipients',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate report type
+      const validReportTypes = [
+        "overview",
+        "revenue",
+        "appointments",
+        "customers",
+        "financial",
+        "operational",
+      ];
+      if (!validReportTypes.includes(reportType)) {
+        const error = new AppError(
+          'Invalid report type. Must be one of: overview, revenue, appointments, customers, financial, operational',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId if provided
+      if (businessId) {
+        const idRegex = /^[a-zA-Z0-9-_]+$/;
+        if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+          const error = new AppError(
+            'Invalid business ID format',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+      }
+
+      // Validate name length
+      if (name.length < 3 || name.length > 100) {
+        const error = new AppError(
+          'Name must be between 3 and 100 characters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate format
+      const validFormats = ['pdf', 'csv', 'json'];
+      if (format && !validFormats.includes(format)) {
+        const error = new AppError(
+          'Invalid format. Must be one of: pdf, csv, json',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate schedule structure
+      if (!schedule.frequency || !['daily', 'weekly', 'monthly'].includes(schedule.frequency)) {
+        const error = new AppError(
+          'Invalid schedule frequency. Must be daily, weekly, or monthly',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate recipients
+      if (!Array.isArray(recipients) || recipients.length === 0) {
+        const error = new AppError(
+          'Recipients must be a non-empty array',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate email format for recipients
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      for (const recipient of recipients) {
+        if (typeof recipient !== 'string' || !emailRegex.test(recipient)) {
+          const error = new AppError(
+            'Invalid email format in recipients',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
       }
 
       // Create scheduled report record (mock implementation)
@@ -1005,13 +1323,14 @@ export class ReportsController {
         totalRuns: 0,
       };
 
-      res.status(201).json({
-        success: true,
-        message: "Report scheduled successfully",
-        data: scheduledReport,
-      });
+      sendSuccessResponse(
+        res,
+        'Report scheduled successfully',
+        scheduledReport,
+        201
+      );
     } catch (error) {
-      this.handleError(error, res, "Failed to schedule report");
+      handleRouteError(error, req, res);
     }
   };
 
