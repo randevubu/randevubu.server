@@ -59,3 +59,6 @@ export interface AppointmentSchedulerConfig {
   maxRetries?: number; // Maximum retry attempts for failed operations
   retryDelay?: number; // Delay between retries in milliseconds
 }
+
+// Removed DTOs - keeping it simple with controller-level transformations
+// Most companies handle data formatting in the controller layer, not service layer

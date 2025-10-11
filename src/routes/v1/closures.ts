@@ -3,9 +3,14 @@ import { BusinessClosureController } from '../../controllers/businessClosureCont
 import { requireAuth, requirePermission, requireAny } from '../../middleware/authUtils';
 import { attachBusinessContext, requireBusinessAccess } from '../../middleware/attachBusinessContext';
 import { PermissionName } from '../../types/auth';
+import { dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
 export function createBusinessClosureRoutes(businessClosureController: BusinessClosureController): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   // Public route for checking if business is closed
   /**
@@ -24,7 +29,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
    *       200:
    *         description: Closure status
    */
-  router.get('/business/:businessId/check', businessClosureController.isBusinessClosed.bind(businessClosureController));
+  router.get('/business/:businessId/check', realTimeCache, businessClosureController.isBusinessClosed.bind(businessClosureController));
 
   // Protected routes
   router.use(requireAuth);
@@ -100,6 +105,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
    */
   router.get(
     '/my',
+    dynamicCache,
     requireAny([PermissionName.VIEW_ALL_CLOSURES, PermissionName.VIEW_OWN_CLOSURES]),
     businessClosureController.getMyBusinessClosures.bind(businessClosureController)
   );

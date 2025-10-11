@@ -15,14 +15,14 @@ RUN apk add --no-cache \
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install dependencies
-RUN npm ci --only=production --ignore-scripts
+# Install dependencies and build native modules
+RUN npm install --only=production
 
 # Development stage
 FROM base AS development
 
 # Install all dependencies including dev dependencies
-RUN npm ci --ignore-scripts
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -40,7 +40,7 @@ CMD ["npm", "run", "dev"]
 FROM base AS builder
 
 # Install all dependencies including dev dependencies
-RUN npm ci --ignore-scripts
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -66,7 +66,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install only production dependencies including OpenTelemetry
-RUN npm ci --only=production --ignore-scripts && \
+RUN npm install --only=production && \
     npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-prometheus @opentelemetry/instrumentation-express @opentelemetry/instrumentation-http @opentelemetry/instrumentation-prisma @opentelemetry/semantic-conventions @opentelemetry/exporter-trace-otlp-http && \
     npm cache clean --force
 

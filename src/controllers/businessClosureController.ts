@@ -7,7 +7,7 @@ import {
 import { AppointmentRescheduleService } from '../services/domain/appointment';
 import { BusinessClosureService, ClosureAnalyticsService } from '../services/domain/closure';
 import { NotificationService } from '../services/domain/notification';
-import { AuthenticatedRequest } from '../types/auth';
+import { AuthenticatedRequest } from '../types/request';
 import {
   AvailabilityAlertRequest,
   ClosureType,

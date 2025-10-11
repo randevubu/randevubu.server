@@ -14,8 +14,9 @@ import { BusinessService } from '../services/domain/business';
 import { RBACService } from '../services/domain/rbac';
 import { TokenService } from '../services/domain/token';
 import { StaffService } from '../services/domain/staff';
-import { AuthenticatedRequest, AuthenticatedRequestWithFile } from '../types/auth';
+import { AuthenticatedRequest, AuthenticatedRequestWithFile } from '../types/request';
 import { BusinessData, BusinessSubscriptionData } from '../types/business';
+// Cache invalidation handled by routes, not controllers
 import {
   handleRouteError,
   sendSuccessResponse,
@@ -144,13 +145,7 @@ export class BusinessController {
       });
 
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: {
-          message: 'Failed to retrieve business data',
-          code: 'INTERNAL_SERVER_ERROR'
-        }
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -215,7 +210,8 @@ export class BusinessController {
         this.rbacService.forceInvalidateUser(userId);
         
         // Wait for database consistency (enterprise pattern)
-        await new Promise(resolve => setTimeout(resolve, 50));
+        const DB_CONSISTENCY_DELAY_MS = 50;
+        await new Promise(resolve => setTimeout(resolve, DB_CONSISTENCY_DELAY_MS));
         
         // Get fresh user permissions after role assignment (bypass cache)
         const userPermissionsAfter = await this.rbacService.getUserPermissions(userId, false);
@@ -227,7 +223,8 @@ export class BusinessController {
         if (!ownerWasAdded) {
           // Retry with additional cache clearing (handles distributed cache scenarios)
           this.rbacService.forceInvalidateUser(userId);
-          await new Promise(resolve => setTimeout(resolve, 100));
+          const RETRY_DELAY_MS = 100;
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
           
           const retryPermissions = await this.rbacService.getUserPermissions(userId, false);
           const retryRoles = retryPermissions.roles.map(role => role.name);
@@ -264,15 +261,11 @@ export class BusinessController {
         // Set cache control headers to prevent stale profile responses
         res.set('X-Role-Update', 'true');
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-      } else {
       }
 
       res.status(201).json(response);
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create business'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -332,10 +325,7 @@ export class BusinessController {
         }
       });
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -642,10 +632,7 @@ export class BusinessController {
         }
       });
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Invalid search parameters'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -653,42 +640,64 @@ export class BusinessController {
     try {
       const { latitude, longitude, radius = 10, limit = 10 } = req.query;
 
+      // Validate required parameters
       if (!latitude || !longitude) {
-        res.status(400).json({
-          success: false,
-          error: 'Latitude and longitude are required'
-        });
-        return;
+        const error = new AppError(
+          'Latitude and longitude are required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
       }
 
+      // Parse and validate coordinates
       const lat = parseFloat(latitude as string);
       const lng = parseFloat(longitude as string);
       const rad = parseFloat(radius as string);
       const lmt = parseInt(limit as string);
 
-      if (isNaN(lat) || isNaN(lng) || isNaN(rad)) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid coordinates or radius'
-        });
-        return;
+      // Validate coordinate ranges
+      if (isNaN(lat) || isNaN(lng) || isNaN(rad) || isNaN(lmt)) {
+        const error = new AppError(
+          'Invalid coordinates, radius, or limit format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate coordinate bounds
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        const error = new AppError(
+          'Coordinates are out of valid range',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate radius and limit bounds
+      if (rad < 0 || rad > 1000 || lmt < 1 || lmt > 100) {
+        const error = new AppError(
+          'Radius must be between 0-1000km and limit between 1-100',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const businesses = await this.businessService.findNearbyBusinesses(lat, lng, rad, lmt);
 
-      res.json({
-        success: true,
-        data: businesses,
+      sendSuccessResponse(res, 'Nearby businesses retrieved successfully', {
+        businesses,
         meta: {
           total: businesses.length,
-          radius: rad
+          radius: rad,
+          limit: lmt
         }
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -705,10 +714,7 @@ export class BusinessController {
         message: 'Business verified successfully'
       });
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to verify business'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -725,10 +731,7 @@ export class BusinessController {
         message: 'Business verification removed successfully'
       });
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to unverify business'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -751,10 +754,7 @@ export class BusinessController {
         message: 'Business closed successfully'
       });
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to close business'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -771,10 +771,7 @@ export class BusinessController {
         message: 'Business reopened successfully'
       });
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to reopen business'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -787,15 +784,9 @@ export class BusinessController {
       const businessId = id === 'my' ? undefined : id;
       const stats = await this.businessService.getMyBusinessStats(userId, businessId);
 
-      res.json({
-        success: true,
-        data: stats
-      });
+      sendSuccessResponse(res, 'Business stats retrieved successfully', stats);
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -999,23 +990,48 @@ export class BusinessController {
       const { slug } = req.params;
       const { excludeId } = req.query;
 
+      // Validate slug format
+      if (!slug || typeof slug !== 'string') {
+        const error = new AppError(
+          'Slug is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate slug format (alphanumeric, hyphens, underscores only)
+      const slugRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!slugRegex.test(slug)) {
+        const error = new AppError(
+          'Slug must contain only letters, numbers, hyphens, and underscores',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate slug length
+      if (slug.length < 3 || slug.length > 50) {
+        const error = new AppError(
+          'Slug must be between 3 and 50 characters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const isAvailable = await this.businessService.checkSlugAvailability(
         slug,
         excludeId as string
       );
 
-      res.json({
-        success: true,
-        data: {
-          slug,
-          available: isAvailable
-        }
+      sendSuccessResponse(res, 'Slug availability checked successfully', {
+        slug,
+        available: isAvailable
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -1588,8 +1604,8 @@ export class BusinessController {
           // Log SMS test activity for rate limiting
           await this.businessService.logAuditEvent({
             userId,
-            action: 'USER_UPDATE',
-            entity: 'SMS_TEST',
+            action: 'SMS_TEST',
+            entity: 'NOTIFICATION',
             entityId: testAppointment.id,
             details: { businessId, testId: testAppointment.id }
           });
@@ -1816,6 +1832,336 @@ export class BusinessController {
         success: true,
         data: updatedSettings,
         message: 'Reservation settings updated successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  // Business Cancellation Policy Methods
+
+  async getCancellationPolicies(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const policies = await this.businessService.getBusinessCancellationPolicies(userId, businessId);
+
+      res.status(200).json({
+        success: true,
+        data: policies,
+        message: 'Cancellation policies retrieved successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async updateCancellationPolicies(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const policyData = req.body;
+      const updatedPolicies = await this.businessService.updateBusinessCancellationPolicies(
+        userId,
+        businessId,
+        policyData
+      );
+
+      res.status(200).json({
+        success: true,
+        data: updatedPolicies,
+        message: 'Cancellation policies updated successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async getCustomerPolicyStatus(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+      const customerId = req.params.customerId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      if (!customerId) {
+        res.status(400).json({
+          success: false,
+          error: 'Customer ID is required'
+        });
+        return;
+      }
+
+      const customerStatus = await this.businessService.getCustomerPolicyStatus(
+        userId,
+        businessId,
+        customerId
+      );
+
+      res.status(200).json({
+        success: true,
+        data: customerStatus,
+        message: 'Customer policy status retrieved successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  // Business Customer Management Methods
+
+  async getCustomerManagementSettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const settings = await this.businessService.getBusinessCustomerManagementSettings(userId, businessId);
+
+      res.status(200).json({
+        success: true,
+        data: settings,
+        message: 'Customer management settings retrieved successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async updateCustomerManagementSettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      const settingsData = req.body;
+      const updatedSettings = await this.businessService.updateBusinessCustomerManagementSettings(
+        userId,
+        businessId,
+        settingsData
+      );
+
+      res.status(200).json({
+        success: true,
+        data: updatedSettings,
+        message: 'Customer management settings updated successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async getCustomerNotes(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+      const customerId = req.params.customerId;
+      const noteType = req.query.noteType as 'STAFF' | 'INTERNAL' | 'CUSTOMER' | undefined;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      if (!customerId) {
+        res.status(400).json({
+          success: false,
+          error: 'Customer ID is required'
+        });
+        return;
+      }
+
+      const notes = await this.businessService.getCustomerNotes(userId, businessId, customerId, noteType);
+
+      res.status(200).json({
+        success: true,
+        data: notes,
+        message: 'Customer notes retrieved successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async addCustomerNote(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+      const customerId = req.params.customerId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      if (!customerId) {
+        res.status(400).json({
+          success: false,
+          error: 'Customer ID is required'
+        });
+        return;
+      }
+
+      const noteData = req.body;
+      const note = await this.businessService.addCustomerNote(userId, businessId, customerId, noteData);
+
+      res.status(201).json({
+        success: true,
+        data: note,
+        message: 'Customer note added successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async getCustomerLoyaltyStatus(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+      const customerId = req.params.customerId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      if (!customerId) {
+        res.status(400).json({
+          success: false,
+          error: 'Customer ID is required'
+        });
+        return;
+      }
+
+      const loyaltyStatus = await this.businessService.getCustomerLoyaltyStatus(userId, businessId, customerId);
+
+      res.status(200).json({
+        success: true,
+        data: loyaltyStatus,
+        message: 'Customer loyalty status retrieved successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async getCustomerEvaluation(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+      const appointmentId = req.params.appointmentId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      if (!appointmentId) {
+        res.status(400).json({
+          success: false,
+          error: 'Appointment ID is required'
+        });
+        return;
+      }
+
+      const evaluation = await this.businessService.getCustomerEvaluation(userId, businessId, appointmentId);
+
+      res.status(200).json({
+        success: true,
+        data: evaluation,
+        message: 'Customer evaluation retrieved successfully'
+      });
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async submitCustomerEvaluation(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+      const appointmentId = req.params.appointmentId;
+
+      if (!businessId) {
+        res.status(400).json({
+          success: false,
+          error: 'Business context is required'
+        });
+        return;
+      }
+
+      if (!appointmentId) {
+        res.status(400).json({
+          success: false,
+          error: 'Appointment ID is required'
+        });
+        return;
+      }
+
+      const evaluationData = req.body;
+      const evaluation = await this.businessService.submitCustomerEvaluation(
+        userId,
+        businessId,
+        appointmentId,
+        evaluationData
+      );
+
+      res.status(201).json({
+        success: true,
+        data: evaluation,
+        message: 'Customer evaluation submitted successfully'
       });
     } catch (error) {
       handleRouteError(error, req, res);

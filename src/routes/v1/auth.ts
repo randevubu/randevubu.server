@@ -7,6 +7,8 @@ import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { csrfMiddleware } from '../../middleware/csrf';
 import { validateBody } from '../../middleware/validation';
 import { RepositoryContainer } from '../../repositories';
+import { dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import {
   logoutSchema,
   sendVerificationSchema,
@@ -26,6 +28,9 @@ const authController = new AuthController(
 const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
 
 const router = Router();
+
+// Apply cache monitoring to all routes
+router.use(trackCachePerformance);
 
 // Rate limiting - More relaxed in development
 const isDevelopment = process.env.NODE_ENV === 'development';

@@ -3,6 +3,15 @@ import { SubscriptionService } from '../services/domain/subscription';
 import { subscribeBusinessSchema } from '../schemas/business.schemas';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { SubscriptionStatus } from '../types/business';
+import {
+  handleRouteError,
+  sendSuccessResponse,
+  createErrorContext,
+  sendAppErrorResponse,
+} from '../utils/responseUtils';
+import { AppError } from '../types/responseTypes';
+import { ERROR_CODES } from '../constants/errorCodes';
+import { ZodError } from 'zod';
 
 export class SubscriptionController {
   constructor(private subscriptionService: SubscriptionService) {}
@@ -12,18 +21,13 @@ export class SubscriptionController {
     try {
       const plans = await this.subscriptionService.getAllPlans();
 
-      res.json({
-        success: true,
-        data: plans,
-        meta: {
-          total: plans.length
-        }
-      });
+      sendSuccessResponse(
+        res,
+        'Subscription plans retrieved successfully',
+        plans
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -31,25 +35,45 @@ export class SubscriptionController {
     try {
       const { id } = req.params;
 
+      // Validate plan ID parameter
+      if (!id || typeof id !== 'string') {
+        const error = new AppError(
+          'Plan ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate plan ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Invalid plan ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const plan = await this.subscriptionService.getPlanById(id);
 
       if (!plan) {
-        res.status(404).json({
-          success: false,
-          error: 'Plan not found'
-        });
-        return;
+        const error = new AppError(
+          'Plan not found',
+          404,
+          ERROR_CODES.SUBSCRIPTION_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
       }
 
-      res.json({
-        success: true,
-        data: plan
-      });
+      sendSuccessResponse(
+        res,
+        'Subscription plan retrieved successfully',
+        plan
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -57,29 +81,34 @@ export class SubscriptionController {
     try {
       const { interval } = req.params;
 
+      // Validate interval parameter
+      if (!interval || typeof interval !== 'string') {
+        const error = new AppError(
+          'Billing interval is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       if (!['monthly', 'yearly'].includes(interval)) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid billing interval. Must be monthly or yearly'
-        });
-        return;
+        const error = new AppError(
+          'Invalid billing interval. Must be monthly or yearly',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const plans = await this.subscriptionService.getPlansByBillingInterval(interval);
 
-      res.json({
-        success: true,
-        data: plans,
-        meta: {
-          total: plans.length,
-          billingInterval: interval
-        }
-      });
+      sendSuccessResponse(
+        res,
+        'Subscription plans retrieved successfully',
+        plans
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -87,8 +116,44 @@ export class SubscriptionController {
   async subscribeBusiness(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { businessId } = req.params;
-      const validatedData = subscribeBusinessSchema.parse(req.body);
       const userId = req.user.id;
+
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate request body with Zod
+      let validatedData;
+      try {
+        validatedData = subscribeBusinessSchema.parse(req.body);
+      } catch (zodError) {
+        if (zodError instanceof ZodError) {
+          const error = new AppError(
+            'Invalid subscription data',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+        throw zodError;
+      }
 
       const subscription = await this.subscriptionService.subscribeBusiness(
         userId,
@@ -96,16 +161,14 @@ export class SubscriptionController {
         validatedData
       );
 
-      res.status(201).json({
-        success: true,
-        data: subscription,
-        message: 'Business subscribed successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Business subscribed successfully',
+        subscription,
+        201
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create subscription'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -114,25 +177,45 @@ export class SubscriptionController {
       const { businessId } = req.params;
       const userId = req.user.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const subscription = await this.subscriptionService.getBusinessSubscription(userId, businessId);
 
       if (!subscription) {
-        res.status(404).json({
-          success: false,
-          error: 'No active subscription found'
-        });
-        return;
+        const error = new AppError(
+          'No active subscription found',
+          404,
+          ERROR_CODES.SUBSCRIPTION_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
       }
 
-      res.json({
-        success: true,
-        data: subscription
-      });
+      sendSuccessResponse(
+        res,
+        'Business subscription retrieved successfully',
+        subscription
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -141,21 +224,36 @@ export class SubscriptionController {
       const { businessId } = req.params;
       const userId = req.user.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const subscriptions = await this.subscriptionService.getSubscriptionHistory(userId, businessId);
 
-      res.json({
-        success: true,
-        data: subscriptions,
-        meta: {
-          total: subscriptions.length,
-          businessId
-        }
-      });
+      sendSuccessResponse(
+        res,
+        'Subscription history retrieved successfully',
+        subscriptions
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -165,12 +263,45 @@ export class SubscriptionController {
       const { newPlanId } = req.body;
       const userId = req.user.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate newPlanId parameter
       if (!newPlanId || typeof newPlanId !== 'string') {
-        res.status(400).json({
-          success: false,
-          error: 'newPlanId is required'
-        });
-        return;
+        const error = new AppError(
+          'New plan ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate newPlanId format
+      if (!idRegex.test(newPlanId) || newPlanId.length < 1 || newPlanId.length > 50) {
+        const error = new AppError(
+          'Invalid new plan ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const subscription = await this.subscriptionService.upgradePlan(
@@ -179,16 +310,13 @@ export class SubscriptionController {
         newPlanId
       );
 
-      res.json({
-        success: true,
-        data: subscription,
-        message: 'Plan upgraded successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Plan upgraded successfully',
+        subscription
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to upgrade plan'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -198,12 +326,45 @@ export class SubscriptionController {
       const { newPlanId } = req.body;
       const userId = req.user.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate newPlanId parameter
       if (!newPlanId || typeof newPlanId !== 'string') {
-        res.status(400).json({
-          success: false,
-          error: 'newPlanId is required'
-        });
-        return;
+        const error = new AppError(
+          'New plan ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate newPlanId format
+      if (!idRegex.test(newPlanId) || newPlanId.length < 1 || newPlanId.length > 50) {
+        const error = new AppError(
+          'Invalid new plan ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const subscription = await this.subscriptionService.downgradePlan(
@@ -212,16 +373,13 @@ export class SubscriptionController {
         newPlanId
       );
 
-      res.json({
-        success: true,
-        data: subscription,
-        message: 'Plan downgraded successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Plan downgraded successfully',
+        subscription
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to downgrade plan'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -230,6 +388,37 @@ export class SubscriptionController {
       const { businessId } = req.params;
       const { cancelAtPeriodEnd = true } = req.body;
       const userId = req.user.id;
+
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate cancelAtPeriodEnd parameter
+      if (typeof cancelAtPeriodEnd !== 'boolean') {
+        const error = new AppError(
+          'cancelAtPeriodEnd must be a boolean',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
 
       const subscription = await this.subscriptionService.cancelSubscription(
         userId,
@@ -241,16 +430,13 @@ export class SubscriptionController {
         ? 'Subscription will be cancelled at period end'
         : 'Subscription cancelled immediately';
 
-      res.json({
-        success: true,
-        data: subscription,
-        message
-      });
+      sendSuccessResponse(
+        res,
+        message,
+        subscription
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to cancel subscription'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -259,21 +445,39 @@ export class SubscriptionController {
       const { businessId } = req.params;
       const userId = req.user.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const subscription = await this.subscriptionService.reactivateSubscription(
         userId,
         businessId
       );
 
-      res.json({
-        success: true,
-        data: subscription,
-        message: 'Subscription reactivated successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Subscription reactivated successfully',
+        subscription
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to reactivate subscription'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -283,22 +487,60 @@ export class SubscriptionController {
       const { paymentMethodId } = req.body;
       const userId = req.user.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate paymentMethodId parameter
+      if (!paymentMethodId || typeof paymentMethodId !== 'string') {
+        const error = new AppError(
+          'Payment method ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate paymentMethodId format
+      if (!idRegex.test(paymentMethodId) || paymentMethodId.length < 1 || paymentMethodId.length > 50) {
+        const error = new AppError(
+          'Invalid payment method ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const subscription = await this.subscriptionService.convertTrialToActive(
         userId,
         businessId,
         paymentMethodId
       );
 
-      res.json({
-        success: true,
-        data: subscription,
-        message: 'Trial converted to active subscription'
-      });
+      sendSuccessResponse(
+        res,
+        'Trial converted to active subscription',
+        subscription
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to convert trial'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -307,17 +549,36 @@ export class SubscriptionController {
       const { businessId } = req.params;
       const userId = req.user.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const limits = await this.subscriptionService.checkSubscriptionLimits(userId, businessId);
 
-      res.json({
-        success: true,
-        data: limits
-      });
+      sendSuccessResponse(
+        res,
+        'Subscription limits retrieved successfully',
+        limits
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -325,21 +586,45 @@ export class SubscriptionController {
     try {
       const { currentPlanId, newPlanId, currentPeriodEnd } = req.query;
 
+      // Validate required query parameters
       if (!currentPlanId || !newPlanId || !currentPeriodEnd) {
-        res.status(400).json({
-          success: false,
-          error: 'currentPlanId, newPlanId, and currentPeriodEnd are required'
-        });
-        return;
+        const error = new AppError(
+          'currentPlanId, newPlanId, and currentPeriodEnd are required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
       }
 
+      // Validate plan IDs format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(currentPlanId as string) || (currentPlanId as string).length < 1 || (currentPlanId as string).length > 50) {
+        const error = new AppError(
+          'Invalid current plan ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (!idRegex.test(newPlanId as string) || (newPlanId as string).length < 1 || (newPlanId as string).length > 50) {
+        const error = new AppError(
+          'Invalid new plan ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date format
       const periodEnd = new Date(currentPeriodEnd as string);
       if (isNaN(periodEnd.getTime())) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid currentPeriodEnd date format'
-        });
-        return;
+        const error = new AppError(
+          'Invalid currentPeriodEnd date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const proration = await this.subscriptionService.calculateUpgradeProration(
@@ -348,15 +633,13 @@ export class SubscriptionController {
         periodEnd
       );
 
-      res.json({
-        success: true,
-        data: proration
-      });
+      sendSuccessResponse(
+        res,
+        'Upgrade proration calculated successfully',
+        proration
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to calculate proration'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -364,17 +647,55 @@ export class SubscriptionController {
     try {
       const { businessId, planId } = req.params;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate planId parameter
+      if (!planId || typeof planId !== 'string') {
+        const error = new AppError(
+          'Plan ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID formats
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (!idRegex.test(planId) || planId.length < 1 || planId.length > 50) {
+        const error = new AppError(
+          'Invalid plan ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const validation = await this.subscriptionService.validatePlanLimits(businessId, planId);
 
-      res.json({
-        success: true,
-        data: validation
-      });
+      sendSuccessResponse(
+        res,
+        'Plan limits validation completed successfully',
+        validation
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to validate plan limits'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -382,26 +703,45 @@ export class SubscriptionController {
   async getAllSubscriptions(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user.id;
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const { page, limit } = req.query;
 
-      const result = await this.subscriptionService.getAllSubscriptions(userId, page, limit);
+      // Validate and parse pagination parameters
+      let pageNum = 1;
+      let limitNum = 20;
 
-      res.json({
-        success: true,
-        data: result.subscriptions,
-        meta: {
-          total: result.total,
-          page: result.page,
-          totalPages: result.totalPages,
-          limit
+      if (page) {
+        pageNum = parseInt(page as string, 10);
+        if (isNaN(pageNum) || pageNum < 1 || pageNum > 1000) {
+          const error = new AppError(
+            'Page must be a number between 1 and 1000',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
         }
-      });
+      }
+
+      if (limit) {
+        limitNum = parseInt(limit as string, 10);
+        if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+          const error = new AppError(
+            'Limit must be a number between 1 and 100',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+      }
+
+      const result = await this.subscriptionService.getAllSubscriptions(userId, pageNum, limitNum);
+
+      sendSuccessResponse(
+        res,
+        'All subscriptions retrieved successfully',
+        result.subscriptions
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -411,46 +751,44 @@ export class SubscriptionController {
 
       const stats = await this.subscriptionService.getSubscriptionStats(userId);
 
-      res.json({
-        success: true,
-        data: stats
-      });
+      sendSuccessResponse(
+        res,
+        'Subscription statistics retrieved successfully',
+        stats
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
   async getTrialsEndingSoon(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user.id;
-      const days = parseInt(req.query.days as string) || 3;
+      const { days } = req.query;
 
-      if (days < 1 || days > 30) {
-        res.status(400).json({
-          success: false,
-          error: 'Days must be between 1 and 30'
-        });
-        return;
+      // Validate and parse days parameter
+      let daysNum = 3;
+      if (days) {
+        daysNum = parseInt(days as string, 10);
+        if (isNaN(daysNum) || daysNum < 1 || daysNum > 30) {
+          const error = new AppError(
+            'Days must be between 1 and 30',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
       }
 
-      const trials = await this.subscriptionService.getTrialsEndingSoon(userId, days);
+      const trials = await this.subscriptionService.getTrialsEndingSoon(userId, daysNum);
 
-      res.json({
-        success: true,
-        data: trials,
-        meta: {
-          total: trials.length,
-          days
-        }
-      });
+      sendSuccessResponse(
+        res,
+        'Trials ending soon retrieved successfully',
+        trials
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -460,18 +798,13 @@ export class SubscriptionController {
 
       const expired = await this.subscriptionService.getExpiredSubscriptions(userId);
 
-      res.json({
-        success: true,
-        data: expired,
-        meta: {
-          total: expired.length
-        }
-      });
+      sendSuccessResponse(
+        res,
+        'Expired subscriptions retrieved successfully',
+        expired
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -481,31 +814,61 @@ export class SubscriptionController {
       const { status, reason } = req.body;
       const userId = req.user.id;
 
-      if (!Object.values(SubscriptionStatus).includes(status)) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid subscription status'
-        });
-        return;
+      // Validate subscriptionId parameter
+      if (!subscriptionId || typeof subscriptionId !== 'string') {
+        const error = new AppError(
+          'Subscription ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate subscriptionId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(subscriptionId) || subscriptionId.length < 1 || subscriptionId.length > 50) {
+        const error = new AppError(
+          'Invalid subscription ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate status parameter
+      if (!status || !Object.values(SubscriptionStatus).includes(status)) {
+        const error = new AppError(
+          'Invalid subscription status',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate reason if provided
+      if (reason && (typeof reason !== 'string' || reason.trim().length < 1 || reason.trim().length > 500)) {
+        const error = new AppError(
+          'Reason must be between 1 and 500 characters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const subscription = await this.subscriptionService.forceUpdateSubscriptionStatus(
         userId,
         subscriptionId,
         status,
-        reason
+        reason?.trim()
       );
 
-      res.json({
-        success: true,
-        data: subscription,
-        message: `Subscription status updated to ${status}`
-      });
+      sendSuccessResponse(
+        res,
+        `Subscription status updated to ${status}`,
+        subscription
+      );
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update subscription status'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -515,16 +878,13 @@ export class SubscriptionController {
       // This would typically be restricted to system calls
       const result = await this.subscriptionService.processExpiredSubscriptions();
 
-      res.json({
-        success: true,
-        data: result,
-        message: `Processed ${result.processed} expired subscriptions`
-      });
+      sendSuccessResponse(
+        res,
+        `Processed ${result.processed} expired subscriptions`,
+        result
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Failed to process expired subscriptions'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -533,16 +893,13 @@ export class SubscriptionController {
       // System endpoint for processing renewals
       const result = await this.subscriptionService.processSubscriptionRenewals();
 
-      res.json({
-        success: true,
-        data: result,
-        message: `Processed ${result.processed} renewals, ${result.renewed} successful, ${result.failed} failed`
-      });
+      sendSuccessResponse(
+        res,
+        `Processed ${result.processed} renewals, ${result.renewed} successful, ${result.failed} failed`,
+        result
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Failed to process subscription renewals'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -551,16 +908,13 @@ export class SubscriptionController {
       // System endpoint
       const count = await this.subscriptionService.sendTrialEndingNotifications();
 
-      res.json({
-        success: true,
-        data: { notificationsSent: count },
-        message: `Sent ${count} trial ending notifications`
-      });
+      sendSuccessResponse(
+        res,
+        `Sent ${count} trial ending notifications`,
+        { notificationsSent: count }
+      );
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Failed to send trial ending notifications'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -570,24 +924,34 @@ export class SubscriptionController {
       const { status } = req.params;
       const userId = req.user.id;
       
+      // Validate status parameter
+      if (!status || typeof status !== 'string') {
+        const error = new AppError(
+          'Status is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       if (!Object.values(SubscriptionStatus).includes(status as SubscriptionStatus)) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid subscription status'
-        });
-        return;
+        const error = new AppError(
+          'Invalid subscription status',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       // This would need to be implemented in the service
-      res.status(501).json({
-        success: false,
-        error: 'getSubscriptionsByStatus not implemented'
-      });
+      const error = new AppError(
+        'getSubscriptionsByStatus not implemented',
+        501,
+        ERROR_CODES.VALIDATION_ERROR
+      );
+      return sendAppErrorResponse(res, error);
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -596,16 +960,36 @@ export class SubscriptionController {
       const { planId } = req.params;
       const userId = req.user.id;
 
+      // Validate planId parameter
+      if (!planId || typeof planId !== 'string') {
+        const error = new AppError(
+          'Plan ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate planId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(planId) || planId.length < 1 || planId.length > 50) {
+        const error = new AppError(
+          'Invalid plan ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       // This would need to be implemented in the service
-      res.status(501).json({
-        success: false,
-        error: 'getSubscriptionsByPlan not implemented'
-      });
+      const error = new AppError(
+        'getSubscriptionsByPlan not implemented',
+        501,
+        ERROR_CODES.VALIDATION_ERROR
+      );
+      return sendAppErrorResponse(res, error);
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -614,15 +998,14 @@ export class SubscriptionController {
       const userId = req.user.id;
 
       // This would need to be implemented in the service
-      res.status(501).json({
-        success: false,
-        error: 'getBusinessesWithoutSubscription not implemented'
-      });
+      const error = new AppError(
+        'getBusinessesWithoutSubscription not implemented',
+        501,
+        ERROR_CODES.VALIDATION_ERROR
+      );
+      return sendAppErrorResponse(res, error);
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -631,16 +1014,54 @@ export class SubscriptionController {
       const userId = req.user.id;
       const { startDate, endDate } = req.query;
 
+      // Validate date parameters if provided
+      if (startDate) {
+        const start = new Date(startDate as string);
+        if (isNaN(start.getTime())) {
+          const error = new AppError(
+            'Invalid startDate format',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        if (isNaN(end.getTime())) {
+          const error = new AppError(
+            'Invalid endDate format',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+      }
+
+      // Validate date range if both provided
+      if (startDate && endDate) {
+        const start = new Date(startDate as string);
+        const end = new Date(endDate as string);
+        if (start > end) {
+          const error = new AppError(
+            'Start date must be before end date',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+      }
+
       // This would need to be implemented in the service
-      res.status(501).json({
-        success: false,
-        error: 'getRevenueAnalytics not implemented'
-      });
+      const error = new AppError(
+        'getRevenueAnalytics not implemented',
+        501,
+        ERROR_CODES.VALIDATION_ERROR
+      );
+      return sendAppErrorResponse(res, error);
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -650,12 +1071,63 @@ export class SubscriptionController {
       const { newPlanId } = req.body;
       const userId = req.user.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate subscriptionId parameter
+      if (!subscriptionId || typeof subscriptionId !== 'string') {
+        const error = new AppError(
+          'Subscription ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate newPlanId parameter
       if (!newPlanId || typeof newPlanId !== 'string') {
-        res.status(400).json({
-          success: false,
-          error: 'newPlanId is required'
-        });
-        return;
+        const error = new AppError(
+          'New plan ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID formats
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (!idRegex.test(subscriptionId) || subscriptionId.length < 1 || subscriptionId.length > 50) {
+        const error = new AppError(
+          'Invalid subscription ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (!idRegex.test(newPlanId) || newPlanId.length < 1 || newPlanId.length > 50) {
+        const error = new AppError(
+          'Invalid new plan ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const calculation = await this.subscriptionService.calculateSubscriptionChange(
@@ -665,15 +1137,13 @@ export class SubscriptionController {
         newPlanId
       );
 
-      res.json({
-        success: true,
-        data: calculation
-      });
+      sendSuccessResponse(
+        res,
+        'Subscription change calculation completed successfully',
+        calculation
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to calculate subscription change'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -683,12 +1153,94 @@ export class SubscriptionController {
       const { newPlanId, effectiveDate, prorationPreference, paymentMethodId } = req.body;
       const userId = req.user.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate subscriptionId parameter
+      if (!subscriptionId || typeof subscriptionId !== 'string') {
+        const error = new AppError(
+          'Subscription ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate required fields
       if (!newPlanId || !effectiveDate || !prorationPreference || !paymentMethodId) {
-        res.status(400).json({
-          success: false,
-          error: 'newPlanId, effectiveDate, prorationPreference, and paymentMethodId are required'
-        });
-        return;
+        const error = new AppError(
+          'newPlanId, effectiveDate, prorationPreference, and paymentMethodId are required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID formats
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (!idRegex.test(subscriptionId) || subscriptionId.length < 1 || subscriptionId.length > 50) {
+        const error = new AppError(
+          'Invalid subscription ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (!idRegex.test(newPlanId) || newPlanId.length < 1 || newPlanId.length > 50) {
+        const error = new AppError(
+          'Invalid new plan ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (!idRegex.test(paymentMethodId) || paymentMethodId.length < 1 || paymentMethodId.length > 50) {
+        const error = new AppError(
+          'Invalid payment method ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate effectiveDate
+      const effective = new Date(effectiveDate);
+      if (isNaN(effective.getTime())) {
+        const error = new AppError(
+          'Invalid effectiveDate format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate prorationPreference
+      const validProrationPreferences = ['immediate', 'next_billing_cycle', 'custom'];
+      if (!validProrationPreferences.includes(prorationPreference)) {
+        const error = new AppError(
+          'Invalid prorationPreference. Must be immediate, next_billing_cycle, or custom',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const result = await this.subscriptionService.changeSubscriptionPlan(
@@ -697,22 +1249,19 @@ export class SubscriptionController {
         subscriptionId,
         {
           newPlanId,
-          effectiveDate,
+          effectiveDate: effective.toISOString(),
           prorationPreference,
           paymentMethodId
         }
       );
 
-      res.json({
-        success: true,
-        data: result,
-        message: 'Subscription plan changed successfully'
-      });
+      sendSuccessResponse(
+        res,
+        'Subscription plan changed successfully',
+        result
+      );
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to change subscription plan'
-      });
+      handleRouteError(error, req, res);
     }
   }
 }

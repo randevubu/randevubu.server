@@ -3,9 +3,14 @@ import { SecureNotificationController } from '../../controllers/secureNotificati
 import { requireAuth } from '../../middleware/authUtils';
 import { requirePermission } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
+import { dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
 export function createSecureNotificationRoutes(controller: SecureNotificationController): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   /**
    * @swagger
@@ -292,7 +297,7 @@ export function createSecureNotificationRoutes(controller: SecureNotificationCon
    *       403:
    *         description: Insufficient permissions
    */
-  router.get('/stats/:businessId', requireAuth, controller.getNotificationStats);
+  router.get('/stats/:businessId', dynamicCache, requireAuth, controller.getNotificationStats);
 
   /**
    * @swagger
@@ -361,7 +366,7 @@ export function createSecureNotificationRoutes(controller: SecureNotificationCon
    *       403:
    *         description: Insufficient permissions
    */
-  router.get('/alerts/:businessId', requireAuth, controller.getSecurityAlerts);
+  router.get('/alerts/:businessId', dynamicCache, requireAuth, controller.getSecurityAlerts);
 
   /**
    * @swagger
@@ -475,7 +480,7 @@ export function createSecureNotificationRoutes(controller: SecureNotificationCon
    *       500:
    *         description: Internal server error
    */
-  router.get('/health', requireAuth, controller.getSystemHealth);
+  router.get('/health', realTimeCache, requireAuth, controller.getSystemHealth);
 
   return router;
 }

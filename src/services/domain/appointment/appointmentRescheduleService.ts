@@ -27,7 +27,8 @@ export class AppointmentRescheduleService {
   private async validateBusinessReservationRules(
     businessId: string,
     appointmentDateTime: Date,
-    customerId?: string
+    customerId?: string,
+    serviceMinAdvanceBooking?: number
   ): Promise<void> {
     const business = await this.businessRepository.findById(businessId);
     if (!business) {
@@ -53,11 +54,12 @@ export class AppointmentRescheduleService {
       throw new Error(`Appointments cannot be rescheduled more than ${rules.maxAdvanceBookingDays} days in advance`);
     }
 
-    // 2. Check minimum notification period
+    // 2. Check minimum advance booking - use service setting if provided, otherwise business setting
     const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const minAdvanceHours = serviceMinAdvanceBooking !== undefined ? serviceMinAdvanceBooking : rules.minNotificationHours;
     
-    if (hoursDifference < rules.minNotificationHours) {
-      throw new Error(`Appointments must be rescheduled at least ${rules.minNotificationHours} hours in advance`);
+    if (hoursDifference < minAdvanceHours) {
+      throw new Error(`Appointments must be rescheduled at least ${minAdvanceHours} hours in advance`);
     }
 
     // 3. Check maximum daily appointments for this specific business
@@ -397,14 +399,15 @@ export class AppointmentRescheduleService {
           // CRITICAL: Validate business reservation rules before rescheduling
           const appointment = await this.prisma.appointment.findUnique({
             where: { id: suggestion.originalAppointmentId },
-            include: { business: true }
+            include: { business: true, service: true }
           });
           
           if (appointment) {
             await this.validateBusinessReservationRules(
               appointment.businessId,
               new Date(selectedSlot.startTime),
-              appointment.customerId
+              appointment.customerId,
+              appointment.service?.minAdvanceBooking
             );
           }
 
@@ -468,11 +471,18 @@ export class AppointmentRescheduleService {
       try {
         const bestSlot = suggestions[0].suggestedSlots[0]; // Use first available slot
         
+        // Get service information for validation
+        const service = await this.prisma.service.findUnique({
+          where: { id: appointment.serviceId },
+          select: { minAdvanceBooking: true }
+        });
+        
         // CRITICAL: Validate business reservation rules before auto-rescheduling
         await this.validateBusinessReservationRules(
           appointment.businessId,
           new Date(bestSlot.startTime),
-          appointment.customerId
+          appointment.customerId,
+          service?.minAdvanceBooking
         );
         
         await this.prisma.appointment.update({

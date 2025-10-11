@@ -3,7 +3,8 @@ import { AuthMiddleware } from './auth';
 import { AuthorizationMiddleware } from './authorization';
 import { RepositoryContainer } from '../repositories';
 import { ServiceContainer } from '../services';
-import { PermissionName, RoleName, AuthenticatedRequest, GuaranteedAuthRequest } from '../types/auth';
+import { PermissionName, RoleName } from '../types/auth';
+import { AuthenticatedRequest, GuaranteedAuthRequest } from '../types/request';
 import prisma from '../lib/prisma';
 
 // Initialize global middleware instances

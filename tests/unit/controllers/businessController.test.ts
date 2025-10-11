@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { BusinessController } from "../../../src/controllers/businessController";
 import { BusinessContextRequest } from "../../../src/middleware/businessContext";
-import { AuthenticatedRequest } from "../../../src/types/auth";
+import { AuthenticatedRequest } from "../../../src/types/request";
 import { TestHelpers } from "../../utils/testHelpers";
 
 // Mock dependencies

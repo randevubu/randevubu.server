@@ -4,6 +4,8 @@ import { ServiceContainer } from '../../services';
 import { ControllerContainer } from '../../controllers';
 import { validateParams } from '../../middleware/validation';
 import { businessIdParamSchema } from '../../schemas/staff.schemas';
+import { staticCache, semiDynamicCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import prisma from '../../lib/prisma';
 
 // Initialize dependencies
@@ -13,6 +15,9 @@ const controllers = new ControllerContainer(repositories, services);
 
 export function createPublicRoutes(): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   /**
    * @swagger
@@ -70,6 +75,7 @@ export function createPublicRoutes(): Router {
    *         description: Business not found
    */
   router.get('/businesses/:businessId/staff',
+    semiDynamicCache,
     validateParams(businessIdParamSchema),
     controllers.staffController.getPublicBusinessStaff.bind(controllers.staffController)
   );

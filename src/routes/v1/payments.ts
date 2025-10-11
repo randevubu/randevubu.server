@@ -7,8 +7,13 @@ import { PrismaClient } from '@prisma/client';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { RepositoryContainer } from '../../repositories';
 import { RBACService } from '../../services/domain/rbac/rbacService';
+import { staticCache, dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
 const router = express.Router();
+
+// Apply cache monitoring to all routes
+router.use(trackCachePerformance);
 
 const prisma = new PrismaClient();
 const repositories = new RepositoryContainer(prisma);
@@ -226,7 +231,7 @@ router.post('/businesses/:businessId/payments', requireAuth,
  *       404:
  *         description: No subscription found
  */
-router.get('/businesses/:businessId/payments', requireAuth,
+router.get('/businesses/:businessId/payments', dynamicCache, requireAuth,
   withAuth((req, res) => paymentController.getPaymentHistory(req, res))
 );
 
@@ -251,7 +256,7 @@ router.get('/businesses/:businessId/payments', requireAuth,
  *       404:
  *         description: Payment not found
  */
-router.get('/payments/:paymentId', requireAuth,
+router.get('/payments/:paymentId', realTimeCache, requireAuth,
   withAuth((req, res) => paymentController.getPayment(req, res))
 );
 
@@ -379,7 +384,7 @@ router.post('/payments/:paymentId/cancel', requireAuth,
  *                 message:
  *                   type: string
  */
-router.get('/payments/subscription-plans', (req, res) => 
+router.get('/payments/subscription-plans', dynamicCache, (req, res) => 
   paymentController.getSubscriptionPlans(req, res)
 );
 
@@ -413,7 +418,7 @@ router.get('/payments/subscription-plans', (req, res) =>
  *                   type: string
  *                   example: "Test cards for Iyzico sandbox environment"
  */
-router.get('/payments/test-cards', (req, res) => 
+router.get('/payments/test-cards', staticCache, (req, res) => 
   paymentController.getTestCards(req, res)
 );
 

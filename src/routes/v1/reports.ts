@@ -7,6 +7,8 @@ import { ServiceContainer } from '../../services';
 import { validateQuery } from '../../middleware/validation';
 import { requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
+import { staticCache, dynamicCache, semiDynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import {
   reportQuerySchema,
   exportReportSchema,
@@ -25,6 +27,9 @@ const authMiddleware = new AuthMiddleware(repositories, services.tokenService, s
 
 export function createReportsRoutes(): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   /**
    * @swagger
@@ -130,6 +135,7 @@ export function createReportsRoutes(): Router {
    */
   router.get(
     '/overview',
+    semiDynamicCache,
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
@@ -217,6 +223,7 @@ export function createReportsRoutes(): Router {
    */
   router.get(
     '/revenue',
+    semiDynamicCache,
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
@@ -296,6 +303,7 @@ export function createReportsRoutes(): Router {
    */
   router.get(
     '/appointments',
+    semiDynamicCache,
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
@@ -1274,6 +1282,7 @@ export function createReportsRoutes(): Router {
    */
   router.get(
     '/realtime',
+    realTimeCache,
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     rateLimitByUser(60, 60 * 1000), // High limit for real-time data
@@ -1416,6 +1425,7 @@ export function createReportsRoutes(): Router {
    */
   router.get(
     '/templates',
+    staticCache,
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     rateLimitByUser(20, 60 * 1000),

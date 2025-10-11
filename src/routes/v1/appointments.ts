@@ -1,6 +1,10 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { AppointmentController } from "../../controllers/appointmentController";
+import { dynamicCache, realTimeCache, cache } from "../../middleware/cacheMiddleware";
+import { trackCachePerformance } from "../../middleware/cacheMonitoring";
+import { invalidateAppointmentCache } from "../../middleware/cacheInvalidation";
 import prisma from "../../lib/prisma";
+import { BusinessOwnershipRequest } from "../../types/auth";
 import {
   attachBusinessContext,
   requireBusinessAccess,
@@ -37,6 +41,9 @@ export function createAppointmentRoutes(
   appointmentController: AppointmentController
 ): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   // All appointment routes require authentication
   router.use(authMiddleware.authenticate);
@@ -114,6 +121,7 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/my-appointments",
+    dynamicCache,
     requireBusinessAccess,
     appointmentController.getMyAppointments.bind(appointmentController)
   );
@@ -211,6 +219,7 @@ export function createAppointmentRoutes(
    */
   router.post(
     "/",
+    invalidateAppointmentCache,
     reservationValidation.validateReservationRules,
     appointmentController.createAppointment.bind(appointmentController)
   );
@@ -456,6 +465,7 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/customer/:customerId?",
+    dynamicCache,
     appointmentController.getCustomerAppointments.bind(appointmentController)
   );
 
@@ -483,6 +493,7 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/:id",
+    dynamicCache,
     appointmentController.getAppointmentById.bind(appointmentController)
   );
 
@@ -510,6 +521,7 @@ export function createAppointmentRoutes(
    */
   router.put(
     "/:id",
+    invalidateAppointmentCache,
     reservationValidation.validateAdvanceBooking,
     appointmentController.updateAppointment.bind(appointmentController)
   );
@@ -596,6 +608,7 @@ export function createAppointmentRoutes(
    */
   router.put(
     "/:id/status",
+    invalidateAppointmentCache,
     appointmentController.updateAppointmentStatus.bind(appointmentController)
   );
 
@@ -754,6 +767,7 @@ export function createAppointmentRoutes(
    */
   router.post(
     "/:id/cancel",
+    invalidateAppointmentCache,
     appointmentController.cancelAppointment.bind(appointmentController)
   );
 
@@ -784,6 +798,7 @@ export function createAppointmentRoutes(
    */
   router.post(
     "/:id/confirm",
+    invalidateAppointmentCache,
     authorizationMiddleware.requireAny(
       authorizationMiddleware.requirePermission({
         resource: "appointment",
@@ -824,6 +839,7 @@ export function createAppointmentRoutes(
    */
   router.post(
     "/:id/complete",
+    invalidateAppointmentCache,
     authorizationMiddleware.requireAny(
       authorizationMiddleware.requirePermission({
         resource: "appointment",
@@ -864,6 +880,7 @@ export function createAppointmentRoutes(
    */
   router.post(
     "/:id/no-show",
+    invalidateAppointmentCache,
     authorizationMiddleware.requireAny(
       authorizationMiddleware.requirePermission({
         resource: "appointment",
@@ -1454,7 +1471,164 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/nearest-current-hour",
+    realTimeCache,
     appointmentController.getNearestCurrentHour.bind(appointmentController)
+  );
+
+  /**
+   * @swagger
+   * /api/v1/appointments/monitor/{businessId}:
+   *   get:
+   *     tags: [Appointments]
+   *     summary: Get monitor appointments for real-time queue display
+   *     description: |
+   *       Optimized endpoint for monitor displays showing real-time appointment queue.
+   *       Returns current appointment, next appointment, waiting queue, and statistics.
+   *       Designed for display on waiting room monitors in dental clinics and similar businesses.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: ID of the business
+   *         example: "biz_123456"
+   *       - in: query
+   *         name: date
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: Specific date in YYYY-MM-DD format (defaults to today)
+   *         example: "2025-10-10"
+   *       - in: query
+   *         name: includeStats
+   *         schema:
+   *           type: boolean
+   *           default: true
+   *         description: Include daily statistics in response
+   *       - in: query
+   *         name: maxQueueSize
+   *         schema:
+   *           type: integer
+   *           default: 10
+   *           minimum: 1
+   *           maximum: 50
+   *         description: Maximum number of waiting appointments to return
+   *     responses:
+   *       200:
+   *         description: Monitor appointments retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Monitor appointments retrieved successfully"
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     current:
+   *                       type: object
+   *                       nullable: true
+   *                       description: Currently active appointment
+   *                       properties:
+   *                         appointment:
+   *                           type: object
+   *                           description: Full appointment details
+   *                         startedAt:
+   *                           type: string
+   *                           format: date-time
+   *                         estimatedEndTime:
+   *                           type: string
+   *                           format: date-time
+   *                     next:
+   *                       type: object
+   *                       nullable: true
+   *                       description: Next appointment in queue
+   *                       properties:
+   *                         appointment:
+   *                           type: object
+   *                           description: Full appointment details
+   *                         estimatedStartTime:
+   *                           type: string
+   *                           format: date-time
+   *                         waitTimeMinutes:
+   *                           type: number
+   *                           description: Estimated wait time in minutes
+   *                     queue:
+   *                       type: array
+   *                       description: Waiting appointments queue
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           appointment:
+   *                             type: object
+   *                             description: Full appointment details
+   *                           estimatedStartTime:
+   *                             type: string
+   *                             format: date-time
+   *                           waitTimeMinutes:
+   *                             type: number
+   *                           position:
+   *                             type: number
+   *                             description: Position in queue
+   *                     stats:
+   *                       type: object
+   *                       description: Daily statistics
+   *                       properties:
+   *                         completedToday:
+   *                           type: number
+   *                         inProgress:
+   *                           type: number
+   *                         waiting:
+   *                           type: number
+   *                         averageWaitTime:
+   *                           type: number
+   *                           description: Average wait time in minutes
+   *                         averageServiceTime:
+   *                           type: number
+   *                           description: Average service time in minutes
+   *                         totalScheduled:
+   *                           type: number
+   *                     lastUpdated:
+   *                       type: string
+   *                       format: date-time
+   *                     businessInfo:
+   *                       type: object
+   *                       properties:
+   *                         name:
+   *                           type: string
+   *                         timezone:
+   *                           type: string
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Access denied - business ownership required
+   *       404:
+   *         description: Business not found
+   */
+  router.get(
+    "/monitor/:businessId",
+    cache({
+      ttl: 15, // 15 seconds cache for real-time data
+      keyPrefix: 'monitor',
+      keyGenerator: (req: Request) => {
+        const businessId = req.params.businessId;
+        const date = req.query.date || new Date().toISOString().split('T')[0];
+        return `monitor:${businessId}:${date}`;
+      },
+      skipCache: (req: Request) => req.query.live === 'true'
+    }),
+    requireBusinessOwnershipAccess,
+    (req: Request, res: Response, next: NextFunction) => {
+      return appointmentController.getMonitorAppointments(req as BusinessOwnershipRequest, res, next);
+    }
   );
 
   /**
@@ -1511,6 +1685,7 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/current-hour",
+    realTimeCache,
     appointmentController.getCurrentHourAppointments.bind(appointmentController)
   );
 

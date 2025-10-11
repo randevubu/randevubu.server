@@ -365,6 +365,198 @@ export const updateBusinessStaffPrivacySettingsSchema = z.object({
   .describe('Custom labels for different staff roles when names are hidden')
 });
 
+// Business Cancellation Policy Settings schemas
+export const updateBusinessCancellationPolicySchema = z.object({
+  minCancellationHours: z.number()
+    .int('Minimum cancellation hours must be an integer')
+    .min(1, 'Minimum cancellation time must be at least 1 hour')
+    .max(168, 'Minimum cancellation time cannot exceed 7 days (168 hours)')
+    .describe('Minimum hours before appointment that cancellation is allowed'),
+
+  maxMonthlyCancellations: z.number()
+    .int('Maximum monthly cancellations must be an integer')
+    .min(0, 'Maximum monthly cancellations cannot be negative')
+    .max(50, 'Maximum monthly cancellations cannot exceed 50')
+    .describe('Maximum number of cancellations allowed per month per customer'),
+
+  maxMonthlyNoShows: z.number()
+    .int('Maximum monthly no-shows must be an integer')
+    .min(0, 'Maximum monthly no-shows cannot be negative')
+    .max(20, 'Maximum monthly no-shows cannot exceed 20')
+    .describe('Maximum number of no-shows allowed per month per customer'),
+
+  enablePolicyEnforcement: z.boolean()
+    .optional()
+    .default(true)
+    .describe('Enable enforcement of cancellation and no-show policies'),
+
+  policyWarningMessage: z.string()
+    .max(500, 'Policy warning message must be less than 500 characters')
+    .optional()
+    .describe('Custom warning message shown to customers about policy violations'),
+
+  gracePeriodDays: z.number()
+    .int('Grace period days must be an integer')
+    .min(0, 'Grace period cannot be negative')
+    .max(30, 'Grace period cannot exceed 30 days')
+    .optional()
+    .default(0)
+    .describe('Grace period in days before policy enforcement begins for new customers'),
+
+  autoBanEnabled: z.boolean()
+    .optional()
+    .default(false)
+    .describe('Automatically ban customers who exceed policy limits'),
+
+  banDurationDays: z.number()
+    .int('Ban duration days must be an integer')
+    .min(1, 'Ban duration must be at least 1 day')
+    .max(365, 'Ban duration cannot exceed 1 year')
+    .optional()
+    .default(30)
+    .describe('Duration of automatic ban in days when auto-ban is enabled')
+}).refine((data) => {
+  // If auto-ban is enabled, ban duration must be specified
+  if (data.autoBanEnabled && (!data.banDurationDays || data.banDurationDays < 1)) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Ban duration must be specified when auto-ban is enabled',
+  path: ['banDurationDays']
+});
+
+export type UpdateBusinessCancellationPolicySchema = z.infer<typeof updateBusinessCancellationPolicySchema>;
+
+// Business Customer Management Settings schemas
+export const updateBusinessCustomerManagementSchema = z.object({
+  activeCustomerDefinition: z.object({
+    monthsThreshold: z.number()
+      .int('Months threshold must be an integer')
+      .min(1, 'Months threshold must be at least 1')
+      .max(24, 'Months threshold cannot exceed 24')
+      .describe('Number of months to consider a customer active'),
+    enabled: z.boolean()
+      .describe('Enable active customer definition')
+  }).optional(),
+
+  loyaltyProgram: z.object({
+    appointmentThreshold: z.number()
+      .int('Appointment threshold must be an integer')
+      .min(1, 'Appointment threshold must be at least 1')
+      .max(100, 'Appointment threshold cannot exceed 100')
+      .describe('Number of appointments required for loyalty program'),
+    enabled: z.boolean()
+      .describe('Enable loyalty program')
+  }).optional(),
+
+  customerNotes: z.object({
+    allowStaffNotes: z.boolean()
+      .describe('Allow staff to add notes about customers'),
+    allowInternalNotes: z.boolean()
+      .describe('Allow internal notes (not visible to customers)'),
+    maxNoteLength: z.number()
+      .int('Max note length must be an integer')
+      .min(100, 'Max note length must be at least 100 characters')
+      .max(5000, 'Max note length cannot exceed 5000 characters')
+      .optional()
+      .default(1000)
+      .describe('Maximum length for customer notes')
+  }).optional(),
+
+  appointmentHistory: z.object({
+    allowCustomerView: z.boolean()
+      .describe('Allow customers to view their appointment history'),
+    showCancelledAppointments: z.boolean()
+      .describe('Show cancelled appointments in customer history'),
+    showNoShowAppointments: z.boolean()
+      .describe('Show no-show appointments in customer history')
+  }).optional(),
+
+  birthdayReminders: z.object({
+    enabled: z.boolean()
+      .describe('Enable birthday reminders'),
+    reminderDays: z.array(z.number()
+      .int('Reminder days must be integers')
+      .min(1, 'Reminder days must be at least 1')
+      .max(30, 'Reminder days cannot exceed 30'))
+      .min(1, 'At least one reminder day must be specified')
+      .max(5, 'Maximum 5 reminder days allowed')
+      .optional()
+      .default([1, 3, 7])
+      .describe('Days before birthday to send reminders'),
+    messageTemplate: z.string()
+      .max(500, 'Message template must be less than 500 characters')
+      .optional()
+      .describe('Template for birthday reminder messages')
+  }).optional(),
+
+  customerEvaluations: z.object({
+    enabled: z.boolean()
+      .describe('Enable customer evaluations'),
+    requiredForCompletion: z.boolean()
+      .describe('Require evaluation for appointment completion'),
+    allowAnonymous: z.boolean()
+      .describe('Allow anonymous evaluations'),
+    questions: z.array(z.object({
+      id: z.string()
+        .min(1, 'Question ID is required')
+        .max(50, 'Question ID must be less than 50 characters'),
+      question: z.string()
+        .min(5, 'Question must be at least 5 characters')
+        .max(200, 'Question must be less than 200 characters'),
+      type: z.enum(['RATING', 'TEXT', 'CHOICE'])
+        .describe('Type of evaluation question'),
+      required: z.boolean()
+        .describe('Whether the question is required'),
+      options: z.array(z.string()
+        .min(1, 'Option cannot be empty')
+        .max(100, 'Option must be less than 100 characters'))
+        .max(10, 'Maximum 10 options allowed')
+        .optional()
+        .describe('Options for CHOICE type questions'),
+      minRating: z.number()
+        .int('Min rating must be an integer')
+        .min(1, 'Min rating must be at least 1')
+        .max(5, 'Min rating cannot exceed 5')
+        .optional()
+        .describe('Minimum rating for RATING type questions'),
+      maxRating: z.number()
+        .int('Max rating must be an integer')
+        .min(1, 'Max rating must be at least 1')
+        .max(10, 'Max rating cannot exceed 10')
+        .optional()
+        .describe('Maximum rating for RATING type questions')
+    }))
+    .max(20, 'Maximum 20 questions allowed')
+    .optional()
+    .describe('Evaluation questions')
+  }).optional()
+}).refine((data) => {
+  // Validate birthday reminders if enabled
+  if (data.birthdayReminders?.enabled && (!data.birthdayReminders.reminderDays || data.birthdayReminders.reminderDays.length === 0)) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Reminder days must be specified when birthday reminders are enabled',
+  path: ['birthdayReminders', 'reminderDays']
+}).refine((data) => {
+  // Validate evaluation questions if enabled
+  if (data.customerEvaluations?.enabled && data.customerEvaluations.questions) {
+    const hasRequiredQuestions = data.customerEvaluations.questions.some(q => q.required);
+    if (!hasRequiredQuestions) {
+      return false;
+    }
+  }
+  return true;
+}, {
+  message: 'At least one evaluation question must be required when evaluations are enabled',
+  path: ['customerEvaluations', 'questions']
+});
+
+export type UpdateBusinessCustomerManagementSchema = z.infer<typeof updateBusinessCustomerManagementSchema>;
+
 // Service validation schemas
 export const createServiceSchema = z.object({
   name: z.string()
@@ -1012,7 +1204,29 @@ export const testReminderSchema = z.object({
     .describe('Custom message for testing')
 });
 
+// Monitor Display validation schemas
+export const monitorAppointmentsSchema = z.object({
+  date: z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
+    .optional()
+    .describe('Specific date to show appointments for (defaults to today)'),
+
+  includeStats: z.string()
+    .transform(val => val === 'true' || val === '1')
+    .optional()
+    .describe('Include daily statistics in response'),
+
+  maxQueueSize: z.string()
+    .transform(val => {
+      const num = parseInt(val, 10);
+      return isNaN(num) ? 10 : Math.min(Math.max(num, 1), 50);
+    })
+    .optional()
+    .describe('Maximum number of waiting appointments to return (1-50, default: 10)')
+});
+
 // Export notification settings schema types
 export type BusinessNotificationSettingsSchema = z.infer<typeof businessNotificationSettingsSchema>;
 export type UpdateBusinessNotificationSettingsSchema = z.infer<typeof updateBusinessNotificationSettingsSchema>;
 export type TestReminderSchema = z.infer<typeof testReminderSchema>;
+export type MonitorAppointmentsSchema = z.infer<typeof monitorAppointmentsSchema>;

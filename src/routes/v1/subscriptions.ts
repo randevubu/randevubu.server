@@ -2,9 +2,14 @@ import { Router } from 'express';
 import { SubscriptionController } from '../../controllers/subscriptionController';
 import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
+import { staticCache, dynamicCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
 export function createSubscriptionRoutes(subscriptionController: SubscriptionController): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   // Public routes - subscription plans
   /**
@@ -17,7 +22,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    *       200:
    *         description: Plans list
    */
-  router.get('/plans', subscriptionController.getAllPlans.bind(subscriptionController));
+  router.get('/plans', staticCache, subscriptionController.getAllPlans.bind(subscriptionController));
   /**
    * @swagger
    * /api/v1/subscriptions/plans/{id}:
@@ -36,7 +41,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    *       404:
    *         description: Not found
    */
-  router.get('/plans/:id', subscriptionController.getPlanById.bind(subscriptionController));
+  router.get('/plans/:id', staticCache, subscriptionController.getPlanById.bind(subscriptionController));
   /**
    * @swagger
    * /api/v1/subscriptions/plans/billing/{interval}:
@@ -54,7 +59,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    *       200:
    *         description: Plans list
    */
-  router.get('/plans/billing/:interval', subscriptionController.getPlansByBillingInterval.bind(subscriptionController));
+  router.get('/plans/billing/:interval', staticCache, subscriptionController.getPlansByBillingInterval.bind(subscriptionController));
 
   // Protected routes
   router.use(requireAuth);
@@ -112,6 +117,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    */
   router.get(
     '/business/:businessId',
+    dynamicCache,
     requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
     withAuth(subscriptionController.getBusinessSubscription.bind(subscriptionController))
   );
@@ -140,6 +146,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    */
   router.get(
     '/business/:businessId/history',
+    dynamicCache,
     requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
     withAuth(subscriptionController.getSubscriptionHistory.bind(subscriptionController))
   );

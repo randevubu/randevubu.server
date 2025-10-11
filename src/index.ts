@@ -36,6 +36,9 @@ import {
   errorMonitor,
   createHealthCheck,
 } from "./utils/monitoring";
+import { cacheManager } from "./lib/redis/redis";
+import { CacheMonitoring } from "./middleware/cacheMonitoring";
+import { cacheService } from "./services/cacheService";
 
 const app: Express = express();
 const PORT = config.PORT;
@@ -180,10 +183,7 @@ app.use(securityMonitor);
  */
 app.get("/", (req: Request, res: Response) => {
   // Calculate response time if startTime was set by monitoring middleware
-  interface RequestWithTiming extends Request {
-    startTime?: number;
-  }
-  const startTime = (req as RequestWithTiming).startTime;
+  const startTime = (req as Request & { startTime?: number }).startTime;
   const responseTime = startTime ? Date.now() - startTime : 0;
 
   res.json({
@@ -235,6 +235,32 @@ app.get("/health", async (req: Request, res: Response) => {
       checks.database = {
         status: "unhealthy",
         error: "Database connection failed",
+        responseTime: Date.now() - startTime + "ms",
+      };
+      status = "unhealthy";
+      httpStatus = 503;
+    }
+
+    // Redis connectivity check
+    try {
+      const redisHealthy = await cacheManager.healthCheck();
+      const redisStats = await cacheManager.getStats();
+      checks.redis = {
+        status: redisHealthy ? "healthy" : "unhealthy",
+        connected: redisStats.connected,
+        memory: redisStats.memory,
+        keyspace: redisStats.keyspace,
+        uptime: redisStats.uptime,
+        responseTime: Date.now() - startTime + "ms",
+      };
+      if (!redisHealthy) {
+        status = "unhealthy";
+        httpStatus = 503;
+      }
+    } catch (error) {
+      checks.redis = {
+        status: "unhealthy",
+        error: "Redis connection failed",
         responseTime: Date.now() - startTime + "ms",
       };
       status = "unhealthy";
@@ -340,6 +366,8 @@ const repositories = new RepositoryContainer(prisma);
 const services = new ServiceContainer(repositories, prisma);
 const controllers = new ControllerContainer(repositories, services);
 
+// Cache services are handled by the middleware
+
 // Initialize business context middleware
 initializeBusinessContextMiddleware(repositories);
 
@@ -362,6 +390,20 @@ const server = app.listen(PORT, async () => {
     await services.startupService.initialize();
   } catch (error) {
     logger.error('Failed to initialize application startup:', error);
+  }
+
+  // Warm cache with frequently accessed data (Netflix/Airbnb pattern)
+  try {
+    // Fetch frequently accessed data to warm cache
+    const businessTypes = await repositories.businessTypeRepository.findAllActive();
+
+    await cacheService.warmCache({
+      businessTypes: businessTypes || [],
+    });
+    logger.info('✅ Cache warmed with frequently accessed data');
+  } catch (error) {
+    logger.error('Failed to warm cache:', error);
+    // Non-critical error, continue startup
   }
 
   logger.info(`🚀 Server is running on port ${PORT}`);
@@ -406,7 +448,15 @@ const server = app.listen(PORT, async () => {
   }
 });
 
-process.on("SIGTERM", async () => await gracefulShutdown(server));
-process.on("SIGINT", async () => await gracefulShutdown(server));
+// Graceful shutdown handlers
+const shutdownHandler = async () => {
+  // Cleanup cache monitoring
+  CacheMonitoring.cleanup();
+  
+  await gracefulShutdown(server);
+};
+
+process.on("SIGTERM", shutdownHandler);
+process.on("SIGINT", shutdownHandler);
 
 export default app;

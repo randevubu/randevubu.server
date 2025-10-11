@@ -1,6 +1,4 @@
-import { Prisma } from "@prisma/client";
-import { Response, NextFunction } from "express";
-import { z } from "zod";
+import { NextFunction, Response } from "express";
 import { BusinessContextRequest } from "../middleware/businessContext";
 import {
   appointmentSearchSchema,
@@ -8,30 +6,21 @@ import {
   updateAppointmentSchema,
 } from "../schemas/business.schemas";
 import { AppointmentService } from "../services/domain/appointment";
-import { AuthenticatedRequest, BusinessOwnershipRequest } from "../types/auth";
-import { AppointmentStatus, AppointmentWithDetails } from "../types/business";
+import { AuthenticatedRequest, BusinessOwnershipRequest } from "../types/request";
+import { AppointmentStatus } from "../types/business";
 import logger from "../utils/Logger/logger";
 import {
   handleRouteError,
-  sendSuccessResponse
+  sendSuccessResponse,
+  createErrorContext,
+  sendAppErrorResponse,
 } from '../utils/responseUtils';
-import { handleControllerError } from '../utils/errors/errorHandler';
+import { AppError } from "../types/responseTypes";
+import { ERROR_CODES } from "../constants/errorCodes";
 import { formatDateForAPI, formatTimeForAPI } from '../utils/timezoneHelper';
 
 export class AppointmentController {
   constructor(private appointmentService: AppointmentService) {}
-
-  /**
-   * Helper method to format appointment dates for API responses
-   */
-  private formatAppointmentDates(apt: AppointmentWithDetails): any {
-    return {
-      ...apt,
-      date: apt.date instanceof Date ? formatDateForAPI(apt.date) : apt.date,
-      startTime: apt.startTime instanceof Date ? formatTimeForAPI(apt.startTime) : apt.startTime,
-      endTime: apt.endTime instanceof Date ? formatTimeForAPI(apt.endTime) : apt.endTime
-    };
-  }
 
   /**
    * Get user's appointments - staff see only their own, owners/managers see all (with optional staff filter)
@@ -65,40 +54,23 @@ export class AppointmentController {
         validatedQuery
       );
 
-      // Transform appointments to remove unnecessary data and format dates
-      const cleanedResult = {
-        ...result,
-        appointments: result.appointments.map((apt: AppointmentWithDetails) => ({
-          id: apt.id,
-          date: formatDateForAPI(apt.date),
-          startTime: formatTimeForAPI(apt.startTime),
-          endTime: formatTimeForAPI(apt.endTime),
-          duration: apt.duration,
-          status: apt.status,
-          price: apt.price,
-          currency: apt.currency,
-          customerNotes: apt.customerNotes,
-          service: {
-            id: apt.service.id,
-            name: apt.service.name,
-            duration: apt.service.duration
-          },
-          staff: apt.staff ? {
-            firstName: (apt.staff as any).firstName || apt.staff.user?.firstName,
-            lastName: (apt.staff as any).lastName || apt.staff.user?.lastName
-          } : null,
-          customer: apt.customer ? {
-            firstName: apt.customer.firstName,
-            lastName: apt.customer.lastName,
-            phoneNumber: apt.customer.phoneNumber
-          } : null
-        }))
-      };
+      // Simple transformation in controller (consistent with other methods)
+      const formattedAppointments = result.appointments.map(apt => ({
+        ...apt,
+        date: formatDateForAPI(apt.date),
+        startTime: formatTimeForAPI(apt.startTime),
+        endTime: formatTimeForAPI(apt.endTime)
+      }));
 
-      sendSuccessResponse(res, 'Appointments retrieved successfully', cleanedResult);
+      sendSuccessResponse(res, 'Appointments retrieved successfully', {
+        appointments: formattedAppointments,
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages
+      });
 
     } catch (error) {
-      handleControllerError(error, req as any, res, next, 'AppointmentController.getMyAppointments');
+      handleRouteError(error, req, res);
     }
   }
 
@@ -115,19 +87,9 @@ export class AppointmentController {
         validatedData
       );
 
-      res.status(201).json({
-        success: true,
-        data: appointment,
-        message: "Appointment created successfully",
-      });
+      sendSuccessResponse(res, "Appointment created successfully", appointment);
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to create appointment",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -141,11 +103,23 @@ export class AppointmentController {
 
       // SECURITY: Validate appointment ID format
       if (!id || typeof id !== "string" || id.length < 1 || id.length > 50) {
-        res.status(400).json({
-          success: false,
-          error: "Invalid appointment ID",
-        });
-        return;
+        const error = new AppError(
+          "Invalid appointment ID",
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id)) {
+        const error = new AppError(
+          "Invalid appointment ID format",
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const appointment = await this.appointmentService.getAppointmentById(
@@ -154,17 +128,15 @@ export class AppointmentController {
       );
 
       if (!appointment) {
-        res.status(404).json({
-          success: false,
-          error: 'Appointment not found'
-        });
-        return;
+        const error = new AppError(
+          'Appointment not found',
+          404,
+          ERROR_CODES.APPOINTMENT_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
       }
 
-      res.json({
-        success: true,
-        data: appointment
-      });
+      sendSuccessResponse(res, 'Appointment retrieved successfully', appointment);
     } catch (error) {
       // SECURITY: Log error for monitoring
       logger.error("Failed to get appointment by ID", {
@@ -174,10 +146,7 @@ export class AppointmentController {
         ip: req.ip,
       });
 
-      res.status(403).json({
-        success: false,
-        error: "Access denied",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -196,11 +165,25 @@ export class AppointmentController {
           customerId.length < 1 ||
           customerId.length > 50)
       ) {
-        res.status(400).json({
-          success: false,
-          error: "Invalid customer ID",
-        });
-        return;
+        const error = new AppError(
+          "Invalid customer ID",
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate customer ID format if provided
+      if (customerId) {
+        const idRegex = /^[a-zA-Z0-9-_]+$/;
+        if (!idRegex.test(customerId)) {
+          const error = new AppError(
+            "Invalid customer ID format",
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
       }
 
       // SECURITY: Validate pagination parameters
@@ -220,15 +203,12 @@ export class AppointmentController {
         limit
       );
 
-      res.json({
-        success: true,
-        data: result.appointments,
-        meta: {
-          total: result.total,
-          page: result.page,
-          totalPages: result.totalPages,
-          limit,
-        },
+      sendSuccessResponse(res, 'Customer appointments retrieved successfully', {
+        appointments: result.appointments,
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        limit,
       });
     } catch (error) {
       // SECURITY: Log error for monitoring
@@ -239,10 +219,7 @@ export class AppointmentController {
         ip: req.ip,
       });
 
-      res.status(403).json({
-        success: false,
-        error: "Access denied",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -260,11 +237,36 @@ export class AppointmentController {
       const userId = req.user!.id;
       const { status, date, page, limit } = req.query;
 
+      // Validate staffId parameter
+      if (!staffId || typeof staffId !== 'string') {
+        const error = new AppError(
+          'Staff ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate staffId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(staffId) || staffId.length < 1 || staffId.length > 50) {
+        const error = new AppError(
+          'Invalid staff ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate pagination parameters
+      const pageNum = Math.max(1, Math.min(1000, parseInt(page as string) || 1));
+      const limitNum = Math.max(1, Math.min(100, parseInt(limit as string) || 20));
+
       const filters = {
         status: status as AppointmentStatus,
         date: date as string,
-        page: parseInt(page as string) || 1,
-        limit: parseInt(limit as string) || 20,
+        page: pageNum,
+        limit: limitNum,
       };
 
       const result = await this.appointmentService.getAllAppointments(
@@ -273,21 +275,15 @@ export class AppointmentController {
         filters.limit
       );
 
-      res.json({
-        success: true,
-        data: result.appointments,
-        meta: {
-          total: result.total,
-          page: result.page,
-          totalPages: result.totalPages,
-          staffId,
-        },
+      sendSuccessResponse(res, 'Staff appointments retrieved successfully', {
+        appointments: result.appointments,
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        staffId,
       });
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : "Access denied",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -359,23 +355,16 @@ export class AppointmentController {
         limit
       );
 
-      res.json({
-        success: true,
-        data: result.appointments,
-        meta: {
-          total: result.total,
-          page: result.page,
-          totalPages: result.totalPages,
-          limit,
-          filters,
-        },
+      sendSuccessResponse(res, 'Appointments search completed successfully', {
+        appointments: result.appointments,
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        limit,
+        filters,
       });
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error:
-          error instanceof Error ? error.message : "Invalid search parameters",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -388,25 +377,36 @@ export class AppointmentController {
       const validatedData = updateAppointmentSchema.parse(req.body);
       const userId = req.user!.id;
 
+      // Validate appointment ID
+      if (!id || typeof id !== 'string' || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Appointment ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id)) {
+        const error = new AppError(
+          'Invalid appointment ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const appointment = await this.appointmentService.updateAppointment(
         userId,
         id,
         validatedData
       );
 
-      res.json({
-        success: true,
-        data: appointment,
-        message: "Appointment updated successfully",
-      });
+      sendSuccessResponse(res, "Appointment updated successfully", appointment);
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update appointment",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -419,14 +419,36 @@ export class AppointmentController {
       const { status } = req.body;
       const userId = req.user!.id;
 
+      // Validate appointment ID
+      if (!id || typeof id !== 'string' || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Appointment ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id)) {
+        const error = new AppError(
+          'Invalid appointment ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       // Validate status
       const validStatuses = ["CONFIRMED", "COMPLETED", "CANCELED", "NO_SHOW"];
       if (!validStatuses.includes(status)) {
-        res.status(400).json({
-          success: false,
-          error: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
-        });
-        return;
+        const error = new AppError(
+          `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const appointment = await this.appointmentService.updateAppointment(
@@ -435,19 +457,9 @@ export class AppointmentController {
         { status }
       );
 
-      res.json({
-        success: true,
-        data: appointment,
-        message: `Appointment status updated to ${status}`,
-      });
+      sendSuccessResponse(res, `Appointment status updated to ${status}`, appointment);
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update appointment status",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -460,25 +472,46 @@ export class AppointmentController {
       const { reason } = req.body;
       const userId = req.user!.id;
 
+      // Validate appointment ID
+      if (!id || typeof id !== 'string' || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Appointment ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id)) {
+        const error = new AppError(
+          'Invalid appointment ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate reason if provided
+      if (reason && (typeof reason !== 'string' || reason.trim().length > 500)) {
+        const error = new AppError(
+          'Reason must be a string and not exceed 500 characters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const appointment = await this.appointmentService.cancelAppointment(
         userId,
         id,
         reason
       );
 
-      res.json({
-        success: true,
-        data: appointment,
-        message: "Appointment cancelled successfully",
-      });
+      sendSuccessResponse(res, "Appointment cancelled successfully", appointment);
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to cancel appointment",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -490,24 +523,35 @@ export class AppointmentController {
       const { id } = req.params;
       const userId = req.user!.id;
 
+      // Validate appointment ID
+      if (!id || typeof id !== 'string' || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Appointment ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id)) {
+        const error = new AppError(
+          'Invalid appointment ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const appointment = await this.appointmentService.confirmAppointment(
         userId,
         id
       );
 
-      res.json({
-        success: true,
-        data: appointment,
-        message: "Appointment confirmed successfully",
-      });
+      sendSuccessResponse(res, "Appointment confirmed successfully", appointment);
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to confirm appointment",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -520,25 +564,46 @@ export class AppointmentController {
       const { internalNotes } = req.body;
       const userId = req.user!.id;
 
+      // Validate appointment ID
+      if (!id || typeof id !== 'string' || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Appointment ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id)) {
+        const error = new AppError(
+          'Invalid appointment ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate internalNotes if provided
+      if (internalNotes && (typeof internalNotes !== 'string' || internalNotes.trim().length > 1000)) {
+        const error = new AppError(
+          'Internal notes must be a string and not exceed 1000 characters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const appointment = await this.appointmentService.completeAppointment(
         userId,
         id,
         internalNotes
       );
 
-      res.json({
-        success: true,
-        data: appointment,
-        message: "Appointment completed successfully",
-      });
+      sendSuccessResponse(res, "Appointment completed successfully", appointment);
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to complete appointment",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -547,19 +612,32 @@ export class AppointmentController {
       const { id } = req.params;
       const userId = req.user!.id;
 
+      // Validate appointment ID
+      if (!id || typeof id !== 'string' || id.length < 1 || id.length > 50) {
+        const error = new AppError(
+          'Appointment ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate ID format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(id)) {
+        const error = new AppError(
+          'Invalid appointment ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       const appointment = await this.appointmentService.markNoShow(userId, id);
 
-      res.json({
-        success: true,
-        data: appointment,
-        message: "Appointment marked as no-show",
-      });
+      sendSuccessResponse(res, "Appointment marked as no-show", appointment);
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to mark no-show",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -569,24 +647,32 @@ export class AppointmentController {
   ): Promise<void> {
     try {
       const userId = req.user!.id;
-      const limit = parseInt(req.query.limit as string) || 10;
+      const { limit } = req.query;
+
+      // Validate limit parameter
+      let limitNum = 10;
+      if (limit) {
+        limitNum = parseInt(limit as string, 10);
+        if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+          const error = new AppError(
+            'Limit must be between 1 and 100',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+      }
 
       const appointments =
-        await this.appointmentService.getUpcomingAppointments(userId, limit);
+        await this.appointmentService.getUpcomingAppointments(userId, limitNum);
 
-      res.json({
-        success: true,
-        data: appointments,
-        meta: {
-          total: appointments.length,
-          limit,
-        },
+      sendSuccessResponse(res, 'Upcoming appointments retrieved successfully', {
+        appointments,
+        total: appointments.length,
+        limit: limitNum,
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: "Internal server error",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -613,35 +699,12 @@ export class AppointmentController {
         businessId
       );
 
-      // Clean appointment data with proper typing and format dates
-      const cleanedAppointments = appointments.map((apt) => ({
-        id: apt.id,
+      // Simple transformation in controller (consistent with other methods)
+      const cleanedAppointments = appointments.map(apt => ({
+        ...apt,
         date: formatDateForAPI(apt.date),
         startTime: formatTimeForAPI(apt.startTime),
-        endTime: formatTimeForAPI(apt.endTime),
-        duration: apt.duration,
-        status: apt.status,
-        price: apt.price,
-        currency: apt.currency,
-        customerNotes: apt.customerNotes,
-        service: {
-          id: apt.service.id,
-          name: apt.service.name,
-          duration: apt.service.duration,
-        },
-        staff: apt.staff
-          ? {
-              firstName: apt.staff.firstName,
-              lastName: apt.staff.lastName,
-            }
-          : null,
-        customer: apt.customer
-          ? {
-              firstName: apt.customer.firstName,
-              lastName: apt.customer.lastName,
-              phoneNumber: apt.customer.phoneNumber,
-            }
-          : null,
+        endTime: formatTimeForAPI(apt.endTime)
       }));
 
       sendSuccessResponse(
@@ -693,18 +756,12 @@ export class AppointmentController {
           }
       }
 
-      // Clean appointment data with proper typing and format dates
-      const cleanedAppointments = allAppointments.map((appointment) => ({
-        id: appointment.id,
-        customerName: appointment.customer?.name || "Unknown Customer",
-        customerPhone: appointment.customer?.phoneNumber || "",
-        serviceName: appointment.service?.name || "Unknown Service",
-        staffName: appointment.staff?.name || "Unassigned",
-        startTime: appointment.startTime.toISOString(),
-        endTime: appointment.endTime.toISOString(),
-        status: appointment.status,
-        notes: appointment.notes || "",
-        businessId: appointment.businessId,
+      // Simple transformation in controller (consistent with other methods)
+      const cleanedAppointments = allAppointments.map(apt => ({
+        ...apt,
+        date: formatDateForAPI(apt.date),
+        startTime: formatTimeForAPI(apt.startTime),
+        endTime: formatTimeForAPI(apt.endTime)
       }));
 
       sendSuccessResponse(
@@ -741,22 +798,24 @@ export class AppointmentController {
       if (startDate) {
         start = new Date(startDate as string);
         if (isNaN(start.getTime())) {
-          res.status(400).json({
-            success: false,
-            error: "Invalid startDate format",
-          });
-          return;
+          const error = new AppError(
+            "Invalid startDate format",
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
         }
       }
 
       if (endDate) {
         end = new Date(endDate as string);
         if (isNaN(end.getTime())) {
-          res.status(400).json({
-            success: false,
-            error: "Invalid endDate format",
-          });
-          return;
+          const error = new AppError(
+            "Invalid endDate format",
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
         }
       }
 
@@ -769,21 +828,15 @@ export class AppointmentController {
         end
       );
 
-      res.json({
-        success: true,
-        data: stats,
-        meta: {
-          businessId: requestedBusinessId || "all",
-          accessibleBusinesses: req.businessContext?.businessIds.length || 0,
-          startDate: startDate as string,
-          endDate: endDate as string,
-        },
+      sendSuccessResponse(res, 'Appointment stats retrieved successfully', {
+        stats,
+        businessId: requestedBusinessId || "all",
+        accessibleBusinesses: req.businessContext?.businessIds.length || 0,
+        startDate: startDate as string,
+        endDate: endDate as string,
       });
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : "Access denied",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -794,30 +847,27 @@ export class AppointmentController {
   ): Promise<void> {
     try {
       const userId = req.user!.id;
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const { page, limit } = req.query;
+
+      // Validate pagination parameters
+      const pageNum = Math.max(1, Math.min(1000, parseInt(page as string) || 1));
+      const limitNum = Math.max(1, Math.min(100, parseInt(limit as string) || 20));
 
       const result = await this.appointmentService.getAllAppointments(
         userId,
-        page,
-        limit
+        pageNum,
+        limitNum
       );
 
-      res.json({
-        success: true,
-        data: result.appointments,
-        meta: {
-          total: result.total,
-          page: result.page,
-          totalPages: result.totalPages,
-          limit,
-        },
+      sendSuccessResponse(res, 'All appointments retrieved successfully', {
+        appointments: result.appointments,
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        limit: limitNum,
       });
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : "Access denied",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -829,20 +879,47 @@ export class AppointmentController {
       const { appointmentIds, status } = req.body;
       const userId = req.user!.id;
 
+      // Validate appointmentIds array
       if (!Array.isArray(appointmentIds) || appointmentIds.length === 0) {
-        res.status(400).json({
-          success: false,
-          error: 'appointmentIds array is required'
-        });
-        return;
+        const error = new AppError(
+          'appointmentIds array is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
       }
 
+      // Validate array size limit
+      if (appointmentIds.length > 50) {
+        const error = new AppError(
+          'Cannot process more than 50 appointments at once',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate status
       if (!Object.values(AppointmentStatus).includes(status)) {
-        res.status(400).json({
-          success: false,
-          error: "Invalid appointment status",
-        });
-        return;
+        const error = new AppError(
+          "Invalid appointment status",
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate each appointment ID in the array
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      for (const appointmentId of appointmentIds) {
+        if (!appointmentId || typeof appointmentId !== 'string' || !idRegex.test(appointmentId) || appointmentId.length < 1 || appointmentId.length > 50) {
+          const error = new AppError(
+            'Invalid appointment ID format in appointmentIds array',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
       }
 
       await this.appointmentService.batchUpdateAppointmentStatus(
@@ -851,18 +928,9 @@ export class AppointmentController {
         status
       );
 
-      res.json({
-        success: true,
-        message: `${appointmentIds.length} appointments updated to ${status}`,
-      });
+      sendSuccessResponse(res, `${appointmentIds.length} appointments updated to ${status}`);
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update appointments",
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -874,33 +942,64 @@ export class AppointmentController {
       const { appointmentIds, reason } = req.body;
       const userId = req.user!.id;
 
+      // Validate appointmentIds array
       if (!Array.isArray(appointmentIds) || appointmentIds.length === 0) {
-        res.status(400).json({
-          success: false,
-          error: 'appointmentIds array is required'
-        });
-        return;
+        const error = new AppError(
+          'appointmentIds array is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
       }
 
+      // Validate array size limit
+      if (appointmentIds.length > 50) {
+        const error = new AppError(
+          'Cannot process more than 50 appointments at once',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate reason
       if (!reason || typeof reason !== 'string' || reason.trim().length < 5) {
-        res.status(400).json({
-          success: false,
-          error: 'Reason must be at least 5 characters long'
-        });
-        return;
+        const error = new AppError(
+          'Reason must be at least 5 characters long',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate reason length limit
+      if (reason.trim().length > 500) {
+        const error = new AppError(
+          'Reason must not exceed 500 characters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate each appointment ID in the array
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      for (const appointmentId of appointmentIds) {
+        if (!appointmentId || typeof appointmentId !== 'string' || !idRegex.test(appointmentId) || appointmentId.length < 1 || appointmentId.length > 50) {
+          const error = new AppError(
+            'Invalid appointment ID format in appointmentIds array',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
       }
 
       await this.appointmentService.batchCancelAppointments(userId, appointmentIds, reason);
 
-      res.json({
-        success: true,
-        message: `${appointmentIds.length} appointments cancelled`
-      });
+      sendSuccessResponse(res, `${appointmentIds.length} appointments cancelled`);
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to cancel appointments'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -911,12 +1010,46 @@ export class AppointmentController {
       const { startDate, endDate } = req.query;
       const userId = req.user!.id;
 
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
       if (!startDate || !endDate) {
-        res.status(400).json({
-          success: false,
-          error: 'startDate and endDate are required'
-        });
-        return;
+        const error = new AppError(
+          'startDate and endDate are required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date formats
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        const error = new AppError(
+          'Invalid date format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const filters = {
@@ -927,31 +1060,24 @@ export class AppointmentController {
 
       const result = await this.appointmentService.getPublicAppointments(filters, 1, 1000);
 
-      // Sanitize data for public access - remove sensitive customer information
-      const sanitizedAppointments = result.appointments.map((apt: AppointmentWithDetails) => ({
+      // Use service method to format data for public access (timezone handling is business logic)
+      const sanitizedAppointments = result.appointments.map(apt => ({
         id: apt.id,
-        startTime: formatTimeForAPI(new Date(apt.startTime)),
-        endTime: formatTimeForAPI(new Date(apt.endTime)),
+        startTime: formatTimeForAPI(apt.startTime),
+        endTime: formatTimeForAPI(apt.endTime),
         duration: apt.duration,
         status: apt.status
-        // Exclude customer data, service, staff and internal notes for public access
       }));
 
-      res.json({
-        success: true,
-        data: sanitizedAppointments,
-        meta: {
-          total: result.total,
-          businessId,
-          startDate: startDate as string,
-          endDate: endDate as string
-        }
+      sendSuccessResponse(res, 'Appointments by date range retrieved successfully', {
+        appointments: sanitizedAppointments,
+        total: result.total,
+        businessId,
+        startDate: startDate as string,
+        endDate: endDate as string
       });
     } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get appointments'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -959,15 +1085,40 @@ export class AppointmentController {
     try {
       const { businessId, status } = req.params;
       const userId = req.user!.id;
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const { page, limit } = req.query;
+
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate pagination parameters
+      const pageNum = Math.max(1, Math.min(1000, parseInt(page as string) || 1));
+      const limitNum = Math.max(1, Math.min(100, parseInt(limit as string) || 20));
 
       if (!Object.values(AppointmentStatus).includes(status as AppointmentStatus)) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid appointment status'
-        });
-        return;
+        const error = new AppError(
+          'Invalid appointment status',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
       }
 
       const filters = {
@@ -975,25 +1126,19 @@ export class AppointmentController {
         status: status as AppointmentStatus
       };
 
-      const result = await this.appointmentService.searchAppointments(userId, filters, page, limit);
+      const result = await this.appointmentService.searchAppointments(userId, filters, pageNum, limitNum);
 
-      res.json({
-        success: true,
-        data: result.appointments,
-        meta: {
-          total: result.total,
-          page: result.page,
-          totalPages: result.totalPages,
-          limit,
-          businessId,
-          status
-        }
+      sendSuccessResponse(res, 'Appointments by status retrieved successfully', {
+        appointments: result.appointments,
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        limit: limitNum,
+        businessId,
+        status
       });
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -1001,29 +1146,47 @@ export class AppointmentController {
     try {
       const { serviceId } = req.params;
       const userId = req.user!.id;
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const { page, limit } = req.query;
+
+      // Validate serviceId parameter
+      if (!serviceId || typeof serviceId !== 'string') {
+        const error = new AppError(
+          'Service ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate serviceId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(serviceId) || serviceId.length < 1 || serviceId.length > 50) {
+        const error = new AppError(
+          'Invalid service ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate pagination parameters
+      const pageNum = Math.max(1, Math.min(1000, parseInt(page as string) || 1));
+      const limitNum = Math.max(1, Math.min(100, parseInt(limit as string) || 20));
 
       const filters = { serviceId };
 
-      const result = await this.appointmentService.searchAppointments(userId, filters, page, limit);
+      const result = await this.appointmentService.searchAppointments(userId, filters, pageNum, limitNum);
 
-      res.json({
-        success: true,
-        data: result.appointments,
-        meta: {
-          total: result.total,
-          page: result.page,
-          totalPages: result.totalPages,
-          limit,
-          serviceId
-        }
+      sendSuccessResponse(res, 'Appointments by service retrieved successfully', {
+        appointments: result.appointments,
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        limit: limitNum,
+        serviceId
       });
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -1031,29 +1194,47 @@ export class AppointmentController {
     try {
       const { staffId } = req.params;
       const userId = req.user!.id;
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const { page, limit } = req.query;
+
+      // Validate staffId parameter
+      if (!staffId || typeof staffId !== 'string') {
+        const error = new AppError(
+          'Staff ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate staffId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(staffId) || staffId.length < 1 || staffId.length > 50) {
+        const error = new AppError(
+          'Invalid staff ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate pagination parameters
+      const pageNum = Math.max(1, Math.min(1000, parseInt(page as string) || 1));
+      const limitNum = Math.max(1, Math.min(100, parseInt(limit as string) || 20));
 
       const filters = { staffId };
 
-      const result = await this.appointmentService.searchAppointments(userId, filters, page, limit);
+      const result = await this.appointmentService.searchAppointments(userId, filters, pageNum, limitNum);
 
-      res.json({
-        success: true,
-        data: result.appointments,
-        meta: {
-          total: result.total,
-          page: result.page,
-          totalPages: result.totalPages,
-          limit,
-          staffId
-        }
+      sendSuccessResponse(res, 'Appointments by staff retrieved successfully', {
+        appointments: result.appointments,
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        limit: limitNum,
+        staffId
       });
     } catch (error) {
-      res.status(403).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
-      });
+      handleRouteError(error, req, res);
     }
   }
 
@@ -1068,38 +1249,31 @@ export class AppointmentController {
       const appointment = await this.appointmentService.getNearestAppointmentInCurrentHour(userId);
       
       if (!appointment) {
-        res.json({
-          success: true,
-          data: null,
-          message: 'No appointments found in the current hour'
-        });
+        sendSuccessResponse(res, 'No appointments found in the current hour', null);
         return;
       }
 
-      res.json({
-        success: true,
-        data: {
-          id: appointment.id,
-          businessId: appointment.businessId,
-          date: appointment.date,
-          startTime: appointment.startTime,
-          endTime: appointment.endTime,
-          status: appointment.status,
-          service: {
-            id: appointment.service.id,
-            name: appointment.service.name,
-            duration: appointment.service.duration
-          },
-          business: {
-            id: appointment.business.id,
-            name: appointment.business.name,
-            timezone: appointment.business.timezone
-          },
-          timeUntilAppointment: Math.max(0, appointment.startTime.getTime() - Date.now())
-        }
+      sendSuccessResponse(res, 'Nearest appointment in current hour retrieved successfully', {
+        id: appointment.id,
+        businessId: appointment.businessId,
+        date: appointment.date,
+        startTime: appointment.startTime,
+        endTime: appointment.endTime,
+        status: appointment.status,
+        service: {
+          id: appointment.service.id,
+          name: appointment.service.name,
+          duration: appointment.service.duration
+        },
+        business: {
+          id: appointment.business.id,
+          name: appointment.business.name,
+          timezone: appointment.business.timezone
+        },
+        timeUntilAppointment: Math.max(0, appointment.startTime.getTime() - Date.now())
       });
     } catch (error) {
-      handleRouteError(error, req, res, next);
+      handleRouteError(error, req, res);
     }
   }
 
@@ -1110,12 +1284,11 @@ export class AppointmentController {
   async getCurrentHourAppointments(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!.id;
-      
+
       const appointments = await this.appointmentService.getAppointmentsInCurrentHour(userId);
-      
-      res.json({
-        success: true,
-        data: appointments.map(appointment => ({
+
+      sendSuccessResponse(res, 'Current hour appointments retrieved successfully', {
+        appointments: appointments.map(appointment => ({
           id: appointment.id,
           businessId: appointment.businessId,
           date: appointment.date,
@@ -1134,13 +1307,87 @@ export class AppointmentController {
           },
           timeUntilAppointment: Math.max(0, appointment.startTime.getTime() - Date.now())
         })),
-        meta: {
-          count: appointments.length,
-          currentHour: new Date().getHours()
-        }
+        count: appointments.length,
+        currentHour: new Date().getHours()
       });
     } catch (error) {
-      handleRouteError(error, req, res, next);
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * Get monitor appointments for a business
+   * GET /api/v1/appointments/monitor/:businessId
+   * Optimized endpoint for real-time queue display on monitor screens
+   */
+  async getMonitorAppointments(
+    req: BusinessOwnershipRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const { date, includeStats, maxQueueSize } = req.query;
+
+      // Business ownership already validated by middleware
+      const business = req.business;
+
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate maxQueueSize if provided
+      let queueSize = 10;
+      if (maxQueueSize) {
+        queueSize = parseInt(maxQueueSize as string, 10);
+        if (isNaN(queueSize) || queueSize < 1 || queueSize > 100) {
+          const error = new AppError(
+            'maxQueueSize must be between 1 and 100',
+            400,
+            ERROR_CODES.VALIDATION_ERROR
+          );
+          return sendAppErrorResponse(res, error);
+        }
+      }
+
+      logger.info("Fetching monitor appointments for business", {
+        businessId: business.id,
+        businessName: business.name,
+        date: date as string | undefined,
+        includeStats: includeStats as string | undefined
+      });
+
+      const monitorData = await this.appointmentService.getMonitorAppointments(
+        businessId,
+        date as string | undefined,
+        includeStats === 'true' || includeStats === '1',
+        queueSize
+      );
+
+      sendSuccessResponse(
+        res,
+        "Monitor appointments retrieved successfully",
+        monitorData
+      );
+    } catch (error) {
+      handleRouteError(error, req, res);
     }
   }
 }

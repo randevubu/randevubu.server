@@ -3,6 +3,9 @@ import rateLimit from 'express-rate-limit';
 import { RoleController } from '../../controllers/roleController';
 import { requireAuth, requirePermission, requireRole, requireAny, withAuth } from '../../middleware/authUtils';
 import { validateBody } from '../../middleware/validation';
+import { staticCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
+import { invalidateAllCache } from '../../middleware/cacheInvalidation';
 import { 
   createRoleSchema,
   updateRoleSchema,
@@ -48,6 +51,11 @@ export function createRoleRoutes(roleController: RoleController): Router {
   // Apply authentication to all routes
   router.use(requireAuth);
   router.use(roleManagementRateLimit);
+  
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
+
+  // Note: Cache invalidation is handled by middleware on mutation routes
 
   // Role Management Routes
   /**
@@ -72,17 +80,26 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(createRoleSchema),
-    withAuth(roleController.createRole.bind(roleController))
+    withAuth(async (req, res, next) => {
+      try {
+        await roleController.createRole(req, res, next);
+        // Cache invalidation handled by middleware
+      } catch (error) {
+        next(error);
+      }
+    })
   );
 
   router.get(
     '/',
+    staticCache,
     requireRole(RoleName.ADMIN),
     withAuth(roleController.getRoles.bind(roleController))
   );
 
   router.get(
     '/:id',
+    staticCache,
     requireRole(RoleName.ADMIN),
     withAuth(roleController.getRoleById.bind(roleController))
   );
@@ -113,12 +130,14 @@ export function createRoleRoutes(roleController: RoleController): Router {
 
   router.get(
     '/permissions',
+    staticCache,
     requireRole(RoleName.ADMIN),
     withAuth(roleController.getPermissions.bind(roleController))
   );
 
   router.get(
     '/permissions/:id',
+    staticCache,
     requireRole(RoleName.ADMIN),
     withAuth(roleController.getPermissionById.bind(roleController))
   );
@@ -142,6 +161,7 @@ export function createRoleRoutes(roleController: RoleController): Router {
 
   router.get(
     '/:roleId/permissions',
+    staticCache,
     requireRole(RoleName.ADMIN),
     withAuth(roleController.getRolePermissions.bind(roleController))
   );
@@ -171,6 +191,7 @@ export function createRoleRoutes(roleController: RoleController): Router {
 
   router.get(
     '/users/:userId/permissions',
+    staticCache,
     requireAny([PermissionName.MANAGE_ROLES, PermissionName.VIEW_OWN_PROFILE]),
     withAuth(roleController.getUserPermissions.bind(roleController))
   );
@@ -192,12 +213,14 @@ export function createRoleRoutes(roleController: RoleController): Router {
    */
   router.get(
     '/my-permissions',
+    staticCache,
     withAuth(roleController.getMyPermissions.bind(roleController))
   );
 
   // Statistics Routes
   router.get(
     '/statistics',
+    staticCache,
     requireRole(RoleName.ADMIN),
     withAuth(roleController.getRoleStatistics.bind(roleController))
   );

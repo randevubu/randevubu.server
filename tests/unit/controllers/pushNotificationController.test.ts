@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { PushNotificationController } from "../../../src/controllers/pushNotificationController";
-import { AuthenticatedRequest } from "../../../src/types/auth";
+import { AuthenticatedRequest } from "../../../src/types/request";
 import { TestHelpers } from "../../utils/testHelpers";
 
 // Mock dependencies

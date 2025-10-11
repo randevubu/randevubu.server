@@ -3,6 +3,9 @@ import { RepositoryContainer } from '../../repositories';
 import { ServiceContainer } from '../../services';
 import { AuthController } from '../../controllers/authController';
 import { UserBehaviorController } from '../../controllers/userBehaviorController';
+import { dynamicCache, semiDynamicCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
+import { invalidateUserCache } from '../../middleware/cacheInvalidation';
 import { AuthMiddleware, rateLimitByUser } from '../../middleware/auth';
 import { validateBody, validateQuery } from '../../middleware/validation';
 import { requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
@@ -40,6 +43,9 @@ const authMiddleware = new AuthMiddleware(repositories, services.tokenService, s
 export function createUserRoutes(): Router {
   const router = Router();
 
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
+
   /**
    * @swagger
    * /api/v1/users/profile:
@@ -65,6 +71,7 @@ export function createUserRoutes(): Router {
    */
   router.get(
     '/profile',
+    dynamicCache,
     authMiddleware.authenticate,
     withAuth(authController.getProfile)
   );
@@ -154,6 +161,7 @@ export function createUserRoutes(): Router {
    */
   router.post(
     '/change-phone',
+    invalidateUserCache,
     authMiddleware.authenticate,
     rateLimitByUser(5, 15 * 60 * 1000),
     validateBody(changePhoneSchema),
@@ -185,6 +193,7 @@ export function createUserRoutes(): Router {
    */
   router.delete(
     '/account',
+    invalidateUserCache,
     authMiddleware.authenticate,
     rateLimitByUser(3, 15 * 60 * 1000),
     withAuth(authController.deleteAccount)
@@ -215,6 +224,7 @@ export function createUserRoutes(): Router {
    */
   router.get(
     '/stats',
+    dynamicCache,
     authMiddleware.authenticate,
     rateLimitByUser(5, 60 * 1000),
     withAuth(authController.getStats)
@@ -340,6 +350,7 @@ export function createUserRoutes(): Router {
    */
   router.get(
     '/my-customers',
+    dynamicCache,
     authMiddleware.authenticate,
     validateQuery(customerSearchSchema),
     rateLimitByUser(20, 60 * 1000),
@@ -406,6 +417,7 @@ export function createUserRoutes(): Router {
    */
   router.get(
     '/customers',
+    dynamicCache,
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(customerSearchSchema),
@@ -533,6 +545,7 @@ export function createUserRoutes(): Router {
    */
   router.get(
     '/customers/:customerId',
+    dynamicCache,
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     rateLimitByUser(20, 60 * 1000),
@@ -597,6 +610,7 @@ export function createUserRoutes(): Router {
    */
   router.post(
     '/customers/:customerId/ban',
+    invalidateUserCache,
     authMiddleware.authenticate,
     requirePermission(PermissionName.BAN_USERS),
     validateBody(banCustomerSchema),
@@ -653,6 +667,7 @@ export function createUserRoutes(): Router {
    */
   router.post(
     '/customers/:customerId/unban',
+    invalidateUserCache,
     authMiddleware.authenticate,
     requirePermission(PermissionName.BAN_USERS),
     validateBody(unbanCustomerSchema),
@@ -715,6 +730,7 @@ export function createUserRoutes(): Router {
    */
   router.post(
     '/customers/:customerId/flag',
+    invalidateUserCache,
     authMiddleware.authenticate,
     requireAny([PermissionName.FLAG_USERS, PermissionName.MANAGE_USER_BEHAVIOR]),
     validateBody(flagCustomerSchema),
@@ -820,6 +836,7 @@ export function createUserRoutes(): Router {
    */
   router.get(
     '/customers/:customerId/behavior',
+    dynamicCache,
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_USER_BEHAVIOR, PermissionName.VIEW_OWN_CUSTOMERS]),
     rateLimitByUser(30, 60 * 1000),

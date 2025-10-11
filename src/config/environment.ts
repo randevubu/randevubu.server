@@ -12,6 +12,9 @@ interface Config {
   JWT_ACCESS_SECRET?: string;
   JWT_REFRESH_SECRET?: string;
   REDIS_URL?: string;
+  REDIS_HOST?: string;
+  REDIS_PORT?: number;
+  REDIS_PASSWORD?: string;
   AWS_REGION?: string;
   AWS_S3_BUCKET_NAME?: string;
   PUBLIC_ASSET_BASE_URL?: string;
@@ -41,6 +44,9 @@ const getConfig = (): Config => {
     JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
     JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
     REDIS_URL: process.env.REDIS_URL,
+    REDIS_HOST: process.env.REDIS_HOST || 'redis',
+    REDIS_PORT: parseInt(process.env.REDIS_PORT || '6379', 10),
+    REDIS_PASSWORD: process.env.REDIS_PASSWORD,
     AWS_REGION: process.env.AWS_REGION,
     AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME,
     PUBLIC_ASSET_BASE_URL: process.env.PUBLIC_ASSET_BASE_URL,

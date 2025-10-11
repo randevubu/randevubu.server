@@ -7,6 +7,9 @@ import { validateBody, validateQuery, validateParams } from '../../middleware/va
 import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { attachBusinessContext } from '../../middleware/attachBusinessContext';
 import { PermissionName } from '../../types/auth';
+import { staticCache, dynamicCache, semiDynamicCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
+import { invalidateBusinessCache } from '../../middleware/cacheInvalidation';
 import {
   inviteStaffSchema,
   verifyStaffInvitationSchema,
@@ -29,6 +32,9 @@ const authMiddleware = new AuthMiddleware(repositories, services.tokenService, s
 
 export function createStaffRoutes(): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
   
   // All staff routes require authentication
   router.use(requireAuth);
@@ -84,6 +90,7 @@ export function createStaffRoutes(): Router {
    *         description: Insufficient permissions
    */
   router.post('/invite',
+    invalidateBusinessCache,
     rateLimitByUser(5, 60),
     validateBody(inviteStaffSchema),
     controllers.staffController.inviteStaff.bind(controllers.staffController)
@@ -136,6 +143,7 @@ export function createStaffRoutes(): Router {
    *         description: Invalid verification code or input
    */
   router.post('/verify-invitation',
+    invalidateBusinessCache,
     rateLimitByUser(3, 60),
     validateBody(verifyStaffInvitationSchema),
     controllers.staffController.verifyStaffInvitation.bind(controllers.staffController)
@@ -168,6 +176,7 @@ export function createStaffRoutes(): Router {
    *         description: Business not found
    */
   router.get('/:businessId',
+    dynamicCache,
     attachBusinessContext,
     validateParams(businessIdParamSchema),
     validateQuery(getBusinessStaffQuerySchema),
@@ -194,6 +203,7 @@ export function createStaffRoutes(): Router {
    *         description: Staff statistics retrieved successfully
    */
   router.get('/:businessId/stats',
+    dynamicCache,
     attachBusinessContext,
     validateParams(businessIdParamSchema),
     controllers.staffController.getStaffStats.bind(controllers.staffController)
@@ -229,6 +239,7 @@ export function createStaffRoutes(): Router {
    *         description: Staff members retrieved successfully
    */
   router.get('/:businessId/role/:role',
+    dynamicCache,
     attachBusinessContext,
     validateParams(staffRoleAndBusinessParamSchema),
     validateQuery(getStaffByRoleQuerySchema),
@@ -256,6 +267,7 @@ export function createStaffRoutes(): Router {
    *         description: Staff member not found
    */
   router.get('/member/:staffId',
+    dynamicCache,
     validateParams(staffIdParamSchema),
     controllers.staffController.getStaffMember.bind(controllers.staffController)
   );
@@ -296,6 +308,7 @@ export function createStaffRoutes(): Router {
    *         description: Staff member not found
    */
   router.put('/member/:staffId',
+    invalidateBusinessCache,
     validateParams(staffIdParamSchema),
     validateBody(updateStaffSchema),
     controllers.staffController.updateStaffMember.bind(controllers.staffController)
@@ -323,6 +336,7 @@ export function createStaffRoutes(): Router {
    *         description: Staff member not found
    */
   router.delete('/member/:staffId',
+    invalidateBusinessCache,
     validateParams(staffIdParamSchema),
     controllers.staffController.removeStaffMember.bind(controllers.staffController)
   );
@@ -341,6 +355,7 @@ export function createStaffRoutes(): Router {
    *         description: Staff positions retrieved successfully
    */
   router.get('/my-positions',
+    dynamicCache,
     controllers.staffController.getMyStaffPositions.bind(controllers.staffController)
   );
 
@@ -445,6 +460,7 @@ export function createStaffRoutes(): Router {
    *         description: Available roles retrieved successfully
    */
   router.get('/roles',
+    staticCache,
     controllers.staffController.getAvailableRoles.bind(controllers.staffController)
   );
 

@@ -1,14 +1,6 @@
-import { AuthenticatedUser, JWTPayload } from './auth';
-
+// Global Express Request augmentation for timing
 declare namespace Express {
   interface Request {
     startTime: number;
-    user?: AuthenticatedUser;
-    token?: JWTPayload;
-    businessContext?: {
-      businessId: string;
-      userRole: string;
-      hasAccess: boolean;
-    };
   }
 }

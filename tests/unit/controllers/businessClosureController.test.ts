@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { BusinessClosureController } from "../../../src/controllers/businessClosureController";
 import { BusinessContextRequest } from "../../../src/middleware/businessContext";
-import { AuthenticatedRequest } from "../../../src/types/auth";
+import { AuthenticatedRequest } from "../../../src/types/request";
 import { TestHelpers } from "../../utils/testHelpers";
 
 // Mock dependencies

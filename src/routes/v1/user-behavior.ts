@@ -2,9 +2,14 @@ import { Router } from 'express';
 import { UserBehaviorController } from '../../controllers/userBehaviorController';
 import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
+import { dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
 export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorController): Router {
   const router = Router();
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   // All routes require authentication
   router.use(requireAuth);
@@ -26,6 +31,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
    */
   router.get(
     '/my/behavior',
+    dynamicCache,
     withAuth(userBehaviorController.getMyBehavior.bind(userBehaviorController))
   );
 
@@ -45,6 +51,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
    */
   router.get(
     '/my/status',
+    realTimeCache,
     withAuth(userBehaviorController.checkUserStatus.bind(userBehaviorController))
   );
 
@@ -64,6 +71,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
    */
   router.get(
     '/my/summary',
+    dynamicCache,
     withAuth(userBehaviorController.getUserSummary.bind(userBehaviorController))
   );
 

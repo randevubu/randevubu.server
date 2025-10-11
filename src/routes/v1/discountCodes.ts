@@ -5,10 +5,15 @@ import { validateBody } from '../../middleware/validation';
 import { createDiscountCodeSchema, validateDiscountCodeSchema, bulkDiscountCodeSchema } from '../../schemas/discountCode.schemas';
 import { AuthorizationMiddleware } from '../../middleware/authorization';
 import { RBACService } from '../../services/domain/rbac/rbacService';
+import { staticCache, dynamicCache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
 export function createDiscountCodeRoutes(discountCodeController: DiscountCodeController, rbacService: RBACService): Router {
   const router = Router();
   const authMiddleware = new AuthorizationMiddleware(rbacService);
+
+  // Apply cache monitoring to all routes
+  router.use(trackCachePerformance);
 
   // Apply authentication to all routes
   router.use(requireAuth);
@@ -32,11 +37,13 @@ export function createDiscountCodeRoutes(discountCodeController: DiscountCodeCon
 
   router.get(
     '/',
+    staticCache,
     withAuth(discountCodeController.getAllDiscountCodes.bind(discountCodeController))
   );
 
   router.get(
     '/statistics',
+    dynamicCache,
     withAuth(discountCodeController.getDiscountCodeStatistics.bind(discountCodeController))
   );
 
@@ -48,6 +55,7 @@ export function createDiscountCodeRoutes(discountCodeController: DiscountCodeCon
 
   router.get(
     '/:id',
+    staticCache,
     withAuth(discountCodeController.getDiscountCode.bind(discountCodeController))
   );
 
@@ -69,6 +77,7 @@ export function createDiscountCodeRoutes(discountCodeController: DiscountCodeCon
 
   router.get(
     '/:id/usage',
+    dynamicCache,
     withAuth(discountCodeController.getDiscountCodeUsageHistory.bind(discountCodeController))
   );
 

@@ -1,9 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { NextFunction, Request, Response } from "express";
+import { NotificationValidationRequest as BaseNotificationValidationRequest } from "../types/request";
 
 const prisma = new PrismaClient();
 
-export interface NotificationValidationRequest extends Request {
+export interface NotificationValidationRequest extends BaseNotificationValidationRequest {
   body: {
     smsEnabled?: boolean;
     pushEnabled?: boolean;
@@ -16,12 +17,6 @@ export interface NotificationValidationRequest extends Request {
       end: string;
     };
     timezone?: string;
-  };
-  businessContext?: {
-    primaryBusinessId: string;
-    businessIds: string[];
-    isOwner: boolean;
-    isStaff: boolean;
   };
 }
 

@@ -297,7 +297,8 @@ export enum BusinessStaffRole {
 }
 
 export enum AppointmentStatus {
-  CONFIRMED = 'CONFIRMED',   // Initial status after creation, auto-updates to COMPLETED
+  CONFIRMED = 'CONFIRMED',   // Initial status after creation
+  IN_PROGRESS = 'IN_PROGRESS', // Automatically when appointment time arrives
   COMPLETED = 'COMPLETED',   // Automatically when service time ends
   CANCELED = 'CANCELED',     // Manual action only
   NO_SHOW = 'NO_SHOW'        // Manual action only

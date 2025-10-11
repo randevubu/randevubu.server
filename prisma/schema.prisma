@@ -115,6 +115,10 @@ model User {
   pushSubscriptions      PushSubscription[]
   notificationPreference NotificationPreference?
   notificationAudits     NotificationAudit[]
+  customerNotes          CustomerNote[]
+  authoredNotes          CustomerNote[]              @relation("NoteAuthor")
+  customerEvaluations    CustomerEvaluation[]
+  birthdayReminders      BirthdayReminder[]
 
   @@index([createdAt])
   @@index([isActive])
@@ -353,6 +357,10 @@ model Business {
   notificationSettings BusinessNotificationSettings?
   notificationAudits   NotificationAudit[]
   notificationUsage    NotificationUsage[]
+  customerNotes        CustomerNote[]
+  customerEvaluations  CustomerEvaluation[]
+  evaluationQuestions  CustomerEvaluationQuestion[]
+  birthdayReminders    BirthdayReminder[]
 
   @@index([ownerId])
   @@index([businessTypeId])
@@ -462,6 +470,7 @@ model Appointment {
   staff                 BusinessStaff?         @relation(fields: [staffId], references: [id])
   rescheduleSuggestions RescheduleSuggestion[]
   pushNotifications     PushNotification[]
+  evaluations           CustomerEvaluation[]
 
   @@index([businessId])
   @@index([serviceId])
@@ -585,6 +594,105 @@ model UserBehavior {
   @@index([currentStrikes])
   @@index([bannedUntil])
   @@map("user_behavior")
+}
+
+model CustomerNote {
+  id          String   @id
+  customerId  String
+  businessId  String
+  authorId    String
+  noteType    String   // STAFF, INTERNAL, CUSTOMER
+  content     String
+  isPrivate   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  customer    User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  author      User     @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([businessId])
+  @@index([authorId])
+  @@index([noteType])
+  @@index([createdAt])
+  @@map("customer_notes")
+}
+
+model CustomerEvaluation {
+  id          String   @id
+  customerId  String
+  businessId  String
+  appointmentId String
+  rating      Int
+  comment     String?
+  isAnonymous Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  customer    User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  answers     CustomerEvaluationAnswer[]
+
+  @@index([customerId])
+  @@index([businessId])
+  @@index([appointmentId])
+  @@index([rating])
+  @@index([createdAt])
+  @@map("customer_evaluations")
+}
+
+model CustomerEvaluationAnswer {
+  id          String   @id
+  evaluationId String
+  questionId  String
+  answer      String
+  createdAt   DateTime @default(now())
+  evaluation  CustomerEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  question    CustomerEvaluationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([evaluationId])
+  @@index([questionId])
+  @@map("customer_evaluation_answers")
+}
+
+model CustomerEvaluationQuestion {
+  id          String   @id
+  businessId  String
+  question    String
+  type        String   // RATING, TEXT, CHOICE
+  required    Boolean  @default(false)
+  options     Json?    // For CHOICE type
+  minRating   Int?     // For RATING type
+  maxRating   Int?     // For RATING type
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  answers     CustomerEvaluationAnswer[]
+
+  @@index([businessId])
+  @@index([isActive])
+  @@map("customer_evaluation_questions")
+}
+
+model BirthdayReminder {
+  id          String   @id
+  customerId  String
+  businessId  String
+  birthday    DateTime
+  reminderDate DateTime
+  sent        Boolean  @default(false)
+  sentAt      DateTime?
+  message     String
+  createdAt   DateTime @default(now())
+  customer    User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([businessId])
+  @@index([reminderDate])
+  @@index([sent])
+  @@map("birthday_reminders")
 }
 
 model BusinessClosure {
@@ -765,6 +873,7 @@ enum BusinessStaffRole {
 
 enum AppointmentStatus {
   CONFIRMED
+  IN_PROGRESS
   COMPLETED
   CANCELED
   NO_SHOW

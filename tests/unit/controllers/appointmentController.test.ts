@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { AppointmentController } from "../../../src/controllers/appointmentController";
 import { BusinessContextRequest } from "../../../src/middleware/businessContext";
-import { AuthenticatedRequest } from "../../../src/types/auth";
+import { AuthenticatedRequest } from "../../../src/types/request";
 import { AppointmentStatus } from "../../../src/types/business";
 import { sendSuccessResponse } from "../../../src/utils/responseUtils";
 import { TestHelpers } from "../../utils/testHelpers";

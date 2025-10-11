@@ -78,14 +78,14 @@ CREATE INDEX "rate_limit_overrides_businessId_idx" ON "public"."rate_limit_overr
 CREATE INDEX "rate_limit_overrides_expiresAt_idx" ON "public"."rate_limit_overrides"("expiresAt");
 
 -- Foreign key constraints
-ALTER TABLE "public"."notification_usage" ADD CONSTRAINT "notification_usage_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "public"."business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."notification_usage" ADD CONSTRAINT "notification_usage_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "public"."businesses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
-ALTER TABLE "public"."notification_audit" ADD CONSTRAINT "notification_audit_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "public"."business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."notification_audit" ADD CONSTRAINT "notification_audit_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."notification_audit" ADD CONSTRAINT "notification_audit_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "public"."businesses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."notification_audit" ADD CONSTRAINT "notification_audit_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
-ALTER TABLE "public"."customer_opt_outs" ADD CONSTRAINT "customer_opt_outs_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "public"."user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."customer_opt_outs" ADD CONSTRAINT "customer_opt_outs_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "public"."business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."customer_opt_outs" ADD CONSTRAINT "customer_opt_outs_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "public"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."customer_opt_outs" ADD CONSTRAINT "customer_opt_outs_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "public"."businesses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
-ALTER TABLE "public"."rate_limit_overrides" ADD CONSTRAINT "rate_limit_overrides_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "public"."business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "public"."rate_limit_overrides" ADD CONSTRAINT "rate_limit_overrides_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "public"."user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."rate_limit_overrides" ADD CONSTRAINT "rate_limit_overrides_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "public"."businesses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."rate_limit_overrides" ADD CONSTRAINT "rate_limit_overrides_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "public"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
