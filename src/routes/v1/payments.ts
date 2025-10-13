@@ -3,6 +3,7 @@ import { PaymentController } from '../../controllers/paymentController';
 import { PaymentService } from '../../services/domain/payment/paymentService';
 import { SubscriptionService } from '../../services/domain/subscription/subscriptionService';
 import { DiscountCodeService } from '../../services/domain/discount/discountCodeService';
+import { PricingTierService } from '../../services/domain/pricing/pricingTierService';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { RepositoryContainer } from '../../repositories';
@@ -19,7 +20,8 @@ const prisma = new PrismaClient();
 const repositories = new RepositoryContainer(prisma);
 const rbacService = new RBACService(repositories);
 const discountCodeService = new DiscountCodeService(repositories.discountCodeRepository, rbacService);
-const subscriptionService = new SubscriptionService(repositories.subscriptionRepository, rbacService);
+const pricingTierService = new PricingTierService(prisma);
+const subscriptionService = new SubscriptionService(repositories.subscriptionRepository, rbacService, pricingTierService);
 const paymentService = new PaymentService(repositories, {
   validateDiscountCode: discountCodeService.validateDiscountCode.bind(discountCodeService),
   applyDiscountCode: async (code, userId, planId, originalAmount, subscriptionId, paymentId) => {

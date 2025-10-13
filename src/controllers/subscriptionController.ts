@@ -12,19 +12,78 @@ import {
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
 import { ZodError } from 'zod';
+import { IPGeolocationService } from '../services/domain/geolocation/ipGeolocationService';
+import { PrismaClient } from '@prisma/client';
 
 export class SubscriptionController {
-  constructor(private subscriptionService: SubscriptionService) {}
+  private ipGeolocationService: IPGeolocationService;
+  
+  constructor(private subscriptionService: SubscriptionService) {
+    this.ipGeolocationService = new IPGeolocationService(new PrismaClient());
+  }
 
   // Public endpoints
   async getAllPlans(req: Request, res: Response): Promise<void> {
     try {
-      const plans = await this.subscriptionService.getAllPlans();
+      const { city, state, country } = req.query;
+      
+      let detectedLocation = null;
+      let finalCity = city as string;
+      let finalState = state as string;
+      let finalCountry = country as string || 'Turkey';
+
+      // If no city provided, try to detect from IP
+      if (!city) {
+        try {
+          const location = await this.ipGeolocationService.getLocationWithFallback(req);
+          finalCity = location.city;
+          finalState = location.state;
+          finalCountry = location.country;
+          detectedLocation = {
+            ...location,
+            detected: true,
+            source: 'ip_geolocation'
+          };
+        } catch (error) {
+          console.warn('IP geolocation failed, using default:', error);
+          // Fallback to Istanbul if geolocation fails
+          finalCity = 'Istanbul';
+          finalState = 'Istanbul';
+          finalCountry = 'Turkey';
+          detectedLocation = {
+            city: 'Istanbul',
+            state: 'Istanbul',
+            country: 'Turkey',
+            detected: true,
+            source: 'fallback'
+          };
+        }
+      } else {
+        // Manual city selection
+        detectedLocation = {
+          city: finalCity,
+          state: finalState,
+          country: finalCountry,
+          detected: false,
+          source: 'manual'
+        };
+      }
+      
+      const plans = await this.subscriptionService.getAllPlansWithLocationPricing(
+        finalCity,
+        finalState,
+        finalCountry
+      );
+
+      const responseData = {
+        plans,
+        location: detectedLocation
+      };
 
       sendSuccessResponse(
         res,
         'Subscription plans retrieved successfully',
-        plans
+        responseData
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -34,6 +93,7 @@ export class SubscriptionController {
   async getPlanById(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      const { city, state, country } = req.query;
 
       // Validate plan ID parameter
       if (!id || typeof id !== 'string') {
@@ -56,7 +116,12 @@ export class SubscriptionController {
         return sendAppErrorResponse(res, error);
       }
 
-      const plan = await this.subscriptionService.getPlanById(id);
+      const plan = await this.subscriptionService.getPlanByIdWithLocationPricing(
+        id,
+        city as string,
+        state as string,
+        country as string || 'Turkey'
+      );
 
       if (!plan) {
         const error = new AppError(
@@ -67,10 +132,19 @@ export class SubscriptionController {
         return sendAppErrorResponse(res, error);
       }
 
+      const responseData = {
+        plan,
+        location: city ? {
+          city: city as string,
+          state: state as string,
+          country: country as string || 'Turkey'
+        } : null
+      };
+
       sendSuccessResponse(
-        res,
+        res,  
         'Subscription plan retrieved successfully',
-        plan
+        responseData
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -80,6 +154,7 @@ export class SubscriptionController {
   async getPlansByBillingInterval(req: Request, res: Response): Promise<void> {
     try {
       const { interval } = req.params;
+      const { city, state, country } = req.query;
 
       // Validate interval parameter
       if (!interval || typeof interval !== 'string') {
@@ -100,12 +175,26 @@ export class SubscriptionController {
         return sendAppErrorResponse(res, error);
       }
 
-      const plans = await this.subscriptionService.getPlansByBillingInterval(interval);
+      const plans = await this.subscriptionService.getPlansByBillingIntervalWithLocationPricing(
+        interval,
+        city as string,
+        state as string,
+        country as string || 'Turkey'
+      );
+
+      const responseData = {
+        plans,
+        location: city ? {
+          city: city as string,
+          state: state as string,
+          country: country as string || 'Turkey'
+        } : null
+      };
 
       sendSuccessResponse(
         res,
         'Subscription plans retrieved successfully',
-        plans
+        responseData
       );
     } catch (error) {
       handleRouteError(error, req, res);

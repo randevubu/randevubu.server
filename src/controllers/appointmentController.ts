@@ -1,4 +1,5 @@
 import { NextFunction, Response } from "express";
+import { ERROR_CODES } from "../constants/errorCodes";
 import { BusinessContextRequest } from "../middleware/businessContext";
 import {
   appointmentSearchSchema,
@@ -6,17 +7,15 @@ import {
   updateAppointmentSchema,
 } from "../schemas/business.schemas";
 import { AppointmentService } from "../services/domain/appointment";
-import { AuthenticatedRequest, BusinessOwnershipRequest } from "../types/request";
 import { AppointmentStatus } from "../types/business";
+import { AuthenticatedRequest, BusinessOwnershipRequest } from "../types/request";
+import { AppError } from "../types/responseTypes";
 import logger from "../utils/Logger/logger";
 import {
   handleRouteError,
-  sendSuccessResponse,
-  createErrorContext,
   sendAppErrorResponse,
+  sendSuccessResponse
 } from '../utils/responseUtils';
-import { AppError } from "../types/responseTypes";
-import { ERROR_CODES } from "../constants/errorCodes";
 import { formatDateForAPI, formatTimeForAPI } from '../utils/timezoneHelper';
 
 export class AppointmentController {

@@ -81,6 +81,14 @@ export class PhoneVerificationService {
       Date.now() + PhoneVerificationService.CODE_EXPIRY_MINUTES * 60 * 1000
     );
 
+    console.log("📝 STORING VERIFICATION CODE:", {
+      normalizedPhone,
+      codeLength: code.length,
+      hashedCodeLength: hashedCode.length,
+      expiresAt: expiresAt.toISOString(),
+      purpose,
+    });
+
     // Store verification code
     await this.repositories.phoneVerificationRepository.create({
       userId,
@@ -129,25 +137,99 @@ export class PhoneVerificationService {
     purpose: PrismaVerificationPurpose,
     context?: ErrorContext
   ): Promise<VerificationResult> {
+    console.log("🔍 VERIFICATION SERVICE CALLED:", {
+      phoneNumber,
+      code,
+      purpose,
+      requestId: context?.requestId,
+    });
+
     const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
     if (!normalizedPhone) {
+      console.log("❌ PHONE NUMBER INVALID:", phoneNumber);
       throw new InvalidPhoneNumberError(phoneNumber, context);
     }
 
-    const verification =
+    console.log("✅ PHONE NUMBER NORMALIZED:", {
+      original: phoneNumber,
+      normalized: normalizedPhone,
+    });
+
+    // Debug logging
+    logger.info("Verification attempt started", {
+      originalPhone: phoneNumber,
+      normalizedPhone: this.maskPhoneNumber(normalizedPhone),
+      code: code,
+      purpose,
+      requestId: context?.requestId,
+    });
+
+    let verification =
       await this.repositories.phoneVerificationRepository.findLatest(
         normalizedPhone,
         purpose
       );
 
-    if (!verification) {
-      logger.warn("Verification code not found or expired", {
-        phoneNumber: this.maskPhoneNumber(normalizedPhone),
-        purpose,
-        requestId: context?.requestId,
-      });
+    console.log("🔎 DATABASE LOOKUP RESULT:", {
+      found: !!verification,
+      verificationId: verification?.id,
+      phoneMatch: verification?.phoneNumber === normalizedPhone,
+      isUsed: verification?.isUsed,
+      expiresAt: verification?.expiresAt,
+      attempts: verification?.attempts,
+      maxAttempts: verification?.maxAttempts,
+      searchedPhone: normalizedPhone,
+      foundPhone: verification?.phoneNumber,
+    });
 
-      throw new VerificationCodeExpiredError(context);
+    if (!verification) {
+      // Check if there are any recent codes that might have just expired
+      const recentVerification = await this.repositories.phoneVerificationRepository.findMostRecent(
+        normalizedPhone,
+        purpose
+      );
+
+      if (recentVerification) {
+        const now = new Date();
+        const expiresAt = new Date(recentVerification.expiresAt);
+        const timeDiff = now.getTime() - expiresAt.getTime();
+        
+        // If the code expired very recently (within 5 minutes), allow verification
+        if (timeDiff > 0 && timeDiff < 5 * 60 * 1000) {
+          logger.info("Using recently expired verification code within grace period", {
+            phoneNumber: this.maskPhoneNumber(normalizedPhone),
+            purpose,
+            requestId: context?.requestId,
+            expiredAt: expiresAt.toISOString(),
+            currentTime: now.toISOString(),
+            timeDiffSeconds: Math.round(timeDiff / 1000),
+          });
+          
+          // Use the recent verification code
+          verification = recentVerification;
+        } else {
+          logger.warn("Verification code expired", {
+            phoneNumber: this.maskPhoneNumber(normalizedPhone),
+            purpose,
+            requestId: context?.requestId,
+            expiredAt: expiresAt.toISOString(),
+            currentTime: now.toISOString(),
+            timeDiffSeconds: Math.round(timeDiff / 1000),
+            attempts: recentVerification.attempts,
+            maxAttempts: recentVerification.maxAttempts
+          });
+          
+          throw new VerificationCodeExpiredError(context);
+        }
+      } else {
+        logger.warn("No verification code found", {
+          phoneNumber: this.maskPhoneNumber(normalizedPhone),
+          purpose,
+          requestId: context?.requestId,
+        });
+        
+        throw new VerificationCodeExpiredError(context);
+      }
     }
 
     // Check if max attempts exceeded
@@ -167,7 +249,18 @@ export class PhoneVerificationService {
     }
 
     // Verify the code
+    console.log("🔐 VERIFYING CODE:", {
+      providedCode: code,
+      providedCodeLength: code.length,
+      hashedCodeFromDB: verification.code.substring(0, 20) + '...',
+    });
+
     const isValidCode = await this.tokenService.verifyCode(code, verification.code);
+
+    console.log("✔️ CODE VERIFICATION RESULT:", {
+      isValid: isValidCode,
+      providedCode: code,
+    });
 
     // Update attempt count
     const newAttempts =
@@ -347,29 +440,23 @@ export class PhoneVerificationService {
     code: string,
     context?: ErrorContext
   ): Promise<void> {
-    // Show verification code in terminal (development only)
-    if (process.env.NODE_ENV === 'development') {
-      console.log(
-        `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
-          phoneNumber
-        )}`
-      );
-    }
+    // Always show verification code for debugging
+    console.log(
+      `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
+        phoneNumber
+      )}`
+    );
     
-    // Log verification code (development only)
-    if (process.env.NODE_ENV === 'development') {
-      logger.info(
-        `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
-          phoneNumber
-        )}`
-      );
-    } else {
-      // Production logging - no sensitive data
-      logger.info("Verification code sent", {
+    // Always log verification code for debugging
+    logger.info(
+      `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
+        phoneNumber
+      )}`,
+      {
         phoneNumber: this.maskPhoneNumber(phoneNumber),
         requestId: context?.requestId,
-      });
-    }
+      }
+    );
 
     // Send the working test message via SMS
     const testMessage = `RandevuBu SMS servisi test mesajıdır. Bu mesaj İleti Merkezi API entegrasyonunu test etmek için gönderilmiştir.`;

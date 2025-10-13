@@ -18,6 +18,9 @@ import {
   UserDeactivatedError,
   UserLockedError,
   UserNotFoundError,
+  VerificationCodeExpiredError,
+  VerificationCodeInvalidError,
+  VerificationMaxAttemptsError,
 } from "../../../types/errors";
 import logger from "../../../utils/Logger/logger";
 import { ReliabilityScoreCalculator } from "../userBehavior/reliabilityScoreCalculator";
@@ -39,19 +42,48 @@ export class AuthService {
     deviceInfo?: DeviceInfo,
     context?: ErrorContext
   ): Promise<LoginResult> {
+    console.log("🚀 AUTH SERVICE CALLED:", {
+      phoneNumber,
+      verificationCode,
+      requestId: context?.requestId,
+    });
+
     const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+    console.log("✅ AUTH SERVICE PHONE NORMALIZED:", {
+      original: phoneNumber,
+      normalized: normalizedPhone,
+    });
+
+    // Debug logging
+    logger.info("Auth service verification attempt", {
+      originalPhone: phoneNumber,
+      normalizedPhone: this.maskPhoneNumber(normalizedPhone),
+      verificationCode: verificationCode,
+      requestId: context?.requestId,
+    });
 
     // Verify the phone verification code
-    const verificationResult = await this.phoneVerificationService.verifyCode(
-      normalizedPhone,
-      verificationCode,
-      VerificationPurpose.REGISTRATION,
-      context
-    );
+    try {
+      const verificationResult = await this.phoneVerificationService.verifyCode(
+        normalizedPhone,
+        verificationCode,
+        VerificationPurpose.REGISTRATION,
+        context
+      );
 
-    if (!verificationResult.success) {
-      await this.logFailedLoginAttempt(normalizedPhone, deviceInfo, context);
-      throw new UnauthorizedError(verificationResult.message, context);
+      if (!verificationResult.success) {
+        await this.logFailedLoginAttempt(normalizedPhone, deviceInfo, context);
+        throw new UnauthorizedError(verificationResult.message, context);
+      }
+    } catch (error) {
+      // Handle verification service exceptions
+      if (error instanceof VerificationCodeExpiredError || 
+          error instanceof VerificationCodeInvalidError || 
+          error instanceof VerificationMaxAttemptsError) {
+        await this.logFailedLoginAttempt(normalizedPhone, deviceInfo, context);
+        throw error; // Re-throw the verification error
+      }
+      throw error; // Re-throw other errors
     }
 
     // Check if user exists and handle race conditions

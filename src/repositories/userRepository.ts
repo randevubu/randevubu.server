@@ -85,20 +85,16 @@ export class PrismaUserRepository implements UserRepository {
     if (!data.phoneNumber || !data.phoneNumber.trim()) {
       throw new Error('phoneNumber is required');
     }
-    if (!data.firstName || !data.firstName.trim()) {
-      throw new Error('firstName is required');
-    }
-    if (!data.lastName || !data.lastName.trim()) {
-      throw new Error('lastName is required');
-    }
+    // firstName and lastName are optional during registration (phone-only registration)
+    // They can be updated later in the user profile
     const user = await this.prisma.user.create({
       data: {
         id: crypto.randomUUID(),
         phoneNumber: data.phoneNumber,
-        firstName: data.firstName,
-        lastName: data.lastName,
+        firstName: data.firstName || null,
+        lastName: data.lastName || null,
         timezone: data.timezone || 'Europe/Istanbul',
-        language: data.language || 'en',
+        language: data.language || 'tr',
         isVerified: false,
         isActive: true,
         updatedAt: new Date(),

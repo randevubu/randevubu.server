@@ -40,6 +40,19 @@ export class PrismaPhoneVerificationRepository implements PhoneVerificationRepos
     return verification;
   }
 
+  async findMostRecent(phoneNumber: string, purpose: VerificationPurpose): Promise<PhoneVerificationData | null> {
+    const verification = await this.prisma.phoneVerification.findFirst({
+      where: {
+        phoneNumber,
+        purpose,
+        isUsed: false,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return verification;
+  }
+
   async findById(id: string): Promise<PhoneVerificationData | null> {
     const verification = await this.prisma.phoneVerification.findUnique({
       where: { id },

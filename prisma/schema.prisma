@@ -273,6 +273,38 @@ model StoredPaymentMethod {
   @@map("stored_payment_methods")
 }
 
+model PricingTier {
+  id          String   @id
+  name        String   @unique
+  displayName String
+  multiplier  Decimal  @db.Decimal(5, 2) @default(1.00)
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  cityMappings CityPricingMapping[]
+
+  @@map("pricing_tiers")
+}
+
+model CityPricingMapping {
+  id           String     @id
+  city         String
+  state        String
+  country      String     @default("Turkey")
+  pricingTierId String
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  pricingTier  PricingTier @relation(fields: [pricingTierId], references: [id], onDelete: Restrict)
+
+  @@unique([city, state, country])
+  @@index([pricingTierId])
+  @@index([city])
+  @@map("city_pricing_mappings")
+}
+
 model BusinessSubscription {
   id                 String               @id
   businessId         String               @unique

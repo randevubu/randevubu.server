@@ -18,9 +18,54 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    *   get:
    *     tags: [Subscriptions]
    *     summary: List all subscription plans
+   *     parameters:
+   *       - in: query
+   *         name: city
+   *         schema:
+   *           type: string
+   *         description: City name for location-based pricing
+   *         example: Istanbul
+   *       - in: query
+   *         name: state
+   *         schema:
+   *           type: string
+   *         description: State name for location-based pricing
+   *         example: Istanbul
+   *       - in: query
+   *         name: country
+   *         schema:
+   *           type: string
+   *           default: Turkey
+   *         description: Country name for location-based pricing
+   *         example: Turkey
    *     responses:
    *       200:
-   *         description: Plans list
+   *         description: Plans list with location-based pricing
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     plans:
+   *                       type: array
+   *                       items:
+   *                         $ref: '#/components/schemas/SubscriptionPlan'
+   *                     location:
+   *                       type: object
+   *                       properties:
+   *                         city:
+   *                           type: string
+   *                         state:
+   *                           type: string
+   *                         country:
+   *                           type: string
+   *                 message:
+   *                   type: string
    */
   router.get('/plans', staticCache, subscriptionController.getAllPlans.bind(subscriptionController));
   /**
