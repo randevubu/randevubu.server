@@ -7,11 +7,13 @@ import {
 import { SubscriptionRepository } from '../../../repositories/subscriptionRepository';
 import { RBACService } from '../rbac/rbacService';
 import { PermissionName } from '../../../types/auth';
+import { PricingTierService, LocationBasedPricing } from '../pricing/pricingTierService';
 
 export class SubscriptionService {
   constructor(
     private subscriptionRepository: SubscriptionRepository,
-    private rbacService: RBACService
+    private rbacService: RBACService,
+    private pricingTierService: PricingTierService
   ) {}
 
   // Subscription Plans
@@ -28,6 +30,142 @@ export class SubscriptionService {
   async getPlansByBillingInterval(interval: string): Promise<SubscriptionPlanData[]> {
     // Public method - no authentication required
     return await this.subscriptionRepository.findPlansByBillingInterval(interval);
+  }
+
+  // Location-based pricing methods
+  async getAllPlansWithLocationPricing(
+    city?: string, 
+    state?: string, 
+    country: string = 'Turkey'
+  ): Promise<SubscriptionPlanData[]> {
+    const basePlans = await this.subscriptionRepository.findAllPlans();
+    
+    // Apply location-based pricing
+    const plansWithLocationPricing = await Promise.all(
+      basePlans.map(async (plan) => {
+        // For custom pricing plans, don't apply location-based pricing
+        if (plan.isCustomPricing) {
+          return plan;
+        }
+
+        // If no city specified, return base plan
+        if (!city) {
+          return plan;
+        }
+
+        const locationPricing = await this.pricingTierService.calculateLocationBasedPricing(
+          Number(plan.price),
+          city,
+          state,
+          country
+        );
+
+        return {
+          ...plan,
+          price: locationPricing.locationPrice,
+          basePrice: locationPricing.basePrice,
+          locationPricing: {
+            city: locationPricing.city,
+            state: locationPricing.state,
+            country: locationPricing.country,
+            tier: locationPricing.tier,
+            multiplier: locationPricing.multiplier
+          }
+        };
+      })
+    );
+
+    return plansWithLocationPricing;
+  }
+
+  async getPlanByIdWithLocationPricing(
+    planId: string,
+    city?: string,
+    state?: string,
+    country: string = 'Turkey'
+  ): Promise<SubscriptionPlanData | null> {
+    const basePlan = await this.subscriptionRepository.findPlanById(planId);
+    
+    if (!basePlan) {
+      return null;
+    }
+
+    if (!city) {
+      // Return base plan if no location specified
+      return basePlan;
+    }
+
+    // For custom pricing plans, don't apply location-based pricing
+    if (basePlan.isCustomPricing) {
+      return basePlan;
+    }
+
+    // Apply location-based pricing
+    const locationPricing = await this.pricingTierService.calculateLocationBasedPricing(
+      Number(basePlan.price),
+      city,
+      state,
+      country
+    );
+
+    return {
+      ...basePlan,
+      price: locationPricing.locationPrice,
+      basePrice: locationPricing.basePrice,
+      locationPricing: {
+        city: locationPricing.city,
+        state: locationPricing.state,
+        country: locationPricing.country,
+        tier: locationPricing.tier,
+        multiplier: locationPricing.multiplier
+      }
+    };
+  }
+
+  async getPlansByBillingIntervalWithLocationPricing(
+    interval: string,
+    city?: string,
+    state?: string,
+    country: string = 'Turkey'
+  ): Promise<SubscriptionPlanData[]> {
+    const basePlans = await this.subscriptionRepository.findPlansByBillingInterval(interval);
+    
+    // Apply location-based pricing
+    const plansWithLocationPricing = await Promise.all(
+      basePlans.map(async (plan) => {
+        // For custom pricing plans, don't apply location-based pricing
+        if (plan.isCustomPricing) {
+          return plan;
+        }
+
+        // If no city specified, return base plan
+        if (!city) {
+          return plan;
+        }
+
+        const locationPricing = await this.pricingTierService.calculateLocationBasedPricing(
+          Number(plan.price),
+          city,
+          state,
+          country
+        );
+
+        return {
+          ...plan,
+          price: locationPricing.locationPrice,
+          basePrice: locationPricing.basePrice,
+          locationPricing: {
+            city: locationPricing.city,
+            state: locationPricing.state,
+            country: locationPricing.country,
+            tier: locationPricing.tier,
+            multiplier: locationPricing.multiplier
+          }
+        };
+      })
+    );
+
+    return plansWithLocationPricing;
   }
 
   // Business Subscriptions

@@ -255,6 +255,20 @@ export class AppointmentService {
     const customerId = data.customerId || userId;
     const isBookingForOther = data.customerId && data.customerId !== userId;
 
+    // Validate that customer has firstName and lastName before allowing booking
+    if (!this.repositories?.userRepository) {
+      throw new Error('User repository not available');
+    }
+
+    const customer = await this.repositories.userRepository.findById(customerId);
+    if (!customer) {
+      throw new Error('Customer not found');
+    }
+
+    if (!customer.firstName || !customer.lastName) {
+      throw new Error('Please complete your profile with first name and last name before booking an appointment');
+    }
+
     // If booking for another customer, check permissions
     if (isBookingForOther) {
       const { resource, action } = this.splitPermissionName(PermissionName.EDIT_ALL_APPOINTMENTS);
@@ -268,20 +282,11 @@ export class AppointmentService {
       if (!hasPermission) {
         throw new Error('You do not have permission to create appointments for other customers');
       }
+    }
 
-      // Validate that the customer exists
-      if (!this.repositories?.userRepository) {
-        throw new Error('User repository not available');
-      }
-
-      const customer = await this.repositories.userRepository.findById(data.customerId!);
-      if (!customer) {
-        throw new Error('Customer not found');
-      }
-
-      if (!customer.isActive) {
-        throw new Error('Customer account is not active');
-      }
+    // Check if customer account is active
+    if (!customer.isActive) {
+      throw new Error('Customer account is not active');
     }
 
     // Check if user is banned (only check for the actual customer, not the person creating)

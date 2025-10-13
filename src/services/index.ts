@@ -18,6 +18,8 @@ import { NotificationService } from './domain/notification';
 import { DiscountCodeService } from './domain/discount';
 import { UsageService } from './domain/usage';
 import { StaffService } from './domain/staff';
+import { PricingTierService } from './domain/pricing/pricingTierService';
+import { IPGeolocationService } from './domain/geolocation/ipGeolocationService';
 // Import shared services
 import { 
   ErrorHandlingService, 
@@ -55,6 +57,7 @@ export class ServiceContainer {
   public readonly staffService: StaffService;
   public readonly appointmentReminderService: AppointmentReminderService;
   public readonly startupService: StartupService;
+  public readonly pricingTierService: PricingTierService;
   
   // Shared services
   public readonly errorHandlingService: ErrorHandlingService;
@@ -111,7 +114,10 @@ export class ServiceContainer {
       repositories.appointmentRepository,
       this.rbacService
     );
-    this.subscriptionService = new SubscriptionService(repositories.subscriptionRepository, this.rbacService);
+    // Create pricing tier service first
+    this.pricingTierService = new PricingTierService(this.prisma);
+    
+    this.subscriptionService = new SubscriptionService(repositories.subscriptionRepository, this.rbacService, this.pricingTierService);
     
     // Create discount code service first
     this.discountCodeService = new DiscountCodeService(
@@ -198,6 +204,8 @@ export {
   StaffService,
   AppointmentReminderService,
   StartupService,
+  PricingTierService,
+  IPGeolocationService,
   // Shared services
   ErrorHandlingService,
   errorHandlingService,

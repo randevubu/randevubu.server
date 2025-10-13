@@ -248,6 +248,18 @@ export interface SubscriptionPlanData {
   sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
+  // Location-based pricing fields
+  basePrice?: number;
+  locationPricing?: {
+    city: string;
+    state: string;
+    country: string;
+    tier: string;
+    multiplier: number;
+  };
+  // Custom pricing fields
+  isCustomPricing?: boolean;
+  customPriceDisplay?: string;
 }
 
 export interface BusinessSubscriptionData {

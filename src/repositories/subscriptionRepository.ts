@@ -716,6 +716,9 @@ export class SubscriptionRepository {
   }
 
   private mapToSubscriptionPlanData(plan: SubscriptionPlan): SubscriptionPlanData {
+    // Check if this is the expensive plan (Pro Paket) that should show custom pricing
+    const isExpensivePlan = plan.name === 'pro' || plan.sortOrder === 3;
+    
     return {
       id: plan.id,
       name: plan.name,
@@ -731,7 +734,10 @@ export class SubscriptionRepository {
       isPopular: plan.isPopular,
       sortOrder: plan.sortOrder,
       createdAt: plan.createdAt,
-      updatedAt: plan.updatedAt
+      updatedAt: plan.updatedAt,
+      // Add custom pricing fields for expensive plan
+      isCustomPricing: isExpensivePlan,
+      customPriceDisplay: isExpensivePlan ? 'CUSTOM' : undefined
     };
   }
 }
