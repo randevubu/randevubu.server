@@ -6,10 +6,14 @@ import { BusinessOverviewReport } from '../../../types/reports';
 
 export interface RevenueReport {
   totalRevenue: number;
+  appointmentRevenue: number;
+  manualIncome: number;
   periodRevenue: number;
   revenueByDay: Array<{
     date: string;
     revenue: number;
+    appointmentRevenue: number;
+    manualIncome: number;
     appointments: number;
   }>;
   revenueByService: Array<{
@@ -22,7 +26,14 @@ export interface RevenueReport {
   revenueByMonth: Array<{
     month: string;
     revenue: number;
+    appointmentRevenue: number;
+    manualIncome: number;
     appointments: number;
+  }>;
+  manualIncomeByColumn: Array<{
+    columnName: string;
+    amount: number;
+    isSystem: boolean;
   }>;
 }
 
@@ -123,8 +134,11 @@ export interface ServiceReport {
 // New interfaces for advanced reports
 export interface FinancialReport {
   totalRevenue: number;
+  appointmentRevenue: number;
+  manualIncome: number;
   netProfit: number;
   expenses: number;
+  manualExpenses: number;
   profitMargin: number;
   revenueGrowth: number;
   avgTransactionValue: number;
@@ -136,8 +150,23 @@ export interface FinancialReport {
   monthlyTrends: Array<{
     month: string;
     revenue: number;
+    appointmentRevenue: number;
+    manualIncome: number;
     expenses: number;
+    manualExpenses: number;
     profit: number;
+  }>;
+  incomeBreakdown: {
+    dailyNotebookColumns: Array<{
+      columnName: string;
+      amount: number;
+      isSystem: boolean;
+    }>;
+  };
+  expenseBreakdown: Array<{
+    columnName: string;
+    amount: number;
+    isSystem: boolean;
   }>;
 }
 
@@ -307,7 +336,11 @@ export class ReportsService {
 
     appointmentStats.forEach((stat: any) => {
       totalAppointments += stat._count;
-      totalRevenue += Number(stat._sum.price || 0);
+      
+      // Only include revenue from COMPLETED appointments
+      if (stat.status === AppointmentStatus.COMPLETED) {
+        totalRevenue += Number(stat._sum.price || 0);
+      }
 
       switch (stat.status) {
         case AppointmentStatus.COMPLETED:
@@ -399,6 +432,23 @@ export class ReportsService {
     const averageAppointmentValue =
       totalAppointments > 0 ? totalRevenue / totalAppointments : 0;
 
+    // Get Daily Notebook data for complete financial picture
+    const dailyNotebookData = await this.getDailyNotebookData(
+      targetBusiness.id,
+      startDate,
+      endDate
+    );
+
+    // Find the "Randevular" (appointments) column from Daily Notebook
+    const appointmentsColumn = dailyNotebookData.incomeByColumn.find(c => c.isSystem);
+    const appointmentRevenueFromNotebook = appointmentsColumn?.amount || 0;
+    const manualIncome = dailyNotebookData.totalIncome - appointmentRevenueFromNotebook;
+    
+    // All revenue from Daily Notebook (single source of truth)
+    const combinedRevenue = dailyNotebookData.totalIncome;
+    const manualExpenses = dailyNotebookData.totalExpenses;
+    const netProfit = combinedRevenue - manualExpenses;
+
     return {
       businessId: targetBusiness.id,
       businessName: targetBusiness.name,
@@ -406,7 +456,11 @@ export class ReportsService {
       completedAppointments,
       canceledAppointments,
       noShowAppointments,
-      totalRevenue,
+      totalRevenue: combinedRevenue,
+      appointmentRevenue: appointmentRevenueFromNotebook,
+      manualIncome,
+      manualExpenses,
+      netProfit,
       averageAppointmentValue,
       completionRate: Math.round(completionRate * 100) / 100,
       cancellationRate: Math.round(cancellationRate * 100) / 100,
@@ -434,7 +488,22 @@ export class ReportsService {
     const targetBusiness = businesses[0];
     const dateFilter = this.buildDateFilter(startDate, endDate);
 
-    // Get total revenue
+    // Get Daily Notebook data (single source of truth for revenue)
+    const dailyNotebookData = await this.getDailyNotebookData(
+      targetBusiness.id,
+      startDate,
+      endDate
+    );
+
+    // Find the "Randevular" (appointments) column from Daily Notebook
+    const appointmentsColumn = dailyNotebookData.incomeByColumn.find(c => c.isSystem);
+    const appointmentRevenue = appointmentsColumn?.amount || 0;
+    const manualIncome = dailyNotebookData.totalIncome - appointmentRevenue;
+    
+    const totalRevenue = dailyNotebookData.totalIncome;
+    const periodRevenue = totalRevenue;
+
+    // Get appointment data for counting
     const revenueData =
       await this.repositories.prismaClient.appointment.aggregate({
         where: {
@@ -448,10 +517,7 @@ export class ReportsService {
         _count: true,
       });
 
-    const totalRevenue = Number(revenueData._sum.price || 0);
-    const periodRevenue = totalRevenue;
-
-    // Revenue by day
+    // Revenue by day (appointments only, manual income is tracked separately in Daily Notebook)
     const dailyRevenue =
       await this.repositories.prismaClient.appointment.groupBy({
         by: ["date"],
@@ -472,6 +538,8 @@ export class ReportsService {
     const revenueByDay = dailyRevenue.map((day) => ({
       date: day.date.toISOString().split("T")[0],
       revenue: Number(day._sum.price || 0),
+      appointmentRevenue: Number(day._sum.price || 0),
+      manualIncome: 0, // Manual income is tracked monthly, not daily in this report
       appointments: day._count,
     }));
 
@@ -516,7 +584,7 @@ export class ReportsService {
       })
       .sort((a, b) => b.revenue - a.revenue);
 
-    // Revenue by month (simplified)
+    // Revenue by month with Daily Notebook integration
     const revenueByMonth = await this.getRevenueByMonth(
       targetBusiness.id,
       startDate,
@@ -525,10 +593,13 @@ export class ReportsService {
 
     return {
       totalRevenue,
+      appointmentRevenue,
+      manualIncome,
       periodRevenue,
       revenueByDay,
       revenueByService,
       revenueByMonth,
+      manualIncomeByColumn: dailyNotebookData.incomeByColumn,
     };
   }
 
@@ -783,9 +854,66 @@ export class ReportsService {
     businessId: string,
     startDate?: Date,
     endDate?: Date
-  ) {
-    // This is a simplified version - in production, you'd want more sophisticated month grouping
-    return [];
+  ): Promise<Array<{
+    month: string;
+    revenue: number;
+    appointmentRevenue: number;
+    manualIncome: number;
+    appointments: number;
+  }>> {
+    if (!startDate || !endDate) {
+      return [];
+    }
+
+    const result: Array<{
+      month: string;
+      revenue: number;
+      appointmentRevenue: number;
+      manualIncome: number;
+      appointments: number;
+    }> = [];
+
+    // Iterate through each month in the date range
+    let currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const endDateMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+    while (currentDate <= endDateMonth) {
+      const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+
+      // Get appointment revenue for this month
+      const monthlyAppointments = await this.repositories.prismaClient.appointment.aggregate({
+        where: {
+          businessId,
+          status: AppointmentStatus.COMPLETED,
+          date: { gte: monthStart, lte: monthEnd },
+        },
+        _sum: { price: true },
+        _count: true,
+      });
+
+      const appointmentRevenue = Number(monthlyAppointments._sum.price || 0);
+
+      // Get Daily Notebook data for this month
+      const dailyNotebookData = await this.getMonthlyDailyNotebookData(
+        businessId,
+        currentDate.getFullYear(),
+        currentDate.getMonth() + 1
+      );
+
+      result.push({
+        month: currentDate.toISOString().substring(0, 7),
+        revenue: dailyNotebookData.income,
+        appointmentRevenue: dailyNotebookData.appointmentRevenue,
+        manualIncome: dailyNotebookData.manualIncome,
+        appointments: monthlyAppointments._count,
+      });
+
+      // Move to next month
+      currentDate.setMonth(currentDate.getMonth() + 1);
+    }
+
+    return result;
   }
 
   private groupAppointmentsByDay(dailyData: any[]) {
@@ -922,7 +1050,14 @@ export class ReportsService {
     const targetBusiness = businesses[0];
     const dateFilter = this.buildDateFilter(startDate, endDate);
 
-    // Get revenue data
+    // Get Daily Notebook data (ALL income/expenses from user's Daily Notebook)
+    const dailyNotebookData = await this.getDailyNotebookData(
+      targetBusiness.id,
+      startDate,
+      endDate
+    );
+
+    // Get appointment data for transaction statistics
     const revenueData =
       await this.repositories.prismaClient.appointment.aggregate({
         where: {
@@ -934,22 +1069,28 @@ export class ReportsService {
         _count: true,
       });
 
-    const totalRevenue = Number(revenueData._sum.price || 0);
-
-    // Calculate estimated expenses (simplified - you'd want actual expense tracking)
-    const estimatedExpenses = totalRevenue * 0.65; // 65% expense ratio
-    const netProfit = totalRevenue - estimatedExpenses;
+    const appointmentsTotal = Number(revenueData._sum.price || 0);
+    
+    // Find the "Randevular" (appointments) column from Daily Notebook
+    const appointmentsColumn = dailyNotebookData.incomeByColumn.find(c => c.isSystem);
+    const appointmentRevenueFromNotebook = appointmentsColumn?.amount || 0;
+    const manualIncome = dailyNotebookData.totalIncome - appointmentRevenueFromNotebook;
+    
+    // Calculate totals (all from Daily Notebook - single source of truth)
+    const totalRevenue = dailyNotebookData.totalIncome;
+    const totalExpenses = dailyNotebookData.totalExpenses;
+    const netProfit = totalRevenue - totalExpenses;
     const profitMargin =
       totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-    // Get payment methods (simplified)
+    // Get payment methods (simplified - based on appointments data)
     const paymentMethods = [
-      { method: "Cash", amount: totalRevenue * 0.4, percentage: 40 },
-      { method: "Card", amount: totalRevenue * 0.45, percentage: 45 },
-      { method: "Digital", amount: totalRevenue * 0.15, percentage: 15 },
+      { method: "Cash", amount: appointmentRevenueFromNotebook * 0.4, percentage: 40 },
+      { method: "Card", amount: appointmentRevenueFromNotebook * 0.45, percentage: 45 },
+      { method: "Digital", amount: appointmentRevenueFromNotebook * 0.15, percentage: 15 },
     ];
 
-    // Monthly trends (last 6 months)
+    // Monthly trends with Daily Notebook integration (last 6 months)
     const monthlyTrends = await this.getMonthlyFinancialTrends(
       targetBusiness.id,
       6
@@ -957,14 +1098,21 @@ export class ReportsService {
 
     return {
       totalRevenue,
+      appointmentRevenue: appointmentRevenueFromNotebook,
+      manualIncome,
       netProfit,
-      expenses: estimatedExpenses,
+      expenses: totalExpenses,
+      manualExpenses: totalExpenses,
       profitMargin: Math.round(profitMargin * 100) / 100,
       revenueGrowth: 12.5, // TODO: Calculate actual growth
       avgTransactionValue:
-        revenueData._count > 0 ? totalRevenue / revenueData._count : 0,
+        revenueData._count > 0 ? appointmentsTotal / revenueData._count : 0,
       paymentMethods,
       monthlyTrends,
+      incomeBreakdown: {
+        dailyNotebookColumns: dailyNotebookData.incomeByColumn,
+      },
+      expenseBreakdown: dailyNotebookData.expenseByColumn,
     };
   }
 
@@ -1388,6 +1536,142 @@ export class ReportsService {
     };
   }
 
+  // HELPER METHODS FOR DAILY NOTEBOOK INTEGRATION
+
+  private async getDailyNotebookData(
+    businessId: string,
+    startDate?: Date,
+    endDate?: Date
+  ) {
+    if (!startDate || !endDate) {
+      // Default to current month if no dates provided
+      const now = new Date();
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    }
+
+    // Get all notebooks in the date range
+    const notebooks = await this.repositories.prismaClient.businessDailyNotebook.findMany({
+      where: {
+        businessId,
+        OR: [
+          {
+            year: startDate.getFullYear(),
+            month: { gte: startDate.getMonth() + 1, lte: endDate.getMonth() + 1 },
+          },
+          {
+            year: { gte: startDate.getFullYear(), lte: endDate.getFullYear() },
+          },
+        ],
+      },
+      include: {
+        dailyEntries: {
+          include: {
+            column: true,
+          },
+        },
+      },
+    });
+
+    let totalIncome = 0;
+    let totalExpenses = 0;
+    const incomeByColumn = new Map<string, { name: string; amount: number; isSystem: boolean }>();
+    const expenseByColumn = new Map<string, { name: string; amount: number; isSystem: boolean }>();
+
+    // Aggregate all entries (including system columns like "Randevular")
+    for (const notebook of notebooks) {
+      for (const entry of notebook.dailyEntries) {
+        const amount = Number(entry.amount);
+        
+        if (entry.column.type === 'INCOME') {
+          // Include ALL income columns (system + user-created)
+          totalIncome += amount;
+          const existing = incomeByColumn.get(entry.column.id) || { 
+            name: entry.column.name, 
+            amount: 0, 
+            isSystem: entry.column.isSystem 
+          };
+          existing.amount += amount;
+          incomeByColumn.set(entry.column.id, existing);
+        } else if (entry.column.type === 'EXPENSE') {
+          totalExpenses += amount;
+          const existing = expenseByColumn.get(entry.column.id) || { 
+            name: entry.column.name, 
+            amount: 0,
+            isSystem: entry.column.isSystem 
+          };
+          existing.amount += amount;
+          expenseByColumn.set(entry.column.id, existing);
+        }
+      }
+    }
+
+    return {
+      totalIncome,
+      totalExpenses,
+      incomeByColumn: Array.from(incomeByColumn.values()).map(v => ({
+        columnName: v.name,
+        amount: v.amount,
+        isSystem: v.isSystem,
+      })),
+      expenseByColumn: Array.from(expenseByColumn.values()).map(v => ({
+        columnName: v.name,
+        amount: v.amount,
+        isSystem: v.isSystem,
+      })),
+    };
+  }
+
+  private async getMonthlyDailyNotebookData(businessId: string, year: number, month: number) {
+    const notebook = await this.repositories.prismaClient.businessDailyNotebook.findUnique({
+      where: {
+        businessId_year_month: {
+          businessId,
+          year,
+          month,
+        },
+      },
+      include: {
+        dailyEntries: {
+          include: {
+            column: true,
+          },
+        },
+      },
+    });
+
+    if (!notebook) {
+      return { income: 0, expenses: 0, appointmentRevenue: 0, manualIncome: 0 };
+    }
+
+    let totalIncome = 0;
+    let appointmentRevenue = 0;
+    let expenses = 0;
+
+    for (const entry of notebook.dailyEntries) {
+      const amount = Number(entry.amount);
+      
+      if (entry.column.type === 'INCOME') {
+        totalIncome += amount;
+        // Separate appointment revenue (system column) from manual income
+        if (entry.column.isSystem) {
+          appointmentRevenue += amount;
+        }
+      } else if (entry.column.type === 'EXPENSE') {
+        expenses += amount;
+      }
+    }
+
+    const manualIncome = totalIncome - appointmentRevenue;
+
+    return { 
+      income: totalIncome, 
+      expenses, 
+      appointmentRevenue,
+      manualIncome
+    };
+  }
+
   // HELPER METHODS FOR ADVANCED REPORTS
 
   private async getMonthlyFinancialTrends(businessId: string, months: number) {
@@ -1398,6 +1682,7 @@ export class ReportsService {
       const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
 
+      // Get appointment revenue
       const revenue =
         await this.repositories.prismaClient.appointment.aggregate({
           where: {
@@ -1408,12 +1693,27 @@ export class ReportsService {
           _sum: { price: true },
         });
 
-      const revenueAmount = Number(revenue._sum.price || 0);
+      const appointmentRevenue = Number(revenue._sum.price || 0);
+
+      // Get Daily Notebook data for this month
+      const dailyNotebookData = await this.getMonthlyDailyNotebookData(
+        businessId,
+        monthStart.getFullYear(),
+        monthStart.getMonth() + 1 // Prisma months are 1-indexed
+      );
+
+      const totalRevenue = dailyNotebookData.income;
+      const totalExpenses = dailyNotebookData.expenses;
+      const profit = totalRevenue - totalExpenses;
+
       trends.push({
         month: monthStart.toISOString().substring(0, 7),
-        revenue: revenueAmount,
-        expenses: revenueAmount * 0.65,
-        profit: revenueAmount * 0.35,
+        revenue: totalRevenue,
+        appointmentRevenue: dailyNotebookData.appointmentRevenue,
+        manualIncome: dailyNotebookData.manualIncome,
+        expenses: totalExpenses,
+        manualExpenses: dailyNotebookData.expenses,
+        profit,
       });
     }
 

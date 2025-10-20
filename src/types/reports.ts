@@ -7,6 +7,10 @@ export interface BusinessOverviewReport {
   canceledAppointments: number;
   noShowAppointments: number;
   totalRevenue: number;
+  appointmentRevenue?: number;
+  manualIncome?: number;
+  manualExpenses?: number;
+  netProfit?: number;
   averageAppointmentValue: number;
   completionRate: number;
   cancellationRate: number;

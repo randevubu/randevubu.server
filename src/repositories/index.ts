@@ -17,6 +17,7 @@ import { StaffRepository } from './staffRepository';
 import { PaymentRepository } from './paymentRepository';
 import { BusinessNotificationSettingsRepository } from './businessNotificationSettingsRepository';
 import { NotificationRepository } from './notificationRepository';
+import { DailyNotebookRepository } from './dailyNotebookRepository';
 
 // Repository container for dependency injection
 export class RepositoryContainer {
@@ -38,6 +39,7 @@ export class RepositoryContainer {
   public readonly paymentRepository: PaymentRepository;
   public readonly businessNotificationSettingsRepository: BusinessNotificationSettingsRepository;
   public readonly notificationRepository: NotificationRepository;
+  public readonly dailyNotebookRepository: DailyNotebookRepository;
 
   constructor(private prisma: PrismaClient) {
     this.userRepository = new PrismaUserRepository(prisma);
@@ -58,6 +60,7 @@ export class RepositoryContainer {
     this.paymentRepository = new PaymentRepository(prisma);
     this.businessNotificationSettingsRepository = new BusinessNotificationSettingsRepository(prisma);
     this.notificationRepository = new NotificationRepository(prisma);
+    this.dailyNotebookRepository = new DailyNotebookRepository(prisma);
   }
 
   get prismaClient(): PrismaClient {
@@ -84,7 +87,8 @@ export {
   StaffRepository,
   PaymentRepository,
   BusinessNotificationSettingsRepository,
-  NotificationRepository
+  NotificationRepository,
+  DailyNotebookRepository
 };
 
 // Export interfaces for testing/mocking

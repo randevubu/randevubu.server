@@ -20,6 +20,7 @@ import { UsageService } from './domain/usage';
 import { StaffService } from './domain/staff';
 import { PricingTierService } from './domain/pricing/pricingTierService';
 import { IPGeolocationService } from './domain/geolocation/ipGeolocationService';
+import { DailyNotebookService } from './domain/dailyNotebook';
 // Import shared services
 import { 
   ErrorHandlingService, 
@@ -58,6 +59,7 @@ export class ServiceContainer {
   public readonly appointmentReminderService: AppointmentReminderService;
   public readonly startupService: StartupService;
   public readonly pricingTierService: PricingTierService;
+  public readonly dailyNotebookService: DailyNotebookService;
   
   // Shared services
   public readonly errorHandlingService: ErrorHandlingService;
@@ -172,6 +174,9 @@ export class ServiceContainer {
     // Startup service
     this.startupService = new StartupService(this.prisma);
     
+    // Daily Notebook service
+    this.dailyNotebookService = new DailyNotebookService(repositories.dailyNotebookRepository);
+    
     // Shared services
     this.errorHandlingService = errorHandlingService;
     this.secureLoggingService = secureLoggingService;
@@ -206,6 +211,7 @@ export {
   StartupService,
   PricingTierService,
   IPGeolocationService,
+  DailyNotebookService,
   // Shared services
   ErrorHandlingService,
   errorHandlingService,
