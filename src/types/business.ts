@@ -1109,3 +1109,62 @@ export interface BusinessStaffPrivacySettingsRequest {
     receptionist?: string;
   };
 }
+
+// Google Integration Types
+export interface GoogleIntegrationData {
+  isLinked: boolean;
+  isEnabled: boolean;
+  placeId?: string;
+  linkedAt?: Date;
+  urls?: {
+    maps: string;
+    reviews: string;
+    writeReview: string;
+    embed: string;
+  };
+}
+
+// Internal Rating Types
+export interface BusinessRatingData {
+  averageRating: number;
+  totalRatings: number;
+  lastRatingAt?: Date;
+  recentReviews?: CustomerEvaluationData[];
+}
+
+// Combined Rating Display
+export interface BusinessRatingsDisplay {
+  internal: BusinessRatingData;
+  google?: GoogleIntegrationData;
+}
+
+// Customer Evaluation (matches Prisma model)
+export interface CustomerEvaluationData {
+  id: string;
+  customerId: string;
+  businessId: string;
+  appointmentId: string;
+  rating: number; // 1-5
+  comment?: string;
+  isAnonymous: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  customer?: {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+  };
+}
+
+// Request Types
+export interface SubmitRatingRequest {
+  appointmentId: string;
+  rating: number; // 1-5
+  comment?: string;
+  isAnonymous?: boolean;
+}
+
+export interface GoogleIntegrationSettingsRequest {
+  googlePlaceId?: string;
+  enabled: boolean;
+}

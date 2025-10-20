@@ -13,6 +13,7 @@ import { BusinessSubscriptionData } from "../../../types/business";
 import {
   BusinessRuleViolationError,
   ErrorContext,
+  InternalServerError,
   PhoneAlreadyExistsError,
   UnauthorizedError,
   UserDeactivatedError,
@@ -545,33 +546,67 @@ export class AuthService {
 
     const user = await this.repositories.userRepository.create(userData);
 
-    // Assign default CUSTOMER role to new user
-    if (this.rbacService) {
-      try {
-        await this.rbacService.assignRole(
-          user.id,
-          "CUSTOMER",
-          user.id, // Self-assigned during registration
-          undefined, // no expiration
-          { source: "auto_registration" }
-        );
-
-        logger.info("Default CUSTOMER role assigned to new user", {
-          userId: user.id,
-          phoneNumber: this.maskPhoneNumber(user.phoneNumber),
-          requestId: context?.requestId,
-        });
-      } catch (error) {
-        logger.error("Failed to assign default role to new user", {
-          userId: user.id,
-          error: error instanceof Error ? error.message : String(error),
-          requestId: context?.requestId,
-        });
-        // Don't throw error here - user creation should still succeed even if role assignment fails
-      }
+    // Assign default CUSTOMER role to new user - THIS IS CRITICAL
+    // Without a role, the user has no permissions and cannot use the system
+    if (!this.rbacService) {
+      // If RBAC service is not available, we cannot create users safely
+      logger.error("RBAC service not available during user creation", {
+        userId: user.id,
+        requestId: context?.requestId,
+      });
+      throw new InternalServerError(
+        "System configuration error: RBAC service unavailable",
+        undefined,
+        context
+      );
     }
 
-    logger.info("New user created", {
+    try {
+      await this.rbacService.assignRole(
+        user.id,
+        "CUSTOMER",
+        user.id, // Self-assigned during registration
+        undefined, // no expiration
+        { source: "auto_registration" }
+      );
+
+      logger.info("Default CUSTOMER role assigned to new user", {
+        userId: user.id,
+        phoneNumber: this.maskPhoneNumber(user.phoneNumber),
+        requestId: context?.requestId,
+      });
+    } catch (error) {
+      // CRITICAL: If role assignment fails, the user account is unusable
+      // We must fail the registration entirely
+      logger.error("CRITICAL: Failed to assign default role to new user", {
+        userId: user.id,
+        error: error instanceof Error ? error.message : String(error),
+        requestId: context?.requestId,
+      });
+      
+      // Try to clean up the created user
+      try {
+        await this.repositories.userRepository.delete(user.id);
+        logger.info("Cleaned up user account after role assignment failure", {
+          userId: user.id,
+          requestId: context?.requestId,
+        });
+      } catch (cleanupError) {
+        logger.error("Failed to clean up user after role assignment failure", {
+          userId: user.id,
+          cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+          requestId: context?.requestId,
+        });
+      }
+
+      throw new InternalServerError(
+        "Failed to set up user account. Please try again.",
+        error instanceof Error ? error : new Error(String(error)),
+        context
+      );
+    }
+
+    logger.info("New user created with CUSTOMER role", {
       userId: user.id,
       phoneNumber: this.maskPhoneNumber(user.phoneNumber),
       requestId: context?.requestId,

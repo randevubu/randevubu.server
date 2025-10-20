@@ -16,6 +16,9 @@ import { swaggerSpec, swaggerUiOptions } from "./config/swagger";
 import { ControllerContainer } from "./controllers";
 import prisma from "./lib/prisma";
 import { initializeBusinessContextMiddleware } from "./middleware/attachBusinessContext";
+import { AuthMiddleware } from "./middleware/auth";
+import { AuthorizationMiddleware } from "./middleware/authorization";
+import { initializeAuthMiddleware } from "./middleware/authUtils";
 import { csrfMiddleware } from "./middleware/csrf";
 import { errorHandler, notFoundHandler } from "./middleware/error";
 import { requestIdMiddleware } from "./middleware/requestId";
@@ -367,6 +370,11 @@ const services = new ServiceContainer(repositories, prisma);
 const controllers = new ControllerContainer(repositories, services);
 
 // Cache services are handled by the middleware
+
+// Initialize authentication middleware with dependency injection
+const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
+const authorizationMiddleware = new AuthorizationMiddleware(services.rbacService);
+initializeAuthMiddleware(authMiddleware, authorizationMiddleware);
 
 // Initialize business context middleware
 initializeBusinessContextMiddleware(repositories);

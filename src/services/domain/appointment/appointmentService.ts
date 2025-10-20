@@ -19,6 +19,7 @@ import { createDateTimeInIstanbul, getCurrentTimeInIstanbul, formatDateTimeForAP
 import { BusinessContext } from '../../../middleware/businessContext';
 import { BusinessService } from '../business';
 import { NotificationService } from '../notification';
+import { UnifiedNotificationGateway } from '../notification/unifiedNotificationGateway';
 import { ReservationSettings, BusinessSettings } from '../../../types/reservationSettings';
 import { UsageService } from '../usage';
 import { PrismaClient } from '@prisma/client';
@@ -27,6 +28,7 @@ import { PolicyEnforcementContext, PolicyCheckResult } from '../../../types/canc
 
 export class AppointmentService {
   private cancellationPolicyService: CancellationPolicyService;
+  private notificationGateway: UnifiedNotificationGateway;
 
   constructor(
     private appointmentRepository: AppointmentRepository,
@@ -44,6 +46,16 @@ export class AppointmentService {
     this.cancellationPolicyService = new CancellationPolicyService(
       this.userBehaviorRepository,
       this.businessRepository
+    );
+    // Get prisma instance - use provided prisma or fall back to creating new client
+    const prismaInstance = prisma || (repositories as any).prisma;
+    if (!prismaInstance) {
+      throw new Error('Prisma client is required for UnifiedNotificationGateway');
+    }
+    this.notificationGateway = new UnifiedNotificationGateway(
+      prismaInstance,
+      repositories,
+      usageService
     );
   }
 
@@ -482,7 +494,26 @@ export class AppointmentService {
       }
     } catch (notificationError) {
       // Log notification error but don't fail the appointment creation
-      console.error('❌ APPOINTMENT CREATION - Failed to send appointment notification:', notificationError);
+      console.error('❌ APPOINTMENT CREATION - Failed to send business owner notification:', notificationError);
+    }
+
+    // Send booking confirmation SMS to customer
+    try {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 APPOINTMENT CREATION - Sending booking confirmation to customer:', customer.id);
+      }
+      await this.sendCustomerBookingConfirmation(appointment, service, {
+        id: customer.id,
+        firstName: customer.firstName ?? null,
+        lastName: customer.lastName ?? null,
+        phoneNumber: customer.phoneNumber
+      });
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 APPOINTMENT CREATION - Customer confirmation sent for appointment:', appointment.id);
+      }
+    } catch (notificationError) {
+      // Log notification error but don't fail the appointment creation
+      console.error('❌ APPOINTMENT CREATION - Failed to send customer confirmation:', notificationError);
     }
 
     return appointment;
@@ -1160,29 +1191,6 @@ export class AppointmentService {
         return;
       }
 
-      // Get business notification settings
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Getting business notification settings for businessId:', appointment.businessId);
-      }
-      const businessSettings = await this.businessService.getOrCreateBusinessNotificationSettings(appointment.businessId);
-      
-      // Debug: Log current notification settings (development only)
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Business notification settings retrieved:', {
-          businessId: appointment.businessId,
-          pushEnabled: businessSettings.pushEnabled,
-          smsEnabled: businessSettings.smsEnabled,
-          emailEnabled: businessSettings.emailEnabled,
-          settingsId: businessSettings.id
-        });
-      }
-      
-      // Check if any notifications are enabled
-      if (!businessSettings.pushEnabled && !businessSettings.smsEnabled) {
-        console.log('All notifications disabled for business, skipping notification:', appointment.businessId);
-        return;
-      }
-
       // Get customer details for the notification
       const customer = await this.repositories?.userRepository.findById(appointment.customerId);
       if (!customer) {
@@ -1192,67 +1200,40 @@ export class AppointmentService {
 
       // Format appointment date and time
       const appointmentDate = new Date(appointment.date).toLocaleDateString();
-      const appointmentTime = new Date(appointment.startTime).toLocaleTimeString([], { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+      const appointmentTime = new Date(appointment.startTime).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
       });
 
       // Create notification content
       const title = 'New Appointment Booking';
       const body = `${customer.firstName} ${customer.lastName} booked ${service.name} for ${appointmentDate} at ${appointmentTime}`;
 
-      // Send push notification to business owner (if enabled)
-      if (businessSettings.pushEnabled) {
-        await this.notificationService.sendPushNotification({
-          userId: business.ownerId,
+      // Use unified notification gateway - respects all business settings
+      const result = await this.notificationGateway.sendSystemAlert({
+        businessId: appointment.businessId,
+        userId: business.ownerId,
+        title,
+        body,
+        appointmentId: appointment.id,
+        data: {
           appointmentId: appointment.id,
-          businessId: appointment.businessId,
-          title,
-          body,
-          icon: undefined,
-          badge: undefined,
-          data: {
-            appointmentId: appointment.id,
-            customerId: appointment.customerId,
-            customerName: `${customer.firstName} ${customer.lastName}`,
-            serviceName: service.name,
-            businessName: business.name,
-            appointmentDate,
-            appointmentTime,
-            type: 'new_appointment'
-          },
-          url: `/appointments/${appointment.id}`
-        });
-        console.log(`Push notification sent to business owner: ${business.ownerId}`);
-      } else {
-        console.log('Push notifications disabled for business, skipping push notification');
-      }
+          customerId: appointment.customerId,
+          customerName: `${customer.firstName} ${customer.lastName}`,
+          serviceName: service.name,
+          businessName: business.name,
+          appointmentDate,
+          appointmentTime,
+          type: 'new_appointment'
+        },
+        url: `/appointments/${appointment.id}`
+      });
 
-      // Send SMS notification to business owner (if enabled)
-      if (businessSettings.smsEnabled) {
-        console.log('SMS notifications enabled, sending SMS to business owner');
-        
-        // Validate that customer has required fields for SMS notification
-        if (!customer.firstName || !customer.lastName || !customer.phoneNumber) {
-          console.warn('Customer missing required fields for SMS notification:', {
-            customerId: customer.id,
-            hasFirstName: !!customer.firstName,
-            hasLastName: !!customer.lastName,
-            hasPhoneNumber: !!customer.phoneNumber
-          });
-          console.log('Skipping SMS notification due to missing customer data');
-        } else {
-          await this.sendSMSAppointmentNotification(business, {
-            firstName: customer.firstName,
-            lastName: customer.lastName,
-            phoneNumber: customer.phoneNumber
-          }, service, appointment, appointmentDate, appointmentTime);
-        }
+      if (result.success) {
+        console.log(`✅ Appointment notification sent to business owner: ${business.ownerId} via ${result.sentChannels.join(', ')}`);
       } else {
-        console.log('SMS notifications disabled for business, skipping SMS notification');
+        console.log(`⚠️ Appointment notification skipped: ${result.skippedChannels.map(sc => sc.reason).join(', ')}`);
       }
-
-      console.log(`Appointment notification processing completed for business: ${business.ownerId}`);
 
     } catch (error) {
       console.error('Error sending new appointment notification:', error);
@@ -1261,100 +1242,63 @@ export class AppointmentService {
   }
 
   /**
-   * Send SMS notification to business owner about new appointment booking
+   * Send booking confirmation SMS to customer
+   * Always sends SMS - this is a critical transactional message
    */
-  private async sendSMSAppointmentNotification(
-    business: { id: string; name: string; ownerId: string },
-    customer: { firstName: string; lastName: string; phoneNumber: string },
-    service: { name: string },
+  private async sendCustomerBookingConfirmation(
     appointment: AppointmentData,
-    appointmentDate: string,
-    appointmentTime: string
+    service: { name: string; duration: number },
+    customer: { id: string; firstName: string | null; lastName: string | null; phoneNumber: string }
   ): Promise<void> {
     try {
-      console.log('🔍 SMS Notification Debug - Starting SMS notification process');
-      
-      // Get business owner's phone number
-      const businessOwner = await this.repositories.userRepository.findById(business.ownerId);
-
-      console.log('🔍 SMS Notification Debug - Business owner data:', {
-        ownerId: business.ownerId,
-        hasPhoneNumber: !!businessOwner?.phoneNumber,
-        phoneNumber: businessOwner?.phoneNumber ? `${businessOwner.phoneNumber.slice(0, 3)}***${businessOwner.phoneNumber.slice(-3)}` : 'N/A'
-      });
-
-      if (!businessOwner || !businessOwner.phoneNumber) {
-        console.log('❌ Business owner phone number not found, skipping SMS notification');
+      // Get business details
+      const business = await this.businessRepository.findById(appointment.businessId);
+      if (!business) {
+        console.error('Business not found for booking confirmation:', appointment.businessId);
         return;
       }
 
-      // Check if business can send SMS based on subscription limits
-      if (this.usageService) {
-        console.log('🔍 SMS Notification Debug - Checking SMS quota...');
-        const canSendSms = await this.usageService.canSendSms(business.id);
-        console.log('🔍 SMS Notification Debug - SMS quota check result:', canSendSms);
-        
-        if (!canSendSms.allowed) {
-          console.log(`❌ SMS quota exceeded for business ${business.id}: ${canSendSms.reason}`);
-          return;
-        }
-      } else {
-        console.log('⚠️ Usage service not available, skipping SMS quota check');
+      // Ensure customer has phone number
+      if (!customer.phoneNumber) {
+        console.warn(`Customer ${customer.id} has no phone number for booking confirmation`);
+        return;
       }
 
-      // Create SMS message
-      const message = `Yeni Randevu: ${customer.firstName} ${customer.lastName} ${service.name} hizmeti için ${appointmentDate} tarihinde saat ${appointmentTime}'de randevu aldı. Detaylar: https://randevubu.com/appointments/${appointment.id}`;
-      
-      console.log('🔍 SMS Notification Debug - SMS message created:', {
-        messageLength: message.length,
-        customerName: `${customer.firstName} ${customer.lastName}`,
-        serviceName: service.name,
-        appointmentDate,
-        appointmentTime
+      // Format appointment date and time
+      const appointmentDate = appointment.startTime.toLocaleDateString('tr-TR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
       });
 
-      // Send SMS using the existing SMS service
-      console.log('🔍 SMS Notification Debug - Importing SMS service...');
-      const { SMSService } = await import('../sms/smsService');
-      const smsService = new SMSService();
-      
-      // Check SMS service configuration
-      console.log('🔍 SMS Notification Debug - SMS service configuration:', {
-        hasApiKey: !!process.env.ILETI_MERKEZI_API_KEY,
-        hasSecretKey: !!process.env.ILETI_MERKEZI_SECRET_KEY,
-        sender: process.env.ILETI_MERKEZI_SENDER || 'APITEST',
-        nodeEnv: process.env.NODE_ENV
+      const appointmentTime = appointment.startTime.toLocaleTimeString('tr-TR', {
+        hour: '2-digit',
+        minute: '2-digit'
       });
 
-      console.log('🔍 SMS Notification Debug - Sending SMS...');
-      const result = await smsService.sendSMS({
-        phoneNumber: businessOwner.phoneNumber,
+      // Create confirmation message in Turkish
+      const message = `Randevunuz onaylandı!\n\n${business.name}\n${service.name}\n${appointmentDate} - ${appointmentTime}\n\nİptal için: https://randevubu.com/appointments/${appointment.id}`;
+
+      // Send SMS directly - this is critical and should always attempt
+      // We use the gateway's sendCriticalSMS for transactional confirmations
+      const result = await this.notificationGateway.sendCriticalSMS(
+        customer.phoneNumber,
         message,
-        context: { requestId: `appointment-${appointment.id}` }
-      });
-
-      console.log('🔍 SMS Notification Debug - SMS service result:', {
-        success: result.success,
-        error: result.error,
-        messageId: result.messageId
-      });
+        { requestId: `booking-${appointment.id}` }
+      );
 
       if (result.success) {
-        // Record SMS usage after successful sending
-        if (this.usageService) {
-          console.log('🔍 SMS Notification Debug - Recording SMS usage...');
-          await this.usageService.recordSmsUsage(business.id, 1);
-        }
-        console.log(`✅ SMS notification sent to business owner: ${businessOwner.phoneNumber.slice(0, 3)}***${businessOwner.phoneNumber.slice(-3)}`);
+        console.log(`✅ Booking confirmation SMS sent to customer: ${customer.phoneNumber.slice(0, 3)}***${customer.phoneNumber.slice(-3)}`);
       } else {
-        console.error('❌ Failed to send SMS notification:', result.error);
+        console.error(`❌ Failed to send booking confirmation SMS: ${result.error}`);
       }
 
     } catch (error) {
-      console.error('❌ Error sending SMS appointment notification:', error);
-      // Don't throw error to avoid breaking the appointment creation process
+      console.error('❌ Error sending customer booking confirmation:', error);
+      // Don't throw - we don't want to fail appointment creation if notification fails
     }
   }
+
 
   /**
    * Get monitor appointments - Optimized endpoint for real-time queue display

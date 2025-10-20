@@ -4,12 +4,10 @@
  * Handles business ownership validation and access control
  */
 
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { BusinessOwnershipRequest } from '../types/request';
+import { AuthenticatedRequest, BusinessOwnershipRequest } from '../types/request';
 import { sendAppErrorResponse, BusinessErrors, createErrorContext, InternalError } from '../utils/errorResponse';
-import { BusinessRuleViolationError } from '../types/errors';
-import { AuthenticatedRequest } from './auth';
 
 let prismaInstance: PrismaClient;
 

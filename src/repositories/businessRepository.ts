@@ -12,7 +12,8 @@ import {
   BusinessHoursOverride,
   BusinessNotificationSettingsData,
   StoredPaymentMethodData,
-  ServiceData
+  ServiceData,
+  CustomerEvaluationData
 } from '../types/business';
 
 export interface BusinessQueryOptions {
@@ -193,6 +194,11 @@ export class BusinessRepository {
     }
 
     const business = await this.prisma.$transaction(async (tx) => {
+      // Debug logging for business hours
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔧 BUSINESS REPOSITORY: Business hours being stored:', JSON.stringify(data.businessHours, null, 2));
+      }
+
       // Create business
       const businessId = `biz_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
       const createdBusiness = await tx.business.create({
@@ -211,7 +217,7 @@ export class BusinessRepository {
           state: data.state,
           country: data.country,
           postalCode: data.postalCode,
-          businessHours: data.businessHours,
+          businessHours: data.businessHours as Prisma.InputJsonValue,
           timezone: data.timezone,
           primaryColor: data.primaryColor,
           galleryImages: [],
@@ -223,6 +229,11 @@ export class BusinessRepository {
           updatedAt: new Date()
         }
       });
+
+      // Debug logging to verify business hours were stored
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔧 BUSINESS REPOSITORY: Business created with hours:', JSON.stringify(createdBusiness.businessHours, null, 2));
+      }
 
       // Get the OWNER role
       const ownerRole = await tx.role.findUnique({
@@ -1645,7 +1656,8 @@ export class BusinessRepository {
       tags: prismaResult.tags,
       createdAt: prismaResult.createdAt,
       updatedAt: prismaResult.updatedAt,
-      deletedAt: prismaResult.deletedAt
+      deletedAt: prismaResult.deletedAt,
+      businessType: prismaResult.businessType
     };
   }
 
@@ -1760,6 +1772,191 @@ export class BusinessRepository {
       metadata: prismaResult.metadata,
       createdAt: prismaResult.createdAt,
       updatedAt: prismaResult.updatedAt
+    };
+  }
+
+  // Google Integration Methods
+  async updateGoogleIntegration(
+    businessId: string,
+    data: {
+      googlePlaceId?: string;
+      googleOriginalUrl?: string;
+      enabled: boolean;
+      linkedBy?: string;
+      latitude?: number;
+      longitude?: number;
+    }
+  ): Promise<BusinessData> {
+    const updateData: any = {
+      googleIntegrationEnabled: data.enabled,
+      googleLinkedAt: data.enabled ? new Date() : null,
+      googleLinkedBy: data.linkedBy
+    };
+
+    if (data.googlePlaceId !== undefined) {
+      updateData.googlePlaceId = data.googlePlaceId;
+    }
+
+    if (data.googleOriginalUrl !== undefined) {
+      updateData.googleOriginalUrl = data.googleOriginalUrl;
+    }
+
+    // Store coordinates for coordinate-based embedding (more reliable than CID)
+    if (data.latitude !== undefined) {
+      updateData.latitude = data.latitude;
+    }
+
+    if (data.longitude !== undefined) {
+      updateData.longitude = data.longitude;
+    }
+
+    return await this.prisma.business.update({
+      where: { id: businessId },
+      data: updateData,
+      include: {
+        businessType: true
+      }
+    }) as BusinessData;
+  }
+
+  async getGoogleIntegrationSettings(
+    businessId: string
+  ): Promise<{
+    googlePlaceId: string | null;
+    googleOriginalUrl: string | null;
+    googleIntegrationEnabled: boolean;
+    googleLinkedAt: Date | null;
+    latitude: number | null;
+    longitude: number | null;
+    averageRating: number | null;
+    totalRatings: number;
+    lastRatingAt: Date | null;
+  } | null> {
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: {
+        googlePlaceId: true,
+        googleOriginalUrl: true,
+        googleIntegrationEnabled: true,
+        googleLinkedAt: true,
+        latitude: true,
+        longitude: true,
+        averageRating: true,
+        totalRatings: true,
+        lastRatingAt: true
+      }
+    });
+
+    if (!business) {
+      return null;
+    }
+
+    return {
+      googlePlaceId: business.googlePlaceId,
+      googleOriginalUrl: business.googleOriginalUrl,
+      googleIntegrationEnabled: business.googleIntegrationEnabled,
+      googleLinkedAt: business.googleLinkedAt,
+      latitude: business.latitude,
+      longitude: business.longitude,
+      averageRating: business.averageRating,
+      totalRatings: business.totalRatings,
+      lastRatingAt: business.lastRatingAt
+    };
+  }
+
+  async findByGooglePlaceId(googlePlaceId: string): Promise<BusinessData | null> {
+    return await this.prisma.business.findFirst({
+      where: { googlePlaceId },
+      include: {
+        businessType: true
+      }
+    }) as BusinessData | null;
+  }
+
+  // Rating Cache Methods
+  async updateRatingCache(businessId: string): Promise<void> {
+    const stats = await this.prisma.customerEvaluation.aggregate({
+      where: { businessId },
+      _avg: { rating: true },
+      _count: { id: true },
+      _max: { createdAt: true }
+    });
+
+    const averageRating = stats._avg.rating || 0;
+    const totalRatings = stats._count.id;
+    const lastRatingAt = stats._max.createdAt;
+
+    // Update the business record with the computed stats
+    await this.prisma.business.update({
+      where: { id: businessId },
+      data: {
+        averageRating,
+        totalRatings,
+        lastRatingAt
+      }
+    });
+
+    // Log the computed stats for debugging
+    console.log(`Rating stats for business ${businessId}:`, {
+      averageRating,
+      totalRatings,
+      lastRatingAt
+    });
+  }
+
+  async getBusinessRatings(
+    businessId: string,
+    options: {
+      page: number;
+      limit: number;
+      minRating?: number;
+    }
+  ): Promise<{
+    ratings: CustomerEvaluationData[];
+    total: number;
+    averageRating: number;
+    totalRatings: number;
+  }> {
+    const where = {
+      businessId,
+      ...(options.minRating && { rating: { gte: options.minRating } })
+    };
+
+    const [ratings, total, business] = await Promise.all([
+      this.prisma.customerEvaluation.findMany({
+        where,
+        include: {
+          customer: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (options.page - 1) * options.limit,
+        take: options.limit
+      }),
+      this.prisma.customerEvaluation.count({ where }),
+      this.prisma.business.findUnique({
+        where: { id: businessId },
+        select: { 
+          averageRating: true,
+          totalRatings: true
+        }
+      })
+    ]);
+
+    // Return the overall business average rating and total ratings (calculated from ALL ratings)
+    const averageRating = business?.averageRating || 0;
+    const totalRatings = business?.totalRatings || 0;
+
+    return {
+      ratings: ratings as CustomerEvaluationData[],
+      total,
+      averageRating,
+      totalRatings
     };
   }
 }

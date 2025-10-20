@@ -50,12 +50,17 @@ export class CSRFMiddleware {
         const token = this.generateToken();
         const secret = this.generateToken();
         
+        const isSecureProduction = process.env.NODE_ENV === 'production' && req.secure;
+        
         // Store secret in cookie (httpOnly, secure in production)
+        // CRITICAL: Must specify path and domain to match clearCookie on logout
         res.cookie(this.options.cookieName, secret, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          secure: isSecureProduction,
+          sameSite: isSecureProduction ? 'none' : 'lax',
           maxAge: this.options.maxAge,
+          path: '/',  // CRITICAL: Must match logout
+          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost'
         });
 
         // Send token in response header for client to use

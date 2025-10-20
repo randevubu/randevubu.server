@@ -799,7 +799,7 @@ export function createAppointmentRoutes(
   router.post(
     "/:id/confirm",
     invalidateAppointmentCache,
-    authorizationMiddleware.requireAny(
+    authorizationMiddleware.requireAnyMiddleware(
       authorizationMiddleware.requirePermission({
         resource: "appointment",
         action: "confirm",
@@ -840,7 +840,7 @@ export function createAppointmentRoutes(
   router.post(
     "/:id/complete",
     invalidateAppointmentCache,
-    authorizationMiddleware.requireAny(
+    authorizationMiddleware.requireAnyMiddleware(
       authorizationMiddleware.requirePermission({
         resource: "appointment",
         action: "complete",
@@ -881,7 +881,7 @@ export function createAppointmentRoutes(
   router.post(
     "/:id/no-show",
     invalidateAppointmentCache,
-    authorizationMiddleware.requireAny(
+    authorizationMiddleware.requireAnyMiddleware(
       authorizationMiddleware.requirePermission({
         resource: "appointment",
         action: "mark_no_show",
@@ -1261,7 +1261,7 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/service/:serviceId",
-    authorizationMiddleware.requireAny(
+    authorizationMiddleware.requireAnyMiddleware(
       authorizationMiddleware.requirePermission({
         resource: "appointment",
         action: "view_all",
@@ -1299,7 +1299,7 @@ export function createAppointmentRoutes(
    */
   router.get(
     "/staff/:staffId",
-    authorizationMiddleware.requireAny(
+    authorizationMiddleware.requireAnyMiddleware(
       authorizationMiddleware.requirePermission({
         resource: "appointment",
         action: "view_all",

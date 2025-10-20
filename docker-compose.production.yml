@@ -1,6 +1,6 @@
 # 🚀 UNIFIED PRODUCTION DOCKER COMPOSE
-# Single configuration with nginx as load balancer + API gateway
-# Handles: Load balancing, API gateway, security, caching, monitoring
+# Single configuration with nginx as load balancer + reverse proxy
+# Handles: Load balancing, reverse proxy, security, caching, monitoring
 
 services:
   # Application Instances (Scalable)
@@ -109,7 +109,7 @@ services:
           memory: 512M
           cpus: '0.25'
 
-  # Nginx: Load Balancer + API Gateway (Industry Best Practices)
+  # Nginx: Load Balancer + Reverse Proxy (Industry Best Practices)
   nginx:
     image: nginx:alpine
     ports:

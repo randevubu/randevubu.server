@@ -46,7 +46,7 @@ export class RBACService {
   private inFlightRequests = new Map<string, Promise<UserPermissions>>();
   private cleanupInterval: NodeJS.Timeout | null = null;
 
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes (increased for better performance)
   private readonly MAX_CACHE_SIZE = 1000;
   private readonly CACHE_CLEANUP_THRESHOLD =
     SECURITY_CONSTANTS.CACHE_HIGH_THRESHOLD;
@@ -622,14 +622,20 @@ export class RBACService {
     }
 
     try {
-      // Check if grantor has permission to assign roles
-      const grantorPermissions = await this.getUserPermissions(grantedBy);
-      if (
-        grantorPermissions.effectiveLevel <
-        SECURITY_CONSTANTS.MIN_LEVEL_THRESHOLD
-      ) {
-        // Minimum level for role assignment
-        throw new ForbiddenError("Insufficient permissions to assign roles");
+      // Skip permission check for auto-registration (system operation)
+      // This allows new users to be assigned their default CUSTOMER role during registration
+      const isAutoRegistration = metadata?.source === "auto_registration";
+
+      if (!isAutoRegistration) {
+        // Check if grantor has permission to assign roles (only for manual assignments)
+        const grantorPermissions = await this.getUserPermissions(grantedBy);
+        if (
+          grantorPermissions.effectiveLevel <
+          SECURITY_CONSTANTS.MIN_LEVEL_THRESHOLD
+        ) {
+          // Minimum level for role assignment
+          throw new ForbiddenError("Insufficient permissions to assign roles");
+        }
       }
 
       let role = await this.repositories.roleRepository.getRoleByName(

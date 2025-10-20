@@ -46,15 +46,15 @@ const format = winston.format.combine(
         const logEntry = {
             level,
             time: timestamp,
-            application: 'splus',  // Replace with your application's name
+            application: 'randevubu-server',
             containerId: os.hostname() || uuidv4(),  // Use HOSTNAME env or generate UUID
-            environment: 'production', // Use NODE_ENV or default to production //environment: NODE_ENV || 'production',
+            environment: process.env.NODE_ENV || 'production',
             nodeVersion: process.version || 'unknown',
             platform: os.platform() || 'unknown',
             // These upper four for detecting which container the log came from
             msg: message,
             ...metadata
-            
+
         };
         return JSON.stringify(logEntry, null, 2);
     }),

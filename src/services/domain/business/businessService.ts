@@ -21,7 +21,7 @@ import { RBACService } from '../rbac/rbacService';
 import { PermissionName } from '../../../types/auth';
 import { BusinessContext } from '../../../middleware/businessContext';
 import { BusinessStaffRole, AuditAction } from '@prisma/client';
-import { ValidationError } from '../../../types/errors';
+import { ValidationError, ForbiddenError } from '../../../types/errors';
 import { UsageService } from '../usage/usageService';
 import { RepositoryContainer } from '../../../repositories';
 import { CancellationPolicyService } from './cancellationPolicyService';
@@ -81,6 +81,11 @@ export class BusinessService {
       saturday: { openTime: '10:00', closeTime: '16:00', isOpen: false },
       sunday: { openTime: '10:00', closeTime: '16:00', isOpen: false }
     };
+
+    // Debug logging for business hours
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔧 BUSINESS SERVICE: Default business hours created:', JSON.stringify(defaultBusinessHours, null, 2));
+    }
 
     // Use repository method that handles transaction and role assignment
     const business = await this.businessRepository.createWithRoleAssignment({
@@ -2166,5 +2171,132 @@ export class BusinessService {
     }
 
     return await this.customerManagementService.submitCustomerEvaluation(businessId, appointmentId, evaluationData);
+  }
+
+  // Google Integration Methods
+  async updateGoogleIntegration(
+    userId: string,
+    businessId: string,
+    data: {
+      googlePlaceId?: string;
+      googleUrl?: string;
+      enabled: boolean;
+    }
+  ): Promise<BusinessData> {
+    // Quick ownership check first (faster than full RBAC)
+    const business = await this.businessRepository.findById(businessId);
+    if (!business || business.ownerId !== userId) {
+      throw new ForbiddenError("You don't have permission to edit this business");
+    }
+
+    let finalPlaceId: string | undefined = data.googlePlaceId;
+    let coordinates: { lat: number; lng: number } | null = null;
+
+    // If URL is provided, extract both Place ID and coordinates
+    if (data.googleUrl) {
+      const { GooglePlaceIdExtractor } = await import('../../../utils/googlePlaceIdExtractor');
+      
+      // Extract coordinates (PRIORITY for embedding)
+      coordinates = GooglePlaceIdExtractor.extractCoordinates(data.googleUrl);
+      
+      // Also extract Place ID if not provided
+      if (!data.googlePlaceId) {
+        finalPlaceId = GooglePlaceIdExtractor.extractPlaceId(data.googleUrl) || undefined;
+      }
+
+      if (!finalPlaceId && !coordinates && data.enabled) {
+        // Could not extract Place ID or coordinates from URL
+        const businessName = GooglePlaceIdExtractor.extractBusinessName(data.googleUrl);
+        throw new ValidationError(
+          `Could not extract Google location data from the provided URL${businessName ? ` for "${businessName}"` : ''}. Please provide a direct Google Maps link with coordinates or Place ID.`
+        );
+      }
+    }
+
+    // If enabling and providing Place ID, validate it
+    if (data.enabled && finalPlaceId) {
+      // Validate format
+      const { GooglePlaceIdExtractor } = await import('../../../utils/googlePlaceIdExtractor');
+      if (!GooglePlaceIdExtractor.isValidPlaceId(finalPlaceId)) {
+        throw new ValidationError(
+          'Invalid Google identifier format. Please provide either a Place ID (starts with "Ch") or a Google Maps URL with a valid location.'
+        );
+      }
+
+      // Check if it's not used by another business
+      const existing = await this.businessRepository.findByGooglePlaceId(
+        finalPlaceId
+      );
+
+      if (existing && existing.id !== businessId) {
+        throw new ValidationError(
+          'This Google Place ID is already linked to another business'
+        );
+      }
+    }
+
+    // Update business with Google integration data AND coordinates
+    const updateData: {
+      googlePlaceId?: string;
+      googleOriginalUrl?: string;
+      enabled: boolean;
+      linkedBy: string;
+      latitude?: number;
+      longitude?: number;
+    } = {
+      googlePlaceId: finalPlaceId,
+      googleOriginalUrl: data.googleUrl, // Store the original URL
+      enabled: data.enabled,
+      linkedBy: userId
+    };
+
+    // Add coordinates if extracted
+    if (coordinates) {
+      updateData.latitude = coordinates.lat;
+      updateData.longitude = coordinates.lng;
+
+      console.log('✅ Coordinates extracted and will be stored:', {
+        businessId,
+        latitude: coordinates.lat,
+        longitude: coordinates.lng
+      });
+    }
+
+    // Log that we're storing the original URL
+    if (data.googleUrl) {
+      console.log('✅ Storing original Google Maps URL:', {
+        businessId,
+        originalUrl: data.googleUrl
+      });
+    }
+
+    return await this.businessRepository.updateGoogleIntegration(businessId, updateData);
+  }
+
+  async getGoogleIntegrationSettings(
+    userId: string, // Can be empty for public access
+    businessId: string
+  ): Promise<{
+    googlePlaceId: string | null;
+    googleOriginalUrl: string | null;
+    googleIntegrationEnabled: boolean;
+    googleLinkedAt: Date | null;
+    latitude: number | null;
+    longitude: number | null;
+    averageRating: number | null;
+    totalRatings: number;
+    lastRatingAt: Date | null;
+  }> {
+    // Public method - no ownership check needed
+    // Google integration info is public data (anyone can see Google Maps/reviews)
+    const settings = await this.businessRepository.getGoogleIntegrationSettings(
+      businessId
+    );
+
+    if (!settings) {
+      throw new Error('Business not found');
+    }
+
+    return settings;
   }
 }

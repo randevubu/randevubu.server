@@ -740,4 +740,25 @@ export class SubscriptionRepository {
       customPriceDisplay: isExpensivePlan ? 'CUSTOM' : undefined
     };
   }
+
+  /**
+   * Find business by ID
+   */
+  async findBusinessById(businessId: string): Promise<{ businessHours: any } | null> {
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: { businessHours: true }
+    });
+    return business;
+  }
+
+  /**
+   * Update business hours
+   */
+  async updateBusinessHours(businessId: string, businessHours: any): Promise<void> {
+    await this.prisma.business.update({
+      where: { id: businessId },
+      data: { businessHours: businessHours as Prisma.InputJsonValue }
+    });
+  }
 }

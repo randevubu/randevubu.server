@@ -234,6 +234,13 @@ export class PrismaUserRepository implements UserRepository {
     });
   }
 
+  async delete(id: string): Promise<void> {
+    // Hard delete - only use for cleanup scenarios (e.g., failed registration)
+    await this.prisma.user.delete({
+      where: { id },
+    });
+  }
+
   async findCustomersByUserBusinesses(userId: string, filters?: {
     search?: string;
     page?: number;

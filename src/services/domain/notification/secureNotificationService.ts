@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { NotificationService } from './notificationService';
+import { UnifiedNotificationGateway } from './unifiedNotificationGateway';
 import { CustomerRelationshipService } from '../customer/customerRelationshipService';
 import { CustomerValidationResult } from '../../../types/customer';
 import { NotificationRateLimitService, RateLimitResult } from './notificationRateLimitService';
@@ -8,6 +9,8 @@ import { NotificationMonitoringService } from './notificationMonitoringService';
 import { NotificationChannel, NotificationStatus } from '../../../types/business';
 
 import { SecureNotificationRequest, SecureNotificationResult } from '../../../types/notification';
+import { RepositoryContainer } from '../../../repositories';
+import { UsageService } from '../usage/usageService';
 
 export interface BroadcastNotificationRequest {
   businessId: string;
@@ -30,15 +33,25 @@ export interface BroadcastNotificationRequest {
 
 export class SecureNotificationService {
   private monitoringService: NotificationMonitoringService;
+  private notificationGateway: UnifiedNotificationGateway;
 
   constructor(
     private prisma: PrismaClient,
     private notificationService: NotificationService,
     private customerRelationshipService: CustomerRelationshipService,
     private rateLimitService: NotificationRateLimitService,
-    private auditService: NotificationAuditService
+    private auditService: NotificationAuditService,
+    private repositories?: RepositoryContainer,
+    private usageService?: UsageService
   ) {
     this.monitoringService = new NotificationMonitoringService(prisma);
+    // Initialize notification gateway if repositories are provided
+    if (repositories) {
+      this.notificationGateway = new UnifiedNotificationGateway(prisma, repositories, usageService);
+    } else {
+      // Fallback: direct use of notificationService (legacy mode)
+      this.notificationGateway = null as any;
+    }
   }
 
   /**
@@ -504,6 +517,7 @@ export class SecureNotificationService {
   /**
    * Process a single notification with retry logic
    * Industry Standard: Resilient notification processing
+   * NOW USES UNIFIED NOTIFICATION GATEWAY - respects all business settings
    */
   private async processSingleNotification(
     recipientId: string,
@@ -520,35 +534,65 @@ export class SecureNotificationService {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const results = await this.notificationService.sendPushNotification({
-          userId: recipientId,
-          title: notificationData.title,
-          body: notificationData.body,
-          data: notificationData.data,
-          businessId: notificationData.businessId
-        });
+        // Use the unified notification gateway if available
+        if (this.notificationGateway) {
+          // Determine if this is a marketing or transactional notification
+          const isMarketing = ['HOLIDAY', 'PROMOTION', 'BROADCAST'].includes(notificationData.notificationType);
 
-        const successCount = results.filter(r => r.success).length;
-        const failCount = results.filter(r => !r.success).length;
+          const result = await this.notificationGateway.sendTransactional({
+            businessId: notificationData.businessId,
+            customerId: recipientId,
+            title: notificationData.title,
+            body: notificationData.body,
+            data: notificationData.data,
+            ignoreQuietHours: !isMarketing // Marketing respects quiet hours, system messages might not
+          });
 
-        if (successCount > 0) {
-          return { success: true };
-        } else if (failCount > 0) {
-          // Check if it's a retryable error
-          const error = results.find(r => !r.success);
-          if (error && error.error && this.isRetryableError(error.error)) {
-            lastError = new Error(error.error);
-            continue; // Retry
+          if (result.success) {
+            return { success: true };
           } else {
-            return { success: false, error: error?.error || 'Send failed' };
-          }
-        }
+            const errorMsg = result.skippedChannels.map(sc => sc.reason).join(', ') || 'Send failed';
 
-        return { success: true };
+            // Check if it's a retryable error
+            if (this.isRetryableError(errorMsg)) {
+              lastError = new Error(errorMsg);
+              continue; // Retry
+            } else {
+              return { success: false, error: errorMsg };
+            }
+          }
+        } else {
+          // Fallback to direct notification service (legacy mode)
+          const results = await this.notificationService.sendPushNotification({
+            userId: recipientId,
+            title: notificationData.title,
+            body: notificationData.body,
+            data: notificationData.data,
+            businessId: notificationData.businessId
+          });
+
+          const successCount = results.filter(r => r.success).length;
+          const failCount = results.filter(r => !r.success).length;
+
+          if (successCount > 0) {
+            return { success: true };
+          } else if (failCount > 0) {
+            // Check if it's a retryable error
+            const error = results.find(r => !r.success);
+            if (error && error.error && this.isRetryableError(error.error)) {
+              lastError = new Error(error.error);
+              continue; // Retry
+            } else {
+              return { success: false, error: error?.error || 'Send failed' };
+            }
+          }
+
+          return { success: true };
+        }
 
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('Unknown error');
-        
+
         // Check if error is retryable
         if (this.isRetryableError(lastError.message) && attempt < MAX_RETRIES) {
           // Exponential backoff
@@ -556,7 +600,7 @@ export class SecureNotificationService {
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
-        
+
         return { success: false, error: lastError.message };
       }
     }

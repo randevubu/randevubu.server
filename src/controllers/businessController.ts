@@ -10,10 +10,12 @@ import {
   deleteImageSchema,
   deleteGalleryImageSchema
 } from '../schemas/business.schemas';
+import { updateGoogleIntegrationSchema } from '../schemas/rating.schemas';
 import { BusinessService } from '../services/domain/business';
 import { RBACService } from '../services/domain/rbac';
 import { TokenService } from '../services/domain/token';
 import { StaffService } from '../services/domain/staff';
+import { GooglePlacesService } from '../services/external/googlePlacesService';
 import { AuthenticatedRequest, AuthenticatedRequestWithFile } from '../types/request';
 import { BusinessData, BusinessSubscriptionData } from '../types/business';
 // Cache invalidation handled by routes, not controllers
@@ -28,12 +30,16 @@ import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
 
 export class BusinessController {
+  private googlePlacesService: GooglePlacesService;
+
   constructor(
     private businessService: BusinessService,
     private tokenService?: TokenService,
     private rbacService?: RBACService,
     private staffService?: StaffService
-  ) {}
+  ) {
+    this.googlePlacesService = new GooglePlacesService();
+  }
 
   /**
    * Get user's business(es) based on their role
@@ -54,7 +60,10 @@ export class BusinessController {
           success: true,
           message: 'No businesses found',
           data: { 
-            businesses: [] 
+            businesses: [],
+            hasBusinesses: false,
+            isFirstTimeUser: true,
+            canCreateBusiness: true
           }
         });
         return;
@@ -136,6 +145,9 @@ export class BusinessController {
 
             return baseData;
           }),
+          hasBusinesses: businesses.length > 0,
+          isFirstTimeUser: businesses.length === 0,
+          canCreateBusiness: true,
           context: {
             primaryBusinessId: req.businessContext.primaryBusinessId,
             totalBusinesses: req.businessContext.businessIds.length,
@@ -206,11 +218,11 @@ export class BusinessController {
       // ENTERPRISE-GRADE SOLUTION: Ensure role propagation with read-after-write consistency
       let tokens = null;
       if (this.rbacService && this.tokenService) {
-        // Aggressively clear all cache entries for this user
+        // Aggressively clear all cache entries for this user (primary cache clear)
         this.rbacService.forceInvalidateUser(userId);
         
-        // Wait for database consistency (enterprise pattern)
-        const DB_CONSISTENCY_DELAY_MS = 50;
+        // Wait for database consistency + replication delay (enterprise pattern)
+        const DB_CONSISTENCY_DELAY_MS = 100; // Increased from 50ms to 100ms
         await new Promise(resolve => setTimeout(resolve, DB_CONSISTENCY_DELAY_MS));
         
         // Get fresh user permissions after role assignment (bypass cache)
@@ -223,7 +235,7 @@ export class BusinessController {
         if (!ownerWasAdded) {
           // Retry with additional cache clearing (handles distributed cache scenarios)
           this.rbacService.forceInvalidateUser(userId);
-          const RETRY_DELAY_MS = 100;
+          const RETRY_DELAY_MS = 150; // Increased from 100ms to 150ms
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
           
           const retryPermissions = await this.rbacService.getUserPermissions(userId, false);
@@ -234,7 +246,12 @@ export class BusinessController {
           }
         }
         
+        // Final cache clear before token generation to ensure subsequent requests get fresh data
+        this.rbacService.forceInvalidateUser(userId);
+        
         // Generate new tokens with updated roles
+        // These tokens will be fresh (iat timestamp will be current)
+        // Auth middleware will bypass cache for tokens < 5 seconds old
         const tokenPair = await this.tokenService.generateTokenPair(
           userId,
           req.user!.phoneNumber
@@ -245,6 +262,14 @@ export class BusinessController {
           refreshToken: tokenPair.refreshToken
         };
         
+        if (process.env.NODE_ENV === 'development') {
+          console.log('✅ ROLE UPDATE: OWNER role verified and new tokens generated', {
+            userId,
+            rolesBefore: userRolesBefore,
+            rolesAfter: userRolesAfter,
+            timestamp: new Date().toISOString()
+          });
+        }
       }
 
       const response: { success: boolean; data: BusinessData; message?: string; tokens?: any } = {
@@ -2164,6 +2189,315 @@ export class BusinessController {
         message: 'Customer evaluation submitted successfully'
       });
     } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * Update Google integration settings
+   * PUT /api/v1/businesses/:id/google-integration
+   */
+  async updateGoogleIntegration(
+    req: BusinessContextRequest,
+    res: Response
+  ): Promise<void> {
+    console.log('✅ [CONTROLLER] updateGoogleIntegration - ENTRY POINT REACHED');
+    try {
+      console.log('🔍 [GOOGLE INTEGRATION PUT] Starting...', {
+        params: req.params,
+        body: req.body,
+        userId: req.user?.id,
+        timestamp: new Date().toISOString()
+      });
+
+      const { id } = req.params;
+      const userId = req.user!.id;
+      const validatedData = updateGoogleIntegrationSchema.parse(req.body);
+
+      console.log('🔍 [GOOGLE INTEGRATION PUT] Calling service...', { userId, businessId: id, data: validatedData });
+
+      const business = await this.businessService.updateGoogleIntegration(
+        userId,
+        id,
+        validatedData
+      );
+
+      console.log('🔍 [GOOGLE INTEGRATION PUT] Business updated:', business.id);
+
+      sendSuccessResponse(
+        res,
+        'Google integration updated successfully',
+        { business }
+      );
+      console.log('✅ [CONTROLLER] updateGoogleIntegration - RESPONSE SENT');
+    } catch (error) {
+      console.log('❌ [CONTROLLER] updateGoogleIntegration - ERROR:', error);
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * Get Google integration settings (PUBLIC ENDPOINT)
+   * GET /api/v1/businesses/:id/google-integration
+   * No authentication required - anyone can view Google integration info
+   */
+  async getGoogleIntegration(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    console.log('✅ [CONTROLLER] getGoogleIntegration - ENTRY POINT REACHED');
+    try {
+      console.log('🔍 [GOOGLE INTEGRATION GET] Starting...', {
+        params: req.params,
+        timestamp: new Date().toISOString()
+      });
+
+      const { id } = req.params;
+
+      console.log('🔍 [GOOGLE INTEGRATION GET] Calling service...', { businessId: id });
+
+      // Public endpoint - get settings including coordinates
+      const settings = await this.businessService.getGoogleIntegrationSettings('', id);
+
+      console.log('🔍 [GOOGLE INTEGRATION GET] Settings retrieved:', {
+        googlePlaceId: settings.googlePlaceId,
+        googleOriginalUrl: settings.googleOriginalUrl,
+        googleIntegrationEnabled: settings.googleIntegrationEnabled,
+        googleLinkedAt: settings.googleLinkedAt,
+        latitude: settings.latitude,
+        longitude: settings.longitude,
+        averageRating: settings.averageRating,
+        totalRatings: settings.totalRatings,
+        lastRatingAt: settings.lastRatingAt
+      });
+
+      // Generate URLs if enabled and linked
+      // These URLs work without any API key - completely free!
+      let urls;
+      if (settings.googleIntegrationEnabled) {
+        // ✅ PRIORITY 1: Use original URL if available (BEST - Direct to full business profile)
+        if (settings.googleOriginalUrl) {
+          const originalUrl = settings.googleOriginalUrl;
+
+          console.log('✅ [GOOGLE INTEGRATION GET] Using ORIGINAL URL (best option):', {
+            originalUrl
+          });
+
+          urls = {
+            // Use the original URL for all maps-related links
+            maps: originalUrl,
+            reviews: originalUrl,
+            writeReview: originalUrl,
+            // For embed, use coordinates if available, otherwise try to convert the URL
+            embed: settings.latitude && settings.longitude
+              ? `https://maps.google.com/maps?q=${settings.latitude},${settings.longitude}&output=embed&z=17`
+              : originalUrl
+          };
+
+          console.log('✅ [GOOGLE INTEGRATION GET] Generated URLs from original URL:', urls);
+        }
+        // ✅ PRIORITY 2: Use coordinates if available (RELIABLE - Shows exact pin)
+        else if (settings.latitude && settings.longitude) {
+          const lat = settings.latitude;
+          const lng = settings.longitude;
+
+          console.log('✅ [GOOGLE INTEGRATION GET] Using COORDINATES (exact pin location):', {
+            lat,
+            lng
+          });
+
+          // Generate URLs based on what we have
+          let embedUrl: string;
+          let mapsUrl: string;
+          let reviewsUrl: string;
+          let writeReviewUrl: string;
+          
+          if (settings.googlePlaceId) {
+            const googleId = settings.googlePlaceId;
+            const isCIDFormat = googleId.includes(':') && googleId.includes('0x');
+            
+            if (isCIDFormat) {
+              // Convert hex CID to decimal
+              const cidParts = googleId.split(':');
+              const hexCid = cidParts[1].replace('0x', '');
+              const decimalCid = parseInt(hexCid, 16);
+              
+              // USE CID for business profile (shows reviews, name, etc.)
+              embedUrl = `https://maps.google.com/maps?cid=${decimalCid}&output=embed`;
+              mapsUrl = `https://www.google.com/maps?cid=${decimalCid}`;
+              reviewsUrl = `https://www.google.com/maps?cid=${decimalCid}`;
+              writeReviewUrl = `https://www.google.com/maps?cid=${decimalCid}`;
+              
+              console.log('✅ Using CID for business profile:', decimalCid);
+            } else {
+              // PlaceID format - use coordinates as fallback
+              embedUrl = `https://maps.google.com/maps?q=${lat},${lng}&output=embed&z=17`;
+              mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+              reviewsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+              writeReviewUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+            }
+          } else {
+            // No Place ID - use coordinates only
+            embedUrl = `https://maps.google.com/maps?q=${lat},${lng}&output=embed&z=17`;
+            mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+            reviewsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+            writeReviewUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+          }
+
+          urls = {
+            maps: mapsUrl,
+            reviews: reviewsUrl,
+            writeReview: writeReviewUrl,
+            embed: embedUrl
+          };
+
+          console.log('✅ [GOOGLE INTEGRATION GET] Generated coordinate-based URLs:', urls);
+        } 
+        // FALLBACK: Use Place ID or CID if coordinates not available
+        else if (settings.googlePlaceId) {
+          const googleId = settings.googlePlaceId;
+
+          // Detect format: CID (0x...:0x...) vs Place ID (ChIJ..., EI..., GhIJ...)
+          const isCIDFormat = googleId.includes(':') && googleId.includes('0x');
+          const isPlaceIDFormat = googleId.startsWith('ChIJ') ||
+                                 googleId.startsWith('EI') ||
+                                 googleId.startsWith('GhIJ');
+
+          console.log('⚠️ [GOOGLE INTEGRATION GET] No coordinates - falling back to Google ID:', {
+            googleId,
+            isCIDFormat,
+            isPlaceIDFormat
+          });
+
+          if (isCIDFormat) {
+            // Handle CID format (e.g., 0x14c94904b01833f1:0x3411f4f9a81471)
+            // Extract the second part and convert hex to decimal
+            const cidParts = googleId.split(':');
+            const hexCid = cidParts[1].replace('0x', '');
+            const decimalCid = parseInt(hexCid, 16);
+
+            console.log('🔍 [GOOGLE INTEGRATION GET] CID conversion:', {
+              hexCid,
+              decimalCid
+            });
+
+            urls = {
+              // Direct link using CID
+              maps: `https://www.google.com/maps?cid=${decimalCid}`,
+
+              // Reviews and write review using CID
+              reviews: `https://www.google.com/maps?cid=${decimalCid}`,
+              writeReview: `https://www.google.com/maps?cid=${decimalCid}`,
+
+              // Embed URL using CID (may show general area instead of exact pin)
+              embed: `https://maps.google.com/maps?cid=${decimalCid}&output=embed`
+            };
+          } else if (isPlaceIDFormat) {
+            // Handle Place ID format (e.g., ChIJN1t_tDeuEmsRUsoyG83frY4)
+            urls = {
+              // Direct link to open in Google Maps
+              maps: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleId)}&query_place_id=${encodeURIComponent(googleId)}`,
+
+              // Link to view all reviews
+              reviews: `https://search.google.com/local/reviews?placeid=${googleId}`,
+
+              // Link to write a review
+              writeReview: `https://search.google.com/local/writereview?placeid=${googleId}`,
+
+              // Embed URL
+              embed: `https://maps.google.com/maps?q=place_id:${googleId}&output=embed`
+            };
+          } else {
+            // Unknown format - try to use it as-is
+            console.warn('⚠️ [GOOGLE INTEGRATION GET] Unknown Google ID format:', googleId);
+            urls = {
+              maps: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleId)}`,
+              reviews: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleId)}`,
+              writeReview: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleId)}`,
+              embed: `https://maps.google.com/maps?q=${encodeURIComponent(googleId)}&output=embed`
+            };
+          }
+
+          console.log('🔍 [GOOGLE INTEGRATION GET] Generated ID-based URLs:', urls);
+        } else {
+          console.log('⚠️ [GOOGLE INTEGRATION GET] No URLs generated - no coordinates or place ID');
+        }
+      } else {
+        console.log('🔍 [GOOGLE INTEGRATION GET] No URLs generated - integration disabled');
+      }
+
+      // Fetch Google ratings if integration is enabled and Place ID exists
+      let googleRatings = null;
+      if (settings.googleIntegrationEnabled && settings.googlePlaceId && this.googlePlacesService.isConfigured()) {
+        console.log('🔍 [GOOGLE INTEGRATION GET] Fetching Google ratings...');
+
+        try {
+          const placeDetails = await this.googlePlacesService.getPlaceDetails(settings.googlePlaceId);
+
+          if (placeDetails) {
+            googleRatings = {
+              rating: placeDetails.rating,
+              totalRatings: placeDetails.userRatingsTotal,
+              reviews: placeDetails.reviews,
+              name: placeDetails.name,
+              formattedAddress: placeDetails.formattedAddress,
+              website: placeDetails.website,
+              phoneNumber: placeDetails.phoneNumber
+            };
+
+            console.log('✅ [GOOGLE INTEGRATION GET] Google ratings fetched successfully:', {
+              rating: googleRatings.rating,
+              totalRatings: googleRatings.totalRatings
+            });
+          } else {
+            console.log('⚠️  [GOOGLE INTEGRATION GET] No Google ratings data returned');
+          }
+        } catch (error) {
+          console.error('❌ [GOOGLE INTEGRATION GET] Failed to fetch Google ratings:', error);
+          // Don't fail the request, just don't include Google ratings
+        }
+      } else {
+        if (!this.googlePlacesService.isConfigured()) {
+          console.log('⚠️  [GOOGLE INTEGRATION GET] Google Places API not configured');
+        } else if (!settings.googleIntegrationEnabled) {
+          console.log('🔍 [GOOGLE INTEGRATION GET] Google integration disabled, skipping ratings fetch');
+        } else if (!settings.googlePlaceId) {
+          console.log('🔍 [GOOGLE INTEGRATION GET] No Google Place ID, skipping ratings fetch');
+        }
+      }
+
+      // Separate internal and Google ratings in the response
+      const responseData: any = {
+        // Google integration settings
+        googlePlaceId: settings.googlePlaceId,
+        googleOriginalUrl: settings.googleOriginalUrl,
+        googleIntegrationEnabled: settings.googleIntegrationEnabled,
+        googleLinkedAt: settings.googleLinkedAt,
+        latitude: settings.latitude,
+        longitude: settings.longitude,
+
+        // Internal ratings (from your app)
+        internalRatings: {
+          averageRating: settings.averageRating,
+          totalRatings: settings.totalRatings,
+          lastRatingAt: settings.lastRatingAt
+        },
+
+        // Google ratings (from Google Maps)
+        googleRatings: googleRatings,
+
+        // URLs for maps embed and links
+        urls
+      };
+
+      sendSuccessResponse(
+        res,
+        'Google integration settings retrieved successfully',
+        responseData
+      );
+      console.log('✅ [CONTROLLER] getGoogleIntegration - RESPONSE SENT');
+    } catch (error) {
+      console.log('❌ [CONTROLLER] getGoogleIntegration - ERROR:', error);
       handleRouteError(error, req, res);
     }
   }

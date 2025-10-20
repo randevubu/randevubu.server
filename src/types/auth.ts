@@ -140,6 +140,7 @@ export interface UserRepository {
   update(id: string, data: Partial<UpdateUserData>): Promise<UserProfile>;
   updateSecurity(id: string, data: Partial<UserSecurity>): Promise<void>;
   deactivate(id: string): Promise<void>;
+  delete(id: string): Promise<void>;
   getUserStats(): Promise<UserStats>;
 }
 

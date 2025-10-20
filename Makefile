@@ -62,11 +62,11 @@ help: ## Show available commands
 setup: ## First time setup - creates .env, builds, starts, migrates
 	@echo "🚀 Setting up RandevuBu Server..."
 	@if [ ! -f .env ]; then cp .env.example .env && echo "✅ Created .env file"; fi
-	@docker compose build
-	@docker compose up -d
+	@docker compose -f docker-compose.dev.yml build
+	@docker compose -f docker-compose.dev.yml up -d
 	@echo "⏳ Waiting for services..."
 	@sleep 10
-	@docker compose exec app npx prisma migrate deploy
+	@docker compose -f docker-compose.dev.yml exec app npx prisma migrate deploy
 	@echo ""
 	@echo "✅ Setup complete!"
 	@echo "🌐 API: http://localhost:3001"
@@ -74,97 +74,111 @@ setup: ## First time setup - creates .env, builds, starts, migrates
 
 dev: ## Start development environment and show logs
 	@echo "🚀 Starting development environment..."
-	@docker compose up -d
+	@docker compose -f docker-compose.dev.yml up -d
 	@echo "📝 Showing application logs (Ctrl+C to exit):"
-	@docker compose logs -f app
+	@docker compose -f docker-compose.dev.yml logs -f app
 
 up: ## Start containers in background
-	@docker compose up -d
+	@docker compose -f docker-compose.dev.yml up -d
 	@echo "✅ Services started at http://localhost:3001"
 
 down: ## Stop all containers
-	@docker compose down
+	@docker compose -f docker-compose.dev.yml down
 	@echo "✅ Services stopped"
 
 # 🔍 DEVELOPMENT
 logs: ## View application logs
-	@docker compose logs -f app
+	@docker compose -f docker-compose.dev.yml logs -f app
 
 logs-codes: ## View logs filtered for verification codes (great for testing!)
 	@echo "🔍 Watching for verification codes..."
 	@echo "📱 Send a phone verification request to see codes here"
 	@echo "⏹️  Press Ctrl+C to exit"
-	@docker compose logs -f app | grep -E "(SMS Code|verification code|code.*sent|code.*verified)"
+	@docker compose -f docker-compose.dev.yml logs -f app | grep -E "(SMS Code|verification code|code.*sent|code.*verified)"
 
 logs-all: ## View all service logs (app + database + redis)
-	@docker compose logs -f
+	@docker compose -f docker-compose.dev.yml logs -f
 
 shell: ## Access application container
-	@docker compose exec app sh
+	@docker compose -f docker-compose.dev.yml exec app sh
 
 status: ## Show container status
-	@docker compose ps
+	@docker compose -f docker-compose.dev.yml ps
 
 # 🗄️ DATABASE
 db-migrate: ## Run database migrations
-	@docker compose exec app npx prisma migrate deploy
+	@docker compose -f docker-compose.dev.yml exec app npx prisma migrate deploy
 	@echo "✅ Database migrations completed"
 
 db-generate: ## Generate Prisma client
-	@docker compose exec app npx prisma generate
+	@docker compose -f docker-compose.dev.yml exec app npx prisma generate
 	@echo "✅ Prisma client generated"
 
 db-seed: ## Seed database with default data
-	@docker compose exec app npm run db:seed
+	@docker compose -f docker-compose.dev.yml exec app npm run db:seed
 	@echo "✅ Database seeded"
 
 db-seed-rbac: ## Seed RBAC system (roles, permissions)
-	@docker compose exec app npm run db:seed-rbac
+	@docker compose -f docker-compose.dev.yml exec app npm run db:seed-rbac
 	@echo "✅ RBAC system seeded"
 
 db-seed-subscription-plans: ## Seed subscription plans only
-	@docker compose exec app npm run db:seed-subscription-plans
+	@docker compose -f docker-compose.dev.yml exec app npm run db:seed-subscription-plans
 	@echo "✅ Subscription plans seeded"
 
 db-seed-business: ## Seed business data (types, subscription plans)
-	@docker compose exec app npm run db:seed-business
+	@docker compose -f docker-compose.dev.yml exec app npm run db:seed-business
 	@echo "✅ Business data seeded"
 
 db-seed-customers: ## Seed customers and appointments data
-	@docker compose exec app npm run db:seed-customers
+	@docker compose -f docker-compose.dev.yml exec app npm run db:seed-customers
 	@echo "✅ Customers and appointments seeded"
 
 db-seed-discounts: ## Seed discount codes
-	@docker compose exec app ts-node prisma/seed-discount-codes.ts
+	@docker compose -f docker-compose.dev.yml exec app ts-node prisma/seed-discount-codes.ts
 	@echo "✅ Discount codes seeded"
 
 db-reset: ## Reset database and reseed
-	@docker compose exec app npx prisma migrate reset --force
-	@docker compose exec app npm run db:seed
+	@docker compose -f docker-compose.dev.yml exec app npx prisma migrate reset --force
+	@docker compose -f docker-compose.dev.yml exec app npm run db:seed
 	@echo "✅ Database reset and seeded"
 
 db-setup: ## Complete database setup (migrate + generate + seed)
 	@echo "🗄️ Setting up database..."
-	@docker compose exec app npx prisma migrate deploy
-	@docker compose exec app npx prisma generate
-	@docker compose exec app npm run db:seed
+	@docker compose -f docker-compose.dev.yml exec app npx prisma migrate deploy
+	@docker compose -f docker-compose.dev.yml exec app npx prisma generate
+	@docker compose -f docker-compose.dev.yml exec app npm run db:seed
 	@echo "✅ Database setup completed"
 
 db-shell: ## Access PostgreSQL shell
-	@docker compose exec postgres psql -U postgres -d randevubu
+	@docker compose -f docker-compose.dev.yml exec postgres psql -U postgres -d randevubu
 
 db-studio: ## Open Prisma Studio (database GUI)
 	@echo "🚀 Starting Prisma Studio..."
 	@echo "🌐 Opening at http://localhost:5555"
-	@docker compose exec app npx prisma studio
+	@docker compose -f docker-compose.dev.yml exec app npx prisma studio
 
 # 🧪 TESTING
 test: ## Run tests
-	@docker compose exec app npm test
+	@docker compose -f docker-compose.dev.yml exec app npm test
+
+# 💾 DATABASE BACKUP & RESTORE
+db-backup: ## Backup database
+	@bash scripts/backup-database.sh
+
+db-restore: ## Restore database (interactive)
+	@bash scripts/restore-database.sh
+
+db-backup-setup: ## Setup automated daily backups
+	@bash scripts/setup-backup-cron.sh
+
+# 🔐 SSL CERTIFICATES
+ssl-generate: ## Generate self-signed SSL certificates
+	@bash scripts/generate-ssl-cert.sh
 
 # 🧹 CLEANUP
 clean: ## Stop containers and clean up
-	@docker compose down -v
+	@docker compose -f docker-compose.dev.yml down -v
 	@docker system prune -f
 	@echo "✅ Cleanup completed"
 

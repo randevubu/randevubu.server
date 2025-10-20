@@ -22,6 +22,7 @@ import { createPublicRoutes } from './public';
 import { createPushNotificationRoutes } from './pushNotifications';
 import { createCacheRoutes } from './cache';
 import testingRouter from './testing';
+import ratingRoutes from './ratings';
 
 export function createV1Routes(controllers: ControllerContainer, services: ServiceContainer): Router {
   const router = Router();
@@ -89,6 +90,7 @@ export function createV1Routes(controllers: ControllerContainer, services: Servi
   router.use('/notifications/push', createPushNotificationRoutes(controllers.pushNotificationController));
   router.use('/cache', createCacheRoutes());
   router.use('/', paymentRoutes);
+  router.use('/', ratingRoutes);
   
   // Public routes (no authentication required) 
   router.use('/public', createPublicRoutes());

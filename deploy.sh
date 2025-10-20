@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 🚀 UNIFIED PRODUCTION DEPLOYMENT SCRIPT
-# Single script to deploy everything with nginx as load balancer + API gateway
+# Single script to deploy everything with nginx as load balancer + reverse proxy
 
 set -e
 
@@ -62,7 +62,7 @@ print_status "Checking service health..."
 
 # Check nginx
 if docker-compose -f docker-compose.production.yml ps nginx | grep -q "Up"; then
-    print_status "✅ Nginx (Load Balancer + API Gateway) is running"
+    print_status "✅ Nginx (Load Balancer + Reverse Proxy) is running"
 else
     print_error "❌ Nginx failed to start"
     docker-compose -f docker-compose.production.yml logs nginx
@@ -111,7 +111,7 @@ echo "  - Restart services: docker-compose -f docker-compose.production.yml rest
 echo ""
 echo "🔒 Security Features Enabled:"
 echo "  - Load Balancing (3 app instances)"
-echo "  - API Gateway (routing, rate limiting)"
+echo "  - Load Balancer (traffic distribution, rate limiting)"
 echo "  - Security headers (XSS, clickjacking protection)"
 echo "  - Request caching (static + dynamic)"
 echo "  - Connection limiting"

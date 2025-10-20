@@ -101,11 +101,11 @@ export class StartupService {
 
         const plansToCreate = [
           {
-            id: 'plan_starter_monthly',
-            name: 'starter',
-            displayName: 'Starter Plan',
-            description: 'Perfect for small businesses just getting started',
-            price: 750.00,
+            id: 'plan_basic_tier1',
+            name: 'basic_tier1',
+            displayName: 'Basic Plan - Tier 1',
+            description: 'Perfect for small businesses in major cities',
+            price: 949.00,
             currency: 'TRY',
             billingInterval: 'MONTHLY',
             maxBusinesses: 1,
@@ -125,17 +125,18 @@ export class StartupService {
               integrations: ['whatsapp', 'calendar', 'google'],
               maxServices: 0, // Unlimited
               maxCustomers: 0, // Unlimited
-              smsQuota: 1000
+              smsQuota: 1000,
+              pricingTier: 'TIER_1'
             },
             isActive: true,
             sortOrder: 1
           },
           {
-            id: 'plan_professional_monthly',
-            name: 'professional',
-            displayName: 'Professional Plan',
-            description: 'Ideal for growing businesses with multiple staff',
-            price: 1500.00,
+            id: 'plan_premium_tier1',
+            name: 'premium_tier1',
+            displayName: 'Premium Plan - Tier 1',
+            description: 'Advanced features for growing businesses in major cities',
+            price: 1499.00,
             currency: 'TRY',
             billingInterval: 'MONTHLY',
             maxBusinesses: 1,
@@ -149,27 +150,60 @@ export class StartupService {
               smsNotifications: true,
               customBranding: true,
               advancedReports: true,
-              apiAccess: false,
+              apiAccess: true,
               multiLocation: false,
               prioritySupport: true,
-              integrations: ['whatsapp', 'calendar', 'google', 'stripe'],
+              integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
               maxServices: 0, // Unlimited
               maxCustomers: 0, // Unlimited
-              smsQuota: 2500
+              smsQuota: 1500,
+              pricingTier: 'TIER_1'
             },
             isActive: true,
+            isPopular: true,
             sortOrder: 2
           },
           {
-            id: 'plan_enterprise_monthly',
-            name: 'enterprise',
-            displayName: 'Enterprise Plan',
-            description: 'For large businesses with advanced needs',
-            price: 3000.00,
+            id: 'plan_basic_tier2',
+            name: 'basic_tier2',
+            displayName: 'Basic Plan - Tier 2',
+            description: 'Perfect for small businesses in regional centers',
+            price: 799.00,
             currency: 'TRY',
             billingInterval: 'MONTHLY',
-            maxBusinesses: 5,
-            maxStaffPerBusiness: 0, // Unlimited
+            maxBusinesses: 1,
+            maxStaffPerBusiness: 1,
+            maxAppointmentsPerDay: 0, // Unlimited
+            features: {
+              appointmentBooking: true,
+              staffManagement: true,
+              basicReports: true,
+              emailNotifications: true,
+              smsNotifications: true,
+              customBranding: false,
+              advancedReports: false,
+              apiAccess: false,
+              multiLocation: false,
+              prioritySupport: false,
+              integrations: ['whatsapp', 'calendar', 'google'],
+              maxServices: 0, // Unlimited
+              maxCustomers: 0, // Unlimited
+              smsQuota: 1000,
+              pricingTier: 'TIER_2'
+            },
+            isActive: true,
+            sortOrder: 3
+          },
+          {
+            id: 'plan_premium_tier2',
+            name: 'premium_tier2',
+            displayName: 'Premium Plan - Tier 2',
+            description: 'Advanced features for growing businesses in regional centers',
+            price: 1299.00,
+            currency: 'TRY',
+            billingInterval: 'MONTHLY',
+            maxBusinesses: 1,
+            maxStaffPerBusiness: 5,
             maxAppointmentsPerDay: 0, // Unlimited
             features: {
               appointmentBooking: true,
@@ -180,15 +214,78 @@ export class StartupService {
               customBranding: true,
               advancedReports: true,
               apiAccess: true,
-              multiLocation: true,
+              multiLocation: false,
               prioritySupport: true,
-              integrations: ['whatsapp', 'calendar', 'google', 'stripe', 'zapier'],
+              integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
               maxServices: 0, // Unlimited
               maxCustomers: 0, // Unlimited
-              smsQuota: 5000
+              smsQuota: 1500,
+              pricingTier: 'TIER_2'
             },
             isActive: true,
-            sortOrder: 3
+            sortOrder: 4
+          },
+          {
+            id: 'plan_basic_tier3',
+            name: 'basic_tier3',
+            displayName: 'Basic Plan - Tier 3',
+            description: 'Perfect for small businesses in smaller cities',
+            price: 749.00,
+            currency: 'TRY',
+            billingInterval: 'MONTHLY',
+            maxBusinesses: 1,
+            maxStaffPerBusiness: 1,
+            maxAppointmentsPerDay: 0, // Unlimited
+            features: {
+              appointmentBooking: true,
+              staffManagement: true,
+              basicReports: true,
+              emailNotifications: true,
+              smsNotifications: true,
+              customBranding: false,
+              advancedReports: false,
+              apiAccess: false,
+              multiLocation: false,
+              prioritySupport: false,
+              integrations: ['whatsapp', 'calendar', 'google'],
+              maxServices: 0, // Unlimited
+              maxCustomers: 0, // Unlimited
+              smsQuota: 1000,
+              pricingTier: 'TIER_3'
+            },
+            isActive: true,
+            sortOrder: 5
+          },
+          {
+            id: 'plan_premium_tier3',
+            name: 'premium_tier3',
+            displayName: 'Premium Plan - Tier 3',
+            description: 'Advanced features for growing businesses in smaller cities',
+            price: 1199.00,
+            currency: 'TRY',
+            billingInterval: 'MONTHLY',
+            maxBusinesses: 1,
+            maxStaffPerBusiness: 5,
+            maxAppointmentsPerDay: 0, // Unlimited
+            features: {
+              appointmentBooking: true,
+              staffManagement: true,
+              basicReports: true,
+              emailNotifications: true,
+              smsNotifications: true,
+              customBranding: true,
+              advancedReports: true,
+              apiAccess: true,
+              multiLocation: false,
+              prioritySupport: true,
+              integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
+              maxServices: 0, // Unlimited
+              maxCustomers: 0, // Unlimited
+              smsQuota: 1500,
+              pricingTier: 'TIER_3'
+            },
+            isActive: true,
+            sortOrder: 6
           }
         ];
 

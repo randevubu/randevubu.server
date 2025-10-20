@@ -40,42 +40,32 @@ export class SubscriptionService {
   ): Promise<SubscriptionPlanData[]> {
     const basePlans = await this.subscriptionRepository.findAllPlans();
     
-    // Apply location-based pricing
-    const plansWithLocationPricing = await Promise.all(
-      basePlans.map(async (plan) => {
-        // For custom pricing plans, don't apply location-based pricing
-        if (plan.isCustomPricing) {
-          return plan;
+    // For the new fixed-price system, we filter plans by tier instead of applying multipliers
+    if (city) {
+      // Determine the tier based on city
+      const tier = await this.pricingTierService.getCityTier(city, state, country);
+      
+      // Filter plans to only show the appropriate tier
+      const tierPlans = basePlans.filter(plan => {
+        const planTier = (plan.features as any)?.pricingTier;
+        return planTier === tier;
+      });
+
+      // Add location information to each plan
+      return tierPlans.map(plan => ({
+        ...plan,
+        locationPricing: {
+          city: city,
+          state: state || '',
+          country: country,
+          tier: tier,
+          multiplier: 1.0 // Fixed prices, no multiplier
         }
+      }));
+    }
 
-        // If no city specified, return base plan
-        if (!city) {
-          return plan;
-        }
-
-        const locationPricing = await this.pricingTierService.calculateLocationBasedPricing(
-          Number(plan.price),
-          city,
-          state,
-          country
-        );
-
-        return {
-          ...plan,
-          price: locationPricing.locationPrice,
-          basePrice: locationPricing.basePrice,
-          locationPricing: {
-            city: locationPricing.city,
-            state: locationPricing.state,
-            country: locationPricing.country,
-            tier: locationPricing.tier,
-            multiplier: locationPricing.multiplier
-          }
-        };
-      })
-    );
-
-    return plansWithLocationPricing;
+    // If no city specified, return all plans
+    return basePlans;
   }
 
   async getPlanByIdWithLocationPricing(
@@ -95,29 +85,17 @@ export class SubscriptionService {
       return basePlan;
     }
 
-    // For custom pricing plans, don't apply location-based pricing
-    if (basePlan.isCustomPricing) {
-      return basePlan;
-    }
-
-    // Apply location-based pricing
-    const locationPricing = await this.pricingTierService.calculateLocationBasedPricing(
-      Number(basePlan.price),
-      city,
-      state,
-      country
-    );
-
+    // For the new fixed-price system, just add location information
+    const tier = await this.pricingTierService.getCityTier(city, state, country);
+    
     return {
       ...basePlan,
-      price: locationPricing.locationPrice,
-      basePrice: locationPricing.basePrice,
       locationPricing: {
-        city: locationPricing.city,
-        state: locationPricing.state,
-        country: locationPricing.country,
-        tier: locationPricing.tier,
-        multiplier: locationPricing.multiplier
+        city: city,
+        state: state || '',
+        country: country,
+        tier: tier,
+        multiplier: 1.0 // Fixed prices, no multiplier
       }
     };
   }
@@ -130,42 +108,32 @@ export class SubscriptionService {
   ): Promise<SubscriptionPlanData[]> {
     const basePlans = await this.subscriptionRepository.findPlansByBillingInterval(interval);
     
-    // Apply location-based pricing
-    const plansWithLocationPricing = await Promise.all(
-      basePlans.map(async (plan) => {
-        // For custom pricing plans, don't apply location-based pricing
-        if (plan.isCustomPricing) {
-          return plan;
+    // For the new fixed-price system, filter by tier instead of applying multipliers
+    if (city) {
+      // Determine the tier based on city
+      const tier = await this.pricingTierService.getCityTier(city, state, country);
+      
+      // Filter plans to only show the appropriate tier
+      const tierPlans = basePlans.filter(plan => {
+        const planTier = (plan.features as any)?.pricingTier;
+        return planTier === tier;
+      });
+
+      // Add location information to each plan
+      return tierPlans.map(plan => ({
+        ...plan,
+        locationPricing: {
+          city: city,
+          state: state || '',
+          country: country,
+          tier: tier,
+          multiplier: 1.0 // Fixed prices, no multiplier
         }
+      }));
+    }
 
-        // If no city specified, return base plan
-        if (!city) {
-          return plan;
-        }
-
-        const locationPricing = await this.pricingTierService.calculateLocationBasedPricing(
-          Number(plan.price),
-          city,
-          state,
-          country
-        );
-
-        return {
-          ...plan,
-          price: locationPricing.locationPrice,
-          basePrice: locationPricing.basePrice,
-          locationPricing: {
-            city: locationPricing.city,
-            state: locationPricing.state,
-            country: locationPricing.country,
-            tier: locationPricing.tier,
-            multiplier: locationPricing.multiplier
-          }
-        };
-      })
-    );
-
-    return plansWithLocationPricing;
+    // If no city specified, return all plans
+    return basePlans;
   }
 
   // Business Subscriptions
@@ -215,11 +183,14 @@ export class SubscriptionService {
     const shouldStartTrial = plan.name.includes('professional') || plan.name.includes('business');
     
     if (shouldStartTrial) {
-      return await this.subscriptionRepository.startTrial(businessId, data.planId, 14);
+      const trialSubscription = await this.subscriptionRepository.startTrial(businessId, data.planId, 14);
+      // Ensure business hours are set after trial creation
+      await this.ensureBusinessHoursSet(businessId);
+      return trialSubscription;
     }
 
     // Create active subscription
-    return await this.subscriptionRepository.createSubscription({
+    const subscription = await this.subscriptionRepository.createSubscription({
       businessId,
       planId: data.planId,
       status: SubscriptionStatus.ACTIVE,
@@ -233,6 +204,11 @@ export class SubscriptionService {
         createdBy: userId
       }
     });
+
+    // Ensure business hours are set after subscription creation
+    await this.ensureBusinessHoursSet(businessId);
+
+    return subscription;
   }
 
   async getBusinessSubscription(
@@ -1080,5 +1056,43 @@ export class SubscriptionService {
       effectiveDate: effectiveDate,
       calculation: calculation
     };
+  }
+
+  /**
+   * Ensure business hours are set for a business
+   * This method checks if business hours exist and sets default ones if they don't
+   */
+  private async ensureBusinessHoursSet(businessId: string): Promise<void> {
+    try {
+      // Get the business to check if hours are set
+      const business = await this.subscriptionRepository.findBusinessById(businessId);
+      
+      if (!business) {
+        console.warn(`Business ${businessId} not found when ensuring business hours`);
+        return;
+      }
+
+      // If business hours are null or empty, set default ones
+      if (!business.businessHours || Object.keys(business.businessHours).length === 0) {
+        const defaultBusinessHours = {
+          monday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
+          tuesday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
+          wednesday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
+          thursday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
+          friday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
+          saturday: { openTime: '10:00', closeTime: '16:00', isOpen: false },
+          sunday: { openTime: '10:00', closeTime: '16:00', isOpen: false }
+        };
+
+        await this.subscriptionRepository.updateBusinessHours(businessId, defaultBusinessHours);
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`🔧 SUBSCRIPTION SERVICE: Set default business hours for business ${businessId}`);
+        }
+      }
+    } catch (error) {
+      console.error(`Error ensuring business hours for business ${businessId}:`, error);
+      // Don't throw error to avoid breaking subscription creation
+    }
   }
 }

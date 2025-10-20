@@ -2,52 +2,74 @@ import { Request } from 'express';
 import { AuthenticatedUser, JWTPayload } from './auth';
 
 /**
- * Unified Request type system to eliminate duplication
- * This file serves as the central location for all Request interface extensions
+ * Unified Request type system - Single Source of Truth
+ * This file is the ONLY location for Request interface extensions
+ *
+ * DO NOT define request types in middleware files - import from here
  */
 
-// Base authenticated request - most common pattern
+// ============================================================================
+// AUTHENTICATION REQUEST TYPES
+// ============================================================================
+
+/**
+ * Base authenticated request - user MAY be present
+ * Use this when authentication is optional
+ */
 export interface AuthenticatedRequest extends Request {
   user?: AuthenticatedUser;
   token?: JWTPayload;
 }
 
-// Guaranteed authenticated request - user is always present
+/**
+ * Guaranteed authenticated request - user is ALWAYS present
+ * Use this when authentication is required (after requireAuth middleware)
+ */
 export interface GuaranteedAuthRequest extends Request {
   user: AuthenticatedUser;
   token: JWTPayload;
 }
 
-// Business context request - includes business information
+// ============================================================================
+// BUSINESS CONTEXT TYPES
+// ============================================================================
+
+/**
+ * Business context attached to requests
+ * This is the canonical definition - used by all middleware
+ */
+export interface BusinessContext {
+  businessIds: string[];
+  primaryBusinessId: string | null;
+  businessId?: string;
+  userRole?: string;
+  hasAccess?: boolean;
+  isOwner: boolean;
+  isStaff: boolean;
+  isCustomer?: boolean;
+}
+
+/**
+ * Business context request - user and business context MAY be present
+ * Use this when business context is optional
+ */
 export interface BusinessContextRequest extends AuthenticatedRequest {
   businessId?: string;
-  businessContext?: {
-    businessIds: string[];
-    primaryBusinessId?: string | null;
-    businessId?: string;
-    userRole?: string;
-    hasAccess?: boolean;
-    isOwner?: boolean;
-    isStaff?: boolean;
-    isCustomer?: boolean;
-  };
+  businessContext?: BusinessContext;
 }
 
-// Guaranteed business context request - business context is always present
+/**
+ * Guaranteed business context request - user and business context ALWAYS present
+ * Use this after requireBusinessContext middleware
+ */
 export interface GuaranteedBusinessContextRequest extends GuaranteedAuthRequest {
-  businessContext: {
-    businessIds: string[];
-    primaryBusinessId: string | null;
-    businessId?: string;
-    userRole?: string;
-    hasAccess?: boolean;
-    isOwner: boolean;
-    isStaff: boolean;
-    isCustomer?: boolean;
-  };
+  businessContext: BusinessContext;
 }
 
-// Business ownership request - includes validated business data
+/**
+ * Business ownership request - includes validated business data
+ * Use this after requireBusinessOwnership middleware
+ */
 export interface BusinessOwnershipRequest extends AuthenticatedRequest {
   business: {
     id: string;

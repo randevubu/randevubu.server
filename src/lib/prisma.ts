@@ -52,6 +52,10 @@ const prisma = new PrismaClient({
       level: "warn",
     },
   ],
+  // Add query timeout to prevent hanging queries
+  transactionOptions: {
+    timeout: 30000, // 30 seconds
+  },
 });
 
 // Type for Prisma Decimal object

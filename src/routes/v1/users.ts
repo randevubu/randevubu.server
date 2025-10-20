@@ -118,6 +118,7 @@ export function createUserRoutes(): Router {
    */
   router.patch(
     '/profile',
+    invalidateUserCache,
     authMiddleware.authenticate,
     rateLimitByUser(20, 15 * 60 * 1000),
     validateBody(updateProfileSchema),

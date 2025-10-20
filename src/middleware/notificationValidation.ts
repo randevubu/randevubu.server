@@ -133,13 +133,19 @@ async function getBusinessNotificationSettings(businessId: string) {
 
   return {
     enableAppointmentReminders: settings.enableAppointmentReminders,
-    reminderChannels: JSON.parse(settings.reminderChannels as string),
-    reminderTiming: JSON.parse(settings.reminderTiming as string),
+    reminderChannels: typeof settings.reminderChannels === 'string'
+      ? JSON.parse(settings.reminderChannels)
+      : settings.reminderChannels,
+    reminderTiming: typeof settings.reminderTiming === 'string'
+      ? JSON.parse(settings.reminderTiming)
+      : settings.reminderTiming,
     smsEnabled: settings.smsEnabled,
     pushEnabled: settings.pushEnabled,
     emailEnabled: settings.emailEnabled,
     quietHours: settings.quietHours
-      ? JSON.parse(settings.quietHours as string)
+      ? (typeof settings.quietHours === 'string'
+          ? JSON.parse(settings.quietHours)
+          : settings.quietHours)
       : undefined,
     timezone: settings.timezone,
   };

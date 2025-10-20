@@ -2,7 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import { RepositoryContainer } from "../repositories";
 import { RBACService } from "../services/domain/rbac";
 import { TokenService } from "../services/domain/token";
-import { AuthenticatedUser, JWTPayload } from "../types/auth";
+import { JWTPayload } from "../types/auth";
 import {
   ErrorContext,
   UnauthorizedError,
@@ -10,12 +10,8 @@ import {
   UserLockedError,
   UserNotVerifiedError,
 } from "../types/errors";
+import { AuthenticatedRequest } from "../types/request";
 import logger from "../utils/Logger/logger";
-
-export interface AuthenticatedRequest extends Request {
-  user?: AuthenticatedUser;
-  token?: JWTPayload;
-}
 
 export class AuthMiddleware {
   constructor(
@@ -41,11 +37,19 @@ export class AuthMiddleware {
     res: Response,
     next: NextFunction
   ): Promise<void> => {
+    logger.debug('Starting authentication', {
+      url: req.url,
+      method: req.method,
+      hasAuthHeader: !!req.headers.authorization,
+      timestamp: new Date().toISOString()
+    });
+
     try {
       const context = this.createErrorContext(req);
       const authHeader = req.headers.authorization;
 
       if (!authHeader) {
+        logger.debug('No authorization header provided');
         throw new UnauthorizedError(
           "Authorization header is required",
           context
@@ -57,26 +61,34 @@ export class AuthMiddleware {
         : authHeader;
 
       if (!token) {
+        logger.debug('No token provided in authorization header');
         throw new UnauthorizedError("Access token is required", context);
       }
 
+      logger.debug('Verifying access token');
       const decoded = await this.tokenService.verifyAccessToken(token, context);
+      logger.debug('Token verified successfully', { userId: decoded.userId });
 
       // Get user with security information in a single query
+      logger.debug('Fetching user from database', { userId: decoded.userId });
       const user = await this.repositories.userRepository.findByIdWithSecurity(
         decoded.userId
       );
+      logger.debug('User fetched from database', { userId: decoded.userId, found: !!user });
 
       if (!user) {
+        logger.debug('User not found in database', { userId: decoded.userId });
         throw new UnauthorizedError("User not found", context);
       }
 
       if (!user.isActive) {
+        logger.debug('User account is not active', { userId: user.id });
         throw new UserDeactivatedError("Account is deactivated", context);
       }
 
       // Check for account lockout
       if (user.lockedUntil && user.lockedUntil > new Date()) {
+        logger.debug('User account is locked', { userId: user.id, lockedUntil: user.lockedUntil });
         const retryAfter = Math.ceil(
           (user.lockedUntil.getTime() - Date.now()) / 1000
         );
@@ -93,9 +105,22 @@ export class AuthMiddleware {
       let roles, permissions, effectiveLevel;
       if (this.rbacService) {
         try {
+          logger.debug('Loading user permissions from RBAC', { userId: user.id });
+          
+          // CRITICAL FIX: Check if this is a fresh token (recently created)
+          // If the token is less than 5 seconds old, bypass cache to ensure fresh role data
+          const tokenAge = decoded.iat ? Date.now() - (decoded.iat * 1000) : Infinity;
+          const shouldBypassCache = tokenAge < 5000; // 5 seconds
+          
           const userPermissions = await this.rbacService.getUserPermissions(
-            user.id
+            user.id,
+            !shouldBypassCache // bypass cache if token is fresh
           );
+          logger.debug('RBAC permissions loaded successfully', { 
+            userId: user.id, 
+            roleCount: userPermissions.roles.length,
+            bypassedCache: shouldBypassCache
+          });
           roles = userPermissions.roles.map((role) => ({
             id: role.id,
             name: role.name,
@@ -111,9 +136,12 @@ export class AuthMiddleware {
             userId: user.id,
             error: error instanceof Error ? error.message : String(error),
           });
+          // Continue without permissions - don't fail authentication
+          // This ensures degraded functionality rather than complete failure
         }
       }
 
+      logger.debug('Setting user on request object', { userId: user.id });
       req.user = {
         id: user.id,
         phoneNumber: user.phoneNumber,
@@ -125,8 +153,10 @@ export class AuthMiddleware {
       };
       req.token = decoded;
 
+      logger.debug('Authentication completed successfully', { userId: user.id });
       next();
     } catch (error) {
+      logger.debug('Authentication failed', { error: error instanceof Error ? error.message : String(error) });
       const context = this.createErrorContext(req);
 
       logger.warn("Authentication failed", {
@@ -198,8 +228,12 @@ export class AuthMiddleware {
             let roles, permissions, effectiveLevel;
             if (this.rbacService) {
               try {
+                // CRITICAL FIX: Check if this is a fresh token for optional auth too
+                const tokenAge = decoded.iat ? Date.now() - (decoded.iat * 1000) : Infinity;
+                const shouldBypassCache = tokenAge < 5000; // 5 seconds
+                
                 const userPermissions =
-                  await this.rbacService.getUserPermissions(user.id);
+                  await this.rbacService.getUserPermissions(user.id, !shouldBypassCache);
                 roles = userPermissions.roles.map((role) => ({
                   id: role.id,
                   name: role.name,
@@ -219,6 +253,7 @@ export class AuthMiddleware {
                       error instanceof Error ? error.message : String(error),
                   }
                 );
+                // Continue without permissions - this is optional auth
               }
             }
 
