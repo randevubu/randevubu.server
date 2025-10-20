@@ -9,6 +9,7 @@ import { requirePermission, requireAny, withAuth } from '../../middleware/authUt
 import { PermissionName } from '../../types/auth';
 import { staticCache, dynamicCache, semiDynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
+import { BusinessContextMiddleware } from '../../middleware/businessContext';
 import {
   reportQuerySchema,
   exportReportSchema,
@@ -24,6 +25,7 @@ const services = new ServiceContainer(repositories, prisma);
 const reportsService = new ReportsService(repositories);
 const reportsController = new ReportsController(reportsService);
 const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
+const businessContextMiddleware = new BusinessContextMiddleware(prisma);
 
 export function createReportsRoutes(): Router {
   const router = Router();
@@ -137,6 +139,7 @@ export function createReportsRoutes(): Router {
     '/overview',
     semiDynamicCache,
     authMiddleware.authenticate,
+    businessContextMiddleware.attachBusinessContext.bind(businessContextMiddleware),
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(20, 60 * 1000),
@@ -225,6 +228,7 @@ export function createReportsRoutes(): Router {
     '/revenue',
     semiDynamicCache,
     authMiddleware.authenticate,
+    businessContextMiddleware.attachBusinessContext.bind(businessContextMiddleware),
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(20, 60 * 1000),

@@ -27,8 +27,11 @@ export class ReportsController {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
 
+      // Get businessId from query or business context
+      const resolvedBusinessId = businessId || (req as any).businessContext?.primaryBusinessId;
+
       // Validate businessId parameter
-      if (!businessId || typeof businessId !== 'string') {
+      if (!resolvedBusinessId || typeof resolvedBusinessId !== 'string') {
         const error = new AppError(
           'Business ID is required',
           400,
@@ -39,7 +42,7 @@ export class ReportsController {
 
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+      if (!idRegex.test(resolvedBusinessId) || resolvedBusinessId.length < 1 || resolvedBusinessId.length > 50) {
         const error = new AppError(
           'Invalid business ID format',
           400,
@@ -82,7 +85,7 @@ export class ReportsController {
 
       const report = await this.reportsService.getBusinessOverview(
         userId,
-        businessId,
+        resolvedBusinessId,
         start,
         end
       );
@@ -109,8 +112,11 @@ export class ReportsController {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
 
+      // Get businessId from query or business context
+      const resolvedBusinessId = businessId || (req as any).businessContext?.primaryBusinessId;
+
       // Validate businessId parameter
-      if (!businessId || typeof businessId !== 'string') {
+      if (!resolvedBusinessId || typeof resolvedBusinessId !== 'string') {
         const error = new AppError(
           'Business ID is required',
           400,
@@ -121,7 +127,7 @@ export class ReportsController {
 
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+      if (!idRegex.test(resolvedBusinessId) || resolvedBusinessId.length < 1 || resolvedBusinessId.length > 50) {
         const error = new AppError(
           'Invalid business ID format',
           400,
@@ -164,7 +170,7 @@ export class ReportsController {
 
       const report = await this.reportsService.getRevenueReport(
         userId,
-        businessId,
+        resolvedBusinessId,
         start,
         end
       );
