@@ -2,12 +2,12 @@
 
 ## 📋 Unified Docker Setup
 
-This project provides both **development** and **production** Docker configurations with nginx handling load balancing and API gateway functionality.
+This project provides both **development** and **production** Docker configurations with nginx handling load balancing and reverse proxy functionality.
 
 ## 🏗️ Architecture
 
 ```
-Internet → Nginx (Load Balancer + API Gateway) → App Instances (1,2,3)
+Internet → Nginx (Load Balancer + Reverse Proxy) → App Instances (1,2,3)
                 ↓
             Redis Cache (Shared)
                 ↓
@@ -55,7 +55,7 @@ docker-compose -f docker-compose.production.yml up -d
 ### ✅ **Production Configuration**
 - **`docker-compose.production.yml`** - Production setup
 - 3 App instances (load balanced)
-- Nginx (load balancer + API gateway)
+- Nginx (load balancer + reverse proxy)
 - Redis cache (shared)
 - PostgreSQL (optional)
 - Monitoring stack (Prometheus + Grafana)
@@ -63,14 +63,14 @@ docker-compose -f docker-compose.production.yml up -d
 ### ✅ **Unified Nginx Configuration**
 - **`nginx/nginx.conf`** - Single config for all functionality
 - Load balancing across 3 app instances
-- API gateway with smart routing
+- Load balancer with smart routing
 - Rate limiting by endpoint type
 - Response caching (static + dynamic)
 - Security headers and attack protection
 
 ### ✅ **Production Features**
 - **Load Balancing**: 3 app instances with health checks
-- **API Gateway**: Routing, rate limiting, caching
+- **Load Balancer**: Traffic distribution, rate limiting, caching
 - **Security**: Headers, attack blocking, file protection
 - **Monitoring**: Health checks, metrics, dashboards
 - **High Availability**: Automatic failover
@@ -167,7 +167,7 @@ docker-compose -f docker-compose.production.yml up -d
 ## 🎯 Benefits of Unified Approach
 
 1. **Single Point of Management** - One file to rule them all
-2. **Cost Effective** - No separate load balancer or API gateway needed
+2. **Cost Effective** - No separate load balancer or reverse proxy needed
 3. **High Performance** - Nginx is extremely fast and efficient
 4. **Easy Scaling** - Add more app instances easily
 5. **Production Ready** - Enterprise-grade security and monitoring
@@ -182,7 +182,7 @@ docker-compose -f docker-compose.production.yml up -d
 
 Your application is now production-ready with:
 - ✅ **Load Balancing** (3 app instances)
-- ✅ **API Gateway** (routing, rate limiting, caching)
+- ✅ **Load Balancer** (traffic distribution, rate limiting, caching)
 - ✅ **Security** (headers, attack protection)
 - ✅ **Monitoring** (health checks, metrics)
 - ✅ **High Availability** (automatic failover)

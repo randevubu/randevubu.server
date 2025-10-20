@@ -82,7 +82,9 @@ export const cache = (config: CacheConfig = {}) => {
         res.set('X-Cache-Status', 'HIT');
         res.set('X-Cache-Key', cacheKey);
         res.set('X-Cache-TTL', config.ttl?.toString() || '0');
-        res.set('Cache-Control', `public, max-age=${config.ttl || 0}`);
+        // Prevent browser caching - only use server-side cache
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.set('Pragma', 'no-cache');
         
         return res.json({
           ...cached,
@@ -123,7 +125,9 @@ export const cache = (config: CacheConfig = {}) => {
         res.set('X-Cache-Status', 'MISS');
         res.set('X-Cache-Key', cacheKey);
         res.set('X-Cache-TTL', config.ttl?.toString() || '0');
-        res.set('Cache-Control', `public, max-age=${config.ttl || 0}`);
+        // Prevent browser caching - only use server-side cache
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.set('Pragma', 'no-cache');
         
         return originalJson(body);
       };

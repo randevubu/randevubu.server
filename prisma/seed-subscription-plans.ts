@@ -20,11 +20,11 @@ async function seedSubscriptionPlans() {
 
   const subscriptionPlans = [
     {
-      id: 'plan_starter_monthly',
-      name: 'starter',
-      displayName: 'Starter Plan',
-      description: 'Perfect for small businesses just getting started',
-      price: 750.00,
+      id: 'plan_basic_tier1',
+      name: 'basic_tier1',
+      displayName: 'Basic Plan - Tier 1',
+      description: 'Perfect for small businesses in major cities',
+      price: 949.00,
       currency: 'TRY',
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
@@ -45,6 +45,7 @@ async function seedSubscriptionPlans() {
         maxServices: 0, // Sınırsız
         maxCustomers: 0, // Sınırsız
         smsQuota: 1000,
+        pricingTier: 'TIER_1',
         description: [
           'Online appointment booking system',
           'Up to 1 staff member',
@@ -69,11 +70,11 @@ async function seedSubscriptionPlans() {
       sortOrder: 1
     },
     {
-      id: 'plan_premium_monthly',
-      name: 'premium',
-      displayName: 'Premium Paket',
-      description: 'Büyüyen işletmeler için gelişmiş özellikler',
-      price: 1500.00,
+      id: 'plan_premium_tier1',
+      name: 'premium_tier1',
+      displayName: 'Premium Plan - Tier 1',
+      description: 'Advanced features for growing businesses in major cities',
+      price: 1499.00,
       currency: 'TRY',
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
@@ -94,8 +95,9 @@ async function seedSubscriptionPlans() {
         maxServices: 0, // Sınırsız
         maxCustomers: 0, // Sınırsız
         smsQuota: 1500,
+        pricingTier: 'TIER_1',
         description: [
-          'All Starter features',
+          'All Basic features',
           'Up to 5 staff members',
           'Unlimited customers',
           '1,500 SMS per month',
@@ -121,15 +123,65 @@ async function seedSubscriptionPlans() {
       sortOrder: 2
     },
     {
-      id: 'plan_pro_monthly',
-      name: 'pro',
-      displayName: 'Pro Paket',
-      description: 'Büyük işletmeler için profesyonel çözüm',
-      price: 3000.00,
+      id: 'plan_basic_tier2',
+      name: 'basic_tier2',
+      displayName: 'Basic Plan - Tier 2',
+      description: 'Perfect for small businesses in regional centers',
+      price: 799.00,
       currency: 'TRY',
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
-      maxStaffPerBusiness: 15,
+      maxStaffPerBusiness: 1,
+      maxAppointmentsPerDay: 0, // Sınırsız
+      features: {
+        appointmentBooking: true,
+        staffManagement: true,
+        basicReports: true,
+        emailNotifications: true,
+        smsNotifications: true,
+        customBranding: false,
+        advancedReports: false,
+        apiAccess: false,
+        multiLocation: false,
+        prioritySupport: false,
+        integrations: ['whatsapp', 'calendar', 'google'],
+        maxServices: 0, // Sınırsız
+        maxCustomers: 0, // Sınırsız
+        smsQuota: 1000,
+        pricingTier: 'TIER_2',
+        description: [
+          'Online appointment booking system',
+          'Up to 1 staff member',
+          'Unlimited customers',
+          'Email & SMS notifications',
+          '1,000 SMS per month',
+          'Basic reporting & analytics',
+          'WhatsApp integration',
+          'Google Calendar sync',
+          'Unlimited appointments',
+          'Email support',
+          'Mobile app access',
+          'Customer management',
+          'Service management',
+          'Basic customer segmentation',
+          'Appointment reminders',
+          'Business hours management'
+        ]
+      },
+      isActive: true,
+      isPopular: false,
+      sortOrder: 3
+    },
+    {
+      id: 'plan_premium_tier2',
+      name: 'premium_tier2',
+      displayName: 'Premium Plan - Tier 2',
+      description: 'Advanced features for growing businesses in regional centers',
+      price: 1299.00,
+      currency: 'TRY',
+      billingInterval: 'MONTHLY',
+      maxBusinesses: 1,
+      maxStaffPerBusiness: 5,
       maxAppointmentsPerDay: 0, // Sınırsız
       features: {
         appointmentBooking: true,
@@ -145,42 +197,136 @@ async function seedSubscriptionPlans() {
         integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
         maxServices: 0, // Sınırsız
         maxCustomers: 0, // Sınırsız
-        smsQuota: 3000,
+        smsQuota: 1500,
+        pricingTier: 'TIER_2',
         description: [
-          'All Premium features',
-          'Up to 15 staff members',
+          'All Basic features',
+          'Up to 5 staff members',
           'Unlimited customers',
-          '3,000 SMS per month',
-          'Full API access',
-          'Advanced analytics & reporting',
-          'Custom integrations',
-          'Dedicated account manager',
+          '1,500 SMS per month',
+          'Advanced reporting & analytics',
+          'Custom branding & themes',
+          'Google Calendar & Outlook integration',
+          'Priority email & phone support',
           'Unlimited appointments',
-          'White-label solutions',
-          'Advanced automation workflows',
-          'Priority phone & email support',
-          'Custom training sessions',
-          'Advanced staff scheduling',
-          'Multi-language support',
-          'Advanced customer analytics',
-          'Custom reporting dashboards',
-          'Advanced notification automation',
-          'Business intelligence tools',
-          'Custom field management',
-          'Advanced security features',
-          '24/7 priority support',
-          'Sınırsız Randevu',
-          'Sınırsız Müşteri',
-          'Randevu Hatırlatma Mesajları',
-          'Müşteri Galeri Sistemi',
-          'Periyodik Randevu Takibi',
-          'Duyuru Yönetim Paneli',
-          'Aktif Müşteri Takibi'
+          'API access',
+          'Advanced customer segmentation',
+          'Automated marketing campaigns',
+          'Customer loyalty programs',
+          'Advanced appointment scheduling',
+          'Staff performance tracking',
+          'Revenue analytics',
+          'Customer feedback system',
+          'Advanced notification settings',
+          'Custom business rules'
         ]
       },
       isActive: true,
       isPopular: false,
-      sortOrder: 3
+      sortOrder: 4
+    },
+    {
+      id: 'plan_basic_tier3',
+      name: 'basic_tier3',
+      displayName: 'Basic Plan - Tier 3',
+      description: 'Perfect for small businesses in smaller cities',
+      price: 749.00,
+      currency: 'TRY',
+      billingInterval: 'MONTHLY',
+      maxBusinesses: 1,
+      maxStaffPerBusiness: 1,
+      maxAppointmentsPerDay: 0, // Sınırsız
+      features: {
+        appointmentBooking: true,
+        staffManagement: true,
+        basicReports: true,
+        emailNotifications: true,
+        smsNotifications: true,
+        customBranding: false,
+        advancedReports: false,
+        apiAccess: false,
+        multiLocation: false,
+        prioritySupport: false,
+        integrations: ['whatsapp', 'calendar', 'google'],
+        maxServices: 0, // Sınırsız
+        maxCustomers: 0, // Sınırsız
+        smsQuota: 1000,
+        pricingTier: 'TIER_3',
+        description: [
+          'Online appointment booking system',
+          'Up to 1 staff member',
+          'Unlimited customers',
+          'Email & SMS notifications',
+          '1,000 SMS per month',
+          'Basic reporting & analytics',
+          'WhatsApp integration',
+          'Google Calendar sync',
+          'Unlimited appointments',
+          'Email support',
+          'Mobile app access',
+          'Customer management',
+          'Service management',
+          'Basic customer segmentation',
+          'Appointment reminders',
+          'Business hours management'
+        ]
+      },
+      isActive: true,
+      isPopular: false,
+      sortOrder: 5
+    },
+    {
+      id: 'plan_premium_tier3',
+      name: 'premium_tier3',
+      displayName: 'Premium Plan - Tier 3',
+      description: 'Advanced features for growing businesses in smaller cities',
+      price: 1199.00,
+      currency: 'TRY',
+      billingInterval: 'MONTHLY',
+      maxBusinesses: 1,
+      maxStaffPerBusiness: 5,
+      maxAppointmentsPerDay: 0, // Sınırsız
+      features: {
+        appointmentBooking: true,
+        staffManagement: true,
+        basicReports: true,
+        emailNotifications: true,
+        smsNotifications: true,
+        customBranding: true,
+        advancedReports: true,
+        apiAccess: true,
+        multiLocation: false,
+        prioritySupport: true,
+        integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
+        maxServices: 0, // Sınırsız
+        maxCustomers: 0, // Sınırsız
+        smsQuota: 1500,
+        pricingTier: 'TIER_3',
+        description: [
+          'All Basic features',
+          'Up to 5 staff members',
+          'Unlimited customers',
+          '1,500 SMS per month',
+          'Advanced reporting & analytics',
+          'Custom branding & themes',
+          'Google Calendar & Outlook integration',
+          'Priority email & phone support',
+          'Unlimited appointments',
+          'API access',
+          'Advanced customer segmentation',
+          'Automated marketing campaigns',
+          'Customer loyalty programs',
+          'Advanced appointment scheduling',
+          'Staff performance tracking',
+          'Revenue analytics',
+          'Customer feedback system',
+          'Advanced notification settings',
+          'Custom business rules'
+        ]
+      },
+      isActive: true,
+      isPopular: false,
+      sortOrder: 6
     }
   ];
 

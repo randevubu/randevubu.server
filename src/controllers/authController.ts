@@ -46,21 +46,30 @@ export class AuthController {
   ) {}
 
 
-  private clearAuthCookies(res: Response, context: ErrorContext): void {
+  private clearAuthCookies(res: Response, context: ErrorContext, req?: Request): void {
     const cookieDomain = process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost';
+    const isSecureProduction = process.env.NODE_ENV === 'production' && req?.secure;
     
-    res.clearCookie('refreshToken', {
+    // Must match ALL options used when setting the cookies
+    const cookieOptions = {
       path: '/',
-      domain: cookieDomain
-    });
-    res.clearCookie('hasAuth', {
-      path: '/',
-      domain: cookieDomain
-    });
+      domain: cookieDomain,
+      secure: isSecureProduction,
+      sameSite: (isSecureProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict'
+    };
+    
+    // Clear authentication cookies
+    res.clearCookie('refreshToken', cookieOptions);
+    res.clearCookie('hasAuth', cookieOptions);
+    
+    // Clear CSRF token for security (force new token on next login)
+    res.clearCookie('csrf-token', cookieOptions);
 
     logger.info('Cleared authentication cookies', {
-      clearedCookies: ['refreshToken', 'hasAuth'],
+      clearedCookies: ['refreshToken', 'hasAuth', 'csrf-token'],
       domain: cookieDomain,
+      secure: isSecureProduction,
+      sameSite: cookieOptions.sameSite,
       requestId: context.requestId,
     });
   }
@@ -179,7 +188,8 @@ export class AuthController {
           secure: isSecureProduction,
           sameSite: isSecureProduction ? 'none' : 'lax',
           maxAge: 30 * 24 * 60 * 60 * 1000,
-          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost'
+          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost',
+          path: '/'
         });
       }
 
@@ -257,7 +267,7 @@ export class AuthController {
     });
 
     if (!refreshToken) {
-      this.clearAuthCookies(res, context);
+      this.clearAuthCookies(res, context, req);
       res.status(400).json({
         success: false,
         error: {
@@ -274,7 +284,7 @@ export class AuthController {
         tokenValue: refreshToken,
         requestId: context.requestId,
       });
-      this.clearAuthCookies(res, context);
+      this.clearAuthCookies(res, context, req);
       res.status(401).json({
         success: false,
         error: {
@@ -293,7 +303,7 @@ export class AuthController {
         token: refreshToken.substring(0, 50) + '...',
         requestId: context.requestId,
       });
-      this.clearAuthCookies(res, context);
+      this.clearAuthCookies(res, context, req);
       res.status(401).json({
         success: false,
         error: {
@@ -346,7 +356,8 @@ export class AuthController {
           secure: isSecureProduction,
           sameSite: isSecureProduction ? 'none' : 'lax',
           maxAge: 30 * 24 * 60 * 60 * 1000,
-          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost'
+          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost',
+          path: '/'
         });
 
         logger.info('Token refreshed for web client', {
@@ -375,7 +386,7 @@ export class AuthController {
       logger.info('About to clear authentication cookies', {
         requestId: context.requestId,
       });
-      this.clearAuthCookies(res, context);
+      this.clearAuthCookies(res, context, req);
 
       // Handle specific token error types with appropriate status codes
       if (error instanceof BaseError) {
@@ -418,20 +429,23 @@ export class AuthController {
       const deviceInfo = extractDeviceInfo(req);
       const context = createErrorContext(req, req.user.id);
 
+      // Detect client type: mobile apps send token in body, web apps use cookies
+      const isMobileClient = req.headers['x-client-type'] === 'mobile' || !!body.refreshToken;
+
+      // Get refresh token from appropriate source (same pattern as refresh endpoint)
+      const cookieRefreshToken = req.cookies?.refreshToken;
+      const bodyRefreshToken = body.refreshToken;
+      const refreshToken = isMobileClient ? bodyRefreshToken : (cookieRefreshToken || bodyRefreshToken);
+
       await this.authService.logout(
         requireAuthenticatedUser(req).id,
-        body.refreshToken,
+        refreshToken,
         deviceInfo,
         context
       );
 
-      // Clear refresh token cookie
-      res.clearCookie('refreshToken', {
-        path: '/'
-      });
-
-      // Clear hasAuth cookie (Industry Standard)
-      res.clearCookie('hasAuth');
+      // Clear authentication cookies properly (must match domain used when setting)
+      this.clearAuthCookies(res, context, req);
 
       logger.info('User logged out', {
         userId: requireAuthenticatedUser(req).id,

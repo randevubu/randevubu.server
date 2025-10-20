@@ -249,7 +249,8 @@ router.post(
 router.post(
   '/logout',
   requireAuth,
-  csrfMiddleware.requireCSRF,
+  // CSRF not required for logout - it's a safe operation that only invalidates user's own session
+  // csrfMiddleware.requireCSRF,
   validateBody(logoutSchema),
   withAuth((req, res, next) => {
     return authController.logout(req, res).catch(next);

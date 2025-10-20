@@ -381,10 +381,26 @@ describe("AuthController", () => {
           userId: "user-123",
         })
       );
+      // Check that clearCookie was called 3 times (refreshToken, hasAuth, csrf-token)
+      expect(mockResponse.clearCookie).toHaveBeenCalledTimes(3);
       expect(mockResponse.clearCookie).toHaveBeenCalledWith("refreshToken", {
-        path: "/api/v1/auth/refresh",
+        path: "/",
+        domain: "localhost",
+        secure: false,
+        sameSite: "lax"
       });
-      expect(mockResponse.clearCookie).toHaveBeenCalledWith("hasAuth");
+      expect(mockResponse.clearCookie).toHaveBeenCalledWith("hasAuth", {
+        path: "/",
+        domain: "localhost",
+        secure: false,
+        sameSite: "lax"
+      });
+      expect(mockResponse.clearCookie).toHaveBeenCalledWith("csrf-token", {
+        path: "/",
+        domain: "localhost",
+        secure: false,
+        sameSite: "lax"
+      });
       expect(mockResponse.status).toHaveBeenCalledWith(200);
     });
   });

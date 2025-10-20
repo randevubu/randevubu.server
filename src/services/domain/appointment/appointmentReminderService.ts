@@ -6,10 +6,14 @@ import { AppointmentService } from './appointmentService';
 import { BusinessService } from '../business';
 import { UpcomingAppointment, AppointmentStatus, NotificationChannel } from '../../../types/business';
 import { getCurrentTimeInIstanbul } from '../../../utils/timezoneHelper';
+import redisClient from '../../../lib/redis/redis';
 
 export class AppointmentReminderService {
   private cronJob: cron.ScheduledTask | null = null;
   private isRunning = false;
+  private readonly LOCK_KEY = 'appointment-reminder-lock';
+  private readonly LOCK_TTL = 120; // 2 minutes - longer than cron interval to prevent overlaps
+  private readonly MAX_RETRIES = 3;
 
   constructor(
     private prisma: PrismaClient,
@@ -32,6 +36,13 @@ export class AppointmentReminderService {
         return;
       }
 
+      // Try to acquire distributed lock for horizontal scaling
+      const lockAcquired = await this.acquireLock();
+      if (!lockAcquired) {
+        console.log('⏭️ Another instance is processing reminders, skipping...');
+        return;
+      }
+
       this.isRunning = true;
       try {
         await this.processAppointmentReminders();
@@ -39,6 +50,7 @@ export class AppointmentReminderService {
         console.error('❌ Error in appointment reminder scheduler:', error);
       } finally {
         this.isRunning = false;
+        await this.releaseLock();
       }
     }, {
       scheduled: false // Don't start immediately
@@ -81,17 +93,21 @@ export class AppointmentReminderService {
 
       for (const appointment of upcomingAppointments) {
         try {
-          const results = await this.sendAppointmentReminder(appointment);
+          // Use retry mechanism for sending reminders
+          const results = await this.sendReminderWithRetry(appointment);
           const successful = results.filter(r => r.success).length;
           const failed = results.filter(r => !r.success).length;
-          
+
           successCount += successful;
           failureCount += failed;
 
-          // Mark reminder as sent for this appointment
-          await this.appointmentService.markReminderSent(appointment.id);
-          
-          console.log(`✅ Reminder sent for appointment ${appointment.id} (${successful} successful, ${failed} failed)`);
+          // Only mark as sent if at least one channel succeeded
+          if (successful > 0) {
+            await this.appointmentService.markReminderSent(appointment.id);
+            console.log(`✅ Reminder sent for appointment ${appointment.id} (${successful} successful, ${failed} failed)`);
+          } else {
+            console.warn(`⚠️ All channels failed for appointment ${appointment.id} - will retry next cycle`);
+          }
         } catch (error) {
           failureCount++;
           console.error(`❌ Failed to send reminder for appointment ${appointment.id}:`, error);
@@ -99,13 +115,17 @@ export class AppointmentReminderService {
       }
 
       console.log(`📊 Reminder batch complete: ${successCount} successful, ${failureCount} failed`);
-      
+
+      // Log metrics for monitoring
+      await this.logReminderMetrics(upcomingAppointments.length, successCount, failureCount);
+
     } catch (error) {
       console.error('❌ Error processing appointment reminders:', error);
     }
   }
 
   // Get appointments that need reminders
+  // Optimized query: Only check appointments in next 2 hours to reduce database load
   private async getAppointmentsNeedingReminders(currentTime: Date): Promise<UpcomingAppointment[]> {
     const oneHourFromNow = new Date(currentTime.getTime() + 60 * 60 * 1000);
     const twoHoursFromNow = new Date(currentTime.getTime() + 2 * 60 * 60 * 1000);
@@ -467,5 +487,141 @@ export class AppointmentReminderService {
   private timeStringToMinutes(timeStr: string): number {
     const [hours, minutes] = timeStr.split(':').map(Number);
     return hours * 60 + minutes;
+  }
+
+  /**
+   * Acquire distributed lock for horizontal scaling
+   * Uses Redis SET NX (set if not exists) with expiration
+   */
+  private async acquireLock(): Promise<boolean> {
+    try {
+      const lockValue = `${process.pid}-${Date.now()}`; // Unique identifier for this instance
+      // Using ioredis setnx then expire pattern
+      const acquired = await redisClient.setnx(this.LOCK_KEY, lockValue);
+      if (acquired === 1) {
+        await redisClient.expire(this.LOCK_KEY, this.LOCK_TTL);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('❌ Error acquiring reminder lock:', error);
+      // If Redis is down, allow processing (fail open)
+      return true;
+    }
+  }
+
+  /**
+   * Release distributed lock
+   */
+  private async releaseLock(): Promise<void> {
+    try {
+      await redisClient.del(this.LOCK_KEY);
+    } catch (error) {
+      console.error('❌ Error releasing reminder lock:', error);
+      // Lock will auto-expire, so this is not critical
+    }
+  }
+
+  /**
+   * Send reminder with retry mechanism
+   * Industry standard: Exponential backoff for failed notifications
+   */
+  private async sendReminderWithRetry(appointment: UpcomingAppointment, attempt = 1): Promise<any[]> {
+    try {
+      return await this.sendAppointmentReminder(appointment);
+    } catch (error) {
+      if (attempt >= this.MAX_RETRIES) {
+        console.error(`❌ Failed to send reminder after ${this.MAX_RETRIES} attempts for appointment ${appointment.id}:`, error);
+        // Log to dead letter queue (could be database table or separate queue)
+        await this.logFailedReminder(appointment, error);
+        return [];
+      }
+
+      // Exponential backoff: 2^attempt seconds
+      const delayMs = Math.pow(2, attempt) * 1000;
+      console.log(`⏳ Retry ${attempt}/${this.MAX_RETRIES} for appointment ${appointment.id} after ${delayMs}ms`);
+
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+
+      return await this.sendReminderWithRetry(appointment, attempt + 1);
+    }
+  }
+
+  /**
+   * Log failed reminder to database for monitoring
+   * Industry standard: Dead letter queue for failed messages
+   */
+  private async logFailedReminder(appointment: UpcomingAppointment, error: unknown): Promise<void> {
+    try {
+      // Log to console for now - could be expanded to separate table or monitoring service
+      console.error('📝 DEAD LETTER QUEUE - Failed reminder:', {
+        appointmentId: appointment.id,
+        customerId: appointment.customerId,
+        businessId: appointment.businessId,
+        appointmentTime: appointment.startTime,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      });
+
+      // TODO: Store in dedicated failed_reminders table or send to monitoring service
+      // await this.prisma.failedReminder.create({
+      //   data: {
+      //     appointmentId: appointment.id,
+      //     error: error instanceof Error ? error.message : String(error),
+      //     retryCount: this.MAX_RETRIES,
+      //     failedAt: new Date()
+      //   }
+      // });
+
+    } catch (logError) {
+      console.error('❌ Error logging failed reminder:', logError);
+    }
+  }
+
+  /**
+   * Log reminder metrics for monitoring and analytics
+   * Industry standard: Track delivery rates, failures, and performance
+   */
+  private async logReminderMetrics(
+    totalProcessed: number,
+    successCount: number,
+    failureCount: number
+  ): Promise<void> {
+    try {
+      const deliveryRate = totalProcessed > 0 ? (successCount / totalProcessed * 100).toFixed(2) : '0.00';
+      const timestamp = new Date().toISOString();
+
+      // Log metrics to console (could be sent to monitoring service like Datadog, New Relic, etc.)
+      console.log('📊 REMINDER METRICS:', {
+        timestamp,
+        totalProcessed,
+        successCount,
+        failureCount,
+        deliveryRate: `${deliveryRate}%`,
+        processingTime: new Date().toISOString()
+      });
+
+      // Store metrics in Redis for real-time dashboards
+      try {
+        const metricsKey = `reminder-metrics:${new Date().toISOString().split('T')[0]}`; // Daily key
+        await redisClient.hincrby(metricsKey, 'totalProcessed', totalProcessed);
+        await redisClient.hincrby(metricsKey, 'successCount', successCount);
+        await redisClient.hincrby(metricsKey, 'failureCount', failureCount);
+        await redisClient.expire(metricsKey, 86400 * 7); // Keep for 7 days
+      } catch (redisError) {
+        console.error('⚠️ Failed to store metrics in Redis:', redisError);
+      }
+
+      // TODO: Send to external monitoring service
+      // await monitoringService.trackMetric('appointment_reminders', {
+      //   totalProcessed,
+      //   successCount,
+      //   failureCount,
+      //   deliveryRate: parseFloat(deliveryRate)
+      // });
+
+    } catch (error) {
+      console.error('❌ Error logging reminder metrics:', error);
+    }
   }
 }

@@ -233,11 +233,15 @@ export class StaffService {
         // Reactivate existing inactive staff member
         const updatedStaff = await this.repositories.staffRepository.activate(existingStaff.id);
         
+        // CRITICAL: Invalidate user's permission cache since their staff access was reactivated
+        this.rbacService.forceInvalidateUser(staffUser!.id);
+        
         logger.info('Existing staff member reactivated', {
           staffId: existingStaff.id,
           userId: staffUser!.id,
           businessId: request.businessId,
           role: request.role,
+          cacheInvalidated: true,
           requestId: context?.requestId,
         });
 
@@ -260,6 +264,10 @@ export class StaffService {
       permissions: request.permissions,
     });
 
+    // CRITICAL: Invalidate user's permission cache since they now have staff access
+    // Staff roles are loaded from businessStaff table and affect user permissions
+    this.rbacService.forceInvalidateUser(staffUser!.id);
+
     // Update staff usage tracking
     await this.usageService.updateStaffUsage(request.businessId);
 
@@ -269,6 +277,7 @@ export class StaffService {
       businessId: request.businessId,
       role: request.role,
       phoneNumber: this.maskPhoneNumber(normalizedPhone),
+      cacheInvalidated: true,
       requestId: context?.requestId,
     });
 
@@ -337,10 +346,18 @@ export class StaffService {
 
     await this.repositories.staffRepository.deactivate(staffId);
 
+    // CRITICAL: Invalidate user's permission cache since their staff access was removed
+    this.rbacService.forceInvalidateUser(staff.userId);
+
+    // Update staff usage tracking
+    await this.usageService.updateStaffUsage(staff.businessId);
+
     logger.info('Staff member removed', {
       staffId,
+      userId: staff.userId,
       businessId: staff.businessId,
       removedBy: userId,
+      cacheInvalidated: true,
     });
   }
 

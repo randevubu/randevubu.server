@@ -1,8 +1,8 @@
 import { NextFunction, Request, Response } from "express";
 import { RBACService } from "../services/domain/rbac";
 import { ErrorContext, ForbiddenError } from "../types/errors";
+import { AuthenticatedRequest } from "../types/request";
 import logger from "../utils/Logger/logger";
-import { AuthenticatedRequest } from "./auth";
 
 export interface AuthorizationOptions {
   resource: string;
@@ -234,8 +234,8 @@ export class AuthorizationMiddleware {
     };
   }
 
-  // Combined authorization (OR logic - pass if ANY condition is met)
-  requireAny(
+  // Combined authorization (OR logic - pass if ANY middleware condition is met)
+  requireAnyMiddleware(
     ...middlewares: Array<
       (
         req: AuthenticatedRequest,
@@ -294,6 +294,194 @@ export class AuthorizationMiddleware {
   // Staff, Owner or Admin access
   requireStaffOrAbove() {
     return this.requireRole({ roles: ["ADMIN", "OWNER", "STAFF"] });
+  }
+
+  // ============================================================================
+  // BUSINESS-SPECIFIC AUTHORIZATION METHODS
+  // Consolidated from PermissionMiddleware to eliminate duplication
+  // ============================================================================
+
+  /**
+   * Require any of the specified permissions (OR logic)
+   * Industry Standard: Flexible permission validation
+   */
+  async requireAny(
+    userId: string,
+    permissions: string[],
+    context?: any,
+    errorContext?: ErrorContext
+  ): Promise<void> {
+    const hasAny = await this.rbacService.requireAny(userId, permissions, context);
+
+    if (!hasAny) {
+      throw new ForbiddenError(
+        `One of these permissions is required: ${permissions.join(', ')}`,
+        errorContext || { userId, timestamp: new Date() }
+      );
+    }
+  }
+
+  /**
+   * Require all of the specified permissions (AND logic)
+   * Industry Standard: Strict permission validation
+   */
+  async requireAll(
+    userId: string,
+    permissions: string[],
+    context?: any,
+    errorContext?: ErrorContext
+  ): Promise<void> {
+    for (const permission of permissions) {
+      await this.rbacService.requirePermission(
+        userId,
+        permission,
+        context,
+        errorContext
+      );
+    }
+  }
+
+  /**
+   * Check if user has a specific permission (non-throwing)
+   * Industry Standard: Conditional permission checking
+   */
+  async hasPermission(
+    userId: string,
+    resource: string,
+    action: string,
+    context?: any
+  ): Promise<boolean> {
+    try {
+      return await this.rbacService.hasPermission(
+        userId,
+        resource,
+        action,
+        context
+      );
+    } catch (error) {
+      logger.warn('Permission check failed', {
+        userId,
+        resource,
+        action,
+        context,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Business-specific permission validation
+   * Checks both global and business-scoped permissions
+   */
+  async requireBusinessPermission(
+    userId: string,
+    businessId: string,
+    permission: string,
+    context?: any,
+    errorContext?: ErrorContext
+  ): Promise<void> {
+    const [resource, action] = permission.split(':');
+
+    // Check global permission first
+    const hasGlobalPermission = await this.rbacService.hasPermission(
+      userId,
+      resource,
+      action
+    );
+
+    if (hasGlobalPermission) {
+      return;
+    }
+
+    // Check business-specific permission
+    const hasBusinessPermission = await this.rbacService.hasPermission(
+      userId,
+      resource,
+      action,
+      { businessId }
+    );
+
+    if (!hasBusinessPermission) {
+      throw new ForbiddenError(
+        'You do not have permission to perform this action on this business',
+        errorContext || { userId, timestamp: new Date() }
+      );
+    }
+  }
+
+  /**
+   * Staff-specific permission validation
+   * Allows business owners OR staff with specific permission
+   */
+  async requireStaffPermission(
+    userId: string,
+    businessId: string,
+    permission: string,
+    context?: any,
+    errorContext?: ErrorContext
+  ): Promise<void> {
+    const [resource, action] = permission.split(':');
+
+    // Check if user is business owner
+    const isOwner = await this.rbacService.hasPermission(
+      userId,
+      'business',
+      'manage_own',
+      { businessId }
+    );
+
+    if (isOwner) {
+      return;
+    }
+
+    // Check staff-specific permission
+    const hasStaffPermission = await this.rbacService.hasPermission(
+      userId,
+      resource,
+      action,
+      { businessId, role: 'STAFF' }
+    );
+
+    if (!hasStaffPermission) {
+      throw new ForbiddenError(
+        'You do not have staff permission to perform this action',
+        errorContext || { userId, timestamp: new Date() }
+      );
+    }
+  }
+
+  /**
+   * Customer-specific permission validation
+   * Allows self-access OR business staff with customer management permission
+   */
+  async requireCustomerPermission(
+    userId: string,
+    businessId: string,
+    customerId: string,
+    permission: string,
+    context?: any,
+    errorContext?: ErrorContext
+  ): Promise<void> {
+    // Check if user is the customer themselves
+    if (userId === customerId) {
+      return;
+    }
+
+    // Check if user has business access to manage customers
+    const hasBusinessAccess = await this.rbacService.hasPermission(
+      userId,
+      'customer',
+      'manage',
+      { businessId }
+    );
+
+    if (!hasBusinessAccess) {
+      throw new ForbiddenError(
+        'You do not have permission to perform this action for this customer',
+        errorContext || { userId, timestamp: new Date() }
+      );
+    }
   }
 }
 

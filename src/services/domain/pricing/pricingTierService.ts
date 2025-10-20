@@ -131,6 +131,12 @@ export class PricingTierService {
     console.log('Pricing tiers initialized with hardcoded data');
   }
 
+  // Public method to get city tier
+  async getCityTier(city: string, state?: string, country: string = 'Turkey'): Promise<string> {
+    const tierMapping = this.getCityTierMapping(city, state, country);
+    return tierMapping?.name || 'TIER_3'; // Default to Tier 3 for unknown cities
+  }
+
   // Hardcoded city tier mapping
   private getCityTierMapping(city: string, state?: string, country: string = 'Turkey'): PricingTierData | null {
     const normalizedCity = city.toLowerCase().trim();

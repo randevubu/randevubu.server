@@ -2763,6 +2763,21 @@ export function createBusinessRoutes(businessController: BusinessController, sub
     businessController.updateGalleryImages.bind(businessController)
   );
 
+  // Google Integration Routes (MUST be before catch-all route)
+  // PUT requires authentication and ownership
+  router.put(
+    '/:id/google-integration',
+    requireAuth,
+    requireSpecificBusinessAccess('id'),
+    businessController.updateGoogleIntegration.bind(businessController)
+  );
+
+  // GET is public - anyone can see Google integration info for a business
+  router.get(
+    '/:id/google-integration',
+    businessController.getGoogleIntegration.bind(businessController)
+  );
+
   // Add a catch-all route that tries slug first, then ID if slug doesn't work
   // MUST be last to avoid conflicting with specific routes
   router.get(
