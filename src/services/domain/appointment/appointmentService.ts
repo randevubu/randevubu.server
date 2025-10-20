@@ -25,6 +25,7 @@ import { UsageService } from '../usage';
 import { PrismaClient } from '@prisma/client';
 import { CancellationPolicyService } from '../business/cancellationPolicyService';
 import { PolicyEnforcementContext, PolicyCheckResult } from '../../../types/cancellationPolicy';
+import { AuthorizationError } from '../../../utils/errors/customError';
 
 export class AppointmentService {
   private cancellationPolicyService: CancellationPolicyService;
@@ -589,8 +590,9 @@ export class AppointmentService {
     const hasBusinessRole = roleNames.some(role => ['OWNER', 'STAFF'].includes(role));
     
     if (!hasBusinessRole) {
-      throw new Error('Access denied. Business role required.');
+      throw new AuthorizationError('Access denied. Business role required.');
     }
+    
 
     // Get appointments from all businesses user has access to
     return await this.appointmentRepository.findByUserBusinesses(userId, filters);

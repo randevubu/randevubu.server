@@ -5,6 +5,8 @@ export class CustomError extends Error {
   }
 }
 
+
+
 export class VerificationCodeOrEmailMissingError extends CustomError {
   constructor(message: string = "Both verification code and new email are required", data?: any, statusCode: number = 400) {
     super(message, statusCode, data);
