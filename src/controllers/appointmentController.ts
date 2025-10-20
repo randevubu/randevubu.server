@@ -17,6 +17,8 @@ import {
   sendSuccessResponse
 } from '../utils/responseUtils';
 import { formatDateForAPI, formatTimeForAPI } from '../utils/timezoneHelper';
+import { handleControllerError } from "../utils/errors/errorHandler";
+import next from "next";
 
 export class AppointmentController {
   constructor(private appointmentService: AppointmentService) {}
@@ -69,13 +71,14 @@ export class AppointmentController {
       });
 
     } catch (error) {
-      handleRouteError(error, req, res);
+      handleControllerError(error, req, res, next, 'AppointmentController.getMyAppointments');   
     }
-  }
+  }     
 
   async createAppointment(
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
+    next: NextFunction
   ): Promise<void> {
     try {
       const validatedData = createAppointmentSchema.parse(req.body);
@@ -88,7 +91,7 @@ export class AppointmentController {
 
       sendSuccessResponse(res, "Appointment created successfully", appointment);
     } catch (error) {
-      handleRouteError(error, req, res);
+      handleControllerError(error, req, res, next, 'AppointmentController.createAppointment');   
     }
   }
 
