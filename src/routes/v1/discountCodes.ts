@@ -18,7 +18,7 @@ export function createDiscountCodeRoutes(discountCodeController: DiscountCodeCon
   // Apply authentication to all routes
   router.use(requireAuth);
 
-  // Public validation endpoint (no admin required)
+  // Authenticated validation endpoint (no admin required)
   router.post(
     '/validate',
     validateBody(validateDiscountCodeSchema),

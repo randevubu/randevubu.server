@@ -46,6 +46,7 @@ async function seedSubscriptionPlans() {
         maxCustomers: 0, // Sınırsız
         smsQuota: 1000,
         pricingTier: 'TIER_1',
+        trialDays: 7,
         description: [
           'Online appointment booking system',
           'Up to 1 staff member',
@@ -149,6 +150,7 @@ async function seedSubscriptionPlans() {
         maxCustomers: 0, // Sınırsız
         smsQuota: 1000,
         pricingTier: 'TIER_2',
+        trialDays: 7,
         description: [
           'Online appointment booking system',
           'Up to 1 staff member',
@@ -252,6 +254,7 @@ async function seedSubscriptionPlans() {
         maxCustomers: 0, // Sınırsız
         smsQuota: 1000,
         pricingTier: 'TIER_3',
+        trialDays: 7,
         description: [
           'Online appointment booking system',
           'Up to 1 staff member',

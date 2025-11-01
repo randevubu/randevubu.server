@@ -2,6 +2,7 @@ import * as winston from 'winston';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import os from 'os';
+import { getContext } from '../asyncContext';
 
 
 // Ensure the log directories exist  (will be change, don't forget)
@@ -43,7 +44,8 @@ const format = winston.format.combine(
     winston.format.splat(),
     winston.format.json({ space: 2 }),
     winston.format.printf(({ timestamp, level, message, ...metadata }) => {
-        const logEntry = {
+        const context = getContext();
+        const logEntry: Record<string, unknown> = {
             level,
             time: timestamp,
             application: 'randevubu-server',
@@ -53,8 +55,10 @@ const format = winston.format.combine(
             platform: os.platform() || 'unknown',
             // These upper four for detecting which container the log came from
             msg: message,
+            requestId: context?.requestId,
+            userId: context?.userId,
+            businessId: context?.businessId,
             ...metadata
-
         };
         return JSON.stringify(logEntry, null, 2);
     }),

@@ -1055,6 +1055,10 @@ const options: swaggerJsdoc.Options = {
         description: 'Subscription plans and business subscription management',
       },
       {
+        name: 'Payment Methods',
+        description: 'Subscription payment method management and payment history',
+      },
+      {
         name: 'Role Management',
         description: 'RBAC role creation, updates, and statistics',
       },

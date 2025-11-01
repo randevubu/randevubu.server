@@ -3,7 +3,8 @@ import {
   SubscriptionPlanData,
   BusinessSubscriptionData,
   SubscriptionStatus,
-  StoredPaymentMethodData
+  StoredPaymentMethodData,
+  SubscriptionPlanFeatures
 } from '../types/business';
 // prismaTypeHelpers no longer needed due to global normalization middleware
 
@@ -370,7 +371,9 @@ export class SubscriptionRepository {
   async startTrial(
     businessId: string,
     planId: string,
-    trialDays = 14
+    trialDays = 14,
+    paymentMethodId?: string,
+    discountMetadata?: any
   ): Promise<BusinessSubscriptionData> {
     const now = new Date();
     const trialEnd = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
@@ -385,7 +388,14 @@ export class SubscriptionRepository {
         currentPeriodEnd: trialEnd,
         trialStart: now,
         trialEnd: trialEnd,
-        cancelAtPeriodEnd: false
+        cancelAtPeriodEnd: false,
+        paymentMethodId: paymentMethodId || null,
+        metadata: {
+          trialDays,
+          requiresPaymentMethod: !!paymentMethodId,
+          createdAt: now.toISOString(),
+          ...(discountMetadata && { pendingDiscount: discountMetadata })
+        }
       }
     });
     return result as BusinessSubscriptionData;
@@ -433,6 +443,37 @@ export class SubscriptionRepository {
       include: {
         plan: true,
         business: true
+      }
+    });
+    return result.map(sub => this.mapToBusinessSubscriptionData(sub));
+  }
+
+  async findTrialsEndingToday(): Promise<BusinessSubscriptionData[]> {
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    // Set time to start and end of day
+    today.setHours(0, 0, 0, 0);
+    tomorrow.setHours(0, 0, 0, 0);
+    
+    const result = await this.prisma.businessSubscription.findMany({
+      where: {
+        status: SubscriptionStatus.TRIAL,
+        trialEnd: {
+          gte: today,
+          lt: tomorrow
+        },
+        paymentMethodId: { not: null } // Only trials with payment methods
+      },
+      include: {
+        plan: true,
+        business: {
+          include: {
+            owner: true
+          }
+        },
+        paymentMethod: true
       }
     });
     return result.map(sub => this.mapToBusinessSubscriptionData(sub));
@@ -729,7 +770,7 @@ export class SubscriptionRepository {
       billingInterval: plan.billingInterval,
       maxBusinesses: plan.maxBusinesses,
       maxStaffPerBusiness: plan.maxStaffPerBusiness,
-      features: plan.features as string[],
+      features: plan.features as unknown as SubscriptionPlanFeatures,
       isActive: plan.isActive,
       isPopular: plan.isPopular,
       sortOrder: plan.sortOrder,
@@ -744,18 +785,18 @@ export class SubscriptionRepository {
   /**
    * Find business by ID
    */
-  async findBusinessById(businessId: string): Promise<{ businessHours: any } | null> {
+  async findBusinessById(businessId: string): Promise<{ businessHours: Record<string, unknown> } | null> {
     const business = await this.prisma.business.findUnique({
       where: { id: businessId },
       select: { businessHours: true }
     });
-    return business;
+    return business ? { businessHours: business.businessHours as Record<string, unknown> } : null;
   }
 
   /**
    * Update business hours
    */
-  async updateBusinessHours(businessId: string, businessHours: any): Promise<void> {
+  async updateBusinessHours(businessId: string, businessHours: Record<string, unknown>): Promise<void> {
     await this.prisma.business.update({
       where: { id: businessId },
       data: { businessHours: businessHours as Prisma.InputJsonValue }

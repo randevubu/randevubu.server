@@ -1,7 +1,8 @@
 import Iyzipay from 'iyzipay';
-import { PaymentStatus, SubscriptionStatus } from '../../../types/business';
+import { PaymentStatus, SubscriptionStatus, TrialConversionData } from '../../../types/business';
 import { RepositoryContainer } from '../../../repositories';
 import logger from '../../../utils/Logger/logger';
+import { JsonValue } from '@prisma/client/runtime/library';
 
 export interface PaymentCardData {
   cardHolderName: string;
@@ -63,6 +64,61 @@ export interface CreatePaymentRequest {
   };
   basketItems: PaymentBasketItem[];
 }
+
+export interface SubscriptionMetadata {
+  pendingDiscount?: {
+    discountType: string;
+    discountValue: number;
+    code: string;
+    isRecurring: boolean;
+    remainingUses?: number;
+    appliedToPayments?: string[];
+  };
+}
+
+interface IyzipayPaymentCreateRequest {
+  locale: string;
+  conversationId: string;
+  price: string;
+  paidPrice: string;
+  currency: string;
+  installment: string;
+  basketId: string;
+  paymentChannel: string;
+  paymentGroup: string;
+  paymentCard: {
+    cardHolderName: string;
+    cardNumber: string;
+    expireMonth: string;
+    expireYear: string;
+    cvc: string;
+    registerCard: string;
+  };
+  buyer: PaymentBuyerData;
+  shippingAddress: CreatePaymentRequest['shippingAddress'];
+  billingAddress: CreatePaymentRequest['billingAddress'];
+  basketItems: PaymentBasketItem[];
+}
+
+interface IyzipayError {
+  status: string;
+  errorCode?: string;
+  errorMessage?: string;
+  errorGroup?: string;
+}
+
+interface IyzipaySuccessResponse {
+  status: string;
+  paymentId?: string;
+  cardType?: string;
+  cardAssociation?: string;
+  cardFamily?: string;
+  lastFourDigits?: string;
+  binNumber?: string;
+  [key: string]: unknown;
+}
+
+type IyzicoPaymentResult = IyzipaySuccessResponse | IyzipayError;
 
 export interface PaymentResponse {
   status: string;
@@ -138,6 +194,24 @@ export class PaymentService {
       subscriptionId: string,
       paymentId?: string
     ) => Promise<void>;
+    applyPendingDiscount: (
+      subscriptionId: string,
+      paymentId: string,
+      actualAmount: number
+    ) => Promise<{
+      success: boolean;
+      discountApplied?: {
+        code: string;
+        discountAmount: number;
+        originalAmount: number;
+        finalAmount: number;
+      };
+      error?: string;
+    }>;
+    canApplyToPayment: (
+      subscriptionId: string,
+      paymentType: 'INITIAL' | 'TRIAL_CONVERSION' | 'RENEWAL'
+    ) => Promise<boolean>;
   };
   
   constructor(
@@ -443,14 +517,14 @@ export class PaymentService {
         basketItems: paymentData.basketItems
       };
 
-      const result = await new Promise<any>((resolve, reject) => {
-        this.iyzipay.payment.create(request as unknown as any, (err: unknown, result: unknown) => {
+      const result: IyzicoPaymentResult = await new Promise((resolve, reject) => {
+        this.iyzipay.payment.create(request as any, (err: unknown, result: unknown) => {
           if (err) reject(err);
-          else resolve(result);
+          else resolve(result as IyzicoPaymentResult);
         });
       });
 
-      if (result.status === 'success') {
+      if (result && result.status === 'success') {
         const paymentRecord = await this.repositories.paymentRepository.create({
           businessSubscriptionId,
           amount: parseFloat(paymentData.paidPrice),
@@ -458,28 +532,7 @@ export class PaymentService {
           status: PaymentStatus.SUCCEEDED,
           paymentMethod: 'card',
           paymentProvider: 'iyzico',
-          providerPaymentId: result.paymentId,
-          metadata: {
-            iyzicoResponse: result,
-            conversationId: paymentData.conversationId,
-            basketId: paymentData.basketId,
-            installment: paymentData.installment,
-            cardInfo: {
-              cardType: result.cardType,
-              cardAssociation: result.cardAssociation,
-              cardFamily: result.cardFamily,
-              lastFourDigits: result.lastFourDigits,
-              binNumber: result.binNumber
-            },
-            ...(discountApplied && {
-              discount: {
-                code: discountApplied.code,
-                originalAmount: discountApplied.originalAmount,
-                discountAmount: discountApplied.discountAmount,
-                finalAmount: discountApplied.finalAmount
-              }
-            })
-          }
+          providerPaymentId: (result as IyzipaySuccessResponse).paymentId || '',
         });
 
         await this.repositories.subscriptionRepository.updateSubscriptionStatus(businessSubscriptionId, SubscriptionStatus.ACTIVE);
@@ -487,7 +540,7 @@ export class PaymentService {
         return {
           success: true,
           paymentId: paymentRecord.id,
-          iyzicoPaymentId: result.paymentId,
+          iyzicoPaymentId: (result as IyzipaySuccessResponse).paymentId,
           message: 'Payment successful'
         };
       } else {
@@ -499,15 +552,15 @@ export class PaymentService {
           paymentMethod: 'card',
           paymentProvider: 'iyzico',
           metadata: {
-            iyzicoResponse: result,
+            iyzicoResponse: result as unknown as JsonValue,
             conversationId: paymentData.conversationId,
-            error: result.errorMessage || 'Payment failed'
+            error: (result as IyzipayError).errorMessage || 'Payment failed'
           }
         });
 
         return {
           success: false,
-          error: result.errorMessage || 'Payment failed'
+          error: (result as IyzipayError).errorMessage || 'Payment failed'
         };
       }
     } catch (error) {
@@ -565,38 +618,38 @@ export class PaymentService {
         ip: '127.0.0.1'
       };
 
-      const result = await new Promise<any>((resolve, reject) => {
-        this.iyzipay.refund.create(request, (err: any, result: any) => {
+      const result: IyzicoPaymentResult = await new Promise((resolve, reject) => {
+        this.iyzipay.refund.create(request, (err: unknown, result: unknown) => {
           if (err) reject(err);
-          else resolve(result);
+          else resolve(result as IyzicoPaymentResult);
         });
       });
 
-      if (result.status === 'success') {
+      if (result && result.status === 'success') {
         await this.repositories.paymentRepository.update(paymentId, {
           status: PaymentStatus.REFUNDED,
           refundedAt: new Date(),
-          metadata: {
-            ...payment.metadata as object,
+          metadata: ({
+            ...payment.metadata as Record<string, unknown>,
             refund: {
-              refundId: result.paymentId,
+              refundId: (result as IyzipaySuccessResponse).paymentId,
               refundAmount,
               refundReason: reason,
               refundDate: new Date().toISOString(),
-              iyzicoRefundResponse: result
+              iyzicoRefundResponse: result as unknown as JsonValue
             }
-          }
+          }) as JsonValue
         });
 
         return {
           success: true,
-          refundId: result.paymentId,
+          refundId: (result as IyzipaySuccessResponse).paymentId,
           message: 'Refund successful'
         };
       } else {
         return {
           success: false,
-          error: result.errorMessage || 'Refund failed'
+          error: (result as IyzipayError).errorMessage || 'Refund failed'
         };
       }
     } catch (error) {
@@ -610,7 +663,7 @@ export class PaymentService {
 
   async retrievePayment(paymentId: string): Promise<{
     success: boolean;
-    payment?: any;
+    payment?: IyzicoPaymentResult;
     error?: string;
   }> {
     try {
@@ -626,17 +679,17 @@ export class PaymentService {
         paymentId: payment.providerPaymentId
       };
 
-      const result = await new Promise<any>((resolve, reject) => {
-        this.iyzipay.payment.retrieve(request as unknown as any, (err: unknown, result: unknown) => {
+      const result: IyzicoPaymentResult = await new Promise((resolve, reject) => {
+        this.iyzipay.payment.retrieve(request, (err: unknown, result: unknown) => {
           if (err) reject(err);
-          else resolve(result);
+          else resolve(result as IyzicoPaymentResult);
         });
       });
 
       return {
-        success: result.status === 'success',
+        success: result && result.status === 'success',
         payment: result,
-        error: result.status !== 'success' ? result.errorMessage : undefined
+        error: result && result.status !== 'success' ? (result as IyzipayError).errorMessage : undefined
       };
     } catch (error) {
       logger.error('Retrieve payment error', { error: error instanceof Error ? error.message : String(error) });
@@ -695,26 +748,6 @@ export class PaymentService {
     }
   }
 
-  async getPaymentHistory(businessSubscriptionId: string): Promise<{
-    success: boolean;
-    payments?: any[];
-    error?: string;
-  }> {
-    try {
-      const payments = await this.repositories.paymentRepository.findBySubscriptionId(businessSubscriptionId);
-
-      return {
-        success: true,
-        payments
-      };
-    } catch (error) {
-      console.error('Get payment history error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve payment history'
-      };
-    }
-  }
 
   generateConversationId(): string {
     return `conv_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -753,23 +786,252 @@ export class PaymentService {
     };
   }
 
-  async createRenewalPayment(
+  async chargeTrialConversion(
     subscriptionId: string,
-    plan: any,
-    storedPaymentMethod: any,
-    business: any
+    plan: TrialConversionData['plan'],
+    storedPaymentMethod: TrialConversionData['paymentMethod'],
+    business: TrialConversionData['business']
   ): Promise<{
     success: boolean;
     paymentId?: string;
     iyzicoPaymentId?: string;
     message?: string;
     error?: string;
+    discountApplied?: {
+      code: string;
+      discountAmount: number;
+      originalAmount: number;
+      finalAmount: number;
+    };
   }> {
     try {
+      // Validate required payment method
+      if (!storedPaymentMethod) {
+        return {
+          success: false,
+          error: "No payment method available for trial conversion"
+        };
+      }
+
+      // Check for pending discount
+      const subscription = await this.repositories.subscriptionRepository.findSubscriptionById(subscriptionId);
+      let finalPrice = Number(plan.price);
+      let discountApplied: {
+        code: string;
+        discountAmount: number;
+        originalAmount: number;
+        finalAmount: number;
+      } | undefined = undefined;
+      
+      if (subscription?.metadata && typeof subscription.metadata === 'object' && subscription.metadata !== null && 'pendingDiscount' in subscription.metadata) {
+        const metadata = subscription.metadata as SubscriptionMetadata;
+        const pending = metadata.pendingDiscount;
+        
+        // Check if discount can be applied to trial conversion
+        if (this.discountCodeService && pending) {
+          const canApply = await this.discountCodeService.canApplyToPayment(
+            subscriptionId,
+            'TRIAL_CONVERSION'
+          );
+          
+          if (canApply) {
+            // Calculate discount
+            if (pending.discountType === 'PERCENTAGE') {
+              const discountAmount = finalPrice * (pending.discountValue / 100);
+              finalPrice = finalPrice - discountAmount;
+              discountApplied = {
+                code: pending.code,
+                discountAmount,
+                originalAmount: Number(plan.price),
+                finalAmount: finalPrice
+              };
+            } else {
+              const discountAmount = pending.discountValue;
+              finalPrice = Math.max(0, finalPrice - discountAmount);
+              discountApplied = {
+                code: pending.code,
+                discountAmount,
+                originalAmount: Number(plan.price),
+                finalAmount: finalPrice
+              };
+            }
+          }
+        }
+      }
+
+      // Create payment request for trial conversion
+      const paymentRequest: CreatePaymentRequest = {
+        conversationId: this.generateConversationId(),
+        price: finalPrice.toString(),
+        paidPrice: finalPrice.toString(),
+        currency: plan.currency,
+        installment: '1',
+        basketId: this.generateBasketId(),
+        paymentChannel: 'WEB',
+        paymentGroup: 'SUBSCRIPTION',
+        card: {
+          cardHolderName: storedPaymentMethod.cardHolderName,
+          cardNumber: `****${storedPaymentMethod.lastFourDigits}`, // Use stored token in real implementation
+          expireMonth: storedPaymentMethod.expiryMonth,
+          expireYear: storedPaymentMethod.expiryYear,
+          cvc: '***' // CVC not stored for security
+        },
+        buyer: {
+          id: `BY${business.ownerId}`,
+          name: business.owner.firstName || 'Customer',
+          surname: business.owner.lastName || 'User',
+          email: business.email || `${business.owner.phoneNumber}@randevubu.com`,
+          gsmNumber: business.phone || business.owner.phoneNumber,
+          identityNumber: '11111111111',
+          lastLoginDate: new Date().toISOString().split('T')[0] + ' 12:00:00',
+          registrationDate: new Date().toISOString().split('T')[0] + ' 12:00:00',
+          registrationAddress: business.address || 'Test Address',
+          ip: '127.0.0.1',
+          city: business.city || 'Istanbul',
+          country: business.country || 'Turkey',
+          zipCode: business.postalCode || '34000'
+        },
+        shippingAddress: {
+          contactName: `${business.owner.firstName || ''} ${business.owner.lastName || ''}`,
+          city: business.city || 'Istanbul',
+          country: business.country || 'Turkey',
+          address: business.address || 'Test Address',
+          zipCode: business.postalCode || '34000'
+        },
+        billingAddress: {
+          contactName: `${business.owner.firstName || ''} ${business.owner.lastName || ''}`,
+          city: business.city || 'Istanbul',
+          country: business.country || 'Turkey',
+          address: business.address || 'Test Address',
+          zipCode: business.postalCode || '34000'
+        },
+        basketItems: [this.createSubscriptionBasketItem({
+          id: plan.id,
+          name: plan.displayName,
+          price: finalPrice.toString()
+        })]
+      };
+
+      // Use the centralized payment method
+      const paymentResult = await this.createSubscriptionPayment(subscriptionId, paymentRequest, discountApplied);
+      
+      // Record discount usage if applied
+      if (discountApplied && paymentResult.success && this.discountCodeService) {
+        try {
+          await this.discountCodeService.applyPendingDiscount(
+            subscriptionId,
+            paymentResult.paymentId || '',
+            Number(plan.price)
+          );
+        } catch (error) {
+          logger.error('Failed to record discount usage', { error: error instanceof Error ? error.message : String(error) });
+          // Don't fail the payment for this, just log it
+        }
+      }
+
+      return {
+        ...paymentResult,
+        discountApplied
+      };
+    } catch (error) {
+      logger.error('Trial conversion payment error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to process trial conversion payment'
+      };
+    }
+  }
+
+  async createRenewalPayment(
+    subscriptionId: string,
+    plan: TrialConversionData['plan'],
+    storedPaymentMethod: TrialConversionData['paymentMethod'],
+    business: TrialConversionData['business']
+  ): Promise<{
+    success: boolean;
+    paymentId?: string;
+    iyzicoPaymentId?: string;
+    message?: string;
+    error?: string;
+    discountApplied?: {
+      code: string;
+      discountAmount: number;
+      originalAmount: number;
+      finalAmount: number;
+    };
+  }> {
+    try {
+      // Validate required payment method
+      if (!storedPaymentMethod) {
+        return {
+          success: false,
+          error: "No payment method available for renewal"
+        };
+      }
+
+      // Check if subscription has recurring discount
+      const subscription = await this.repositories.subscriptionRepository.findSubscriptionById(subscriptionId);
+      let finalPrice = Number(plan.price);
+      let discountApplied: {
+        code: string;
+        discountAmount: number;
+        originalAmount: number;
+        finalAmount: number;
+      } | undefined = undefined;
+      
+      if (subscription?.metadata && typeof subscription.metadata === 'object' && subscription.metadata !== null && 'pendingDiscount' in subscription.metadata) {
+        const metadata = subscription.metadata as SubscriptionMetadata;
+        if (metadata.pendingDiscount?.isRecurring) {
+          const pending = metadata.pendingDiscount;
+        
+        // Check if discount can be applied to renewal
+        if (this.discountCodeService) {
+          const canApply = await this.discountCodeService.canApplyToPayment(
+            subscriptionId,
+            'RENEWAL'
+          );
+          
+          if (canApply && pending && pending.remainingUses && pending.remainingUses > 0) {
+            // Apply recurring discount
+            if (pending.discountType === 'PERCENTAGE') {
+              const discountAmount = finalPrice * (pending.discountValue / 100);
+              finalPrice = finalPrice - discountAmount;
+              discountApplied = {
+                code: pending.code,
+                discountAmount,
+                originalAmount: Number(plan.price),
+                finalAmount: finalPrice
+              };
+            } else {
+              const discountAmount = pending.discountValue;
+              finalPrice = Math.max(0, finalPrice - discountAmount);
+              discountApplied = {
+                code: pending.code,
+                discountAmount,
+                originalAmount: Number(plan.price),
+                finalAmount: finalPrice
+              };
+            }
+            
+            // Decrement remaining uses
+            const updatedMetadata = subscription.metadata ? (subscription.metadata as SubscriptionMetadata) : {};
+            await this.repositories.subscriptionRepository.updateSubscriptionStatus(subscriptionId, subscription.status, {
+              ...updatedMetadata,
+              pendingDiscount: {
+                ...pending,
+                remainingUses: pending.remainingUses - 1,
+                appliedToPayments: [...(pending.appliedToPayments || []), 'renewal_' + Date.now()]
+              }
+            });
+          }
+        }
+        }
+      }
+
       const paymentData: CreatePaymentRequest = {
         conversationId: this.generateConversationId(),
-        price: plan.price.toString(),
-        paidPrice: plan.price.toString(),
+        price: finalPrice.toString(),
+        paidPrice: finalPrice.toString(),
         currency: plan.currency,
         installment: '1',
         basketId: this.generateBasketId(),
@@ -788,11 +1050,30 @@ export class PaymentService {
         basketItems: [this.createRenewalBasketItem({
           id: plan.id,
           name: plan.displayName,
-          price: plan.price.toString()
+          price: finalPrice.toString()
         })]
       };
 
-      return await this.createSubscriptionPayment(subscriptionId, paymentData);
+      const result = await this.createSubscriptionPayment(subscriptionId, paymentData, discountApplied);
+      
+      // Record discount usage if applied
+      if (discountApplied && this.discountCodeService) {
+        try {
+          await this.discountCodeService.applyPendingDiscount(
+            subscriptionId,
+            result.paymentId || '',
+            Number(plan.price)
+          );
+        } catch (error) {
+          logger.error('Failed to record discount usage', { error: error instanceof Error ? error.message : String(error) });
+          // Don't fail the payment for this, just log it
+        }
+      }
+
+      return {
+        ...result,
+        discountApplied
+      };
     } catch (error) {
       console.error('Renewal payment error:', error);
       return {

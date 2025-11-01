@@ -18,7 +18,6 @@ import {
 } from '../utils/responseUtils';
 import { formatDateForAPI, formatTimeForAPI } from '../utils/timezoneHelper';
 import { handleControllerError } from "../utils/errors/errorHandler";
-import next from "next";
 
 export class AppointmentController {
   constructor(private appointmentService: AppointmentService) {}
@@ -1387,6 +1386,87 @@ export class AppointmentController {
         res,
         "Monitor appointments retrieved successfully",
         monitorData
+      );
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * Get available time slots for booking (PUBLIC - no authentication required)
+   * GET /api/v1/public/businesses/:businessId/available-slots
+   * Query params:
+   *   - date: YYYY-MM-DD (required)
+   *   - serviceId: string (required)
+   *   - staffId: string (optional)
+   */
+  async getPublicAvailableSlots(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const { date, serviceId, staffId } = req.query;
+
+      // Validate required parameters
+      if (!date || typeof date !== 'string') {
+        const error = new AppError(
+          'Date is required and must be in YYYY-MM-DD format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (!serviceId || typeof serviceId !== 'string') {
+        const error = new AppError(
+          'Service ID is required',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate date format
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(date)) {
+        const error = new AppError(
+          'Invalid date format. Use YYYY-MM-DD',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      logger.info("Fetching available slots for public booking", {
+        businessId,
+        date,
+        serviceId,
+        staffId: staffId || 'any',
+        ip: req.ip
+      });
+
+      const availableSlots = await this.appointmentService.getPublicAvailableSlots({
+        businessId,
+        serviceId,
+        date,
+        staffId: staffId as string | undefined
+      });
+
+      sendSuccessResponse(
+        res,
+        "Available time slots retrieved successfully",
+        availableSlots
       );
     } catch (error) {
       handleRouteError(error, req, res);

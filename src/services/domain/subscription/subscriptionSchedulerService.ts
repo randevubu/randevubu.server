@@ -1,17 +1,21 @@
 // @ts-ignore - node-cron is available in Docker container
 import { PrismaClient } from "@prisma/client";
 import * as cron from "node-cron";
-import { SubscriptionStatus } from "../../../types/business";
+import { SubscriptionStatus, TrialConversionData } from "../../../types/business";
 import logger from "../../../utils/Logger/logger";
 import { NotificationService } from "../notification";
 import { PaymentService } from "../payment";
+import { PaymentRetryService } from "../payment/paymentRetryService";
 
 import { SchedulerConfig } from '../../../types/subscription';
 
 export class SubscriptionSchedulerService {
   private renewalTask: cron.ScheduledTask | null = null;
+  private trialConversionTask: cron.ScheduledTask | null = null;
   private reminderTask: cron.ScheduledTask | null = null;
   private cleanupTask: cron.ScheduledTask | null = null;
+  private retryTask: cron.ScheduledTask | null = null;
+  private paymentRetryService: PaymentRetryService;
 
   constructor(
     private prisma: PrismaClient,
@@ -31,6 +35,19 @@ export class SubscriptionSchedulerService {
       developmentMode: isDevelopment,
       ...config,
     };
+
+    // Initialize payment retry service
+    this.paymentRetryService = new PaymentRetryService(
+      this.prisma,
+      this.paymentService,
+      this.notificationService,
+      {
+        maxRetries: 5,
+        retrySchedule: [0, 1, 3, 7, 14], // Immediate, 1 day, 3 days, 1 week, 2 weeks
+        escalationThreshold: 3,
+        gracePeriodDays: 30
+      }
+    );
   }
 
   /**
@@ -38,7 +55,9 @@ export class SubscriptionSchedulerService {
    */
   public start(): void {
     this.startRenewalChecker();
+    this.startTrialConversionChecker();
     this.startReminderService();
+    this.startRetryService();
     this.startCleanupService();
 
     const mode = this.config.developmentMode ? "DEVELOPMENT" : "PRODUCTION";
@@ -47,7 +66,9 @@ export class SubscriptionSchedulerService {
     if (this.config.developmentMode) {
       logger.info(`⚡ Development schedules:`);
       logger.info(`   - Renewals: Every minute`);
+      logger.info(`   - Trial Conversions: Every minute`);
       logger.info(`   - Reminders: Every 2 minutes`);
+      logger.info(`   - Retry Service: Every 3 minutes`);
       logger.info(`   - Cleanup: Every 5 minutes`);
       logger.warn(`⚠️  DEVELOPMENT MODE - Do not use in production!`);
     }
@@ -61,9 +82,17 @@ export class SubscriptionSchedulerService {
       this.renewalTask.stop();
       this.renewalTask = null;
     }
+    if (this.trialConversionTask) {
+      this.trialConversionTask.stop();
+      this.trialConversionTask = null;
+    }
     if (this.reminderTask) {
       this.reminderTask.stop();
       this.reminderTask = null;
+    }
+    if (this.retryTask) {
+      this.retryTask.stop();
+      this.retryTask = null;
     }
     if (this.cleanupTask) {
       this.cleanupTask.stop();
@@ -82,6 +111,24 @@ export class SubscriptionSchedulerService {
       async () => {
         logger.info("🔄 Running subscription renewal check...");
         await this.processSubscriptionRenewals();
+      },
+      {
+        scheduled: true,
+        timezone: this.config.timezone,
+      }
+    );
+  }
+
+  /**
+   * Start the trial conversion checker
+   * Runs daily to convert trials to active subscriptions
+   */
+  private startTrialConversionChecker(): void {
+    this.trialConversionTask = cron.schedule(
+      this.config.renewalCheckSchedule!, // Same schedule as renewals
+      async () => {
+        logger.info("🔄 Running trial conversion check...");
+        await this.processTrialConversions();
       },
       {
         scheduled: true,
@@ -110,6 +157,24 @@ export class SubscriptionSchedulerService {
   }
 
   /**
+   * Start the retry service
+   * Runs to retry failed payments with enhanced retry logic
+   */
+  private startRetryService(): void {
+    this.retryTask = cron.schedule(
+      "*/3 * * * *", // Every 3 minutes in dev, 6 AM in prod
+      async () => {
+        logger.info("🔄 Running payment retry service...");
+        await this.paymentRetryService.processFailedPayments();
+      },
+      {
+        scheduled: true,
+        timezone: this.config.timezone,
+      }
+    );
+  }
+
+  /**
    * Start the cleanup service
    * Runs weekly to clean up old failed payments and expired data
    */
@@ -125,6 +190,165 @@ export class SubscriptionSchedulerService {
         timezone: this.config.timezone,
       }
     );
+  }
+
+  /**
+   * Process trial conversions
+   * Converts trials ending today to active subscriptions
+   */
+  private async processTrialConversions(): Promise<{
+    processed: number;
+    converted: number;
+    failed: number;
+  }> {
+    try {
+      const trialsEndingToday = await this.prisma.businessSubscription.findMany({
+        where: {
+          status: SubscriptionStatus.TRIAL,
+          trialEnd: {
+            lte: new Date()
+          },
+          paymentMethodId: { not: null }
+        },
+        include: {
+          plan: true,
+          business: {
+            include: {
+              owner: true
+            }
+          },
+          paymentMethod: true
+        }
+      });
+
+      let processed = 0;
+      let converted = 0;
+      let failed = 0;
+
+      for (const trial of trialsEndingToday) {
+        try {
+          // Transform the trial data to match TrialConversionData interface
+          const trialData: TrialConversionData = {
+            id: trial.id,
+            plan: {
+              id: trial.plan.id,
+              name: trial.plan.name,
+              displayName: trial.plan.displayName,
+              price: Number(trial.plan.price),
+              currency: trial.plan.currency,
+              billingInterval: trial.plan.billingInterval
+            },
+            paymentMethod: trial.paymentMethod ? {
+              cardHolderName: trial.paymentMethod.cardHolderName,
+              lastFourDigits: trial.paymentMethod.lastFourDigits,
+              cardBrand: trial.paymentMethod.cardBrand || undefined,
+              expiryMonth: trial.paymentMethod.expiryMonth,
+              expiryYear: trial.paymentMethod.expiryYear
+            } : undefined,
+            business: {
+              ownerId: trial.business.ownerId,
+              owner: {
+                firstName: trial.business.owner.firstName || undefined,
+                lastName: trial.business.owner.lastName || undefined,
+                phoneNumber: trial.business.owner.phoneNumber
+              },
+              name: trial.business.name,
+              email: trial.business.email || undefined,
+              phone: trial.business.phone || undefined,
+              address: trial.business.address || undefined,
+              city: trial.business.city || undefined,
+              country: trial.business.country || undefined,
+              postalCode: trial.business.postalCode || undefined
+            }
+          };
+          
+          await this.processIndividualTrialConversion(trialData);
+          converted++;
+          logger.info(
+            `✅ Successfully converted trial ${trial.id} for business ${trial.business.name}`
+          );
+        } catch (error) {
+          failed++;
+          logger.error(
+            `❌ Failed to convert trial ${trial.id}:`,
+            error
+          );
+
+          // Mark trial as expired after failure
+          await this.prisma.businessSubscription.update({
+            where: { id: trial.id },
+            data: {
+              status: SubscriptionStatus.CANCELED,
+              updatedAt: new Date()
+            }
+          });
+        }
+        processed++;
+      }
+
+      logger.info(
+        `🔄 Trial conversion completed: ${processed} processed, ${converted} converted, ${failed} failed`
+      );
+      return { processed, converted, failed };
+    } catch (error) {
+      logger.error("❌ Error in trial conversion process:", error);
+      return { processed: 0, converted: 0, failed: 0 };
+    }
+  }
+
+  /**
+   * Process individual trial conversion
+   */
+  private async processIndividualTrialConversion(trial: TrialConversionData): Promise<void> {
+    if (!trial.paymentMethod) {
+      throw new Error("No payment method available for trial conversion");
+    }
+
+    // Calculate new billing period
+    const now = new Date();
+    const newPeriodEnd = new Date(now);
+
+    if (trial.plan.billingInterval === "monthly") {
+      newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
+    } else if (trial.plan.billingInterval === "yearly") {
+      newPeriodEnd.setFullYear(newPeriodEnd.getFullYear() + 1);
+    }
+
+    // Attempt to charge the stored payment method
+    const paymentResult = await this.paymentService.chargeTrialConversion(
+      trial.id,
+      trial.plan,
+      trial.paymentMethod,
+      trial.business
+    );
+
+    if (paymentResult.success) {
+      // Convert trial to active subscription
+      await this.prisma.businessSubscription.update({
+        where: { id: trial.id },
+        data: {
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodStart: now,
+          currentPeriodEnd: newPeriodEnd,
+          nextBillingDate: newPeriodEnd,
+          trialStart: null,
+          trialEnd: null,
+          failedPaymentCount: 0,
+          updatedAt: new Date()
+        }
+      });
+
+      // Send conversion confirmation via email
+      await this.notificationService.sendRenewalConfirmation(
+        trial.business.ownerId,
+        trial.business.name,
+        trial.plan.displayName,
+        newPeriodEnd,
+        'Trial conversion successful'
+      );
+    } else {
+      throw new Error(paymentResult.error || "Trial conversion payment failed");
+    }
   }
 
   /**

@@ -507,4 +507,36 @@ export class DiscountCodeRepository {
       metadata: usage.metadata
     };
   }
+
+  async findSubscriptionById(subscriptionId: string): Promise<any> {
+    return await this.prisma.businessSubscription.findUnique({
+      where: { id: subscriptionId },
+      include: {
+        business: {
+          include: {
+            owner: true
+          }
+        },
+        plan: true
+      }
+    });
+  }
+
+  async findPlanById(planId: string): Promise<any> {
+    return await this.prisma.subscriptionPlan.findUnique({
+      where: { id: planId }
+    });
+  }
+
+  async updateSubscriptionMetadata(
+    subscriptionId: string,
+    metadata: any
+  ): Promise<any> {
+    return await this.prisma.businessSubscription.update({
+      where: { id: subscriptionId },
+      data: {
+        metadata: metadata
+      }
+    });
+  }
 }

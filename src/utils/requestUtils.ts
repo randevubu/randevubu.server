@@ -28,7 +28,7 @@ export function createErrorContext(req: Request, userId?: string): ErrorContext 
     userId,
     ipAddress: req.ip,
     userAgent: req.get('user-agent'),
-    requestId: Math.random().toString(36).substring(7),
+    requestId: req.requestId || Math.random().toString(36).substring(7),
     timestamp: new Date(),
     endpoint: req.path,
     method: req.method,

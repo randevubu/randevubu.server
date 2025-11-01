@@ -576,6 +576,8 @@ export class DiscountCodeController {
    *     tags: [Discount Codes]
    *     summary: Validate discount code
    *     description: Validate a discount code for a specific plan and amount
+  *     security:
+  *       - bearerAuth: []
    *     requestBody:
    *       required: true
    *       content:

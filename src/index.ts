@@ -1,5 +1,5 @@
 // Load environment variables first
-import { config } from "./config/environment";
+import { config, validateConfig } from "./config/environment";
 // Initialize telemetry early (no-op unless OTEL_ENABLED=true)
 import "./telemetry/opentelemetry";
 
@@ -42,6 +42,19 @@ import {
 import { cacheManager } from "./lib/redis/redis";
 import { CacheMonitoring } from "./middleware/cacheMonitoring";
 import { cacheService } from "./services/cacheService";
+
+// Validate configuration on startup
+try {
+  validateConfig();
+  logger.info('✅ Configuration validated successfully');
+} catch (error) {
+  logger.error('❌ Configuration validation failed:', error);
+  if (config.NODE_ENV === 'production') {
+    process.exit(1); // Exit on production config errors
+  } else {
+    logger.warn('⚠️ Continuing with invalid configuration in non-production environment');
+  }
+}
 
 const app: Express = express();
 const PORT = config.PORT;

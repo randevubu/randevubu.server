@@ -19,6 +19,8 @@ interface Config {
   AWS_S3_BUCKET_NAME?: string;
   PUBLIC_ASSET_BASE_URL?: string;
   GOOGLE_PLACES_API_KEY?: string;
+  AWS_SES_FROM_EMAIL?: string;
+  AWS_SES_REPLY_EMAIL?: string;
 }
 
 const getConfig = (): Config => {
@@ -29,8 +31,13 @@ const getConfig = (): Config => {
   let corsOrigins: string[];
   if (nodeEnv === 'production') {
     corsOrigins = process.env.CORS_ORIGINS 
-      ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
-      : ['https://yourdomain.com'];
+      ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim()).filter(origin => origin.length > 0)
+      : [];
+    
+    // In production, CORS_ORIGINS must be explicitly set
+    if (corsOrigins.length === 0) {
+      throw new Error('CORS_ORIGINS must be set in production environment. Please set it in your environment variables.');
+    }
   } else {
     corsOrigins = ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'];
   }
@@ -52,6 +59,8 @@ const getConfig = (): Config => {
     AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME,
     PUBLIC_ASSET_BASE_URL: process.env.PUBLIC_ASSET_BASE_URL,
     GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY,
+    AWS_SES_FROM_EMAIL: process.env.AWS_SES_FROM_EMAIL,
+    AWS_SES_REPLY_EMAIL: process.env.AWS_SES_REPLY_EMAIL,
   };
 };
 
@@ -67,7 +76,7 @@ export const validateConfig = (): void => {
   }
 
   if (config.NODE_ENV === 'production') {
-    const productionVars = ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'DATABASE_URL', 'AWS_REGION', 'AWS_S3_BUCKET_NAME'];
+    const productionVars = ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'DATABASE_URL', 'AWS_REGION', 'AWS_S3_BUCKET_NAME', 'CORS_ORIGINS'];
     const missingVars = productionVars.filter(varName => !process.env[varName]);
 
     if (missingVars.length > 0) {
@@ -77,6 +86,11 @@ export const validateConfig = (): void => {
     // Validate DATABASE_URL format
     if (process.env.DATABASE_URL && !process.env.DATABASE_URL.startsWith('postgresql://')) {
       throw new Error('DATABASE_URL must be a valid PostgreSQL connection string starting with postgresql://');
+    }
+
+    // Validate CORS_ORIGINS is set (already checked in getConfig, but double-check)
+    if (!process.env.CORS_ORIGINS || process.env.CORS_ORIGINS.trim().length === 0) {
+      throw new Error('CORS_ORIGINS must be set in production environment');
     }
   }
 };

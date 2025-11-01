@@ -24,6 +24,8 @@ import { createCacheRoutes } from './cache';
 import testingRouter from './testing';
 import ratingRoutes from './ratings';
 import { createDailyNotebookRoutes } from './dailyNotebook';
+import { createPaymentMethodRoutes } from './paymentMethods';
+import { createContactRoutes } from './contact';
 
 export function createV1Routes(controllers: ControllerContainer, services: ServiceContainer): Router {
   const router = Router();
@@ -93,6 +95,8 @@ export function createV1Routes(controllers: ControllerContainer, services: Servi
   router.use('/', paymentRoutes);
   router.use('/', ratingRoutes);
   router.use('/', createDailyNotebookRoutes(controllers.dailyNotebookController));
+  router.use('/payment-methods', createPaymentMethodRoutes(controllers.paymentMethodController));
+  router.use('/contact', createContactRoutes(controllers.contactController));
   
   // Public routes (no authentication required) 
   router.use('/public', createPublicRoutes());

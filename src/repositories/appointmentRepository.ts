@@ -1068,6 +1068,7 @@ export class AppointmentRepository {
     date: Date,
     startTime: Date,
     endTime: Date,
+    staffId?: string,
     excludeAppointmentId?: string
   ): Promise<AppointmentData[]> {
     const where: Record<string, unknown> = {
@@ -1095,6 +1096,10 @@ export class AppointmentRepository {
         }
       ]
     };
+
+    if (staffId) {
+      (where as any).staffId = staffId;
+    }
 
     if (excludeAppointmentId) {
       where.id = { not: excludeAppointmentId };
@@ -1195,6 +1200,62 @@ export class AppointmentRepository {
     });
 
     return result;
+  }
+
+  // Working hours for business/staff/day (active only)
+  async findWorkingHours(
+    businessId: string,
+    dayOfWeek: number,
+    staffId?: string | null
+  ): Promise<Array<{ startTime: string; endTime: string; dayOfWeek: number; staffId: string | null }>> {
+    const result = await this.prisma.workingHours.findMany({
+      where: {
+        businessId,
+        staffId: staffId ?? null,
+        dayOfWeek,
+        isActive: true
+      },
+      select: {
+        startTime: true,
+        endTime: true,
+        dayOfWeek: true,
+        staffId: true
+      }
+    });
+    return result as Array<{ startTime: string; endTime: string; dayOfWeek: number; staffId: string | null }>;
+  }
+
+  // Appointments for a given day (optionally by staff) including staff user
+  async findAppointmentsForDay(
+    businessId: string,
+    startOfDay: Date,
+    endOfDay: Date,
+    staffId?: string
+  ): Promise<AppointmentWithDetails[]> {
+    const result = await this.prisma.appointment.findMany({
+      where: {
+        businessId,
+        ...(staffId ? { staffId } : {}),
+        startTime: {
+          gte: startOfDay,
+          lte: endOfDay
+        },
+        status: {
+          in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS, AppointmentStatus.PENDING]
+        }
+      },
+      include: {
+        staff: {
+          include: {
+            user: true
+          }
+        },
+        business: true,
+        service: true,
+        customer: true
+      }
+    });
+    return result as unknown as AppointmentWithDetails[];
   }
 
   async findByBusinessAndDateRange(

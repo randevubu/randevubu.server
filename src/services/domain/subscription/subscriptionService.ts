@@ -8,12 +8,14 @@ import { SubscriptionRepository } from '../../../repositories/subscriptionReposi
 import { RBACService } from '../rbac/rbacService';
 import { PermissionName } from '../../../types/auth';
 import { PricingTierService, LocationBasedPricing } from '../pricing/pricingTierService';
+import { DiscountCodeService } from '../discount/discountCodeService';
 
 export class SubscriptionService {
   constructor(
     private subscriptionRepository: SubscriptionRepository,
     private rbacService: RBACService,
-    private pricingTierService: PricingTierService
+    private pricingTierService: PricingTierService,
+    private discountCodeService?: DiscountCodeService
   ) {}
 
   // Subscription Plans
@@ -58,7 +60,6 @@ export class SubscriptionService {
           city: city,
           state: state || '',
           country: country,
-          tier: tier,
           multiplier: 1.0 // Fixed prices, no multiplier
         }
       }));
@@ -94,7 +95,6 @@ export class SubscriptionService {
         city: city,
         state: state || '',
         country: country,
-        tier: tier,
         multiplier: 1.0 // Fixed prices, no multiplier
       }
     };
@@ -126,7 +126,6 @@ export class SubscriptionService {
           city: city,
           state: state || '',
           country: country,
-          tier: tier,
           multiplier: 1.0 // Fixed prices, no multiplier
         }
       }));
@@ -143,6 +142,7 @@ export class SubscriptionService {
     data: SubscribeBusinessRequest & { 
       paymentMethodId?: string;
       autoRenewal?: boolean;
+      discountCode?: string;
     }
   ): Promise<BusinessSubscriptionData> {
     // Check if user owns the business or has global subscription management rights
@@ -179,11 +179,49 @@ export class SubscriptionService {
       periodEnd.setFullYear(periodEnd.getFullYear() + 1);
     }
 
+    // Validate and store discount code if provided
+    let pendingDiscountMetadata = null;
+    if (data.discountCode && this.discountCodeService) {
+      const validation = await this.discountCodeService.validateDiscountCode(
+        data.discountCode,
+        data.planId,
+        Number(plan.price),
+        userId
+      );
+      
+      if (validation.isValid && validation.discountCode) {
+        pendingDiscountMetadata = {
+          code: data.discountCode,
+          validatedAt: new Date().toISOString(),
+          appliedToPayments: [],
+          isRecurring: validation.discountCode.metadata?.isRecurring || false,
+          remainingUses: validation.discountCode.metadata?.maxRecurringUses || 1,
+          discountType: validation.discountCode.discountType,
+          discountValue: Number(validation.discountCode.discountValue),
+          discountCodeId: validation.discountCode.id
+        };
+      } else if (validation.errorMessage) {
+        throw new Error(`Invalid discount code: ${validation.errorMessage}`);
+      }
+    }
+
     // For new subscriptions, start with trial if available
-    const shouldStartTrial = plan.name.includes('professional') || plan.name.includes('business');
+    const trialDays = this.getTrialDaysForPlan(plan);
+    const shouldStartTrial = trialDays > 0;
     
     if (shouldStartTrial) {
-      const trialSubscription = await this.subscriptionRepository.startTrial(businessId, data.planId, 14);
+      // Store payment method before starting trial
+      if (!data.paymentMethodId) {
+        throw new Error('Payment method is required for trial subscriptions');
+      }
+      
+      const trialSubscription = await this.subscriptionRepository.startTrial(
+        businessId, 
+        data.planId, 
+        trialDays,
+        data.paymentMethodId,
+        pendingDiscountMetadata
+      );
       // Ensure business hours are set after trial creation
       await this.ensureBusinessHoursSet(businessId);
       return trialSubscription;
@@ -201,7 +239,8 @@ export class SubscriptionService {
       nextBillingDate: periodEnd,
       metadata: {
         paymentMethodId: data.paymentMethodId,
-        createdBy: userId
+        createdBy: userId,
+        ...(pendingDiscountMetadata && { pendingDiscount: pendingDiscountMetadata })
       }
     });
 
@@ -1056,6 +1095,45 @@ export class SubscriptionService {
       effectiveDate: effectiveDate,
       calculation: calculation
     };
+  }
+
+  /**
+   * Apply discount to existing subscription
+   */
+  async applyDiscountToSubscription(
+    subscriptionId: string,
+    discountCode: string,
+    userId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!this.discountCodeService) {
+      return {
+        success: false,
+        error: 'Discount code service not available'
+      };
+    }
+
+    return await this.discountCodeService.addDiscountToSubscription(
+      subscriptionId,
+      discountCode,
+      userId
+    );
+  }
+
+  /**
+   * Get trial days for a plan based on plan name and features
+   */
+  private getTrialDaysForPlan(plan: SubscriptionPlanData): number {
+    // Check if plan has trial days in features
+    if (plan.features.trialDays && typeof plan.features.trialDays === 'number') {
+      return plan.features.trialDays;
+    }
+    
+    // Only basic plans get 7-day trial
+    if (plan.name.includes('basic')) {
+      return 7; // 7-day trial for basic plans only
+    }
+    
+    return 0; // No trial for premium or other plans
   }
 
   /**

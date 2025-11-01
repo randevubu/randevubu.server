@@ -30,7 +30,7 @@ export const notFoundHandler = (
   const context: ErrorContext = {
     ipAddress: req.ip,
     userAgent: req.get('user-agent'),
-    requestId: randomUUID(),
+    requestId: req.requestId || randomUUID(),
     timestamp: new Date(),
     endpoint: req.path,
     method: req.method,
@@ -50,7 +50,7 @@ export const errorHandler = (
   const context: ErrorContext = {
     ipAddress: req.ip,
     userAgent: req.get('user-agent'),
-    requestId: randomUUID(),
+    requestId: req.requestId || randomUUID(),
     timestamp: new Date(),
     endpoint: req.path,
     method: req.method,

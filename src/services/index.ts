@@ -14,6 +14,7 @@ import { UserBehaviorService } from './domain/userBehavior';
 import { BusinessClosureService, ClosureAnalyticsService } from './domain/closure';
 import { SubscriptionService, SubscriptionSchedulerService } from './domain/subscription';
 import { PaymentService } from './domain/payment';
+import { PaymentRetryService } from './domain/payment/paymentRetryService';
 import { NotificationService } from './domain/notification';
 import { DiscountCodeService } from './domain/discount';
 import { UsageService } from './domain/usage';
@@ -48,6 +49,7 @@ export class ServiceContainer {
   public readonly businessClosureService: BusinessClosureService;
   public readonly subscriptionService: SubscriptionService;
   public readonly paymentService: PaymentService;
+  public readonly paymentRetryService: PaymentRetryService;
   public readonly notificationService: NotificationService;
   public readonly closureAnalyticsService: ClosureAnalyticsService;
   public readonly appointmentRescheduleService: AppointmentRescheduleService;
@@ -119,21 +121,36 @@ export class ServiceContainer {
     // Create pricing tier service first
     this.pricingTierService = new PricingTierService(this.prisma);
     
-    this.subscriptionService = new SubscriptionService(repositories.subscriptionRepository, this.rbacService, this.pricingTierService);
-    
     // Create discount code service first
     this.discountCodeService = new DiscountCodeService(
       repositories.discountCodeRepository,
       this.rbacService
     );
     
+    this.subscriptionService = new SubscriptionService(repositories.subscriptionRepository, this.rbacService, this.pricingTierService, this.discountCodeService);
+    
     // Then create payment service with discount code service dependency
     this.paymentService = new PaymentService(repositories, {
       validateDiscountCode: this.discountCodeService.validateDiscountCode.bind(this.discountCodeService),
       applyDiscountCode: async (code, userId, planId, originalAmount, subscriptionId, paymentId) => {
         await this.discountCodeService.applyDiscountCode(code, userId, planId, originalAmount, subscriptionId, paymentId);
-      }
+      },
+      applyPendingDiscount: this.discountCodeService.applyPendingDiscount.bind(this.discountCodeService),
+      canApplyToPayment: this.discountCodeService.canApplyToPayment.bind(this.discountCodeService)
     });
+
+    // Create payment retry service
+    this.paymentRetryService = new PaymentRetryService(
+      this.prisma,
+      this.paymentService,
+      this.notificationService,
+      {
+        maxRetries: 5,
+        retrySchedule: [0, 1, 3, 7, 14], // Immediate, 1 day, 3 days, 1 week, 2 weeks
+        escalationThreshold: 3,
+        gracePeriodDays: 30
+      }
+    );
 
     // Enhanced closure services
     this.closureAnalyticsService = new ClosureAnalyticsService(this.prisma);
