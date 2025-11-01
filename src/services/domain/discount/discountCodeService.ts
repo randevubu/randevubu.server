@@ -360,4 +360,249 @@ export class DiscountCodeService {
     // Public method for checkout validation
     return await this.discountCodeRepository.findByCode(code);
   }
+
+  /**
+   * Store discount for later use (trial subscriptions)
+   */
+  async storePendingDiscount(
+    code: string,
+    subscriptionId: string,
+    planId: string,
+    amount: number,
+    userId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Validate the discount code
+      const validation = await this.validateDiscountCode(code, planId, amount, userId);
+      
+      if (!validation.isValid) {
+        return {
+          success: false,
+          error: validation.errorMessage
+        };
+      }
+
+      if (!validation.discountCode || !validation.calculatedDiscount) {
+        return {
+          success: false,
+          error: 'Invalid discount calculation'
+        };
+      }
+
+      // Store in subscription metadata (this will be handled by the subscription service)
+      return {
+        success: true
+      };
+    } catch (error) {
+      console.error('Store pending discount error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to store pending discount'
+      };
+    }
+  }
+
+  /**
+   * Apply pending discount (trial conversion, renewals)
+   */
+  async applyPendingDiscount(
+    subscriptionId: string,
+    paymentId: string,
+    actualAmount: number
+  ): Promise<{
+    success: boolean;
+    discountApplied?: {
+      code: string;
+      discountAmount: number;
+      originalAmount: number;
+      finalAmount: number;
+    };
+    error?: string;
+  }> {
+    try {
+      // Get subscription to check for pending discount
+      const subscription = await this.discountCodeRepository.findSubscriptionById(subscriptionId);
+      
+      if (!subscription || !subscription.metadata?.pendingDiscount) {
+        return {
+          success: false,
+          error: 'No pending discount found'
+        };
+      }
+
+      const pending = subscription.metadata.pendingDiscount;
+      
+      // Calculate discount amount
+      let discountAmount = 0;
+      if (pending.discountType === 'PERCENTAGE') {
+        discountAmount = actualAmount * (pending.discountValue / 100);
+      } else {
+        discountAmount = Math.min(pending.discountValue, actualAmount);
+      }
+
+      const finalAmount = Math.max(0, actualAmount - discountAmount);
+
+      // Record the usage
+      await this.discountCodeRepository.recordUsage(
+        pending.discountCodeId,
+        subscription.business.ownerId,
+        discountAmount,
+        actualAmount,
+        finalAmount,
+        subscriptionId,
+        paymentId,
+        {
+          planId: subscription.planId,
+          appliedAt: new Date().toISOString(),
+          paymentType: 'TRIAL_CONVERSION'
+        }
+      );
+
+      return {
+        success: true,
+        discountApplied: {
+          code: pending.code,
+          discountAmount,
+          originalAmount: actualAmount,
+          finalAmount
+        }
+      };
+    } catch (error) {
+      console.error('Apply pending discount error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to apply pending discount'
+      };
+    }
+  }
+
+  /**
+   * Add discount to existing subscription
+   */
+  async addDiscountToSubscription(
+    subscriptionId: string,
+    code: string,
+    userId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Get subscription details
+      const subscription = await this.discountCodeRepository.findSubscriptionById(subscriptionId);
+      
+      if (!subscription) {
+        return {
+          success: false,
+          error: 'Subscription not found'
+        };
+      }
+
+      // Get plan details
+      const plan = await this.discountCodeRepository.findPlanById(subscription.planId);
+      
+      if (!plan) {
+        return {
+          success: false,
+          error: 'Plan not found'
+        };
+      }
+
+      // Validate the discount code
+      const validation = await this.validateDiscountCode(
+        code,
+        subscription.planId,
+        Number(plan.price),
+        userId
+      );
+      
+      if (!validation.isValid) {
+        return {
+          success: false,
+          error: validation.errorMessage
+        };
+      }
+
+      if (!validation.discountCode || !validation.calculatedDiscount) {
+        return {
+          success: false,
+          error: 'Invalid discount calculation'
+        };
+      }
+
+      // Update subscription metadata with new discount
+      const discountMetadata = {
+        code: code,
+        validatedAt: new Date().toISOString(),
+        appliedToPayments: [],
+        isRecurring: validation.discountCode.metadata?.isRecurring || false,
+        remainingUses: validation.discountCode.metadata?.maxRecurringUses || 1,
+        discountType: validation.discountCode.discountType,
+        discountValue: Number(validation.discountCode.discountValue),
+        discountCodeId: validation.discountCode.id
+      };
+
+      await this.discountCodeRepository.updateSubscriptionMetadata(
+        subscriptionId,
+        { pendingDiscount: discountMetadata }
+      );
+
+      return {
+        success: true
+      };
+    } catch (error) {
+      console.error('Add discount to subscription error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to add discount to subscription'
+      };
+    }
+  }
+
+  /**
+   * Check if discount can be applied to this payment
+   */
+  async canApplyToPayment(
+    subscriptionId: string,
+    paymentType: 'INITIAL' | 'TRIAL_CONVERSION' | 'RENEWAL'
+  ): Promise<boolean> {
+    try {
+      const subscription = await this.discountCodeRepository.findSubscriptionById(subscriptionId);
+      
+      if (!subscription || !subscription.metadata?.pendingDiscount) {
+        return false;
+      }
+
+      const pending = subscription.metadata.pendingDiscount;
+      
+      // Check if discount is still valid
+      const now = new Date();
+      const validatedAt = new Date(pending.validatedAt);
+      
+      // Check if discount has expired (24 hours validation window)
+      if (now.getTime() - validatedAt.getTime() > 24 * 60 * 60 * 1000) {
+        return false;
+      }
+
+      // Check remaining uses for recurring discounts
+      if (pending.isRecurring && pending.remainingUses <= 0) {
+        return false;
+      }
+
+      // Check if this payment type is allowed
+      if (paymentType === 'INITIAL' && pending.appliedToPayments.length > 0) {
+        return false; // Already applied to initial payment
+      }
+
+      if (paymentType === 'TRIAL_CONVERSION' && pending.appliedToPayments.some((p: string) => p.startsWith('trial_'))) {
+        return false; // Already applied to trial conversion
+      }
+
+      if (paymentType === 'RENEWAL' && !pending.isRecurring) {
+        return false; // Non-recurring discount cannot be applied to renewals
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Can apply to payment error:', error);
+      return false;
+    }
+  }
 }

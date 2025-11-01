@@ -64,7 +64,7 @@ export function createAppointmentRoutes(
    *         name: status
    *         schema:
    *           type: string
-   *           enum: [CONFIRMED, COMPLETED, CANCELLED, NO_SHOW]
+   *           enum: [CONFIRMED, COMPLETED, CANCELED, NO_SHOW]
    *         description: Filter by appointment status
    *       - in: query
    *         name: date
@@ -291,7 +291,7 @@ export function createAppointmentRoutes(
    *                         example: 30
    *                       status:
    *                         type: string
-   *                         enum: [CONFIRMED, COMPLETED, CANCELLED, NO_SHOW]
+   *                         enum: [CONFIRMED, COMPLETED, CANCELED, NO_SHOW]
    *                         example: "CONFIRMED"
    *                       price:
    *                         type: number
@@ -463,8 +463,16 @@ export function createAppointmentRoutes(
    *       404:
    *         description: Customer not found
    */
+  // Explicit route for current user's customer appointments
   router.get(
-    "/customer/:customerId?",
+    "/customer",
+    dynamicCache,
+    appointmentController.getCustomerAppointments.bind(appointmentController)
+  );
+
+  // Explicit route for specific customerId (admin/staff)
+  router.get(
+    "/customer/:customerId",
     dynamicCache,
     appointmentController.getCustomerAppointments.bind(appointmentController)
   );
@@ -625,7 +633,7 @@ export function createAppointmentRoutes(
    *       - Business staff can cancel appointments in their business (with proper permissions)
    *       - Global admins can cancel any appointment
    *
-   *       Cannot cancel appointments that are already completed or cancelled.
+   *       Cannot cancel appointments that are already completed or canceled.
    *     security:
    *       - bearerAuth: []
    *     parameters:
@@ -658,7 +666,7 @@ export function createAppointmentRoutes(
    *               value: {}
    *     responses:
    *       200:
-   *         description: Appointment cancelled successfully
+   *         description: Appointment canceled successfully
    *         content:
    *           application/json:
    *             schema:
@@ -669,7 +677,7 @@ export function createAppointmentRoutes(
    *                   example: true
    *                 message:
    *                   type: string
-   *                   example: "Appointment cancelled successfully"
+   *                   example: "Appointment canceled successfully"
    *                 data:
    *                   type: object
    *                   properties:
@@ -723,7 +731,7 @@ export function createAppointmentRoutes(
    *                   type: string
    *                   examples:
    *                     - "Cannot cancel completed appointments"
-   *                     - "Appointment is already cancelled"
+   *                     - "Appointment is already canceled"
    *                     - "Failed to cancel appointment"
    *       401:
    *         description: Unauthorized - Invalid or missing token
@@ -1142,7 +1150,7 @@ export function createAppointmentRoutes(
    *                         example:
    *                           COMPLETED: 85
    *                           CONFIRMED: 25
-   *                           CANCELLED: 5
+   *                           CANCELED: 5
    *                       totalRevenue:
    *                         type: number
    *                         example: 4250.00

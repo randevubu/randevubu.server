@@ -184,14 +184,14 @@ clean: ## Stop containers and clean up
 
 # 🚀 PRODUCTION (optional)
 prod-up: ## Start production environment
-	@docker compose -f docker-compose.prod.yml up -d
+	@docker compose -f docker-compose.production.yml up -d
 	@echo "✅ Production services started"
 
 prod-down: ## Stop production environment
-	@docker compose -f docker-compose.prod.yml down
+	@docker compose -f docker-compose.production.yml down
 
 prod-logs: ## View production logs
-	@docker compose -f docker-compose.prod.yml logs -f app
+	@docker compose -f docker-compose.production.yml logs -f app
 
 prod-logs-all: ## View all production service logs
-	@docker compose -f docker-compose.prod.yml logs -f
+	@docker compose -f docker-compose.production.yml logs -f

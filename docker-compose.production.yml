@@ -181,11 +181,19 @@ services:
     networks:
       - randevubu-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
 
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "4000:3000"  # Changed to port 4000 to avoid conflict with frontend
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -195,6 +203,14 @@ services:
     networks:
       - randevubu-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
 
 volumes:
   redis_data:

@@ -86,10 +86,51 @@ services:
       - app
     restart: unless-stopped
 
+  # Prometheus - Metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: randevubu-prometheus-dev
+    ports:
+      - "127.0.0.1:9090:9090"  # LOCALHOST ONLY - Güvenlik için sadece local
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_dev_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'  # Dev için sadece 7 gün
+      - '--web.enable-lifecycle'
+    networks:
+      - randevubu-dev-network
+    restart: unless-stopped
+
+  # Grafana - Visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: randevubu-grafana-dev
+    ports:
+      - "127.0.0.1:4000:3000"  # LOCALHOST ONLY - Port 4000'e değiştirildi
+    volumes:
+      - grafana_dev_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_DOMAIN=localhost
+    networks:
+      - randevubu-dev-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   postgres_dev_data:
     driver: local
   redis_dev_data:
+    driver: local
+  prometheus_dev_data:
+    driver: local
+  grafana_dev_data:
     driver: local
 
 networks:

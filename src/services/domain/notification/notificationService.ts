@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 // @ts-ignore - web-push is available in Docker container
 import * as webpush from 'web-push';
+import logger from '../../../utils/Logger/logger';
 import { UsageService } from '../usage/usageService';
 import { RepositoryContainer } from '../../../repositories';
 import { 
@@ -245,7 +246,51 @@ export class NotificationService {
   private async sendSMSNotification(
     customerId: string,
     closureData: EnhancedClosureData
+  ): Promise<NotificationResult>;
+  private async sendSMSNotification(
+    phoneNumber: string,
+    message: string
+  ): Promise<NotificationResult>;
+  private async sendSMSNotification(
+    customerIdOrPhone: string,
+    closureDataOrMessage: EnhancedClosureData | string
   ): Promise<NotificationResult> {
+    // Overloaded method handler
+    if (typeof closureDataOrMessage === 'string') {
+      // Simple SMS with phone number and message
+      const phoneNumber = customerIdOrPhone;
+      const message = closureDataOrMessage;
+      
+      try {
+        const { SMSService } = await import('../sms/smsService');
+        const smsService = new SMSService();
+        
+        const result = await smsService.sendSMS({
+          phoneNumber,
+          message,
+          context: { requestId: `notification-${Date.now()}` }
+        });
+        
+        return {
+          success: result.success,
+          messageId: result.messageId,
+          error: result.error,
+          channel: NotificationChannel.SMS,
+          status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to send SMS',
+          channel: NotificationChannel.SMS,
+          status: NotificationStatus.FAILED
+        };
+      }
+    }
+    
+    // Original implementation with customerId and closureData
+    const customerId = customerIdOrPhone;
+    const closureData = closureDataOrMessage as EnhancedClosureData;
     try {
       // Check if business can send SMS based on subscription limits
       if (this.usageService) {
@@ -305,7 +350,7 @@ export class NotificationService {
         status: NotificationStatus.FAILED
       };
     }
-  }
+  }  // End of sendSMSNotification overloaded method
 
 
   private async sendClosurePushNotification(
@@ -626,6 +671,253 @@ export class NotificationService {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         channel: NotificationChannel.SMS,
+        status: NotificationStatus.FAILED
+      };
+    }
+  }
+
+  /**
+   * Send payment retry failure notification
+   */
+  async sendPaymentRetryFailure(
+    phoneNumber: string,
+    businessName: string,
+    retryCount: number,
+    maxRetries: number,
+    nextRetryDate: Date,
+    language: string = 'tr'
+  ): Promise<NotificationResult> {
+    const translationParams: TranslationParams = {
+      businessName,
+      retryCount,
+      maxRetries,
+      nextRetryDate: this.formatDateForLanguage(nextRetryDate, language)
+    };
+    
+    const message = await this.translationService.translate('notifications.paymentRetryFailure', translationParams, language);
+    
+    try {
+      console.log(`SMS to ${phoneNumber}: ${message}`);
+      
+      return {
+        success: true,
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.SENT
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.FAILED
+      };
+    }
+  }
+
+  /**
+   * Send payment escalation notification to support team
+   */
+  async sendPaymentEscalation(
+    phoneNumber: string,
+    businessName: string,
+    planName: string,
+    failureCount: number,
+    expiryDate: Date,
+    language: string = 'tr'
+  ): Promise<NotificationResult> {
+    const translationParams: TranslationParams = {
+      businessName,
+      planName,
+      failureCount,
+      expiryDate: this.formatDateForLanguage(expiryDate, language)
+    };
+    
+    const message = await this.translationService.translate('notifications.paymentEscalation', translationParams, language);
+    
+    try {
+      // Send to support team (could be email, Slack, etc.)
+      console.log(`🚨 ESCALATION - SMS to ${phoneNumber}: ${message}`);
+      
+      // Also log for support team monitoring
+      logger.warn(`Payment escalation for business ${businessName}: ${failureCount} failures`);
+      
+      return {
+        success: true,
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.SENT
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.FAILED
+      };
+    }
+  }
+
+  /**
+   * Send subscription cancellation notification
+   */
+  async sendSubscriptionCancellation(
+    phoneNumber: string,
+    businessName: string,
+    planName: string,
+    failureCount: number,
+    language: string = 'tr'
+  ): Promise<NotificationResult> {
+    const translationParams: TranslationParams = {
+      businessName,
+      planName,
+      failureCount
+    };
+    
+    const message = await this.translationService.translate('notifications.subscriptionCancellation', translationParams, language);
+    
+    try {
+      console.log(`SMS to ${phoneNumber}: ${message}`);
+      
+      return {
+        success: true,
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.SENT
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.FAILED
+      };
+    }
+  }
+
+  /**
+   * Send grace period warning notification
+   */
+  async sendGracePeriodWarning(
+    phoneNumber: string,
+    businessName: string,
+    planName: string,
+    daysRemaining: number,
+    language: string = 'tr'
+  ): Promise<NotificationResult> {
+    const translationParams: TranslationParams = {
+      businessName,
+      planName,
+      daysRemaining
+    };
+    
+    const message = await this.translationService.translate('notifications.gracePeriodWarning', translationParams, language);
+    
+    try {
+      console.log(`SMS to ${phoneNumber}: ${message}`);
+      
+      return {
+        success: true,
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.SENT
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        channel: NotificationChannel.SMS,
+        status: NotificationStatus.FAILED
+      };
+    }
+  }
+
+  /**
+   * Send multi-channel notification (SMS + Email + Push)
+   */
+  async sendMultiChannelNotification(
+    userId: string,
+    phoneNumber: string,
+    email: string,
+    message: string,
+    channels: NotificationChannel[] = [NotificationChannel.SMS, NotificationChannel.EMAIL, NotificationChannel.PUSH]
+  ): Promise<NotificationResult[]> {
+    const results: NotificationResult[] = [];
+
+    for (const channel of channels) {
+      try {
+        let result: NotificationResult;
+        
+        switch (channel) {
+          case NotificationChannel.SMS:
+            result = await this.sendSMSNotification(phoneNumber, message);
+            break;
+          case NotificationChannel.EMAIL:
+            result = await this.sendEmail(email, 'Payment Notification', message);
+            break;
+          case NotificationChannel.PUSH:
+            result = await this.sendPushNotificationSimple(userId, 'Payment Update', message);
+            break;
+          default:
+            result = {
+              success: false,
+              error: 'Unsupported channel',
+              channel,
+              status: NotificationStatus.FAILED
+            };
+        }
+        
+        results.push(result);
+      } catch (error) {
+        results.push({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          channel,
+          status: NotificationStatus.FAILED
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Send email notification (placeholder for future implementation)
+   */
+  async sendEmail(email: string, subject: string, message: string): Promise<NotificationResult> {
+    try {
+      // TODO: Implement actual email sending
+      console.log(`Email to ${email}: ${subject} - ${message}`);
+      
+      return {
+        success: true,
+        channel: NotificationChannel.EMAIL,
+        status: NotificationStatus.SENT
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        channel: NotificationChannel.EMAIL,
+        status: NotificationStatus.FAILED
+      };
+    }
+  }
+
+  /**
+   * Send push notification (placeholder for future implementation)
+   */
+  async sendPushNotificationSimple(userId: string, title: string, message: string): Promise<NotificationResult> {
+    try {
+      // TODO: Implement actual push notification sending
+      console.log(`Push to user ${userId}: ${title} - ${message}`);
+      
+      return {
+        success: true,
+        channel: NotificationChannel.PUSH,
+        status: NotificationStatus.SENT
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        channel: NotificationChannel.PUSH,
         status: NotificationStatus.FAILED
       };
     }

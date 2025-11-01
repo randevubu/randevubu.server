@@ -80,6 +80,121 @@ export function createPublicRoutes(): Router {
     controllers.staffController.getPublicBusinessStaff.bind(controllers.staffController)
   );
 
+  /**
+   * @swagger
+   * /api/v1/public/businesses/{businessId}/available-slots:
+   *   get:
+   *     tags: [Public, Appointments]
+   *     summary: Get available time slots for booking
+   *     description: Get available time slots for a specific service and date - no authentication required. Used by customers to book appointments.
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *       - in: query
+   *         name: date
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: Date in YYYY-MM-DD format
+   *         example: "2025-10-31"
+   *       - in: query
+   *         name: serviceId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Service ID
+   *       - in: query
+   *         name: staffId
+   *         required: false
+   *         schema:
+   *           type: string
+   *         description: Optional staff member ID to filter slots
+   *     responses:
+   *       200:
+   *         description: Available slots retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Available time slots retrieved successfully"
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     date:
+   *                       type: string
+   *                       example: "2025-10-31"
+   *                     businessId:
+   *                       type: string
+   *                     serviceId:
+   *                       type: string
+   *                     staffId:
+   *                       type: string
+   *                       nullable: true
+   *                     slots:
+   *                       type: array
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           startTime:
+   *                             type: string
+   *                             format: date-time
+   *                             example: "2025-10-31T09:00:00.000Z"
+   *                           endTime:
+   *                             type: string
+   *                             format: date-time
+   *                             example: "2025-10-31T09:30:00.000Z"
+   *                           available:
+   *                             type: boolean
+   *                             example: true
+   *                           staffId:
+   *                             type: string
+   *                             nullable: true
+   *                           staffName:
+   *                             type: string
+   *                             nullable: true
+   *                     businessHours:
+   *                       type: object
+   *                       properties:
+   *                         isOpen:
+   *                           type: boolean
+   *                           example: true
+   *                         openTime:
+   *                           type: string
+   *                           example: "09:00"
+   *                         closeTime:
+   *                           type: string
+   *                           example: "18:00"
+   *                     closures:
+   *                       type: array
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           reason:
+   *                             type: string
+   *                           type:
+   *                             type: string
+   *       400:
+   *         description: Invalid parameters
+   *       404:
+   *         description: Business or service not found
+   */
+  router.get('/businesses/:businessId/available-slots',
+    semiDynamicCache,
+    validateParams(businessIdParamSchema),
+    controllers.appointmentController.getPublicAvailableSlots.bind(controllers.appointmentController)
+  );
+
   return router;
 }
 

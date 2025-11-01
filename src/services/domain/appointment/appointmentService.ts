@@ -413,7 +413,9 @@ export class AppointmentService {
       throw new Error('Prisma client not available for transaction');
     }
     
-    const appointment = await this.prisma.$transaction(async (tx) => {
+    let appointment: AppointmentData;
+    try {
+      appointment = await this.prisma.$transaction(async (tx) => {
       // Create appointment within transaction using the transaction client
       const service = await tx.service.findUnique({
         where: { id: data.serviceId }
@@ -428,6 +430,24 @@ export class AppointmentService {
 
       const startDateTime = createDateTimeInIstanbul(data.date, data.startTime);
       const endDateTime = new Date(startDateTime.getTime() + service.duration * 60000);
+
+      // Re-check conflicts IN TRANSACTION to prevent race conditions
+      const conflicting = await tx.appointment.findMany({
+        where: {
+          businessId: data.businessId,
+          staffId: data.staffId,
+          date: createDateTimeInIstanbul(data.date, '00:00'),
+          status: { in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS] },
+          OR: [
+            { AND: [{ startTime: { lte: startDateTime } }, { endTime: { gt: startDateTime } }] },
+            { AND: [{ startTime: { lt: endDateTime } }, { endTime: { gte: endDateTime } }] },
+            { AND: [{ startTime: { gte: startDateTime } }, { endTime: { lte: endDateTime } }] }
+          ]
+        }
+      });
+      if (conflicting.length > 0) {
+        throw new Error('Staff member is not available at the selected time');
+      }
       const appointmentId = `apt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
       const result = await tx.appointment.create({
@@ -476,7 +496,15 @@ export class AppointmentService {
         createdAt: result.createdAt,
         updatedAt: result.updatedAt
       };
-    });
+      });
+    } catch (e: any) {
+      const msg = String(e?.message || '');
+      const cause = String((e as any)?.meta?.cause || '');
+      if (msg.includes('appointments_no_overlap_per_staff') || cause.includes('appointments_no_overlap_per_staff')) {
+        throw new Error('This time slot was just booked by someone else. Please pick another.');
+      }
+      throw e;
+    }
 
     // Record appointment usage for subscription tracking
     await this.usageService.recordAppointmentUsage(data.businessId);
@@ -747,6 +775,7 @@ export class AppointmentService {
           newDate,
           newStartTime,
           newEndTime,
+          undefined,
           appointmentId
         );
 
@@ -1547,4 +1576,190 @@ export class AppointmentService {
 
   // Removed formatting methods - keeping service layer focused on business logic
   // Data transformation handled in controller layer for consistency
+
+  /**
+   * Get available time slots for a business service (PUBLIC)
+   * Used by customers to see available booking times
+   */
+  async getPublicAvailableSlots(params: {
+    businessId: string;
+    serviceId: string;
+    date: string; // YYYY-MM-DD
+    staffId?: string;
+  }): Promise<{
+    date: string;
+    businessId: string;
+    serviceId: string;
+    staffId?: string;
+    slots: Array<{
+      startTime: string;
+      endTime: string;
+      available: boolean;
+      staffId?: string;
+      staffName?: string;
+    }>;
+    businessHours: {
+      isOpen: boolean;
+      openTime?: string;
+      closeTime?: string;
+    };
+    closures: Array<{
+      reason: string;
+      type: string;
+    }>;
+  }> {
+    const { businessId, serviceId, date, staffId } = params;
+
+    // Parse the date
+    const targetDate = new Date(date);
+    if (isNaN(targetDate.getTime())) {
+      throw new Error('Invalid date format. Use YYYY-MM-DD');
+    }
+
+    // Get the service to know duration
+    const service = await this.serviceRepository.findById(serviceId);
+    if (!service || service.businessId !== businessId) {
+      throw new Error('Service not found or does not belong to this business');
+    }
+
+    const duration = service.duration;
+    const dayOfWeek = targetDate.getDay();
+
+    // Get business working hours for this day (via repository layer)
+    const workingHours = await this.appointmentRepository.findWorkingHours(
+      businessId,
+      dayOfWeek,
+      staffId || null
+    );
+
+    // Check if business is closed on this day
+    if (workingHours.length === 0) {
+      return {
+        date,
+        businessId,
+        serviceId,
+        staffId,
+        slots: [],
+        businessHours: {
+          isOpen: false
+        },
+        closures: []
+      };
+    }
+
+    // Get business closures for this date
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const closures = await this.businessClosureRepository.findByBusinessId(businessId, {
+      startDate: startOfDay,
+      endDate: endOfDay
+    });
+
+    const activeClosure = closures.find(closure => {
+      const closureStart = new Date(closure.startDate);
+      const closureEnd = closure.endDate ? new Date(closure.endDate) : new Date('2099-12-31');
+      return targetDate >= closureStart && targetDate <= closureEnd;
+    });
+
+    if (activeClosure) {
+      return {
+        date,
+        businessId,
+        serviceId,
+        staffId,
+        slots: [],
+        businessHours: {
+          isOpen: false
+        },
+        closures: [{
+          reason: activeClosure.reason,
+          type: activeClosure.type
+        }]
+      };
+    }
+
+    // Get existing appointments for this day (via repository layer)
+    const existingAppointments = await this.appointmentRepository.findAppointmentsForDay(
+      businessId,
+      startOfDay,
+      endOfDay,
+      staffId
+    );
+
+    // Generate time slots
+    const workingHour = workingHours[0]; // Use first working hours entry
+    const slots: Array<{
+      startTime: string;
+      endTime: string;
+      available: boolean;
+      staffId?: string;
+      staffName?: string;
+    }> = [];
+
+    const [openHour, openMinute] = workingHour.startTime.split(':').map(Number);
+    const [closeHour, closeMinute] = workingHour.endTime.split(':').map(Number);
+
+    let currentSlotTime = new Date(targetDate);
+    currentSlotTime.setHours(openHour, openMinute, 0, 0);
+
+    const closingTime = new Date(targetDate);
+    closingTime.setHours(closeHour, closeMinute, 0, 0);
+
+    const now = new Date();
+    const slotInterval = 30; // 30-minute intervals
+
+    while (currentSlotTime < closingTime) {
+      const slotEndTime = new Date(currentSlotTime);
+      slotEndTime.setMinutes(slotEndTime.getMinutes() + duration);
+
+      // Don't offer slots that extend past closing time
+      if (slotEndTime > closingTime) {
+        break;
+      }
+
+      // Don't offer slots in the past
+      if (currentSlotTime > now) {
+        // Check if slot conflicts with existing appointments
+        const isConflicting = existingAppointments.some(appointment => {
+          const aptStart = new Date(appointment.startTime);
+          const aptEnd = new Date(appointment.endTime);
+          return (
+            (currentSlotTime >= aptStart && currentSlotTime < aptEnd) ||
+            (slotEndTime > aptStart && slotEndTime <= aptEnd) ||
+            (currentSlotTime <= aptStart && slotEndTime >= aptEnd)
+          );
+        });
+
+        slots.push({
+          startTime: currentSlotTime.toISOString(),
+          endTime: slotEndTime.toISOString(),
+          available: !isConflicting,
+          staffId: staffId,
+          staffName: staffId && existingAppointments[0]?.staff
+            ? `${existingAppointments[0].staff.user.firstName || ''} ${existingAppointments[0].staff.user.lastName || ''}`.trim()
+            : undefined
+        });
+      }
+
+      // Move to next slot
+      currentSlotTime.setMinutes(currentSlotTime.getMinutes() + slotInterval);
+    }
+
+    return {
+      date,
+      businessId,
+      serviceId,
+      staffId,
+      slots,
+      businessHours: {
+        isOpen: true,
+        openTime: workingHour.startTime,
+        closeTime: workingHour.endTime
+      },
+      closures: []
+    };
+  }
 }

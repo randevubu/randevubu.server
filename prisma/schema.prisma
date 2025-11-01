@@ -1155,6 +1155,7 @@ enum BusinessStaffRole {
 }
 
 enum AppointmentStatus {
+  PENDING
   CONFIRMED
   IN_PROGRESS
   COMPLETED

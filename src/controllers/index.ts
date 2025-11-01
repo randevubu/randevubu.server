@@ -13,6 +13,8 @@ import { UsageController } from './usageController';
 import { StaffController } from './staffController';
 import { PushNotificationController } from './pushNotificationController';
 import { DailyNotebookController } from './dailyNotebookController';
+import { PaymentMethodController } from './paymentMethodController';
+import { ContactController } from './contactController';
 
 // Controller container for dependency injection
 export class ControllerContainer {
@@ -29,6 +31,8 @@ export class ControllerContainer {
   public readonly staffController: StaffController;
   public readonly pushNotificationController: PushNotificationController;
   public readonly dailyNotebookController: DailyNotebookController;
+  public readonly paymentMethodController: PaymentMethodController;
+  public readonly contactController: ContactController;
 
   constructor(repositories: RepositoryContainer, services: ServiceContainer) {
     this.businessController = new BusinessController(
@@ -54,6 +58,12 @@ export class ControllerContainer {
     this.staffController = new StaffController(services.staffService);
     this.pushNotificationController = new PushNotificationController(services.notificationService);
     this.dailyNotebookController = new DailyNotebookController(services.dailyNotebookService);
+    this.paymentMethodController = new PaymentMethodController(
+      services.paymentService,
+      services.subscriptionService,
+      services.rbacService
+    );
+    this.contactController = new ContactController();
   }
 }
 
@@ -71,5 +81,7 @@ export {
   UsageController,
   StaffController,
   PushNotificationController,
-  DailyNotebookController
+  DailyNotebookController,
+  PaymentMethodController,
+  ContactController
 };

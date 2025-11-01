@@ -57,12 +57,15 @@ export class CacheStampedeProtection {
     if (staleWhileRevalidate && cached) {
       // Return stale data immediately
       // Regenerate in background (fire and forget)
-      setImmediate(async () => {
+      const { runBackgroundTask } = await import('../../utils/backgroundTasks');
+      runBackgroundTask(async () => {
         try {
           await this.regenerateCache(key, fetchFunction, ttl, lockTimeout);
         } catch (error) {
-          logger.error(`Background cache regeneration failed for ${key}:`, error);
+          logger.error(`Background cache regeneration failed for ${key}:`, { error });
         }
+      }).catch((error) => {
+        logger.error(`Background task failed for cache key ${key}:`, { error });
       });
 
       try {

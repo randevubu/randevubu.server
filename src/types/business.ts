@@ -232,6 +232,60 @@ export interface BusinessImageData {
   createdAt: Date;
 }
 
+export interface SubscriptionPlanFeatures {
+  appointmentBooking: boolean;
+  staffManagement: boolean;
+  basicReports: boolean;
+  emailNotifications: boolean;
+  smsNotifications: boolean;
+  customBranding: boolean;
+  advancedReports: boolean;
+  apiAccess: boolean;
+  multiLocation: boolean;
+  prioritySupport: boolean;
+  integrations: string[];
+  maxServices: number;
+  maxCustomers: number;
+  smsQuota: number;
+  pricingTier: string;
+  trialDays?: number;
+  description: string[];
+}
+
+export interface TrialConversionData {
+  id: string;
+  plan: {
+    id: string;
+    name: string;
+    displayName: string;
+    price: number;
+    currency: string;
+    billingInterval: string;
+  };
+  paymentMethod?: {
+    cardHolderName: string;
+    lastFourDigits: string;
+    cardBrand?: string;
+    expiryMonth: string;
+    expiryYear: string;
+  };
+  business: {
+    ownerId: string;
+    owner: {
+      firstName?: string;
+      lastName?: string;
+      phoneNumber: string;
+    };
+    name: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    country?: string;
+    postalCode?: string;
+  };
+}
+
 export interface SubscriptionPlanData {
   id: string;
   name: string;
@@ -242,7 +296,7 @@ export interface SubscriptionPlanData {
   billingInterval: string;
   maxBusinesses: number;
   maxStaffPerBusiness: number;
-  features: string[];
+  features: SubscriptionPlanFeatures;
   isActive: boolean;
   isPopular: boolean;
   sortOrder: number;
@@ -254,7 +308,6 @@ export interface SubscriptionPlanData {
     city: string;
     state: string;
     country: string;
-    tier: string;
     multiplier: number;
   };
   // Custom pricing fields
@@ -309,7 +362,8 @@ export enum BusinessStaffRole {
 }
 
 export enum AppointmentStatus {
-  CONFIRMED = 'CONFIRMED',   // Initial status after creation
+  PENDING = 'PENDING',       // Initial status before confirmation
+  CONFIRMED = 'CONFIRMED',   // Status after confirmation
   IN_PROGRESS = 'IN_PROGRESS', // Automatically when appointment time arrives
   COMPLETED = 'COMPLETED',   // Automatically when service time ends
   CANCELED = 'CANCELED',     // Manual action only

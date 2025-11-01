@@ -140,6 +140,52 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
 
   /**
    * @swagger
+   * /api/v1/subscriptions/business/{businessId}/apply-discount:
+   *   post:
+   *     tags: [Subscriptions]
+   *     summary: Apply discount code to existing subscription
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Business ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - discountCode
+   *             properties:
+   *               discountCode:
+   *                 type: string
+   *                 description: Discount code to apply
+   *                 example: "WELCOME20"
+   *     responses:
+   *       200:
+   *         description: Discount code applied successfully
+   *       400:
+   *         description: Invalid discount code or business ID
+   *       401:
+   *         description: Unauthorized
+   *       403:
+   *         description: Forbidden
+   *       404:
+   *         description: Subscription not found
+   */
+  router.post(
+    '/business/:businessId/apply-discount',
+    requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
+    withAuth(subscriptionController.applyDiscountCode.bind(subscriptionController))
+  );
+
+  /**
+   * @swagger
    * /api/v1/subscriptions/business/{businessId}:
    *   get:
    *     tags: [Subscriptions]

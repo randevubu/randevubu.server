@@ -796,7 +796,39 @@ export const subscribeBusinessSchema = z.object({
   
   paymentMethodId: z.string()
     .min(1, 'Payment method ID is required')
-    .optional()
+    .optional(),
+  
+  discountCode: z.string()
+    .min(3, 'Discount code must be at least 3 characters')
+    .max(20, 'Discount code must be at most 20 characters')
+    .regex(/^[A-Z0-9]+$/, 'Discount code must contain only uppercase letters and numbers')
+    .optional(),
+  
+  // Additional fields for trial subscriptions
+  card: z.object({
+    cardHolderName: z.string()
+      .min(2, 'Card holder name must be at least 2 characters')
+      .max(100, 'Card holder name must be less than 100 characters'),
+    cardNumber: z.string()
+      .regex(/^\d{13,19}$/, 'Card number must be 13-19 digits'),
+    expireMonth: z.string()
+      .regex(/^(0[1-9]|1[0-2])$/, 'Expiry month must be 01-12'),
+    expireYear: z.string()
+      .regex(/^\d{4}$/, 'Expiry year must be 4 digits'),
+    cvc: z.string()
+      .regex(/^\d{3,4}$/, 'CVC must be 3-4 digits')
+  }).optional(),
+  
+  buyer: z.object({
+    name: z.string().min(1, 'Name is required').max(50, 'Name must be less than 50 characters'),
+    surname: z.string().min(1, 'Surname is required').max(50, 'Surname must be less than 50 characters'),
+    email: z.string().email('Invalid email format'),
+    gsmNumber: z.string().regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format'),
+    address: z.string().max(200, 'Address must be less than 200 characters').optional(),
+    city: z.string().max(50, 'City must be less than 50 characters').optional(),
+    country: z.string().max(50, 'Country must be less than 50 characters').optional(),
+    zipCode: z.string().max(20, 'Zip code must be less than 20 characters').optional()
+  }).optional()
 });
 
 // Search and filter schemas

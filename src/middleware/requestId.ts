@@ -8,6 +8,8 @@
 
 import { NextFunction, Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
+import { runWithContext, RequestContext } from "../utils/asyncContext";
+import { BusinessContextRequest } from "../types/request";
 
 // Extend the Request interface to include requestId
 declare global {
@@ -27,10 +29,20 @@ export const requestIdMiddleware = (
   next: NextFunction
 ): void => {
   // Generate a unique request ID
-  req.requestId = uuidv4();
+  const requestId = uuidv4();
+  req.requestId = requestId;
 
   // Set the request ID in response headers for client tracking
-  res.set("X-Request-ID", req.requestId);
+  res.set("X-Request-ID", requestId);
 
-  next();
+  // Create context and run the rest of the request in that context
+  const context: RequestContext = {
+    requestId,
+    userId: (req as BusinessContextRequest).user?.id,
+    businessId: (req as BusinessContextRequest).businessContext?.primaryBusinessId || undefined
+  };
+
+  runWithContext(context, () => {
+    next();
+  });
 };

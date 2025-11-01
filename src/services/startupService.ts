@@ -103,7 +103,7 @@ export class StartupService {
           {
             id: 'plan_basic_tier1',
             name: 'basic_tier1',
-            displayName: 'Basic Plan - Tier 1',
+            displayName: 'Basic Plan',
             description: 'Perfect for small businesses in major cities',
             price: 949.00,
             currency: 'TRY',
@@ -134,7 +134,7 @@ export class StartupService {
           {
             id: 'plan_premium_tier1',
             name: 'premium_tier1',
-            displayName: 'Premium Plan - Tier 1',
+            displayName: 'Premium Plan',
             description: 'Advanced features for growing businesses in major cities',
             price: 1499.00,
             currency: 'TRY',
@@ -166,7 +166,7 @@ export class StartupService {
           {
             id: 'plan_basic_tier2',
             name: 'basic_tier2',
-            displayName: 'Basic Plan - Tier 2',
+            displayName: 'Basic Plan',
             description: 'Perfect for small businesses in regional centers',
             price: 799.00,
             currency: 'TRY',
@@ -197,7 +197,7 @@ export class StartupService {
           {
             id: 'plan_premium_tier2',
             name: 'premium_tier2',
-            displayName: 'Premium Plan - Tier 2',
+            displayName: 'Premium Plan',
             description: 'Advanced features for growing businesses in regional centers',
             price: 1299.00,
             currency: 'TRY',
@@ -228,7 +228,7 @@ export class StartupService {
           {
             id: 'plan_basic_tier3',
             name: 'basic_tier3',
-            displayName: 'Basic Plan - Tier 3',
+            displayName: 'Basic Plan',
             description: 'Perfect for small businesses in smaller cities',
             price: 749.00,
             currency: 'TRY',
@@ -259,7 +259,7 @@ export class StartupService {
           {
             id: 'plan_premium_tier3',
             name: 'premium_tier3',
-            displayName: 'Premium Plan - Tier 3',
+            displayName: 'Premium Plan',
             description: 'Advanced features for growing businesses in smaller cities',
             price: 1199.00,
             currency: 'TRY',

@@ -244,10 +244,24 @@ export class SubscriptionController {
         throw zodError;
       }
 
+      // For trial subscriptions, we need to store the payment method first
+      let finalData = validatedData;
+      
+      // If card data is provided (for trial subscriptions), store the payment method
+      if (validatedData.card && !validatedData.paymentMethodId) {
+        // This would typically be done through a payment service
+        // For now, we'll create a mock payment method ID
+        const mockPaymentMethodId = `pm_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        finalData = {
+          ...validatedData,
+          paymentMethodId: mockPaymentMethodId
+        };
+      }
+
       const subscription = await this.subscriptionService.subscribeBusiness(
         userId,
         businessId,
-        validatedData
+        finalData
       );
 
       sendSuccessResponse(
@@ -1349,6 +1363,77 @@ export class SubscriptionController {
         'Subscription plan changed successfully',
         result
       );
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  async applyDiscountCode(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const { businessId } = req.params;
+      const { discountCode } = req.body;
+      const userId = req.user.id;
+
+      // Validate businessId parameter
+      if (!businessId || typeof businessId !== 'string') {
+        const error = new AppError(
+          'Business ID is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate businessId format
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError(
+          'Invalid business ID format',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Validate discount code
+      if (!discountCode || typeof discountCode !== 'string') {
+        const error = new AppError(
+          'Discount code is required',
+          400,
+          ERROR_CODES.REQUIRED_FIELD_MISSING
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Get subscription
+      const subscription = await this.subscriptionService.getBusinessSubscription(userId, businessId);
+      
+      if (!subscription) {
+        const error = new AppError(
+          'Subscription not found',
+          404,
+          ERROR_CODES.SUBSCRIPTION_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      // Apply discount to subscription
+      const result = await this.subscriptionService.applyDiscountToSubscription(
+        subscription.id,
+        discountCode,
+        userId
+      );
+      
+      if (result.success) {
+        sendSuccessResponse(res, 'Discount code applied successfully', result);
+      } else {
+        const error = new AppError(
+          result.error || 'Failed to apply discount code',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        );
+        return sendAppErrorResponse(res, error);
+      }
     } catch (error) {
       handleRouteError(error, req, res);
     }

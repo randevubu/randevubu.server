@@ -26,7 +26,9 @@ const paymentService = new PaymentService(repositories, {
   validateDiscountCode: discountCodeService.validateDiscountCode.bind(discountCodeService),
   applyDiscountCode: async (code, userId, planId, originalAmount, subscriptionId, paymentId) => {
     await discountCodeService.applyDiscountCode(code, userId, planId, originalAmount, subscriptionId, paymentId);
-  }
+  },
+  canApplyToPayment: discountCodeService.canApplyToPayment.bind(discountCodeService),
+  applyPendingDiscount: discountCodeService.applyPendingDiscount.bind(discountCodeService)
 });
 const paymentController = new PaymentController(paymentService, subscriptionService);
 
