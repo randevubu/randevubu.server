@@ -77,7 +77,7 @@ services:
     image: nginx:alpine
     container_name: randevubu-nginx-dev
     ports:
-      - "80:80"          # HTTP only for dev
+      - "8080:80"        # HTTP only for dev (changed from 80 to avoid conflict with Apache)
     volumes:
       - ./nginx/nginx-dev.conf:/etc/nginx/nginx.conf:ro
     networks:
