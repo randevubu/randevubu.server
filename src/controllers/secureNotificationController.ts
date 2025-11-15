@@ -112,11 +112,9 @@ export class SecureNotificationController {
 
       const result = await this.secureNotificationService.sendSecureNotification(request);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        result.success 
-          ? `Notification sent successfully to ${result.sentCount} recipients`
-          : 'Notification sending failed',
+        result.success ? 'success.notification.sent' : 'success.notification.sendingFailed',
         {
           sentCount: result.sentCount,
           failedCount: result.failedCount,
@@ -125,7 +123,10 @@ export class SecureNotificationController {
           invalidRecipients: result.invalidRecipients,
           rateLimitInfo: undefined,
           errors: result.errors
-        }
+        },
+        200,
+        req,
+        result.success ? { sentCount: result.sentCount } : undefined
       );
 
     } catch (error) {
@@ -218,11 +219,9 @@ export class SecureNotificationController {
 
       const result = await this.secureNotificationService.sendBroadcastNotification(request);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        result.success 
-          ? `Broadcast sent successfully to ${result.sentCount} customers`
-          : 'Broadcast sending failed',
+        result.success ? 'success.notification.sent' : 'success.notification.broadcastFailed',
         {
           sentCount: result.sentCount,
           failedCount: result.failedCount,
@@ -230,7 +229,10 @@ export class SecureNotificationController {
           validRecipients: result.totalRecipients - result.invalidRecipients,
           invalidRecipients: result.invalidRecipients,
           errors: result.errors
-        }
+        },
+        200,
+        req,
+        result.success ? { sentCount: result.sentCount } : undefined
       );
 
     } catch (error) {
@@ -329,11 +331,9 @@ export class SecureNotificationController {
         }
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        result.success 
-          ? `Closure notification sent to ${result.sentCount} affected customers`
-          : 'Closure notification failed',
+        result.success ? 'success.notification.sent' : 'success.notification.closureFailed',
         {
           sentCount: result.sentCount,
           failedCount: result.failedCount,
@@ -341,7 +341,10 @@ export class SecureNotificationController {
           validRecipients: result.totalRecipients - result.invalidRecipients,
           invalidRecipients: result.invalidRecipients,
           errors: result.errors
-        }
+        },
+        200,
+        req,
+        result.success ? { sentCount: result.sentCount } : undefined
       );
 
     } catch (error) {
@@ -423,10 +426,12 @@ export class SecureNotificationController {
         end
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Notification statistics retrieved successfully',
-        stats
+        'success.notification.statsRetrieved',
+        stats,
+        200,
+        req
       );
 
     } catch (error) {
@@ -480,14 +485,16 @@ export class SecureNotificationController {
         hoursParam
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Security alerts retrieved successfully',
+        'success.notification.securityAlertsRetrieved',
         {
           alerts,
           period: `${hoursParam} hours`,
           totalAlerts: alerts.length
-        }
+        },
+        200,
+        req
       );
 
     } catch (error) {
@@ -572,16 +579,17 @@ export class SecureNotificationController {
         }
       });
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        result.success 
-          ? 'Test notification sent successfully'
-          : 'Test notification failed',
+        result.success ? 'success.notification.sent' : 'success.notification.testFailed',
         {
           sentCount: result.sentCount,
           failedCount: result.failedCount,
           errors: result.errors
-        }
+        },
+        200,
+        req,
+        result.success ? { sentCount: result.sentCount } : undefined
       );
 
     } catch (error) {
@@ -597,13 +605,15 @@ export class SecureNotificationController {
     try {
       const health = this.secureNotificationService.getSystemHealth();
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'System health retrieved successfully',
+        'success.notification.systemHealthRetrieved',
         {
           ...health,
           timestamp: new Date().toISOString()
-        }
+        },
+        200,
+        req
       );
 
     } catch (error) {

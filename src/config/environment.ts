@@ -18,7 +18,6 @@ interface Config {
   AWS_REGION?: string;
   AWS_S3_BUCKET_NAME?: string;
   PUBLIC_ASSET_BASE_URL?: string;
-  GOOGLE_PLACES_API_KEY?: string;
   AWS_SES_FROM_EMAIL?: string;
   AWS_SES_REPLY_EMAIL?: string;
 }
@@ -58,7 +57,6 @@ const getConfig = (): Config => {
     AWS_REGION: process.env.AWS_REGION,
     AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME,
     PUBLIC_ASSET_BASE_URL: process.env.PUBLIC_ASSET_BASE_URL,
-    GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY,
     AWS_SES_FROM_EMAIL: process.env.AWS_SES_FROM_EMAIL,
     AWS_SES_REPLY_EMAIL: process.env.AWS_SES_REPLY_EMAIL,
   };

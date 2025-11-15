@@ -34,16 +34,17 @@ export class PushNotificationController {
         subscriptionData
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Successfully subscribed to push notifications',
+        'success.pushNotification.subscribed',
         {
           id: subscription.id,
           isActive: subscription.isActive,
           deviceName: subscription.deviceName,
           createdAt: subscription.createdAt,
         },
-        201
+        201,
+        req
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
@@ -71,9 +72,12 @@ export class PushNotificationController {
       );
 
       if (result) {
-        sendSuccessResponse(
+        await sendSuccessResponse(
           res,
-          'Successfully unsubscribed from push notifications'
+          'success.pushNotification.unsubscribed',
+          undefined,
+          200,
+          req
         );
       } else {
         const error = new AppError(
@@ -119,9 +123,9 @@ export class PushNotificationController {
         activeOnly
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Push subscriptions retrieved successfully',
+        'success.pushNotification.subscriptionsRetrieved',
         subscriptions.map(sub => ({
           id: sub.id,
           deviceName: sub.deviceName,
@@ -129,7 +133,9 @@ export class PushNotificationController {
           isActive: sub.isActive,
           createdAt: sub.createdAt,
           lastUsedAt: sub.lastUsedAt,
-        }))
+        })),
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -147,9 +153,9 @@ export class PushNotificationController {
         preferences
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Notification preferences updated successfully',
+        'success.pushNotification.preferencesUpdated',
         {
           id: updatedPreferences.id,
           enableAppointmentReminders: updatedPreferences.enableAppointmentReminders,
@@ -159,7 +165,9 @@ export class PushNotificationController {
           preferredChannels: updatedPreferences.preferredChannels,
           quietHours: updatedPreferences.quietHours,
           timezone: updatedPreferences.timezone,
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
@@ -183,9 +191,9 @@ export class PushNotificationController {
 
       if (!preferences) {
         // Return default preferences
-        sendSuccessResponse(
+        await sendSuccessResponse(
           res,
-          'Default notification preferences retrieved',
+          'success.pushNotification.defaultPreferencesRetrieved',
           {
             enableAppointmentReminders: true,
             enableBusinessNotifications: true,
@@ -194,14 +202,16 @@ export class PushNotificationController {
             preferredChannels: { channels: ['PUSH', 'SMS'] },
             quietHours: null,
             timezone: 'Europe/Istanbul',
-          }
+          },
+          200,
+          req
         );
         return;
       }
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Notification preferences retrieved successfully',
+        'success.pushNotification.preferencesRetrieved',
         {
           id: preferences.id,
           enableAppointmentReminders: preferences.enableAppointmentReminders,
@@ -211,7 +221,9 @@ export class PushNotificationController {
           preferredChannels: preferences.preferredChannels,
           quietHours: preferences.quietHours,
           timezone: preferences.timezone,
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -228,9 +240,9 @@ export class PushNotificationController {
       const successful = results.filter(r => r.success).length;
       const failed = results.filter(r => !r.success).length;
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Push notification sent. ${successful} successful, ${failed} failed.`,
+        'success.pushNotification.sent',
         {
           results,
           summary: {
@@ -238,7 +250,10 @@ export class PushNotificationController {
             successful,
             failed
           }
-        }
+        },
+        200,
+        req,
+        { successful, failed }
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
@@ -272,9 +287,9 @@ export class PushNotificationController {
       const successful = results.filter(r => r.success).length;
       const failed = results.filter(r => !r.success).length;
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Test notification sent. ${successful} successful, ${failed} failed.`,
+        'success.pushNotification.testSent',
         {
           results,
           summary: {
@@ -282,7 +297,10 @@ export class PushNotificationController {
             successful,
             failed
           }
-        }
+        },
+        200,
+        req,
+        { successful, failed }
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
@@ -333,9 +351,9 @@ export class PushNotificationController {
         }
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Batch notification sent to ${batchData.userIds.length} users. ${result.successful} successful, ${result.failed} failed.`,
+        'success.pushNotification.batchSent',
         {
           summary: {
             total: batchData.userIds.length,
@@ -343,7 +361,10 @@ export class PushNotificationController {
             failed: result.failed
           },
           results: result.results
-        }
+        },
+        200,
+        req,
+        { count: batchData.userIds.length, successful: result.successful, failed: result.failed }
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
@@ -386,9 +407,9 @@ export class PushNotificationController {
 
       const result = await this.notificationService.getNotificationHistory(userId, options);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Notification history retrieved successfully',
+        'success.pushNotification.historyRetrieved',
         {
           notifications: result.notifications,
           pagination: {
@@ -397,7 +418,9 @@ export class PushNotificationController {
             totalPages: result.totalPages,
             limit: options.limit
           }
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
@@ -426,10 +449,12 @@ export class PushNotificationController {
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'VAPID public key retrieved successfully',
-        { publicKey }
+        'success.pushNotification.vapidKeyRetrieved',
+        { publicKey },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -442,14 +467,16 @@ export class PushNotificationController {
       const publicKey = await this.notificationService.getVapidPublicKey();
       const isConfigured = !!publicKey;
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Push notification service health check completed',
+        'success.pushNotification.healthCheckCompleted',
         {
           pushNotificationsEnabled: isConfigured,
           vapidConfigured: isConfigured,
           timestamp: new Date().toISOString()
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);

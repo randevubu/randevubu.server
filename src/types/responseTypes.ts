@@ -52,6 +52,7 @@ export interface SuccessResponse<T = any> {
   statusCode: number;
   data?: T;
   message?: string;
+  key?: string; // Translation key for frontend i18n (e.g., 'success.appointment.created')
   meta?: Record<string, any>;
 }
 

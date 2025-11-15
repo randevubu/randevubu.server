@@ -67,7 +67,7 @@ COPY prisma ./prisma/
 
 # Install only production dependencies including OpenTelemetry
 RUN npm install --only=production && \
-    npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-prometheus @opentelemetry/instrumentation-express @opentelemetry/instrumentation-http @opentelemetry/instrumentation-prisma @opentelemetry/semantic-conventions @opentelemetry/exporter-trace-otlp-http && \
+    npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-prometheus @opentelemetry/instrumentation-express @opentelemetry/instrumentation-http @opentelemetry/semantic-conventions @opentelemetry/exporter-trace-otlp-http @opentelemetry/resources && \
     npm cache clean --force
 
 # Generate Prisma client
@@ -75,6 +75,10 @@ RUN npx prisma generate
 
 # Copy built application from builder stage
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+
+# Create logs directory with proper permissions
+RUN mkdir -p /app/logs/errors /app/logs/all && \
+    chown -R nodejs:nodejs /app/logs
 
 # Switch to non-root user
 USER nodejs

@@ -211,6 +211,40 @@ export class PaymentRepository {
     return payments.map((p) => this.mapToPaymentData(p));
   }
 
+  async findBySalesmanCode(salesmanCode: string, options?: { status?: PaymentStatus; dateFrom?: Date; dateTo?: Date }): Promise<PaymentData[]> {
+    const where: Prisma.PaymentWhereInput = {};
+
+    if (options?.status) {
+      where.status = options.status;
+    }
+
+    if (options?.dateFrom || options?.dateTo) {
+      where.createdAt = {};
+      if (options.dateFrom) {
+        where.createdAt.gte = options.dateFrom;
+      }
+      if (options.dateTo) {
+        where.createdAt.lte = options.dateTo;
+      }
+    }
+
+    const payments = await this.prisma.payment.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Filter by salesman code in metadata
+    const filteredPayments = payments.filter(payment => {
+      if (!payment.metadata || typeof payment.metadata !== 'object') {
+        return false;
+      }
+      const metadata = payment.metadata as Record<string, unknown>;
+      return metadata.salesmanCode === salesmanCode;
+    });
+
+    return filteredPayments.map((p) => this.mapToPaymentData(p));
+  }
+
   async update(id: string, data: UpdatePaymentRequest): Promise<PaymentData> {
     const updateData: Prisma.PaymentUpdateInput = {
       ...data,

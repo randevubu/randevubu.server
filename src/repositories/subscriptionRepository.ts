@@ -373,7 +373,8 @@ export class SubscriptionRepository {
     planId: string,
     trialDays = 14,
     paymentMethodId?: string,
-    discountMetadata?: any
+    discountMetadata?: any,
+    salesmanCode?: string
   ): Promise<BusinessSubscriptionData> {
     const now = new Date();
     const trialEnd = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
@@ -394,7 +395,8 @@ export class SubscriptionRepository {
           trialDays,
           requiresPaymentMethod: !!paymentMethodId,
           createdAt: now.toISOString(),
-          ...(discountMetadata && { pendingDiscount: discountMetadata })
+          ...(discountMetadata && { pendingDiscount: discountMetadata }),
+          ...(salesmanCode && { salesmanCode })
         }
       }
     });

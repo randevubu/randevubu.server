@@ -143,6 +143,7 @@ export class SubscriptionService {
       paymentMethodId?: string;
       autoRenewal?: boolean;
       discountCode?: string;
+      salesmanCode?: string;
     }
   ): Promise<BusinessSubscriptionData> {
     // Check if user owns the business or has global subscription management rights
@@ -220,7 +221,8 @@ export class SubscriptionService {
         data.planId, 
         trialDays,
         data.paymentMethodId,
-        pendingDiscountMetadata
+        pendingDiscountMetadata,
+        data.salesmanCode
       );
       // Ensure business hours are set after trial creation
       await this.ensureBusinessHoursSet(businessId);
@@ -240,7 +242,8 @@ export class SubscriptionService {
       metadata: {
         paymentMethodId: data.paymentMethodId,
         createdBy: userId,
-        ...(pendingDiscountMetadata && { pendingDiscount: pendingDiscountMetadata })
+        ...(pendingDiscountMetadata && { pendingDiscount: pendingDiscountMetadata }),
+        ...(data.salesmanCode && { salesmanCode: data.salesmanCode })
       }
     });
 

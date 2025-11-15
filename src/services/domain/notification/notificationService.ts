@@ -317,8 +317,20 @@ export class NotificationService {
         };
       }
 
-      // Format closure message
-      const message = `${closureData.businessName} bilgilendirme: ${closureData.reason}. ${closureData.startDate.toLocaleDateString('tr-TR')} tarihinde kapıyız. Detaylar: https://randevubu.com/business/${closureData.businessId}`;
+      // Format closure message using centralized template
+      const { SMSMessageTemplates } = await import('../../../utils/smsMessageTemplates');
+      const startDateStr = closureData.startDate.toLocaleDateString('tr-TR');
+      const endDateStr = closureData.endDate
+        ? closureData.endDate.toLocaleDateString('tr-TR')
+        : undefined;
+      
+      const message = SMSMessageTemplates.business.closureNotification({
+        businessName: closureData.businessName,
+        reason: closureData.reason,
+        startDate: startDateStr,
+        endDate: endDateStr,
+        businessId: closureData.businessId,
+      });
 
       // Use the existing SMS service
       const { SMSService } = await import('../sms/smsService');
@@ -1257,7 +1269,15 @@ export class NotificationService {
       minute: '2-digit'
     });
 
-    const message = `${appointment.business.name} randevu hatırlatması: ${appointment.service.name} hizmetiniz ${appointmentDate} tarihinde saat ${appointmentTime}'de. Detaylar: https://randevubu.com/appointments/${appointment.id}`;
+    // Format appointment reminder message using centralized template
+    const { SMSMessageTemplates } = await import('../../../utils/smsMessageTemplates');
+    const message = SMSMessageTemplates.appointment.reminder({
+      businessName: appointment.business.name,
+      serviceName: appointment.service.name,
+      appointmentDate,
+      appointmentTime,
+      appointmentId: appointment.id,
+    });
 
     try {
       // Check if business can send SMS based on subscription limits

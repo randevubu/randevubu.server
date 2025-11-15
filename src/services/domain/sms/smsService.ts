@@ -1,58 +1,93 @@
-import { ErrorContext } from "../../../types/errors";
 import logger from "../../../utils/Logger/logger";
+import { SMSMessageTemplates } from "../../../utils/smsMessageTemplates";
+import { Netgsm } from '@netgsm/sms';
 
 import { SMSSendOptions, SMSResponse } from '../../../types/sms';
 
 export class SMSService {
-  private readonly apiKey: string;
-  private readonly secretKey: string;
+  private readonly netgsm: Netgsm;
   private readonly sender: string;
-  private readonly baseUrl: string;
 
   constructor() {
-    this.apiKey = process.env.ILETI_MERKEZI_API_KEY || "";
-    this.secretKey = process.env.ILETI_MERKEZI_SECRET_KEY || "";
-    this.sender = process.env.ILETI_MERKEZI_SENDER || "APITEST";
-    this.baseUrl = "https://api.iletimerkezi.com/v1/send-sms/get/";
+    const username = process.env.NETGSM_USERNAME || "";
+    const password = process.env.NETGSM_PASSWORD || "";
+    this.sender = process.env.NETGSM_MSGHEADER || "";
 
-    if (!this.apiKey || !this.secretKey) {
+    // Log credential status (masked for security)
+    const maskedUsername = username ? `${username.substring(0, 3)}***${username.slice(-2)}` : "NOT SET";
+    const maskedPassword = password ? "***" : "NOT SET";
+    const maskedSender = this.sender || "NOT SET";
+
+    logger.info("SMS Service: Initializing NetGSM", {
+      usernameConfigured: !!username,
+      passwordConfigured: !!password,
+      senderConfigured: !!this.sender,
+      maskedUsername,
+      maskedSender,
+    });
+
+    if (!username || !password) {
       logger.warn(
-        "SMS API credentials not configured. SMS sending will be disabled."
+        "SMS API credentials not configured. SMS sending will be disabled.",
+        {
+          hasUsername: !!username,
+          hasPassword: !!password,
+          hasSender: !!this.sender,
+        }
       );
     }
+
+    this.netgsm = new Netgsm({
+      username,
+      password
+    });
   }
 
   async sendSMS(options: SMSSendOptions): Promise<SMSResponse> {
     const { phoneNumber, message, context } = options;
 
-    // In development mode, still try to send real SMS for testing
-    // Comment out this block to enable real SMS sending in development
-    /*
-    if (process.env.NODE_ENV === 'development') {
-      logger.info('SMS (Development Mode)', {
+    // Verify credentials are loaded
+    const username = process.env.NETGSM_USERNAME || "";
+    const password = process.env.NETGSM_PASSWORD || "";
+    const maskedUsername = username ? `${username.substring(0, 3)}***${username.slice(-2)}` : "NOT SET";
+    
+      logger.info("SMS Service: Starting SMS send process", {
+      phoneNumber: this.maskPhoneNumber(phoneNumber),
+      messageLength: message.length,
+      hasCredentials: !!(username && password),
+      hasSender: !!this.sender,
+      maskedUsername,
+      sender: this.sender || "Not configured",
+      requestId: context?.requestId,
+    });
+
+    // Double-check credentials at runtime
+    if (!username || !password) {
+      const errorMsg = "SMS credentials not found in environment variables. Please check NETGSM_USERNAME and NETGSM_PASSWORD.";
+      logger.error("SMS Service: " + errorMsg, {
         phoneNumber: this.maskPhoneNumber(phoneNumber),
-        message,
-        sender: this.sender,
+        hasUsername: !!username,
+        hasPassword: !!password,
         requestId: context?.requestId,
       });
       
       return {
-        success: true,
-        messageId: `dev_${Date.now()}`,
+        success: false,
+        error: errorMsg,
       };
     }
-    */
 
-    // Check if credentials are configured
-    if (!this.apiKey || !this.secretKey) {
-      logger.error("SMS API credentials not configured", {
+    // Check if sender is configured
+    if (!this.sender) {
+      const errorMsg = "SMS sender (MSGHEADER) not configured. Please set NETGSM_MSGHEADER environment variable.";
+      logger.error("SMS Service: " + errorMsg, {
         phoneNumber: this.maskPhoneNumber(phoneNumber),
         requestId: context?.requestId,
       });
 
       return {
         success: false,
-        error: "SMS service not configured",
+        error: errorMsg,
       };
     }
 
@@ -60,83 +95,151 @@ export class SMSService {
       // Normalize phone number for Turkish format
       const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
       if (!normalizedPhone) {
+        const errorMsg = `Invalid phone number format: ${phoneNumber}`;
+        logger.error("SMS Service: " + errorMsg, {
+          originalPhone: phoneNumber,
+          requestId: context?.requestId,
+        });
+
         return {
           success: false,
-          error: "Invalid phone number format",
+          error: errorMsg,
         };
       }
 
-      // Create hash for authentication
-      const hash = this.createHash(this.apiKey, this.secretKey);
-
-      // URL encode the message text properly
-      const encodedMessage = encodeURIComponent(message);
-      const encodedSender = encodeURIComponent(this.sender);
-
-      // Build the API URL with parameters according to İleti Merkezi documentation
-      const apiUrl = `${this.baseUrl}?key=${this.apiKey}&hash=${hash}&text=${encodedMessage}&receipents=${normalizedPhone}&sender=${encodedSender}&iys=1&iysList=BIREYSEL`;
-
-      logger.info("Sending SMS via İleti Merkezi", {
-        phoneNumber: this.maskPhoneNumber(normalizedPhone),
+      logger.info("SMS Service: Sending SMS via NetGSM", {
+        originalPhone: phoneNumber,
+        normalizedPhone: this.maskPhoneNumber(normalizedPhone),
         messageLength: message.length,
         sender: this.sender,
         requestId: context?.requestId,
       });
 
-      // Make the API request
-      const response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/xml",
-        },
-      });
-
-      const responseText = await response.text();
-
-      if (!response.ok) {
-        logger.error("SMS API request failed", {
-          status: response.status,
-          statusText: response.statusText,
-          response: responseText,
+      // Send SMS using NetGSM API
+      let response;
+      try {
+        response = await this.netgsm.sendRestSms({
+          msgheader: this.sender,
+          messages: [
+            {
+              msg: message,
+              no: normalizedPhone
+            }
+          ]
+        });
+      } catch (apiError) {
+        // Handle NetGSM API call errors
+        let errorMsg: string;
+        let errorDetails: any = null;
+        
+        if (apiError instanceof Error) {
+          errorMsg = apiError.message;
+        } else if (typeof apiError === 'object' && apiError !== null) {
+          errorDetails = apiError;
+          // Try to parse NetGSM error response
+          if ('description' in apiError) {
+            const netgsmError = apiError as any;
+            if (netgsmError.code === '30' || netgsmError.description === 'credentialError') {
+              errorMsg = `NetGSM Credential Error: Invalid username or password. Please verify NETGSM_USERNAME and NETGSM_PASSWORD are correct. (Code: ${netgsmError.code || 'N/A'})`;
+            } else {
+              errorMsg = `NetGSM API Error (Code: ${netgsmError.code || 'N/A'}): ${netgsmError.description || 'Unknown error'}`;
+            }
+          } else {
+            errorMsg = JSON.stringify(apiError);
+          }
+        } else {
+          errorMsg = String(apiError);
+        }
+        
+        logger.error("SMS Service: NetGSM API call failed", {
           phoneNumber: this.maskPhoneNumber(normalizedPhone),
+          error: errorMsg,
+          errorDetails: errorDetails ? JSON.stringify(errorDetails) : undefined,
+          errorType: apiError instanceof Error ? apiError.constructor.name : typeof apiError,
+          requestId: context?.requestId,
+        });
+        if (errorDetails) {
+          logger.error("NetGSM API error details", {
+            errorDetails: JSON.stringify(errorDetails),
+            requestId: context?.requestId,
+          });
+        }
+
+        return {
+          success: false,
+          error: errorMsg,
+        };
+      }
+
+      // Validate response structure
+      if (!response || typeof response !== 'object') {
+        const errorMsg = `Invalid response from NetGSM API: ${JSON.stringify(response)}`;
+        logger.error("SMS Service: " + errorMsg, {
+          phoneNumber: this.maskPhoneNumber(normalizedPhone),
+          response: response,
           requestId: context?.requestId,
         });
 
         return {
           success: false,
-          error: `API request failed: ${response.status} ${response.statusText}`,
+          error: errorMsg,
         };
       }
 
-      // Parse XML response
-      const result = this.parseXMLResponse(responseText);
+      logger.info("SMS Service: NetGSM API response received", {
+        phoneNumber: this.maskPhoneNumber(normalizedPhone),
+        responseCode: response.code,
+        responseDescription: response.description,
+        jobId: response.jobid,
+        fullResponse: JSON.stringify(response),
+        requestId: context?.requestId,
+      });
 
-      if (result.success) {
-        logger.info("SMS sent successfully", {
+      // NetGSM returns code "00" for success
+      if (response.code === "00") {
+        logger.info("SMS Service: SMS sent successfully via NetGSM", {
           phoneNumber: this.maskPhoneNumber(normalizedPhone),
-          messageId: result.messageId,
+          messageId: response.jobid,
           requestId: context?.requestId,
         });
+
+        return {
+          success: true,
+          messageId: response.jobid,
+        };
       } else {
-        logger.error("SMS sending failed", {
+        const errorMsg = `NetGSM API Error (Code: ${response.code || 'N/A'}): ${response.description || "Unknown error"}`;
+        logger.error("SMS Service: " + errorMsg, {
           phoneNumber: this.maskPhoneNumber(normalizedPhone),
-          error: result.error,
-          response: responseText,
+          responseCode: response.code,
+          responseDescription: response.description,
+          fullResponse: JSON.stringify(response),
           requestId: context?.requestId,
         });
-      }
+        logger.error("Full NetGSM response", {
+          response: JSON.stringify(response),
+          requestId: context?.requestId,
+        });
 
-      return result;
+        return {
+          success: false,
+          error: errorMsg,
+        };
+      }
     } catch (error) {
-      logger.error("SMS sending error", {
-        error: error instanceof Error ? error.message : String(error),
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
+      logger.error("SMS Service: Exception occurred while sending SMS", {
+        error: errorMessage,
+        stack: errorStack,
         phoneNumber: this.maskPhoneNumber(phoneNumber),
         requestId: context?.requestId,
       });
 
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
       };
     }
   }
@@ -146,7 +249,7 @@ export class SMSService {
       // Remove all non-digit characters
       const digits = phoneNumber.replace(/\D/g, "");
 
-      // Handle Turkish phone numbers - İleti Merkezi expects format: 5xxxxxxxxx
+      // Handle Turkish phone numbers - NetGSM expects format: 5xxxxxxxxx
       if (digits.startsWith("90")) {
         // Has country code, remove it and return the rest
         const withoutCountryCode = digits.substring(2);
@@ -177,47 +280,6 @@ export class SMSService {
     }
   }
 
-  private createHash(apiKey: string, secretKey: string): string {
-    // Use the hash directly from environment variables
-    // The secretKey in .env is actually the hash value
-    return secretKey;
-  }
-
-  private parseXMLResponse(xmlResponse: string): SMSResponse {
-    try {
-      // Simple XML parsing for the response
-      const codeMatch = xmlResponse.match(/<code>(\d+)<\/code>/);
-      const messageMatch = xmlResponse.match(/<message>(.*?)<\/message>/);
-      const idMatch = xmlResponse.match(/<id>(\d+)<\/id>/);
-
-      const code = codeMatch ? parseInt(codeMatch[1]) : 0;
-      const message = messageMatch ? messageMatch[1] : "";
-      const messageId = idMatch ? idMatch[1] : undefined;
-
-      if (code === 200) {
-        return {
-          success: true,
-          messageId,
-        };
-      } else {
-        return {
-          success: false,
-          error: `API Error ${code}: ${message}`,
-        };
-      }
-    } catch (error) {
-      logger.error("Failed to parse SMS API response", {
-        error: error instanceof Error ? error.message : String(error),
-        response: xmlResponse,
-      });
-
-      return {
-        success: false,
-        error: "Failed to parse API response",
-      };
-    }
-  }
-
   private maskPhoneNumber(phoneNumber: string): string {
     if (phoneNumber.length < 4) {
       return "*".repeat(phoneNumber.length);
@@ -230,8 +292,7 @@ export class SMSService {
 
   // Test method to verify SMS service configuration
   async testSMS(phoneNumber: string): Promise<SMSResponse> {
-    const testMessage =
-      "RandevuBu SMS servisi test mesajıdır. Bu mesaj İleti Merkezi API entegrasyonunu test etmek için gönderilmiştir.";
+    const testMessage = SMSMessageTemplates.test.serviceTest();
 
     return this.sendSMS({
       phoneNumber,

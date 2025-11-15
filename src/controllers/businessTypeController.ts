@@ -21,10 +21,12 @@ export class BusinessTypeController {
     try {
       const businessTypes =
         await this.businessTypeService.getAllActiveBusinessTypes();
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "Business types retrieved successfully",
-        businessTypes
+        "success.businessType.retrieved",
+        businessTypes,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -39,10 +41,12 @@ export class BusinessTypeController {
     try {
       const businessTypes =
         await this.businessTypeService.getAllBusinessTypes();
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "All business types retrieved successfully",
-        businessTypes
+        "success.businessType.allRetrieved",
+        businessTypes,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -90,10 +94,13 @@ export class BusinessTypeController {
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Business types for category '${sanitizedCategory}' retrieved successfully`,
-        businessTypes
+        'success.businessType.byCategoryRetrieved',
+        businessTypes,
+        200,
+        req,
+        { category: sanitizedCategory }
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -142,10 +149,12 @@ export class BusinessTypeController {
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "Business type retrieved successfully",
-        businessType
+        "success.businessType.retrievedSingle",
+        businessType,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -161,10 +170,12 @@ export class BusinessTypeController {
       const businessTypes =
         await this.businessTypeService.getBusinessTypesWithCount();
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "Business types with count retrieved successfully",
-        businessTypes
+        "success.businessType.withCountRetrieved",
+        businessTypes,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -179,10 +190,12 @@ export class BusinessTypeController {
     try {
       const categories = await this.businessTypeService.getCategories();
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "Categories retrieved successfully",
-        categories
+        "success.businessType.categoriesRetrieved",
+        categories,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -201,10 +214,12 @@ export class BusinessTypeController {
       const groupedBusinessTypes =
         await this.businessTypeService.getBusinessTypesGroupedByCategory();
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "Business types grouped by category retrieved successfully",
-        groupedBusinessTypes
+        "success.businessType.groupedRetrieved",
+        groupedBusinessTypes,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);

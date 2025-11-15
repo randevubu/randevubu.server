@@ -1236,21 +1236,36 @@ export class AppointmentService {
         minute: '2-digit'
       });
 
-      // Create notification content
+      // Create notification content using centralized templates for SMS
+      const { SMSMessageTemplates } = await import('../../../utils/smsMessageTemplates');
+      const customerName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Müşteri';
+      
+      // For SMS: Use template
+      const smsMessage = SMSMessageTemplates.business.newAppointmentBooking({
+        customerName,
+        serviceName: service.name,
+        appointmentDate,
+        appointmentTime,
+        appointmentId: appointment.id,
+      });
+
+      // For push/email: Use English titles (can be translated later)
       const title = 'New Appointment Booking';
-      const body = `${customer.firstName} ${customer.lastName} booked ${service.name} for ${appointmentDate} at ${appointmentTime}`;
+      const body = `${customerName} booked ${service.name} for ${appointmentDate} at ${appointmentTime}`;
 
       // Use unified notification gateway - respects all business settings
+      // Note: SMS will use the template message, other channels use title/body
       const result = await this.notificationGateway.sendSystemAlert({
         businessId: appointment.businessId,
         userId: business.ownerId,
         title,
         body,
+        smsMessage, // Pass SMS-specific message
         appointmentId: appointment.id,
         data: {
           appointmentId: appointment.id,
           customerId: appointment.customerId,
-          customerName: `${customer.firstName} ${customer.lastName}`,
+          customerName,
           serviceName: service.name,
           businessName: business.name,
           appointmentDate,
@@ -1307,8 +1322,15 @@ export class AppointmentService {
         minute: '2-digit'
       });
 
-      // Create confirmation message in Turkish
-      const message = `Randevunuz onaylandı!\n\n${business.name}\n${service.name}\n${appointmentDate} - ${appointmentTime}\n\nİptal için: https://randevubu.com/appointments/${appointment.id}`;
+      // Create confirmation message using centralized template
+      const { SMSMessageTemplates } = await import('../../../utils/smsMessageTemplates');
+      const message = SMSMessageTemplates.appointment.bookingConfirmation({
+        businessName: business.name,
+        serviceName: service.name,
+        appointmentDate,
+        appointmentTime,
+        appointmentId: appointment.id,
+      });
 
       // Send SMS directly - this is critical and should always attempt
       // We use the gateway's sendCriticalSMS for transactional confirmations

@@ -9,6 +9,7 @@ import { BusinessRepository } from '../../../repositories/businessRepository';
 import { RBACService } from '../rbac/rbacService';
 import { UsageService } from '../usage/usageService';
 import { PermissionName } from '../../../types/auth';
+import { cacheService } from '../../../services/cacheService';
 
 export class OfferingService {
   constructor(
@@ -45,6 +46,10 @@ export class OfferingService {
 
     // Update service usage tracking
     await this.usageService.updateServiceUsage(businessId);
+
+    // Invalidate cache immediately after creation
+    await cacheService.invalidateService(service.id, businessId, userId);
+    await cacheService.invalidateBusiness(businessId, userId);
 
     return service;
   }

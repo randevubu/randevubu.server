@@ -165,11 +165,12 @@ export class DiscountCodeController {
 
       const discountCode = await this.discountCodeService.createDiscountCode(userId, req.body);
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Discount code created successfully',
+        'success.discountCode.created',
         discountCode,
-        201
+        201,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -261,10 +262,12 @@ export class DiscountCodeController {
 
       const result = await this.discountCodeService.getAllDiscountCodes(userId, params);
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Discount codes retrieved successfully',
-        result
+        'success.discountCode.retrievedList',
+        result,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -329,10 +332,12 @@ export class DiscountCodeController {
       
       const discountCode = await this.discountCodeService.getDiscountCode(userId, id);
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Discount code retrieved successfully',
-        discountCode
+        'success.discountCode.retrieved',
+        discountCode,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -423,10 +428,12 @@ export class DiscountCodeController {
       
       const discountCode = await this.discountCodeService.updateDiscountCode(userId, id, req.body);
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Discount code updated successfully',
-        discountCode
+        'success.discountCode.updated',
+        discountCode,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -491,9 +498,12 @@ export class DiscountCodeController {
         return sendAppErrorResponse(res, error);
       }
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Discount code deactivated successfully'
+        'success.discountCode.deactivated',
+        undefined,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -560,9 +570,12 @@ export class DiscountCodeController {
         return sendAppErrorResponse(res, error);
       }
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Discount code deleted successfully'
+        'success.discountCode.deleted',
+        undefined,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -670,16 +683,18 @@ export class DiscountCodeController {
       
       const validation = await this.discountCodeService.validateDiscountCode(sanitizedCode, sanitizedPlanId, amount, userId);
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Discount code validation completed',
+        'success.discountCode.validated',
         {
           isValid: validation.isValid,
           discountAmount: validation.calculatedDiscount?.discountAmount,
           originalAmount: validation.calculatedDiscount?.originalAmount,
           finalAmount: validation.calculatedDiscount?.finalAmount,
           errorMessage: validation.errorMessage
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -771,10 +786,12 @@ export class DiscountCodeController {
       
       const result = await this.discountCodeService.getDiscountCodeUsageHistory(userId, id, params);
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Usage history retrieved successfully',
-        result
+        'success.discountCode.usageRetrieved',
+        result,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -819,10 +836,12 @@ export class DiscountCodeController {
       const userId = requireAuthenticatedUser(req).id;
       const statistics = await this.discountCodeService.getDiscountCodeStatistics(userId);
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Statistics retrieved successfully',
-        statistics
+        'success.discountCode.statsRetrieved',
+        statistics,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -935,14 +954,16 @@ export class DiscountCodeController {
 
       const codes = await this.discountCodeService.generateBulkDiscountCodes(userId, req.body);
       
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Successfully generated ${codes.length} discount codes`,
+        'success.discountCode.generated',
         {
           codes,
           count: codes.length
         },
-        201
+        201,
+        req,
+        { count: codes.length }
       );
     } catch (error) {
       handleRouteError(error, req, res);

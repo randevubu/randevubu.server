@@ -250,7 +250,7 @@ if (process.env.NODE_ENV === "development") {
    *   post:
    *     tags: [Testing]
    *     summary: Test SMS sending functionality with usage tracking
-   *     description: Development only - Send a test SMS to verify İleti Merkezi integration and usage tracking
+   *     description: Development only - Send a test SMS to verify NetGSM integration and usage tracking
    *     parameters:
    *       - in: path
    *         name: businessId
@@ -343,13 +343,13 @@ if (process.env.NODE_ENV === "development") {
           businessId,
           environment: process.env.NODE_ENV,
           credentials: {
-            apiKey: process.env.ILETI_MERKEZI_API_KEY
+            username: process.env.NETGSM_USERNAME
               ? "Configured"
               : "Not configured",
-            secretKey: process.env.ILETI_MERKEZI_SECRET_KEY
+            password: process.env.NETGSM_PASSWORD
               ? "Configured"
               : "Not configured",
-            sender: process.env.ILETI_MERKEZI_SENDER || "Not configured",
+            msgheader: process.env.NETGSM_MSGHEADER || "Not configured",
           },
         });
       } catch (error) {

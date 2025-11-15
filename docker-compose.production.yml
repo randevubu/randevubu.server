@@ -3,68 +3,20 @@
 # Handles: Load balancing, reverse proxy, security, caching, monitoring
 
 services:
-  # Application Instances (Scalable)
+  # Application Instance
   app1:
     build:
       context: .
       target: production
+    ports:
+      - "3001:3001"  # Expose port 3001 for frontend connection
     environment:
       - NODE_ENV=production
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_password}
       - INSTANCE_ID=app1
-    env_file:
-      - .env.production
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - randevubu-network
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
-
-  app2:
-    build:
-      context: .
-      target: production
-    environment:
-      - NODE_ENV=production
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - INSTANCE_ID=app2
-    env_file:
-      - .env.production
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - randevubu-network
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
-
-  app3:
-    build:
-      context: .
-      target: production
-    environment:
-      - NODE_ENV=production
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - INSTANCE_ID=app3
+      - DISABLE_HTTPS_ENFORCEMENT=true  # Disable HTTPS redirect until SSL certs are available
     env_file:
       - .env.production
     depends_on:
@@ -86,20 +38,23 @@ services:
   redis:
     image: redis:7-alpine
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-your_secure_redis_password}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_password}
     volumes:
       - redis_data:/data
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
     networks:
       - randevubu-network
     healthcheck:
-      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:-your_secure_redis_password}", "ping"]
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:-redis_password}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     restart: unless-stopped
-    command: redis-server /usr/local/etc/redis/redis.conf
+    command: >
+      sh -c "cp /usr/local/etc/redis/redis.conf /tmp/redis.conf && 
+             sed -i \"s|requirepass .*|requirepass ${REDIS_PASSWORD}|\" /tmp/redis.conf && 
+             redis-server /tmp/redis.conf"
     deploy:
       resources:
         limits:
@@ -123,8 +78,6 @@ services:
       - randevubu-network
     depends_on:
       - app1
-      - app2
-      - app3
     restart: unless-stopped
     deploy:
       resources:

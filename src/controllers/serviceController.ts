@@ -63,11 +63,12 @@ export class ServiceController {
 
       const service = await this.offeringService.createService(userId, businessId, validatedData);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Service created successfully',
+        'success.service.created',
         service,
-        201
+        201,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -111,10 +112,12 @@ export class ServiceController {
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Service retrieved successfully',
-        service
+        'success.service.retrieved',
+        service,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -165,15 +168,17 @@ export class ServiceController {
         activeOnlyBool
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Business services retrieved successfully',
+        'success.service.businessRetrieved',
         {
           services,
           total: services.length,
           businessId,
           activeOnly: activeOnlyBool
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -207,14 +212,16 @@ export class ServiceController {
 
       const services = await this.offeringService.getPublicServicesByBusinessId(businessId);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Public business services retrieved successfully',
+        'success.service.publicRetrieved',
         {
           services,
           total: services.length,
           businessId
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -265,10 +272,12 @@ export class ServiceController {
 
       const service = await this.offeringService.updateService(userId, id, validatedData);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Service updated successfully',
-        service
+        'success.service.updated',
+        service,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -303,9 +312,12 @@ export class ServiceController {
 
       await this.offeringService.deleteService(userId, id);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Service deleted successfully'
+        'success.service.deleted',
+        undefined,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -412,9 +424,12 @@ export class ServiceController {
 
       await this.offeringService.reorderServices(userId, businessId, serviceOrders);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Services reordered successfully'
+        'success.service.reordered',
+        undefined,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -450,10 +465,12 @@ export class ServiceController {
 
       const stats = await this.offeringService.getServiceStats(userId, id);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Service statistics retrieved successfully',
-        stats
+        'success.service.statsRetrieved',
+        stats,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -518,9 +535,13 @@ export class ServiceController {
 
       await this.offeringService.bulkUpdatePrices(userId, businessId, priceMultiplier);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Prices updated with multiplier ${priceMultiplier}`
+        'success.service.pricesUpdated',
+        undefined,
+        200,
+        req,
+        { multiplier: priceMultiplier }
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -570,14 +591,16 @@ export class ServiceController {
 
       const services = await this.offeringService.getPopularServices(userId, businessId, limitNum);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Popular services retrieved successfully',
+        'success.service.popularRetrieved',
         {
           services,
           businessId,
           limit: limitNum
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -659,16 +682,18 @@ export class ServiceController {
         appointmentStartTime
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Service availability checked successfully',
+        'success.service.availabilityChecked',
         {
           serviceId: id,
           date: date as string,
           startTime: startTime as string,
           isAvailable: result.isAvailable,
           service: result.service
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -714,10 +739,12 @@ export class ServiceController {
 
       const service = await this.offeringService.toggleServiceStatus(userId, id, isActive);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Service ${isActive ? 'activated' : 'deactivated'} successfully`,
-        service
+        isActive ? 'success.service.activated' : 'success.service.deactivated',
+        service,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -773,11 +800,12 @@ export class ServiceController {
 
       const service = await this.offeringService.duplicateService(userId, id, trimmedName);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Service duplicated successfully',
+        'success.service.duplicated',
         service,
-        201
+        201,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -875,9 +903,13 @@ export class ServiceController {
 
       await this.offeringService.batchToggleServices(userId, businessId, serviceIds, isActive);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `${serviceIds.length} services ${isActive ? 'activated' : 'deactivated'} successfully`
+        isActive ? 'success.service.batchActivated' : 'success.service.batchDeactivated',
+        undefined,
+        200,
+        req,
+        { count: serviceIds.length }
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -964,9 +996,13 @@ export class ServiceController {
 
       await this.offeringService.batchDeleteServices(userId, businessId, serviceIds);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `${serviceIds.length} services deleted successfully`
+        'success.service.batchDeleted',
+        undefined,
+        200,
+        req,
+        { count: serviceIds.length }
       );
     } catch (error) {
       handleRouteError(error, req, res);

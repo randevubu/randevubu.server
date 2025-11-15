@@ -95,9 +95,9 @@ export class RoleController {
         ip: req.ip,
       });
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Role created successfully',
+        'success.role.created',
         {
           role: {
             id: role.id,
@@ -109,7 +109,8 @@ export class RoleController {
             createdAt: role.createdAt,
           },
         },
-        201
+        201,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -136,9 +137,9 @@ export class RoleController {
 
       const roles = await this.roleService.getAllRoles(includeInactive);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Roles retrieved successfully',
+        'success.role.retrievedList',
         {
           roles: roles.map((role) => ({
             id: role.id,
@@ -151,7 +152,9 @@ export class RoleController {
             createdAt: role.createdAt,
             updatedAt: role.updatedAt,
           })),
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -200,10 +203,12 @@ export class RoleController {
 
       const role = await this.roleService.getRoleById(id, includePermissions);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Role retrieved successfully',
-        { role }
+        'success.role.retrieved',
+        { role },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -295,10 +300,12 @@ export class RoleController {
         ip: req.ip,
       });
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Role updated successfully',
-        { role }
+        'success.role.updated',
+        { role },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -343,9 +350,12 @@ export class RoleController {
         ip: req.ip,
       });
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Role deleted successfully'
+        'success.role.deleted',
+        undefined,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -420,11 +430,12 @@ export class RoleController {
         ip: req.ip,
       });
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Permission created successfully',
+        'success.role.permissionCreated',
         { permission },
-        201
+        201,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -578,9 +589,12 @@ export class RoleController {
         ip: req.ip,
       });
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Permissions assigned to role successfully'
+        'success.role.permissionsAssigned',
+        undefined,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -692,9 +706,12 @@ export class RoleController {
         ip: req.ip,
       });
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Role assigned to user successfully'
+        'success.role.assignedToUser',
+        undefined,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);

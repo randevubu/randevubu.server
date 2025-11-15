@@ -13,7 +13,8 @@ import {
   BusinessNotificationSettingsData,
   StoredPaymentMethodData,
   ServiceData,
-  CustomerEvaluationData
+  CustomerEvaluationData,
+  SubscriptionStatus
 } from '../types/business';
 
 export interface BusinessQueryOptions {
@@ -884,7 +885,13 @@ export class BusinessRepository {
     
     const where: Record<string, unknown> = {
       isActive: true,
-      deletedAt: null
+      deletedAt: null,
+      // Only return businesses with valid (active) subscriptions
+      subscription: {
+        status: {
+          in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]
+        }
+      }
     };
 
     if (filters.businessTypeId) {
@@ -999,7 +1006,13 @@ export class BusinessRepository {
       where: {
         businessTypeId,
         isActive: true,
-        deletedAt: null
+        deletedAt: null,
+        // Only return businesses with valid (active) subscriptions
+        subscription: {
+          status: {
+            in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]
+          }
+        }
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -1086,6 +1099,12 @@ export class BusinessRepository {
       where: {
         isActive: true,
         deletedAt: null,
+        // Only return businesses with valid (active) subscriptions
+        subscription: {
+          status: {
+            in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]
+          }
+        },
         latitude: {
           gte: latitude - radiusInDegrees,
           lte: latitude + radiusInDegrees
@@ -1260,7 +1279,13 @@ export class BusinessRepository {
 
     const where = {
       isActive: true,
-      deletedAt: null
+      deletedAt: null,
+      // Only return businesses with valid (active) subscriptions
+      subscription: {
+        status: {
+          in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]
+        }
+      }
     };
 
     const [businesses, total] = await Promise.all([

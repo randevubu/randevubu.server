@@ -12,6 +12,7 @@ import {
   VerificationMaxAttemptsError,
 } from "../../../types/errors";
 import logger from "../../../utils/Logger/logger";
+import { SMSMessageTemplates } from "../../../utils/smsMessageTemplates";
 import { SMSService } from "./smsService";
 import { TokenService } from "../token";
 
@@ -123,7 +124,7 @@ export class PhoneVerificationService {
     });
 
     // Send SMS code (in production, integrate with SMS provider)
-    await this.sendSMSCode(normalizedPhone, code, context);
+    await this.sendSMSCode(normalizedPhone, code, purpose as PrismaVerificationPurpose, context);
 
     return {
       success: true,
@@ -438,57 +439,69 @@ export class PhoneVerificationService {
   private async sendSMSCode(
     phoneNumber: string,
     code: string,
+    purpose: PrismaVerificationPurpose,
     context?: ErrorContext
   ): Promise<void> {
-    // Always show verification code for debugging
-    console.log(
-      `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
-        phoneNumber
-      )}`
-    );
-    
-    // Always log verification code for debugging
-    logger.info(
-      `🔐 VERIFICATION CODE: ${code} for phone: ${this.maskPhoneNumber(
-        phoneNumber
-      )}`,
-      {
-        phoneNumber: this.maskPhoneNumber(phoneNumber),
-        requestId: context?.requestId,
-      }
-    );
+    // Log verification code for debugging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      logger.info(
+        `Verification code generated: ${code} for phone: ${this.maskPhoneNumber(phoneNumber)}, purpose: ${purpose}`,
+        {
+          phoneNumber: this.maskPhoneNumber(phoneNumber),
+          purpose,
+          requestId: context?.requestId,
+        }
+      );
+    }
 
-    // Send the working test message via SMS
-    const testMessage = `RandevuBu SMS servisi test mesajıdır. Bu mesaj İleti Merkezi API entegrasyonunu test etmek için gönderilmiştir.`;
+    // Create message based on purpose using centralized templates
+    const message = SMSMessageTemplates.verification.getMessage(code, purpose);
+
+    logger.info("Sending SMS verification code", {
+      phoneNumber: this.maskPhoneNumber(phoneNumber),
+      purpose,
+      messageLength: message.length,
+      requestId: context?.requestId,
+    });
 
     try {
       const result = await this.smsService.sendSMS({
         phoneNumber,
-        message: testMessage,
+        message,
         context,
       });
 
       if (result.success) {
-        logger.info("SMS test message sent successfully", {
+        logger.info("SMS verification code sent successfully", {
           phoneNumber: this.maskPhoneNumber(phoneNumber),
+          purpose,
           messageId: result.messageId,
           requestId: context?.requestId,
         });
       } else {
-        logger.warn("SMS test message failed, but continuing", {
+        const errorMessage = result.error || "Unknown error";
+        logger.error("SMS verification code failed to send", {
           phoneNumber: this.maskPhoneNumber(phoneNumber),
-          error: result.error,
+          purpose,
+          error: errorMessage,
           requestId: context?.requestId,
         });
+        // Don't throw error to prevent breaking the flow, but log it prominently
+        // The code is still stored and can be verified manually if needed
       }
     } catch (error) {
-      logger.warn("SMS sending error, but continuing", {
-        error: error instanceof Error ? error.message : String(error),
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error("SMS sending exception occurred", {
+        error: errorMessage,
         phoneNumber: this.maskPhoneNumber(phoneNumber),
+        purpose,
         requestId: context?.requestId,
+        stack: error instanceof Error ? error.stack : undefined,
       });
+      // Don't throw error to prevent breaking the flow, but log it prominently
     }
   }
+
 
   // Cleanup expired verifications (call this periodically)
   async cleanupExpiredVerifications(): Promise<number> {

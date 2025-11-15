@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma, $Enums } from '@prisma/client';
 import {
   AppointmentData,
   AppointmentWithDetails,
@@ -1241,7 +1241,7 @@ export class AppointmentRepository {
           lte: endOfDay
         },
         status: {
-          in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS, AppointmentStatus.PENDING]
+          in: [$Enums.AppointmentStatus.CONFIRMED, $Enums.AppointmentStatus.IN_PROGRESS, $Enums.AppointmentStatus.PENDING]
         }
       },
       include: {

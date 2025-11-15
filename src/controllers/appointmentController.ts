@@ -62,12 +62,12 @@ export class AppointmentController {
         endTime: formatTimeForAPI(apt.endTime)
       }));
 
-      sendSuccessResponse(res, 'Appointments retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.retrievedList', {
         appointments: formattedAppointments,
         total: result.total,
         page: result.page,
         totalPages: result.totalPages
-      });
+      }, 200, req);
 
     } catch (error) {
       handleControllerError(error, req, res, next, 'AppointmentController.getMyAppointments');   
@@ -88,7 +88,7 @@ export class AppointmentController {
         validatedData
       );
 
-      sendSuccessResponse(res, "Appointment created successfully", appointment);
+      await sendSuccessResponse(res, "success.appointment.created", appointment, 201, req);
     } catch (error) {
       handleControllerError(error, req, res, next, 'AppointmentController.createAppointment');   
     }
@@ -137,7 +137,7 @@ export class AppointmentController {
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(res, 'Appointment retrieved successfully', appointment);
+      await sendSuccessResponse(res, 'success.appointment.retrieved', appointment, 200, req);
     } catch (error) {
       // SECURITY: Log error for monitoring
       logger.error("Failed to get appointment by ID", {
@@ -204,13 +204,13 @@ export class AppointmentController {
         limit
       );
 
-      sendSuccessResponse(res, 'Customer appointments retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.customerRetrieved', {
         appointments: result.appointments,
         total: result.total,
         page: result.page,
         totalPages: result.totalPages,
         limit,
-      });
+      }, 200, req);
     } catch (error) {
       // SECURITY: Log error for monitoring
       logger.error("Failed to get customer appointments", {
@@ -276,13 +276,13 @@ export class AppointmentController {
         filters.limit
       );
 
-      sendSuccessResponse(res, 'Staff appointments retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.staffRetrieved', {
         appointments: result.appointments,
         total: result.total,
         page: result.page,
         totalPages: result.totalPages,
         staffId,
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -318,9 +318,9 @@ export class AppointmentController {
         limit
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "Business appointments retrieved successfully",
+        "success.appointment.businessRetrieved",
         {
           appointments: result.appointments,
           meta: {
@@ -332,7 +332,9 @@ export class AppointmentController {
             businessName: business.name,
             ...(staffId && { staffId }), // Include staffId in meta if filtered
           },
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res, next);
@@ -356,14 +358,14 @@ export class AppointmentController {
         limit
       );
 
-      sendSuccessResponse(res, 'Appointments search completed successfully', {
+      await sendSuccessResponse(res, 'success.appointment.searchCompleted', {
         appointments: result.appointments,
         total: result.total,
         page: result.page,
         totalPages: result.totalPages,
         limit,
         filters,
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -405,7 +407,7 @@ export class AppointmentController {
         validatedData
       );
 
-      sendSuccessResponse(res, "Appointment updated successfully", appointment);
+      await sendSuccessResponse(res, "success.appointment.updated", appointment, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -458,7 +460,7 @@ export class AppointmentController {
         { status }
       );
 
-      sendSuccessResponse(res, `Appointment status updated to ${status}`, appointment);
+      await sendSuccessResponse(res, 'success.appointment.statusUpdated', appointment, 200, req, { status });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -510,7 +512,7 @@ export class AppointmentController {
         reason
       );
 
-      sendSuccessResponse(res, "Appointment cancelled successfully", appointment);
+      await sendSuccessResponse(res, "success.appointment.cancelled", appointment, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -550,7 +552,7 @@ export class AppointmentController {
         id
       );
 
-      sendSuccessResponse(res, "Appointment confirmed successfully", appointment);
+      await sendSuccessResponse(res, "success.appointment.confirmed", appointment, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -602,7 +604,7 @@ export class AppointmentController {
         internalNotes
       );
 
-      sendSuccessResponse(res, "Appointment completed successfully", appointment);
+      await sendSuccessResponse(res, "success.appointment.completed", appointment, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -636,7 +638,7 @@ export class AppointmentController {
 
       const appointment = await this.appointmentService.markNoShow(userId, id);
 
-      sendSuccessResponse(res, "Appointment marked as no-show", appointment);
+      await sendSuccessResponse(res, "success.appointment.markedNoShow", appointment, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -667,11 +669,11 @@ export class AppointmentController {
       const appointments =
         await this.appointmentService.getUpcomingAppointments(userId, limitNum);
 
-      sendSuccessResponse(res, 'Upcoming appointments retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.upcomingRetrieved', {
         appointments,
         total: appointments.length,
         limit: limitNum,
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -708,9 +710,9 @@ export class AppointmentController {
         endTime: formatTimeForAPI(apt.endTime)
       }));
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "Today's appointments retrieved successfully",
+        "success.appointment.todaysRetrieved",
         {
           appointments: cleanedAppointments,
           meta: {
@@ -719,7 +721,9 @@ export class AppointmentController {
             businessName: business.name,
             date: new Date().toISOString().split("T")[0],
           },
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res, next);
@@ -765,9 +769,9 @@ export class AppointmentController {
         endTime: formatTimeForAPI(apt.endTime)
       }));
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "Today's appointments retrieved successfully",
+        "success.appointment.todaysRetrieved",
         {
           appointments: cleanedAppointments,
           meta: {
@@ -775,7 +779,9 @@ export class AppointmentController {
             businessIds: businessContext.businessIds,
             date: new Date().toISOString().split("T")[0],
           },
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res, next);
@@ -829,13 +835,13 @@ export class AppointmentController {
         end
       );
 
-      sendSuccessResponse(res, 'Appointment stats retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.statsRetrieved', {
         stats,
         businessId: requestedBusinessId || "all",
         accessibleBusinesses: req.businessContext?.businessIds.length || 0,
         startDate: startDate as string,
         endDate: endDate as string,
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -860,13 +866,13 @@ export class AppointmentController {
         limitNum
       );
 
-      sendSuccessResponse(res, 'All appointments retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.allRetrieved', {
         appointments: result.appointments,
         total: result.total,
         page: result.page,
         totalPages: result.totalPages,
         limit: limitNum,
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -929,7 +935,14 @@ export class AppointmentController {
         status
       );
 
-      sendSuccessResponse(res, `${appointmentIds.length} appointments updated to ${status}`);
+      await sendSuccessResponse(
+        res,
+        'success.appointment.batchUpdated',
+        undefined,
+        200,
+        req,
+        { count: appointmentIds.length }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -998,7 +1011,7 @@ export class AppointmentController {
 
       await this.appointmentService.batchCancelAppointments(userId, appointmentIds, reason);
 
-      sendSuccessResponse(res, `${appointmentIds.length} appointments cancelled`);
+      await sendSuccessResponse(res, 'success.appointment.batchCancelled', undefined, 200, req, { count: appointmentIds.length });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1070,13 +1083,13 @@ export class AppointmentController {
         status: apt.status
       }));
 
-      sendSuccessResponse(res, 'Appointments by date range retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.byDateRange', {
         appointments: sanitizedAppointments,
         total: result.total,
         businessId,
         startDate: startDate as string,
         endDate: endDate as string
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1129,7 +1142,7 @@ export class AppointmentController {
 
       const result = await this.appointmentService.searchAppointments(userId, filters, pageNum, limitNum);
 
-      sendSuccessResponse(res, 'Appointments by status retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.byStatus', {
         appointments: result.appointments,
         total: result.total,
         page: result.page,
@@ -1137,7 +1150,7 @@ export class AppointmentController {
         limit: limitNum,
         businessId,
         status
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1178,14 +1191,14 @@ export class AppointmentController {
 
       const result = await this.appointmentService.searchAppointments(userId, filters, pageNum, limitNum);
 
-      sendSuccessResponse(res, 'Appointments by service retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.byService', {
         appointments: result.appointments,
         total: result.total,
         page: result.page,
         totalPages: result.totalPages,
         limit: limitNum,
         serviceId
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1226,14 +1239,14 @@ export class AppointmentController {
 
       const result = await this.appointmentService.searchAppointments(userId, filters, pageNum, limitNum);
 
-      sendSuccessResponse(res, 'Appointments by staff retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.byStaff', {
         appointments: result.appointments,
         total: result.total,
         page: result.page,
         totalPages: result.totalPages,
         limit: limitNum,
         staffId
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1250,11 +1263,11 @@ export class AppointmentController {
       const appointment = await this.appointmentService.getNearestAppointmentInCurrentHour(userId);
       
       if (!appointment) {
-        sendSuccessResponse(res, 'No appointments found in the current hour', null);
+        await sendSuccessResponse(res, 'success.appointment.currentHourNone', null, 200, req);
         return;
       }
 
-      sendSuccessResponse(res, 'Nearest appointment in current hour retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.currentHourNearest', {
         id: appointment.id,
         businessId: appointment.businessId,
         date: appointment.date,
@@ -1272,7 +1285,7 @@ export class AppointmentController {
           timezone: appointment.business.timezone
         },
         timeUntilAppointment: Math.max(0, appointment.startTime.getTime() - Date.now())
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1288,7 +1301,7 @@ export class AppointmentController {
 
       const appointments = await this.appointmentService.getAppointmentsInCurrentHour(userId);
 
-      sendSuccessResponse(res, 'Current hour appointments retrieved successfully', {
+      await sendSuccessResponse(res, 'success.appointment.currentHourRetrieved', {
         appointments: appointments.map(appointment => ({
           id: appointment.id,
           businessId: appointment.businessId,
@@ -1382,10 +1395,12 @@ export class AppointmentController {
         queueSize
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "Monitor appointments retrieved successfully",
-        monitorData
+        "success.appointment.monitorRetrieved",
+        monitorData,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1463,10 +1478,12 @@ export class AppointmentController {
         staffId: staffId as string | undefined
       });
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        "Available time slots retrieved successfully",
-        availableSlots
+        "success.appointment.availableSlotsRetrieved",
+        availableSlots,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);

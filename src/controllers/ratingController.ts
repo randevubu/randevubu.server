@@ -32,11 +32,12 @@ export class RatingController {
         validatedData
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Rating submitted successfully',
+        'success.rating.submitted',
         { rating },
-        201
+        201,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -61,7 +62,7 @@ export class RatingController {
         }
       );
 
-      sendSuccessResponse(res, 'Ratings retrieved successfully', {
+      await sendSuccessResponse(res, 'success.rating.retrieved', {
         ratings: result.ratings,
         pagination: {
           page: validatedQuery.page,
@@ -71,7 +72,7 @@ export class RatingController {
         },
         averageRating: result.averageRating,
         totalRatings: result.totalRatings
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -92,7 +93,7 @@ export class RatingController {
         appointmentId
       );
 
-      sendSuccessResponse(res, 'Rating eligibility checked', result);
+      await sendSuccessResponse(res, 'success.rating.eligibilityChecked', result, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -113,10 +114,10 @@ export class RatingController {
       );
 
       if (!rating) {
-        return sendSuccessResponse(res, 'No rating found', { rating: null });
+        return await sendSuccessResponse(res, 'success.rating.notFound', { rating: null }, 200, req);
       }
 
-      sendSuccessResponse(res, 'Rating retrieved successfully', { rating });
+      await sendSuccessResponse(res, 'success.rating.retrievedSingle', { rating }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -132,7 +133,7 @@ export class RatingController {
 
       const result = await this.ratingService.refreshRatingCache(businessId);
 
-      sendSuccessResponse(res, 'Rating cache refreshed successfully', result);
+      await sendSuccessResponse(res, 'success.rating.cacheRefreshed', result, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }

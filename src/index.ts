@@ -21,6 +21,7 @@ import { AuthorizationMiddleware } from "./middleware/authorization";
 import { initializeAuthMiddleware } from "./middleware/authUtils";
 import { csrfMiddleware } from "./middleware/csrf";
 import { errorHandler, notFoundHandler } from "./middleware/error";
+import { languageMiddleware } from "./middleware/language";
 import { requestIdMiddleware } from "./middleware/requestId";
 import { sanitizeBody, sanitizeQuery } from "./middleware/sanitization";
 import { RepositoryContainer } from "./repositories";
@@ -62,8 +63,8 @@ const PORT = config.PORT;
 // Trust proxy headers when running behind reverse proxy (e.g., Render, Heroku, etc.)
 app.set("trust proxy", 1);
 
-// HTTPS enforcement in production
-if (config.NODE_ENV === "production") {
+// HTTPS enforcement in production (can be disabled via DISABLE_HTTPS_ENFORCEMENT env var)
+if (config.NODE_ENV === "production" && process.env.DISABLE_HTTPS_ENFORCEMENT !== "true") {
   app.use((req, res, next) => {
     // Check if request is already HTTPS
     const protocol = req.header("x-forwarded-proto") || req.protocol;
@@ -90,8 +91,55 @@ const limiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for OPTIONS requests (CORS preflight)
+    return req.method === "OPTIONS";
+  },
 });
 
+// CORS MUST be before Helmet to ensure CORS headers are set first
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, Postman, etc.)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      // Normalize origin (remove trailing slash, convert to lowercase for comparison)
+      const normalizedOrigin = origin.toLowerCase().replace(/\/$/, '');
+      const normalizedAllowed = config.CORS_ORIGINS.map(o => o.toLowerCase().replace(/\/$/, ''));
+      
+      // Check if origin is in allowed list (case-insensitive)
+      if (normalizedAllowed.includes(normalizedOrigin)) {
+        return callback(null, true);
+      }
+      
+      // Log blocked origin for security monitoring
+      logger.warn("CORS blocked origin", { origin });
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "x-role-update",
+      "X-CSRF-Token",
+      "Accept",
+      "Accept-Language",
+      "Cache-Control",
+      "Pragma",
+    ],
+    exposedHeaders: ["X-CSRF-Token"],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    maxAge: 86400, // Cache preflight for 24 hours
+  })
+);
+
+// Helmet after CORS to avoid interfering with CORS headers
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -101,12 +149,15 @@ app.use(
         scriptSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "https:"],
         fontSrc: ["'self'", "https:", "data:"],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", "http://localhost:3000", "http://localhost:3001"],
         frameSrc: ["'none'"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
         formAction: ["'self'"],
       },
+    },
+    crossOriginResourcePolicy: {
+      policy: "cross-origin", // Allow cross-origin requests for CORS
     },
     hsts: {
       maxAge: 31536000,
@@ -123,20 +174,6 @@ app.use(
   })
 );
 
-app.use(
-  cors({
-    origin: config.CORS_ORIGINS,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "x-role-update",
-    ],
-  })
-);
-
 app.use(compression());
 app.use(cookieParser()); // Parse cookies for authentication
 app.use(limiter);
@@ -150,6 +187,9 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Request ID middleware (should be early in the chain)
 app.use(requestIdMiddleware);
+
+// Language detection middleware (early, but after requestId)
+app.use(languageMiddleware);
 
 // XSS Protection: Sanitize user input (after body parsing, before processing)
 app.use(sanitizeQuery('strict'));
