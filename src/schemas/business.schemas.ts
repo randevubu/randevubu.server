@@ -804,6 +804,12 @@ export const subscribeBusinessSchema = z.object({
     .regex(/^[A-Z0-9]+$/, 'Discount code must contain only uppercase letters and numbers')
     .optional(),
   
+  salesmanCode: z.string()
+    .min(3, 'Salesman code must be at least 3 characters')
+    .max(20, 'Salesman code must be at most 20 characters')
+    .regex(/^[A-Za-z0-9]+$/, 'Salesman code must contain only letters and numbers')
+    .optional(),
+  
   // Additional fields for trial subscriptions
   card: z.object({
     cardHolderName: z.string()

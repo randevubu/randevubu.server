@@ -9,6 +9,23 @@ import {
   InternalServerError,
   createSecureErrorResponse,
 } from "../types/errors";
+import { getTranslationKey, ErrorCode as ErrorCodeString, ErrorTranslationKey } from "../constants/errorCodes";
+import { translateMessage } from "../utils/translationUtils";
+import { AuthenticatedRequest } from "../types/request";
+import { ErrorResponse, StandardError } from "../types/responseTypes";
+
+/**
+ * Validate if language code is supported
+ */
+function isValidLanguage(
+  lang: string | null | undefined,
+  supportedLanguages: readonly string[]
+): boolean {
+  if (!lang || typeof lang !== "string") {
+    return false;
+  }
+  return supportedLanguages.includes(lang.toLowerCase());
+}
 
 class RouteNotFoundError extends BaseError {
   constructor(url: string, context?: ErrorContext) {
@@ -41,12 +58,12 @@ export const notFoundHandler = (
   next(error);
 };
 
-export const errorHandler = (
+export const errorHandler = async (
   err: Error | BaseError,
   req: Request,
   res: Response,
   next: NextFunction
-): void => {
+): Promise<void> => {
   const context: ErrorContext = {
     ipAddress: req.ip,
     userAgent: req.get('user-agent'),
@@ -80,7 +97,7 @@ export const errorHandler = (
     method: req.method,
     ip: req.ip,
     userAgent: req.get("user-agent"),
-    userId: (req as any).user?.id,
+    userId: (req as AuthenticatedRequest).user?.id,
     // Include error details only for operational errors in development
     ...(config.NODE_ENV === 'development' && error.isOperational && error.details && {
       details: error.details,
@@ -95,8 +112,71 @@ export const errorHandler = (
 
   logger[logLevel](`[${logData.requestId}] ${error.message}`, logData);
 
+  // Get translation key for the error
+  // error.code is ErrorCode enum, but getTranslationKey expects string from ERROR_CODES
+  // Convert to string first
+  const errorCodeString = String(error.code);
+  let translationKey: ErrorTranslationKey;
+  try {
+    // Try to get translation key (may fail if error code doesn't exist in ERROR_CODES)
+    // ErrorCode enum values should match ERROR_CODES keys
+    translationKey = getTranslationKey(errorCodeString as ErrorCodeString);
+  } catch {
+    // Fallback to generic error key if translation key not found
+    translationKey = 'errors.system.internalError' as ErrorTranslationKey;
+  }
+  // Get language from request (may have been set by language middleware)
+  // Override with user preference if authenticated (user preference takes priority)
+  let language = req.language || 'tr';
+  const user = (req as AuthenticatedRequest).user;
+  if (user?.language && isValidLanguage(user.language, ['tr', 'en'])) {
+    language = user.language.toLowerCase();
+  }
+
   // Create secure response using utility function
   const response = createSecureErrorResponse(error);
 
-  res.status(error.statusCode).json(response);
+  // Convert error.details to TranslationParams format (filter safe fields only)
+  // TranslationParams allows string | number | boolean | Date
+  const translationParams: Record<string, string | number | boolean | Date> = {};
+  if (error.details) {
+    // Only include safe fields that can be used in translations
+    if (error.details.field) translationParams.field = error.details.field;
+    if (error.details.attemptCount !== undefined) translationParams.attemptCount = error.details.attemptCount;
+    if (error.details.maxAttempts !== undefined) translationParams.maxAttempts = error.details.maxAttempts;
+    if (error.details.retryAfter !== undefined) translationParams.retryAfter = error.details.retryAfter;
+  }
+
+  // Try to translate the message (non-blocking - falls back to original message)
+  let translatedMessage = error.message;
+  try {
+    translatedMessage = await translateMessage(
+      translationKey,
+      translationParams,
+      language,
+      req
+    );
+  } catch (translationError) {
+    // If translation fails, keep original message
+    // Don't log translation errors in production to avoid noise
+    if (config.NODE_ENV === 'development') {
+      logger.debug('Translation failed', { translationKey, language, error: translationError });
+    }
+  }
+
+  // Enhance response with translation key and translated message
+  const enhancedResponse: ErrorResponse = {
+    success: false,
+    statusCode: error.statusCode,
+    error: {
+      code: error.code,
+      key: translationKey,
+      message: translatedMessage,
+      requestId: response.error.requestId,
+      ...(response.error.details && { details: response.error.details }),
+    },
+  };
+
+  // Send response with translated message (or original if translation failed)
+  res.status(error.statusCode).json(enhancedResponse);
 };

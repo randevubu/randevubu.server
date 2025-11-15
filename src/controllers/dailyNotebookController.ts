@@ -48,7 +48,7 @@ export class DailyNotebookController {
         userId
       );
 
-      sendSuccessResponse(res, 'Daily notebook retrieved successfully', { notebook });
+      await sendSuccessResponse(res, 'success.dailyNotebook.retrieved', { notebook }, 200, req);
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -102,7 +102,7 @@ export class DailyNotebookController {
         userId
       );
 
-      sendSuccessResponse(res, 'Daily entries updated successfully', { notebook });
+      await sendSuccessResponse(res, 'success.dailyNotebook.entriesUpdated', { notebook }, 200, req);
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -158,7 +158,7 @@ export class DailyNotebookController {
         userId
       );
 
-      sendSuccessResponse(res, 'Entry updated successfully', { notebook });
+      await sendSuccessResponse(res, 'success.dailyNotebook.entryUpdated', { notebook }, 200, req);
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -184,7 +184,7 @@ export class DailyNotebookController {
 
       const columns = await this.dailyNotebookService.getColumns(businessId, userId);
 
-      sendSuccessResponse(res, 'Revenue columns retrieved successfully', { columns });
+      await sendSuccessResponse(res, 'success.dailyNotebook.revenueColumnsRetrieved', { columns }, 200, req);
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -251,7 +251,7 @@ export class DailyNotebookController {
         userId
       );
 
-      sendSuccessResponse(res, 'Revenue column created successfully', { column }, 201);
+      await sendSuccessResponse(res, 'success.dailyNotebook.revenueColumnCreated', { column }, 201, req);
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -301,7 +301,7 @@ export class DailyNotebookController {
         userId
       );
 
-      sendSuccessResponse(res, 'Revenue column updated successfully', { column });
+      await sendSuccessResponse(res, 'success.dailyNotebook.revenueColumnUpdated', { column }, 200, req);
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -327,7 +327,7 @@ export class DailyNotebookController {
 
       await this.dailyNotebookService.deleteColumn(businessId, columnId, userId);
 
-      sendSuccessResponse(res, 'Revenue column deleted successfully', null);
+      await sendSuccessResponse(res, 'success.dailyNotebook.revenueColumnDeleted', null, 200, req);
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -370,7 +370,7 @@ export class DailyNotebookController {
         userId
       );
 
-      sendSuccessResponse(res, 'Appointment revenue retrieved successfully', { appointmentRevenue });
+      await sendSuccessResponse(res, 'success.dailyNotebook.appointmentRevenueRetrieved', { appointmentRevenue }, 200, req);
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -453,7 +453,7 @@ export class DailyNotebookController {
         lastUpdated: notebook.updatedAt
       };
 
-      sendSuccessResponse(res, 'Financial summary retrieved successfully', { summary });
+      await sendSuccessResponse(res, 'success.dailyNotebook.financialSummaryRetrieved', { summary }, 200, req);
     } catch (error: any) {
       handleRouteError(error, req, res);
     }

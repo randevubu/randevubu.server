@@ -525,6 +525,12 @@ export class PaymentService {
       });
 
       if (result && result.status === 'success') {
+        // Get subscription to extract salesman code
+        const subscription = await this.repositories.subscriptionRepository.findSubscriptionById(businessSubscriptionId);
+        const salesmanCode = subscription?.metadata && typeof subscription.metadata === 'object' && 'salesmanCode' in subscription.metadata
+          ? (subscription.metadata as { salesmanCode?: string }).salesmanCode
+          : undefined;
+
         const paymentRecord = await this.repositories.paymentRepository.create({
           businessSubscriptionId,
           amount: parseFloat(paymentData.paidPrice),
@@ -533,6 +539,7 @@ export class PaymentService {
           paymentMethod: 'card',
           paymentProvider: 'iyzico',
           providerPaymentId: (result as IyzipaySuccessResponse).paymentId || '',
+          metadata: salesmanCode ? { salesmanCode } : undefined,
         });
 
         await this.repositories.subscriptionRepository.updateSubscriptionStatus(businessSubscriptionId, SubscriptionStatus.ACTIVE);

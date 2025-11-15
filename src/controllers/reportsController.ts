@@ -90,10 +90,12 @@ export class ReportsController {
         end
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Business overview report retrieved successfully',
-        report
+        'success.report.businessOverviewRetrieved',
+        report,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -175,10 +177,12 @@ export class ReportsController {
         end
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Revenue report retrieved successfully',
-        report
+        'success.report.revenueRetrieved',
+        report,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -257,10 +261,12 @@ export class ReportsController {
         end
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Appointment report retrieved successfully',
-        report
+        'success.report.appointmentRetrieved',
+        report,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -339,10 +345,12 @@ export class ReportsController {
         end
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Customer report retrieved successfully',
-        report
+        'success.report.customerRetrieved',
+        report,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -558,13 +566,16 @@ export class ReportsController {
         res.send(csv);
       } else {
         // Return JSON format
-        sendSuccessResponse(
+        await sendSuccessResponse(
           res,
-          `${reportType} report exported successfully`,
+          'success.report.exported',
           {
             ...report,
             exportedAt: new Date().toISOString(),
-          }
+          },
+          200,
+          req,
+          { reportType }
         );
       }
     } catch (error) {
@@ -1126,10 +1137,12 @@ export class ReportsController {
         },
       };
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Custom report generated successfully',
-        customReport
+        'success.report.customGenerated',
+        customReport,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1329,11 +1342,12 @@ export class ReportsController {
         totalRuns: 0,
       };
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Report scheduled successfully',
+        'success.report.scheduled',
         scheduledReport,
-        201
+        201,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);

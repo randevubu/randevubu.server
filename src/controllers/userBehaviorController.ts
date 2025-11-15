@@ -53,7 +53,7 @@ export class UserBehaviorController {
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(res, 'User behavior retrieved successfully', behavior);
+      await sendSuccessResponse(res, 'success.userBehavior.retrieved', behavior, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -90,7 +90,7 @@ export class UserBehaviorController {
 
       const summary = await this.userBehaviorService.getUserSummary(requestingUserId, targetUserId);
 
-      sendSuccessResponse(res, 'User summary retrieved successfully', summary);
+      await sendSuccessResponse(res, 'success.userBehavior.summaryRetrieved', summary, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -105,10 +105,10 @@ export class UserBehaviorController {
         this.userBehaviorService.getUserSummary(userId, userId)
       ]);
 
-      sendSuccessResponse(res, 'User behavior and summary retrieved successfully', {
+      await sendSuccessResponse(res, 'success.userBehavior.bothRetrieved', {
         behavior,
         summary
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -151,7 +151,7 @@ export class UserBehaviorController {
 
       const status = await this.userBehaviorService.checkUserStatus(targetUserId);
 
-      sendSuccessResponse(res, 'User status retrieved successfully', status);
+      await sendSuccessResponse(res, 'success.userBehavior.statusRetrieved', status, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -210,7 +210,7 @@ export class UserBehaviorController {
         reason.trim()
       );
 
-      sendSuccessResponse(res, 'Strike added successfully', behavior);
+      await sendSuccessResponse(res, 'success.userBehavior.strikeAdded', behavior, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -244,7 +244,7 @@ export class UserBehaviorController {
 
       const behavior = await this.userBehaviorService.removeStrike(requestingUserId, userId);
 
-      sendSuccessResponse(res, 'Strike removed successfully', behavior);
+      await sendSuccessResponse(res, 'success.userBehavior.strikeRemoved', behavior, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -314,11 +314,14 @@ export class UserBehaviorController {
         durationDays
       );
 
-      const message = isTemporary === false 
-        ? 'User banned permanently'
-        : `User banned for ${durationDays} days`;
-
-      sendSuccessResponse(res, message, behavior);
+      await sendSuccessResponse(
+        res,
+        'success.userBehavior.statusUpdated',
+        behavior,
+        200,
+        req,
+        isTemporary === false ? undefined : { durationDays }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -352,7 +355,7 @@ export class UserBehaviorController {
 
       const behavior = await this.userBehaviorService.unbanUser(requestingUserId, customerId);
 
-      sendSuccessResponse(res, 'User unbanned successfully', behavior);
+      await sendSuccessResponse(res, 'success.userBehavior.unbanned', behavior, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -379,7 +382,7 @@ export class UserBehaviorController {
 
       const users = await this.userBehaviorService.getProblematicUsers(requestingUserId, limitNum);
 
-      sendSuccessResponse(res, 'Problematic users retrieved successfully', users);
+      await sendSuccessResponse(res, 'success.userBehavior.problematicRetrieved', users, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -416,7 +419,7 @@ export class UserBehaviorController {
 
       const assessment = await this.userBehaviorService.getUserRiskAssessment(targetUserId);
 
-      sendSuccessResponse(res, 'User risk assessment retrieved successfully', assessment);
+      await sendSuccessResponse(res, 'success.userBehavior.riskAssessmentRetrieved', assessment, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -453,10 +456,10 @@ export class UserBehaviorController {
 
       const score = await this.userBehaviorService.calculateUserReliabilityScore(targetUserId);
 
-      sendSuccessResponse(res, 'User reliability score calculated successfully', {
+      await sendSuccessResponse(res, 'success.userBehavior.reliabilityScoreCalculated', {
         userId: targetUserId,
         reliabilityScore: score
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -513,7 +516,7 @@ export class UserBehaviorController {
         customerId
       );
 
-      sendSuccessResponse(res, 'Customer behavior for business retrieved successfully', result);
+      await sendSuccessResponse(res, 'success.userBehavior.customerBehaviorRetrieved', result, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -572,7 +575,7 @@ export class UserBehaviorController {
         reason.trim()
       );
 
-      sendSuccessResponse(res, 'User flagged for review successfully');
+      await sendSuccessResponse(res, 'success.userBehavior.flaggedForReview', undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -585,7 +588,7 @@ export class UserBehaviorController {
 
       const stats = await this.userBehaviorService.getUserBehaviorStats(requestingUserId);
 
-      sendSuccessResponse(res, 'User behavior stats retrieved successfully', stats);
+      await sendSuccessResponse(res, 'success.userBehavior.statsRetrieved', stats, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -596,7 +599,14 @@ export class UserBehaviorController {
       // This endpoint would typically be protected to admin-only or system calls
       const result = await this.userBehaviorService.processAutomaticStrikes();
 
-      sendSuccessResponse(res, `Processed ${result.processed} users, ${result.banned} new bans`, result);
+      await sendSuccessResponse(
+        res,
+        'success.userBehavior.processed',
+        result,
+        200,
+        req,
+        { processed: result.processed, banned: result.banned }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -607,7 +617,14 @@ export class UserBehaviorController {
       // System endpoint
       const count = await this.userBehaviorService.resetExpiredStrikes();
 
-      sendSuccessResponse(res, `Reset strikes for ${count} users`, { resetCount: count });
+      await sendSuccessResponse(
+        res,
+        'success.userBehavior.strikesReset',
+        { resetCount: count },
+        200,
+        req,
+        { count }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -618,7 +635,14 @@ export class UserBehaviorController {
       // System endpoint
       const count = await this.userBehaviorService.unbanExpiredBans();
 
-      sendSuccessResponse(res, `Unbanned ${count} users with expired bans`, { unbannedCount: count });
+      await sendSuccessResponse(
+        res,
+        'success.userBehavior.unbannedExpired',
+        { unbannedCount: count },
+        200,
+        req,
+        { count }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -703,7 +727,14 @@ export class UserBehaviorController {
 
       const successCount = results.filter(r => r.success).length;
 
-      sendSuccessResponse(res, `Added strikes to ${successCount}/${userIds.length} users`, results);
+      await sendSuccessResponse(
+        res,
+        'success.userBehavior.strikesAdded',
+        results,
+        200,
+        req,
+        { successCount, total: userIds.length }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -798,7 +829,14 @@ export class UserBehaviorController {
 
       const successCount = results.filter(r => r.success).length;
 
-      sendSuccessResponse(res, `Banned ${successCount}/${userIds.length} users for ${durationDays} days`, results);
+      await sendSuccessResponse(
+        res,
+        'success.userBehavior.banned',
+        results,
+        200,
+        req,
+        { successCount, total: userIds.length, durationDays }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }

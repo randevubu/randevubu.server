@@ -15,7 +15,6 @@ import { BusinessService } from '../services/domain/business';
 import { RBACService } from '../services/domain/rbac';
 import { TokenService } from '../services/domain/token';
 import { StaffService } from '../services/domain/staff';
-import { GooglePlacesService } from '../services/external/googlePlacesService';
 import { AuthenticatedRequest, AuthenticatedRequestWithFile } from '../types/request';
 import { BusinessData, BusinessSubscriptionData } from '../types/business';
 // Cache invalidation handled by routes, not controllers
@@ -30,15 +29,12 @@ import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
 
 export class BusinessController {
-  private googlePlacesService: GooglePlacesService;
-
   constructor(
     private businessService: BusinessService,
     private tokenService?: TokenService,
     private rbacService?: RBACService,
     private staffService?: StaffService
   ) {
-    this.googlePlacesService = new GooglePlacesService();
   }
 
   /**
@@ -179,12 +175,12 @@ export class BusinessController {
 
       // If user has no businesses yet, return empty services array
       if (req.businessContext.businessIds.length === 0) {
-        return sendSuccessResponse(res, 'No services found - create a business first', {
+        return await sendSuccessResponse(res, 'success.business.noServicesFound', {
           services: [],
           total: 0,
           page: 1,
           totalPages: 0
-        });
+        }, 200, req);
       }
 
       const { businessId, active, page = '1', limit = '50' } = req.query;
@@ -198,7 +194,7 @@ export class BusinessController {
         limit: limitNum
       });
 
-      sendSuccessResponse(res, 'Services retrieved successfully', services);
+      await sendSuccessResponse(res, 'success.business.servicesRetrieved', services, 200, req);
 
     } catch (error) {
       handleRouteError(error, req, res);
@@ -713,14 +709,14 @@ export class BusinessController {
 
       const businesses = await this.businessService.findNearbyBusinesses(lat, lng, rad, lmt);
 
-      sendSuccessResponse(res, 'Nearby businesses retrieved successfully', {
+      await sendSuccessResponse(res, 'success.business.nearbyRetrieved', {
         businesses,
         meta: {
           total: businesses.length,
           radius: rad,
           limit: lmt
         }
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -809,7 +805,7 @@ export class BusinessController {
       const businessId = id === 'my' ? undefined : id;
       const stats = await this.businessService.getMyBusinessStats(userId, businessId);
 
-      sendSuccessResponse(res, 'Business stats retrieved successfully', stats);
+      await sendSuccessResponse(res, 'success.business.statsRetrieved', stats, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1051,10 +1047,10 @@ export class BusinessController {
         excludeId as string
       );
 
-      sendSuccessResponse(res, 'Slug availability checked successfully', {
+      await sendSuccessResponse(res, 'success.business.slugChecked', {
         slug,
         available: isAvailable
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1216,7 +1212,7 @@ export class BusinessController {
         includeInactive
       );
 
-      sendSuccessResponse(res, 'Staff retrieved successfully', { staff });
+      await sendSuccessResponse(res, 'success.business.staffRetrieved', { staff }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1251,7 +1247,7 @@ export class BusinessController {
         context
       );
 
-      sendSuccessResponse(res, 'Staff member added successfully', result);
+      await sendSuccessResponse(res, 'success.business.staffAdded', result, 201, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1295,7 +1291,7 @@ export class BusinessController {
       );
 
       if (result.success) {
-        sendSuccessResponse(res, 'Staff member verified successfully', result, 201);
+        await sendSuccessResponse(res, 'success.business.staffVerified', result, 201, req);
       } else {
         const error = new AppError(
           result.message,
@@ -1344,10 +1340,10 @@ export class BusinessController {
         file.mimetype
       );
 
-      sendSuccessResponse(res, `${imageType} image uploaded successfully`, {
+      await sendSuccessResponse(res, 'success.business.imageUploaded', {
         imageUrl: result.imageUrl,
         business: result.business
-      });
+      }, 200, req, { imageType });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1372,9 +1368,9 @@ export class BusinessController {
         imageType
       );
 
-      sendSuccessResponse(res, `${imageType} image deleted successfully`, {
+      await sendSuccessResponse(res, 'success.business.imageDeleted', {
         business
-      });
+      }, 200, req, { imageType });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1399,9 +1395,9 @@ export class BusinessController {
         imageUrl
       );
 
-      sendSuccessResponse(res, 'Gallery image deleted successfully', {
+      await sendSuccessResponse(res, 'success.business.galleryImageDeleted', {
         business
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1418,9 +1414,9 @@ export class BusinessController {
 
       const images = await this.businessService.getBusinessImages(userId, businessId);
 
-      sendSuccessResponse(res, 'Business images retrieved successfully', {
+      await sendSuccessResponse(res, 'success.business.imagesRetrieved', {
         images
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1452,9 +1448,9 @@ export class BusinessController {
         imageUrls
       );
 
-      sendSuccessResponse(res, 'Gallery images updated successfully', {
+      await sendSuccessResponse(res, 'success.business.galleryUpdated', {
         business
-      });
+      }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -2224,10 +2220,12 @@ export class BusinessController {
 
       console.log('🔍 [GOOGLE INTEGRATION PUT] Business updated:', business.id);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Google integration updated successfully',
-        { business }
+        'success.business.googleIntegrationUpdated',
+        { business },
+        200,
+        req
       );
       console.log('✅ [CONTROLLER] updateGoogleIntegration - RESPONSE SENT');
     } catch (error) {
@@ -2426,45 +2424,7 @@ export class BusinessController {
         console.log('🔍 [GOOGLE INTEGRATION GET] No URLs generated - integration disabled');
       }
 
-      // Fetch Google ratings if integration is enabled and Place ID exists
-      let googleRatings = null;
-      if (settings.googleIntegrationEnabled && settings.googlePlaceId && this.googlePlacesService.isConfigured()) {
-        console.log('🔍 [GOOGLE INTEGRATION GET] Fetching Google ratings...');
-
-        try {
-          const placeDetails = await this.googlePlacesService.getPlaceDetails(settings.googlePlaceId);
-
-          if (placeDetails) {
-            googleRatings = {
-              rating: placeDetails.rating,
-              totalRatings: placeDetails.userRatingsTotal,
-              reviews: placeDetails.reviews,
-              name: placeDetails.name,
-              formattedAddress: placeDetails.formattedAddress,
-              website: placeDetails.website,
-              phoneNumber: placeDetails.phoneNumber
-            };
-
-            console.log('✅ [GOOGLE INTEGRATION GET] Google ratings fetched successfully:', {
-              rating: googleRatings.rating,
-              totalRatings: googleRatings.totalRatings
-            });
-          } else {
-            console.log('⚠️  [GOOGLE INTEGRATION GET] No Google ratings data returned');
-          }
-        } catch (error) {
-          console.error('❌ [GOOGLE INTEGRATION GET] Failed to fetch Google ratings:', error);
-          // Don't fail the request, just don't include Google ratings
-        }
-      } else {
-        if (!this.googlePlacesService.isConfigured()) {
-          console.log('⚠️  [GOOGLE INTEGRATION GET] Google Places API not configured');
-        } else if (!settings.googleIntegrationEnabled) {
-          console.log('🔍 [GOOGLE INTEGRATION GET] Google integration disabled, skipping ratings fetch');
-        } else if (!settings.googlePlaceId) {
-          console.log('🔍 [GOOGLE INTEGRATION GET] No Google Place ID, skipping ratings fetch');
-        }
-      }
+      // Google Places API has been removed - ratings are no longer fetched from Google
 
       // Separate internal and Google ratings in the response
       const responseData: any = {
@@ -2483,17 +2443,16 @@ export class BusinessController {
           lastRatingAt: settings.lastRatingAt
         },
 
-        // Google ratings (from Google Maps)
-        googleRatings: googleRatings,
-
         // URLs for maps embed and links
         urls
       };
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Google integration settings retrieved successfully',
-        responseData
+        'success.business.googleIntegrationRetrieved',
+        responseData,
+        200,
+        req
       );
       console.log('✅ [CONTROLLER] getGoogleIntegration - RESPONSE SENT');
     } catch (error) {

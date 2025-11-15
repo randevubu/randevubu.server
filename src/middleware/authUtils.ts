@@ -3,6 +3,7 @@ import { AuthMiddleware } from './auth';
 import { AuthorizationMiddleware } from './authorization';
 import { PermissionName, RoleName } from '../types/auth';
 import { AuthenticatedRequest, GuaranteedAuthRequest } from '../types/request';
+import { updateLanguageFromUser } from './language';
 
 /**
  * Auth Utils - Simplified middleware exports using factory pattern
@@ -41,7 +42,14 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
   if (!authMiddleware) {
     throw new Error('Auth middleware not initialized. Call initializeAuthMiddleware() first.');
   }
-  return authMiddleware.authenticate(req as AuthenticatedRequest, res, next);
+  return authMiddleware.authenticate(req as AuthenticatedRequest, res, (error) => {
+    if (error) {
+      return next(error);
+    }
+    // Update language from user preference after authentication
+    updateLanguageFromUser(req);
+    next();
+  });
 };
 
 /**
@@ -69,6 +77,9 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
     // Type assertion is safe here because we've checked
     (req as GuaranteedAuthRequest).user = authReq.user;
     (req as GuaranteedAuthRequest).token = authReq.token!;
+
+    // Update language from user preference after authentication
+    updateLanguageFromUser(req);
 
     next();
   });

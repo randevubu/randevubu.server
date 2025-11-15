@@ -50,26 +50,37 @@ export class AuthController {
     const cookieDomain = process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost';
     const isSecureProduction = process.env.NODE_ENV === 'production' && req?.secure;
     
-    // Must match ALL options used when setting the cookies
-    const cookieOptions = {
+    // Must match ALL options used when setting the cookies, including httpOnly
+    const baseCookieOptions = {
       path: '/',
       domain: cookieDomain,
       secure: isSecureProduction,
       sameSite: (isSecureProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict'
     };
     
-    // Clear authentication cookies
-    res.clearCookie('refreshToken', cookieOptions);
-    res.clearCookie('hasAuth', cookieOptions);
+    // Clear refreshToken cookie (was set with httpOnly: true)
+    res.clearCookie('refreshToken', {
+      ...baseCookieOptions,
+      httpOnly: true
+    });
     
-    // Clear CSRF token for security (force new token on next login)
-    res.clearCookie('csrf-token', cookieOptions);
+    // Clear hasAuth cookie (was set with httpOnly: false)
+    res.clearCookie('hasAuth', {
+      ...baseCookieOptions,
+      httpOnly: false
+    });
+    
+    // Clear CSRF token cookie (was set with httpOnly: true)
+    res.clearCookie('csrf-token', {
+      ...baseCookieOptions,
+      httpOnly: true
+    });
 
     logger.info('Cleared authentication cookies', {
       clearedCookies: ['refreshToken', 'hasAuth', 'csrf-token'],
       domain: cookieDomain,
       secure: isSecureProduction,
-      sameSite: cookieOptions.sameSite,
+      sameSite: baseCookieOptions.sameSite,
       requestId: context.requestId,
     });
   }
@@ -84,16 +95,35 @@ export class AuthController {
       const deviceInfo = extractDeviceInfo(req);
       const context = createErrorContext(req);
 
+      // Auto-detect purpose: check if user exists in database
+      const { isValidPhoneNumber, parsePhoneNumber } = require('libphonenumber-js');
+      let purpose: 'LOGIN' | 'REGISTRATION' = 'REGISTRATION';
+      
+      if (isValidPhoneNumber(body.phoneNumber)) {
+        try {
+          const parsed = parsePhoneNumber(body.phoneNumber);
+          const normalizedPhone = parsed?.format('E.164') || body.phoneNumber;
+          const repositories = (this.phoneVerificationService as any).repositories;
+          const existingUser = await repositories.userRepository.findByPhoneNumber(normalizedPhone);
+          purpose = existingUser ? 'LOGIN' : 'REGISTRATION';
+        } catch (error) {
+          logger.warn('Failed to check if user exists, defaulting to REGISTRATION', {
+            error: error instanceof Error ? error.message : String(error),
+            requestId: context.requestId,
+          });
+        }
+      }
+
       logger.info('Verification code request', {
         phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
-        purpose: body.purpose,
+        purpose: purpose,
         ip: context.ipAddress,
         requestId: context.requestId,
       });
 
       const result = await this.phoneVerificationService.sendVerificationCode({
         phoneNumber: body.phoneNumber,
-        purpose: body.purpose || 'REGISTRATION' as any,
+        purpose: purpose as any,
         ipAddress: deviceInfo.ipAddress,
         userAgent: deviceInfo.userAgent,
       });
@@ -110,11 +140,11 @@ export class AuthController {
         return;
       }
 
-      sendSuccessResponse(res, result.message, {
+      await sendSuccessResponse(res, 'success.auth.verificationCodeSent', {
         phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
         expiresIn: 600, // 10 minutes
-        purpose: body.purpose || 'REGISTRATION',
-      });
+        purpose: purpose,
+      }, 200, req);
 
     } catch (error) {
       logger.error('Send verification code error', {
@@ -193,9 +223,9 @@ export class AuthController {
         });
       }
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        result.isNewUser ? 'Registration successful' : 'Login successful',
+        result.isNewUser ? 'success.auth.registered' : 'success.auth.login',
         {
           user: {
             id: result.user.id,
@@ -218,7 +248,9 @@ export class AuthController {
             refreshExpiresIn: isMobileClient ? result.tokens.refreshExpiresIn : undefined
           },
           isNewUser: result.isNewUser,
-        }
+        },
+        result.isNewUser ? 201 : 200,
+        req
       );
 
     } catch (error) {
@@ -329,14 +361,14 @@ export class AuthController {
           requestId: context.requestId,
         });
 
-        sendSuccessResponse(res, 'Token refreshed successfully', {
+        await sendSuccessResponse(res, 'success.auth.tokenRefreshed', {
           tokens: {
             accessToken: tokens.accessToken,
             refreshToken: tokens.refreshToken, // Mobile apps need this for secure storage
             expiresIn: tokens.expiresIn,
             refreshExpiresIn: tokens.refreshExpiresIn
           }
-        });
+        }, 200, req);
       } else {
         // Web: Set refresh token as HttpOnly cookie (browser-managed)
         const isSecureProduction = process.env.NODE_ENV === 'production' && req.secure;
@@ -365,13 +397,13 @@ export class AuthController {
           requestId: context.requestId,
         });
 
-        sendSuccessResponse(res, 'Token refreshed successfully', {
+        await sendSuccessResponse(res, 'success.auth.tokenRefreshed', {
           tokens: {
             accessToken: tokens.accessToken,
             expiresIn: tokens.expiresIn
             // ❌ No refreshToken in body for web (it's in HttpOnly cookie)
           }
-        });
+        }, 200, req);
       }
 
     } catch (error) {
@@ -453,7 +485,7 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      sendSuccessResponse(res, 'Logged out successfully');
+      await sendSuccessResponse(res, 'success.auth.logout', undefined, 200, req);
 
     } catch (error) {
       logger.error('Logout error', {
@@ -497,12 +529,12 @@ export class AuthController {
         profile = await this.authService.getUserProfile(requireAuthenticatedUser(req).id, context);
       }
 
-      sendSuccessResponse(res, 'Profile retrieved successfully', { 
+      await sendSuccessResponse(res, 'success.auth.profileRetrieved', { 
         user: profile,
         meta: {
           includesBusinessSummary: includeBusinessSummary
         }
-      });
+      }, 200, req);
 
     } catch (error) {
       logger.error('Get profile error', {
@@ -548,7 +580,7 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      sendSuccessResponse(res, 'Profile updated successfully', { user: profile });
+      await sendSuccessResponse(res, 'success.auth.profileUpdated', { user: profile }, 200, req);
 
     } catch (error) {
       logger.error('Update profile error', {
@@ -596,9 +628,12 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Phone number changed successfully. Please login again with new number.'
+        'success.auth.phoneChanged',
+        undefined,
+        200,
+        req
       );
 
     } catch (error) {
@@ -639,7 +674,7 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      sendSuccessResponse(res, 'Account deactivated successfully');
+      await sendSuccessResponse(res, 'success.auth.accountDeactivated', undefined, 200, req);
 
     } catch (error) {
       logger.error('Account deactivation error', {
@@ -695,7 +730,7 @@ export class AuthController {
 
       const result = await this.authService.getMyCustomers(userId, filters);
 
-      sendSuccessResponse(res, 'Customers retrieved successfully', result);
+      await sendSuccessResponse(res, 'success.auth.customersRetrieved', result, 200, req);
 
     } catch (error) {
       logger.error('Get my customers error', {
@@ -737,7 +772,7 @@ export class AuthController {
 
       const customerDetails = await this.authService.getCustomerDetails(userId, customerId);
 
-      sendSuccessResponse(res, 'Customer details retrieved successfully', customerDetails);
+      await sendSuccessResponse(res, 'success.auth.customerDetailsRetrieved', customerDetails, 200, req);
 
     } catch (error) {
       logger.error('Get customer details error', {
@@ -782,7 +817,7 @@ export class AuthController {
 
       const stats = await this.authService.getUserStats(context);
 
-      sendSuccessResponse(res, 'Stats retrieved successfully', { stats });
+      await sendSuccessResponse(res, 'success.auth.statsRetrieved', { stats }, 200, req);
 
     } catch (error) {
       logger.error('Get stats error', {

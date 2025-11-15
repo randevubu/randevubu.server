@@ -96,7 +96,7 @@ const deviceInfoSchema = z.object({
 // Request Schemas
 export const sendVerificationSchema = z.object({
   phoneNumber: phoneNumberSchema,
-  purpose: verificationPurposeSchema.default('REGISTRATION'),
+  // Purpose is auto-detected by backend based on whether user exists
 }).strict();
 
 export const verifyLoginSchema = z.object({

@@ -91,16 +91,17 @@ export class PaymentController {
       );
 
       if (result.success) {
-        sendSuccessResponse(
+        await sendSuccessResponse(
           res,
-          'Subscription payment created successfully',
+          'success.payment.subscriptionCreated',
           {
             subscriptionId: result.subscriptionId,
             paymentId: result.paymentId,
             message: result.message,
             discountApplied: result.discountApplied
           },
-          201
+          201,
+          req
         );
       } else {
         const error = new AppError(
@@ -159,13 +160,15 @@ export class PaymentController {
       );
 
       if (result.success) {
-        sendSuccessResponse(
+        await sendSuccessResponse(
           res,
-          'Payment refunded successfully',
+          'success.payment.refunded',
           {
             refundId: result.refundId,
             message: result.message
-          }
+          },
+          200,
+          req
         );
       } else {
         const error = new AppError(
@@ -229,9 +232,12 @@ export class PaymentController {
       const result = await this.paymentService.cancelPayment(paymentId, reason);
 
       if (result.success) {
-        sendSuccessResponse(
+        await sendSuccessResponse(
           res,
-          result.message || 'Payment cancelled successfully'
+          'success.payment.cancelled',
+          undefined,
+          200,
+          req
         );
       } else {
         const error = new AppError(
@@ -275,10 +281,12 @@ export class PaymentController {
       const result = await this.paymentService.retrievePayment(paymentId);
 
       if (result.success) {
-        sendSuccessResponse(
+        await sendSuccessResponse(
           res,
-          'Payment retrieved successfully',
-          result.payment
+          'success.payment.retrieved',
+          result.payment,
+          200,
+          req
         );
       } else {
         const error = new AppError(
@@ -322,9 +330,9 @@ export class PaymentController {
       const result = await this.paymentService.getSubscriptionWithPayments(businessId);
 
       if (result.success) {
-        sendSuccessResponse(
+        await sendSuccessResponse(
           res,
-          'Payment history retrieved successfully',
+          'success.payment.historyRetrieved',
           result.subscription
         );
       } else {
@@ -344,9 +352,9 @@ export class PaymentController {
     try {
       const testCards = this.paymentService.getTestCards();
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Test cards for Iyzico sandbox environment',
+        'success.payment.testCardsRetrieved',
         {
           testCards,
           usage: {
@@ -354,7 +362,9 @@ export class PaymentController {
             failure: 'Use failure card to test payment failures',
             threeDsSuccess: 'Use for 3DS authentication test'
           }
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -365,10 +375,12 @@ export class PaymentController {
     try {
       const plans = await this.subscriptionService.getAllPlans();
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Subscription plans retrieved successfully',
-        plans
+          'success.payment.subscriptionPlansRetrieved',
+          plans,
+          200,
+          req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -412,10 +424,12 @@ export class PaymentController {
         }
       }
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Webhook processed successfully',
-        { status: 'success' }
+          'success.payment.webhookProcessed',
+          { status: 'success' },
+          200,
+          req
       );
     } catch (error) {
       console.error('Webhook processing error:', error);

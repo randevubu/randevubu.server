@@ -67,7 +67,7 @@ export class UsageController {
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(res, "Usage summary retrieved successfully", summary);
+      await sendSuccessResponse(res, "success.usage.summaryRetrieved", summary, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -117,7 +117,7 @@ export class UsageController {
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(res, "Usage alerts retrieved successfully", alerts);
+      await sendSuccessResponse(res, "success.usage.alertsRetrieved", alerts, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -174,7 +174,14 @@ export class UsageController {
         days
       );
 
-      sendSuccessResponse(res, `Daily SMS usage for last ${days} days retrieved successfully`, usage);
+      await sendSuccessResponse(
+        res,
+        "success.usage.dailySmsRetrieved",
+        usage,
+        200,
+        req,
+        { days }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -231,7 +238,14 @@ export class UsageController {
         months
       );
 
-      sendSuccessResponse(res, `Monthly usage history for last ${months} months retrieved successfully`, history);
+      await sendSuccessResponse(
+        res,
+        "success.usage.monthlyHistoryRetrieved",
+        history,
+        200,
+        req,
+        { months }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -275,12 +289,18 @@ export class UsageController {
           this.usageService.canAddCustomer(businessId),
         ]);
 
-      sendSuccessResponse(res, "Usage limits check completed successfully", {
-        sms: smsCheck,
-        staff: staffCheck,
-        service: serviceCheck,
-        customer: customerCheck,
-      });
+      await sendSuccessResponse(
+        res,
+        "success.usage.limitsChecked",
+        {
+          sms: smsCheck,
+          staff: staffCheck,
+          service: serviceCheck,
+          customer: customerCheck,
+        },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -320,10 +340,16 @@ export class UsageController {
         this.usageService.updateServiceUsage(businessId),
       ]);
 
-      sendSuccessResponse(res, "Usage data refreshed successfully", {
-        refreshedCounters: ["staff", "services"],
-        updatedAt: new Date().toISOString(),
-      });
+      await sendSuccessResponse(
+        res,
+        "success.usage.dataRefreshed",
+        {
+          refreshedCounters: ["staff", "services"],
+          updatedAt: new Date().toISOString(),
+        },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }

@@ -80,12 +80,12 @@ export class PaymentMethodController {
         paymentMethodId
       );
 
-      sendSuccessResponse(res, 'Payment method updated successfully', {
+      await sendSuccessResponse(res, 'success.paymentMethod.updated', {
         paymentMethodId,
         lastFourDigits,
         cardBrand,
         subscriptionId: result.id
-      });
+      }, 200, req);
     } catch (error) {
       console.error('Update payment method error:', error);
       sendAppErrorResponse(res, new AppError(
@@ -127,11 +127,11 @@ export class PaymentMethodController {
         return sendAppErrorResponse(res, new AppError('No payment method found', 404));
       }
 
-      sendSuccessResponse(res, 'Payment method retrieved successfully', {
+      await sendSuccessResponse(res, 'success.paymentMethod.retrieved', {
         paymentMethod: autoRenewalStatus.paymentMethod,
         autoRenewal: autoRenewalStatus.autoRenewal,
         nextBillingDate: autoRenewalStatus.nextBillingDate
-      });
+      }, 200, req);
     } catch (error) {
       console.error('Get payment method error:', error);
       sendAppErrorResponse(res, new AppError(
@@ -170,10 +170,10 @@ export class PaymentMethodController {
 
       // Retry payment - this would trigger the payment retry service
       // For now, return success (actual implementation would use payment retry service)
-      sendSuccessResponse(res, 'Payment retry initiated. The system will process the payment automatically.', {
+      await sendSuccessResponse(res, 'success.paymentMethod.retryInitiated', {
         subscriptionId: subscription.id,
         status: 'PENDING_RETRY'
-      });
+      }, 200, req);
     } catch (error) {
       console.error('Retry payment error:', error);
       sendAppErrorResponse(res, new AppError(

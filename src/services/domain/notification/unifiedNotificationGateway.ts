@@ -33,6 +33,7 @@ export interface SystemAlertRequest {
   userId: string; // Business owner or staff
   title: string;
   body: string;
+  smsMessage?: string; // Optional SMS-specific message (uses template)
   data?: Record<string, any>;
   appointmentId?: string;
   url?: string;
@@ -200,7 +201,8 @@ export class UnifiedNotificationGateway {
 
   /**
    * Send system alerts to business owners/staff (new appointment, cancellation, etc.)
-   * Respects business notification settings.
+   * NOTE: Only sends push notifications - SMS is reserved for customers only.
+   * SMS notifications for business owners/staff have been removed per business decision.
    */
   async sendSystemAlert(
     request: SystemAlertRequest
@@ -238,7 +240,8 @@ export class UnifiedNotificationGateway {
       request.businessId,
       request.appointmentId,
       request.data,
-      request.url
+      request.url,
+      request.smsMessage // Pass SMS-specific message if provided
     );
   }
 
@@ -331,7 +334,8 @@ export class UnifiedNotificationGateway {
     businessId: string,
     appointmentId?: string,
     data?: Record<string, any>,
-    url?: string
+    url?: string,
+    smsMessage?: string // Optional SMS-specific message
   ): Promise<NotificationGatewayResult> {
     const results: NotificationResult[] = [];
     const skippedChannels: Array<{ channel: NotificationChannel; reason: string }> = [];
@@ -385,10 +389,11 @@ export class UnifiedNotificationGateway {
             const { SMSService } = await import('../sms/smsService');
             const smsService = new SMSService();
 
-            const smsMessage = `${title}\n\n${body}`;
+            // Use SMS-specific message if provided (from template), otherwise format title/body
+            const messageToSend = smsMessage || `${title}\n\n${body}`;
             const result = await smsService.sendSMS({
               phoneNumber: user.phoneNumber,
-              message: smsMessage,
+              message: messageToSend,
               context: { requestId: appointmentId || `notification-${Date.now()}` }
             });
 
@@ -480,18 +485,22 @@ export class UnifiedNotificationGateway {
 
   /**
    * Helper: Determine enabled channels for business owner notifications
+   * NOTE: SMS is NOT available for business owners/staff - only PUSH notifications
+   * SMS is reserved for customers only (via sendCriticalSMS)
    */
   private determineEnabledChannelsForBusiness(
     businessSettings: any
   ): NotificationChannel[] {
     const enabledChannels: NotificationChannel[] = [];
 
+    // Only push notifications for business owners/staff (SMS removed per business decision)
     if (businessSettings?.pushEnabled) {
       enabledChannels.push(NotificationChannel.PUSH);
     }
-    if (businessSettings?.smsEnabled) {
-      enabledChannels.push(NotificationChannel.SMS);
-    }
+    // SMS removed - business owners/staff only get push notifications
+    // if (businessSettings?.smsEnabled) {
+    //   enabledChannels.push(NotificationChannel.SMS);
+    // }
     if (businessSettings?.emailEnabled) {
       enabledChannels.push(NotificationChannel.EMAIL);
     }

@@ -4,23 +4,64 @@
  * Standardized response handling for consistent API responses across all controllers.
  */
 
-import { Response } from "express";
+import { Request, Response } from "express";
 import { ErrorResponse, SuccessResponse } from "../types/responseTypes";
 import { BaseError } from "../types/errors";
+import { translateMessage } from "./translationUtils";
+import { getLanguageFromRequest } from "../middleware/language";
 
 /**
  * Send a standardized success response
+ * Automatically translates messages if they are translation keys (start with "success.")
+ * 
+ * @param res - Express response object
+ * @param message - Success message or translation key (e.g., "success.appointment.created")
+ * @param data - Optional response data
+ * @param statusCode - HTTP status code (default: 200)
+ * @param req - Optional request object for language detection
+ * @param params - Optional parameters for message translation (e.g., {count: 5})
  */
-export function sendSuccessResponse<T>(
+export async function sendSuccessResponse<T>(
   res: Response,
   message: string,
   data?: T,
-  statusCode: number = 200
-): void {
+  statusCode: number = 200,
+  req?: Request,
+  params?: Record<string, string | number | boolean | Date>
+): Promise<void> {
+  // Check if message is a translation key (starts with "success.")
+  const isTranslationKey = message.startsWith('success.');
+  
+  let translatedMessage = message;
+  let translationKey: string | undefined = undefined;
+  
+  if (isTranslationKey && req) {
+    translationKey = message;
+    try {
+      // Get language from request
+      const language = getLanguageFromRequest(req);
+      
+      // Translate the message
+      translatedMessage = await translateMessage(
+        message,
+        params || {},
+        language,
+        req
+      );
+    } catch (error) {
+      // If translation fails, use the original message/key
+      // Don't log in production to avoid noise
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('Translation failed for success message', { message, error });
+      }
+    }
+  }
+  
   const response: SuccessResponse<T> = {
     success: true,
     statusCode,
-    message,
+    message: translatedMessage,
+    ...(translationKey && { key: translationKey }),
     data,
   };
   res.status(statusCode).json(response);
@@ -82,16 +123,42 @@ export function sendBaseErrorResponse(res: Response, error: BaseError): void {
 
 /**
  * Send a paginated success response
+ * Automatically translates messages if they are translation keys (start with "success.")
  */
-export function sendPaginatedResponse<T>(
+export async function sendPaginatedResponse<T>(
   res: Response,
   message: string,
   items: T[],
   total: number,
   page: number,
   limit: number,
-  statusCode: number = 200
-): void {
+  statusCode: number = 200,
+  req?: Request,
+  params?: Record<string, string | number | boolean | Date>
+): Promise<void> {
+  // Check if message is a translation key (starts with "success.")
+  const isTranslationKey = message.startsWith('success.');
+  
+  let translatedMessage = message;
+  let translationKey: string | undefined = undefined;
+  
+  if (isTranslationKey && req) {
+    translationKey = message;
+    try {
+      const language = getLanguageFromRequest(req);
+      translatedMessage = await translateMessage(
+        message,
+        params || {},
+        language,
+        req
+      );
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('Translation failed for success message', { message, error });
+      }
+    }
+  }
+  
   const response: SuccessResponse<{
     items: T[];
     pagination: {
@@ -103,7 +170,8 @@ export function sendPaginatedResponse<T>(
   }> = {
     success: true,
     statusCode,
-    message,
+    message: translatedMessage,
+    ...(translationKey && { key: translationKey }),
     data: {
       items,
       pagination: {
@@ -119,18 +187,45 @@ export function sendPaginatedResponse<T>(
 
 /**
  * Send a success response with custom metadata
+ * Automatically translates messages if they are translation keys (start with "success.")
  */
-export function sendSuccessWithMeta<T>(
+export async function sendSuccessWithMeta<T>(
   res: Response,
   message: string,
   data: T,
   meta: Record<string, any>,
-  statusCode: number = 200
-): void {
+  statusCode: number = 200,
+  req?: Request,
+  params?: Record<string, string | number | boolean | Date>
+): Promise<void> {
+  // Check if message is a translation key (starts with "success.")
+  const isTranslationKey = message.startsWith('success.');
+  
+  let translatedMessage = message;
+  let translationKey: string | undefined = undefined;
+  
+  if (isTranslationKey && req) {
+    translationKey = message;
+    try {
+      const language = getLanguageFromRequest(req);
+      translatedMessage = await translateMessage(
+        message,
+        params || {},
+        language,
+        req
+      );
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('Translation failed for success message', { message, error });
+      }
+    }
+  }
+  
   const response: SuccessResponse<T> = {
     success: true,
     statusCode,
-    message,
+    message: translatedMessage,
+    ...(translationKey && { key: translationKey }),
     data,
     meta,
   };
@@ -210,14 +305,17 @@ export function sendSimpleErrorResponse(
 
 /**
  * Send standard success response
+ * Automatically translates messages if they are translation keys (start with "success.")
  */
-export function sendStandardSuccessResponse<T>(
+export async function sendStandardSuccessResponse<T>(
   res: Response,
   message: string,
   data?: T,
-  statusCode: number = 200
-): void {
-  sendSuccessResponse(res, message, data, statusCode);
+  statusCode: number = 200,
+  req?: Request,
+  params?: Record<string, string | number | boolean | Date>
+): Promise<void> {
+  await sendSuccessResponse(res, message, data, statusCode, req, params);
 }
 
 /**

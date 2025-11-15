@@ -12,62 +12,27 @@ import {
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
 import { ZodError } from 'zod';
-import { IPGeolocationService } from '../services/domain/geolocation/ipGeolocationService';
-import { PrismaClient } from '@prisma/client';
-
 export class SubscriptionController {
-  private ipGeolocationService: IPGeolocationService;
-  
-  constructor(private subscriptionService: SubscriptionService) {
-    this.ipGeolocationService = new IPGeolocationService(new PrismaClient());
-  }
+  constructor(private subscriptionService: SubscriptionService) {}
 
   // Public endpoints
   async getAllPlans(req: Request, res: Response): Promise<void> {
     try {
       const { city, state, country } = req.query;
       
-      let detectedLocation = null;
-      let finalCity = city as string;
-      let finalState = state as string;
-      let finalCountry = country as string || 'Turkey';
+      // Use provided city or default to Istanbul
+      // Frontend should handle geolocation and pass city parameter
+      const finalCity = (city as string) || 'Istanbul';
+      const finalState = (state as string) || 'Istanbul';
+      const finalCountry = (country as string) || 'Turkey';
 
-      // If no city provided, try to detect from IP
-      if (!city) {
-        try {
-          const location = await this.ipGeolocationService.getLocationWithFallback(req);
-          finalCity = location.city;
-          finalState = location.state;
-          finalCountry = location.country;
-          detectedLocation = {
-            ...location,
-            detected: true,
-            source: 'ip_geolocation'
-          };
-        } catch (error) {
-          console.warn('IP geolocation failed, using default:', error);
-          // Fallback to Istanbul if geolocation fails
-          finalCity = 'Istanbul';
-          finalState = 'Istanbul';
-          finalCountry = 'Turkey';
-          detectedLocation = {
-            city: 'Istanbul',
-            state: 'Istanbul',
-            country: 'Turkey',
-            detected: true,
-            source: 'fallback'
-          };
-        }
-      } else {
-        // Manual city selection
-        detectedLocation = {
-          city: finalCity,
-          state: finalState,
-          country: finalCountry,
-          detected: false,
-          source: 'manual'
-        };
-      }
+      const detectedLocation = {
+        city: finalCity,
+        state: finalState,
+        country: finalCountry,
+        detected: !!city, // true if city was provided by frontend, false if using default
+        source: city ? 'frontend' : 'default'
+      };
       
       const plans = await this.subscriptionService.getAllPlansWithLocationPricing(
         finalCity,
@@ -80,10 +45,12 @@ export class SubscriptionController {
         location: detectedLocation
       };
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Subscription plans retrieved successfully',
-        responseData
+        'success.subscription.plansRetrieved',
+        responseData,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -141,10 +108,12 @@ export class SubscriptionController {
         } : null
       };
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,  
-        'Subscription plan retrieved successfully',
-        responseData
+        'success.subscription.planRetrieved',
+        responseData,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -191,10 +160,12 @@ export class SubscriptionController {
         } : null
       };
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Subscription plans retrieved successfully',
-        responseData
+        'success.subscription.plansRetrieved',
+        responseData,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -264,11 +235,12 @@ export class SubscriptionController {
         finalData
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Business subscribed successfully',
+        'success.subscription.created',
         subscription,
-        201
+        201,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -312,10 +284,12 @@ export class SubscriptionController {
         return sendAppErrorResponse(res, error);
       }
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Business subscription retrieved successfully',
-        subscription
+        'success.subscription.businessRetrieved',
+        subscription,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -350,10 +324,12 @@ export class SubscriptionController {
 
       const subscriptions = await this.subscriptionService.getSubscriptionHistory(userId, businessId);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Subscription history retrieved successfully',
-        subscriptions
+        'success.subscription.historyRetrieved',
+        subscriptions,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -413,10 +389,12 @@ export class SubscriptionController {
         newPlanId
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Plan upgraded successfully',
-        subscription
+        'success.subscription.planUpgraded',
+        subscription,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -476,10 +454,12 @@ export class SubscriptionController {
         newPlanId
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Plan downgraded successfully',
-        subscription
+        'success.subscription.planDowngraded',
+        subscription,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -529,14 +509,16 @@ export class SubscriptionController {
         cancelAtPeriodEnd
       );
 
-      const message = cancelAtPeriodEnd 
-        ? 'Subscription will be cancelled at period end'
-        : 'Subscription cancelled immediately';
+      const messageKey = cancelAtPeriodEnd 
+        ? 'success.subscription.cancelledAtPeriodEnd'
+        : 'success.subscription.cancelledImmediately';
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        message,
-        subscription
+        messageKey,
+        subscription,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -574,10 +556,12 @@ export class SubscriptionController {
         businessId
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Subscription reactivated successfully',
-        subscription
+        'success.subscription.reactivated',
+        subscription,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -637,10 +621,12 @@ export class SubscriptionController {
         paymentMethodId
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Trial converted to active subscription',
-        subscription
+        'success.subscription.trialConverted',
+        subscription,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -675,10 +661,12 @@ export class SubscriptionController {
 
       const limits = await this.subscriptionService.checkSubscriptionLimits(userId, businessId);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Subscription limits retrieved successfully',
-        limits
+        'success.subscription.limitsRetrieved',
+        limits,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -736,10 +724,12 @@ export class SubscriptionController {
         periodEnd
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Upgrade proration calculated successfully',
-        proration
+        'success.subscription.prorationCalculated',
+        proration,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -792,10 +782,12 @@ export class SubscriptionController {
 
       const validation = await this.subscriptionService.validatePlanLimits(businessId, planId);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Plan limits validation completed successfully',
-        validation
+        'success.subscription.limitsValidated',
+        validation,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -838,10 +830,12 @@ export class SubscriptionController {
 
       const result = await this.subscriptionService.getAllSubscriptions(userId, pageNum, limitNum);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'All subscriptions retrieved successfully',
-        result.subscriptions
+        'success.subscription.allRetrieved',
+        result.subscriptions,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -854,10 +848,12 @@ export class SubscriptionController {
 
       const stats = await this.subscriptionService.getSubscriptionStats(userId);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Subscription statistics retrieved successfully',
-        stats
+        'success.subscription.statsRetrieved',
+        stats,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -885,10 +881,12 @@ export class SubscriptionController {
 
       const trials = await this.subscriptionService.getTrialsEndingSoon(userId, daysNum);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Trials ending soon retrieved successfully',
-        trials
+        'success.subscription.trialsEndingRetrieved',
+        trials,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -901,10 +899,12 @@ export class SubscriptionController {
 
       const expired = await this.subscriptionService.getExpiredSubscriptions(userId);
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Expired subscriptions retrieved successfully',
-        expired
+        'success.subscription.expiredRetrieved',
+        expired,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -965,10 +965,13 @@ export class SubscriptionController {
         reason?.trim()
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Subscription status updated to ${status}`,
-        subscription
+        'success.subscription.statusUpdated',
+        subscription,
+        200,
+        req,
+        { status }
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -981,10 +984,13 @@ export class SubscriptionController {
       // This would typically be restricted to system calls
       const result = await this.subscriptionService.processExpiredSubscriptions();
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Processed ${result.processed} expired subscriptions`,
-        result
+        'success.subscription.expiredProcessed',
+        result,
+        200,
+        req,
+        { count: result.processed }
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -996,10 +1002,13 @@ export class SubscriptionController {
       // System endpoint for processing renewals
       const result = await this.subscriptionService.processSubscriptionRenewals();
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Processed ${result.processed} renewals, ${result.renewed} successful, ${result.failed} failed`,
-        result
+        'success.subscription.renewalsProcessed',
+        result,
+        200,
+        req,
+        { processed: result.processed, renewed: result.renewed, failed: result.failed }
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1011,10 +1020,13 @@ export class SubscriptionController {
       // System endpoint
       const count = await this.subscriptionService.sendTrialEndingNotifications();
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        `Sent ${count} trial ending notifications`,
-        { notificationsSent: count }
+        'success.subscription.trialNotificationsSent',
+        { notificationsSent: count },
+        200,
+        req,
+        { count }
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1240,10 +1252,12 @@ export class SubscriptionController {
         newPlanId
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Subscription change calculation completed successfully',
-        calculation
+        'success.subscription.changeCalculated',
+        calculation,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1358,10 +1372,12 @@ export class SubscriptionController {
         }
       );
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Subscription plan changed successfully',
-        result
+        'success.subscription.planChanged',
+        result,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1425,7 +1441,7 @@ export class SubscriptionController {
       );
       
       if (result.success) {
-        sendSuccessResponse(res, 'Discount code applied successfully', result);
+        await sendSuccessResponse(res, 'success.discountCode.applied', result, 200, req);
       } else {
         const error = new AppError(
           result.error || 'Failed to apply discount code',

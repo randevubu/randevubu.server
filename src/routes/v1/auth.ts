@@ -79,16 +79,10 @@ const verificationRateLimit = rateLimit({
  *           schema:
  *             $ref: '#/components/schemas/SendVerificationRequest'
  *           examples:
- *             registration:
- *               summary: Registration verification
+ *             example:
+ *               summary: Send verification code (auto-detects login/registration)
  *               value:
  *                 phoneNumber: "+1234567890"
- *                 purpose: "REGISTRATION"
- *             login:
- *               summary: Login verification
- *               value:
- *                 phoneNumber: "+1234567890"
- *                 purpose: "LOGIN"
  *     responses:
  *       200:
  *         description: Verification code sent successfully

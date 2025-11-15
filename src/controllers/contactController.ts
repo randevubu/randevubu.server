@@ -61,12 +61,14 @@ export class ContactController {
         context,
       });
 
-      sendSuccessResponse(
+      await sendSuccessResponse(
         res,
-        'Mesajınız başarıyla gönderildi. En kısa sürede size dönüş yapacağız.',
+        'success.contact.sent',
         {
           messageId: result.messageId,
-        }
+        },
+        200,
+        req
       );
     } catch (error) {
       if (error instanceof z.ZodError) {

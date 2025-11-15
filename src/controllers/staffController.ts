@@ -121,7 +121,7 @@ export class StaffController {
         context
       );
 
-      sendSuccessResponse(res, result.message, { success: result.success });
+      await sendSuccessResponse(res, 'success.staff.invited', { success: result.success }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -246,7 +246,7 @@ export class StaffController {
       );
 
       if (result.success) {
-        sendSuccessResponse(res, 'Staff member verified successfully', result, 201);
+        await sendSuccessResponse(res, 'success.staff.verified', result, 201, req);
       } else {
         const error = new AppError(
           result.message,
@@ -311,7 +311,7 @@ export class StaffController {
         includeInactive
       );
 
-      sendSuccessResponse(res, 'Staff retrieved successfully', { staff });
+      await sendSuccessResponse(res, 'success.staff.retrieved', { staff }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -361,7 +361,7 @@ export class StaffController {
         return;
       }
 
-      sendSuccessResponse(res, 'Staff member retrieved successfully', { staff });
+      await sendSuccessResponse(res, 'success.staff.retrievedSingle', { staff }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -458,7 +458,7 @@ export class StaffController {
         updates
       );
 
-      sendSuccessResponse(res, 'Staff member updated successfully', { staff });
+      await sendSuccessResponse(res, 'success.staff.updated', { staff }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -499,7 +499,7 @@ export class StaffController {
 
       await this.staffService.removeStaff(userId, staffId);
 
-      sendSuccessResponse(res, "Staff member removed successfully");
+      await sendSuccessResponse(res, "success.staff.removed", undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -540,7 +540,7 @@ export class StaffController {
 
       const stats = await this.staffService.getStaffStats(userId, businessId);
 
-      sendSuccessResponse(res, 'Staff statistics retrieved successfully', { stats });
+      await sendSuccessResponse(res, 'success.staff.statsRetrieved', { stats }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -618,7 +618,7 @@ export class StaffController {
       );
       const filteredStaff = staff.filter((s) => s.role === role);
 
-      sendSuccessResponse(res, 'Staff by role retrieved successfully', { staff: filteredStaff });
+      await sendSuccessResponse(res, 'success.staff.byRoleRetrieved', { staff: filteredStaff }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -637,7 +637,7 @@ export class StaffController {
 
       const positions = await this.staffService.getUserStaffPositions(userId);
 
-      sendSuccessResponse(res, 'Staff positions retrieved successfully', { positions });
+      await sendSuccessResponse(res, 'success.staff.positionsRetrieved', { positions }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -740,7 +740,7 @@ export class StaffController {
         toBusinessId
       );
 
-      sendSuccessResponse(res, "Staff transferred successfully");
+      await sendSuccessResponse(res, "success.staff.transferred", undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -910,7 +910,7 @@ export class StaffController {
         }
       }
 
-      sendSuccessResponse(res, 'Bulk invitation completed', { results });
+      await sendSuccessResponse(res, 'success.staff.bulkInvited', { results }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -931,7 +931,7 @@ export class StaffController {
         description: this.getRoleDescription(role),
       }));
 
-      sendSuccessResponse(res, 'Available staff roles retrieved successfully', { roles });
+      await sendSuccessResponse(res, 'success.staff.rolesRetrieved', { roles }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -989,7 +989,7 @@ export class StaffController {
 
       const staff = await this.staffService.getPublicBusinessStaff(businessId);
 
-      sendSuccessResponse(res, 'Public business staff retrieved successfully', { staff });
+      await sendSuccessResponse(res, 'success.staff.publicRetrieved', { staff }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }

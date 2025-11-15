@@ -12,6 +12,7 @@ import {
 } from "../types/errors";
 import { AuthenticatedRequest } from "../types/request";
 import logger from "../utils/Logger/logger";
+import { updateLanguageFromUser } from "./language";
 
 export class AuthMiddleware {
   constructor(
@@ -147,11 +148,15 @@ export class AuthMiddleware {
         phoneNumber: user.phoneNumber,
         isVerified: user.isVerified,
         isActive: user.isActive,
+        language: user.language,
         roles,
         permissions,
         effectiveLevel,
       };
       req.token = decoded;
+
+      // Update language from user preference after setting user
+      updateLanguageFromUser(req);
 
       logger.debug('Authentication completed successfully', { userId: user.id });
       next();
@@ -262,11 +267,15 @@ export class AuthMiddleware {
               phoneNumber: user.phoneNumber,
               isVerified: user.isVerified,
               isActive: user.isActive,
+              language: user.language,
               roles,
               permissions,
               effectiveLevel,
             };
             req.token = decoded;
+            
+            // Update language from user preference after setting user
+            updateLanguageFromUser(req);
           }
         }
       } catch (error) {

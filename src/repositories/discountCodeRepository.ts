@@ -285,7 +285,7 @@ export class DiscountCodeRepository {
     }
 
     // Check applicable plans
-    if (discountCode.applicablePlans.length > 0 && !discountCode.applicablePlans.includes(planId)) {
+    if (discountCode.applicablePlans && Array.isArray(discountCode.applicablePlans) && discountCode.applicablePlans.length > 0 && !discountCode.applicablePlans.includes(planId)) {
       return {
         isValid: false,
         errorMessage: 'Discount code is not applicable to this plan'
@@ -485,7 +485,7 @@ export class DiscountCodeRepository {
       validFrom: discountCode.validFrom,
       validUntil: discountCode.validUntil,
       minPurchaseAmount: discountCode.minPurchaseAmount ? Number(discountCode.minPurchaseAmount) : undefined,
-      applicablePlans: discountCode.applicablePlans,
+      applicablePlans: Array.isArray(discountCode.applicablePlans) ? discountCode.applicablePlans : [],
       metadata: discountCode.metadata,
       createdAt: discountCode.createdAt,
       updatedAt: discountCode.updatedAt,

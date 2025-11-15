@@ -749,11 +749,8 @@ const options: swaggerJsdoc.Options = {
             phoneNumber: {
               $ref: '#/components/schemas/PhoneNumber',
             },
-            purpose: {
-              $ref: '#/components/schemas/VerificationPurpose',
-              default: 'REGISTRATION',
-            },
           },
+          description: 'Backend automatically detects if this is a login or registration based on whether the user exists in the database.',
         },
         VerifyLoginRequest: {
           type: 'object',

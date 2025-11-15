@@ -14,28 +14,44 @@ if (process.env.OTEL_ENABLED === "true") {
       instrumentations?: unknown[];
     }) => Startable;
     type GetInstrFn = (options?: Record<string, unknown>) => unknown;
-    type ResourceCtor = new (attrs: Record<string, unknown>) => unknown;
     type SemanticAttrs = Record<string, string>;
     type ExporterCtor = new (config?: Record<string, unknown>) => unknown;
 
     let NodeSDK: NodeSDKConstructor;
     let getNodeAutoInstrumentations: GetInstrFn;
-    let Resource: ResourceCtor;
+    let resourceFromAttributes: (attrs: Record<string, unknown>) => unknown;
     let SemanticResourceAttributes: SemanticAttrs;
     let OTLPTraceExporter: ExporterCtor;
 
     try {
       // Lazy import to avoid requiring deps when disabled
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      NodeSDK = require("@opentelemetry/sdk-node").NodeSDK as NodeSDKConstructor;
+      const sdkNode = require("@opentelemetry/sdk-node");
+      NodeSDK = sdkNode.NodeSDK as NodeSDKConstructor;
+      
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      getNodeAutoInstrumentations = require("@opentelemetry/auto-instrumentations-node").getNodeAutoInstrumentations as GetInstrFn;
+      const autoInstr = require("@opentelemetry/auto-instrumentations-node");
+      getNodeAutoInstrumentations = autoInstr.getNodeAutoInstrumentations as GetInstrFn;
+      
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      Resource = require("@opentelemetry/resources").Resource as ResourceCtor;
+      const resources = require("@opentelemetry/resources");
+      // Newer versions use resourceFromAttributes instead of Resource constructor
+      resourceFromAttributes = resources.resourceFromAttributes as (attrs: Record<string, unknown>) => unknown;
+      
+      if (typeof resourceFromAttributes !== "function") {
+        logger.warn("OpenTelemetry resourceFromAttributes not found. Skipping telemetry init.", {
+          hint: "Check @opentelemetry/resources package version or set OTEL_ENABLED=false",
+        });
+        return;
+      }
+      
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      SemanticResourceAttributes = require("@opentelemetry/semantic-conventions").SemanticResourceAttributes as SemanticAttrs;
+      const semanticConventions = require("@opentelemetry/semantic-conventions");
+      SemanticResourceAttributes = semanticConventions.SemanticResourceAttributes as SemanticAttrs;
+      
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      OTLPTraceExporter = require("@opentelemetry/exporter-trace-otlp-http").OTLPTraceExporter as ExporterCtor;
+      const otlpExporter = require("@opentelemetry/exporter-trace-otlp-http");
+      OTLPTraceExporter = otlpExporter.OTLPTraceExporter as ExporterCtor;
     } catch (e) {
       const err = e as Error;
       logger.warn("OpenTelemetry packages not installed. Skipping telemetry init.", {
@@ -55,7 +71,7 @@ if (process.env.OTEL_ENABLED === "true") {
     // Metrics: keep default for now. You can add OTLP metric exporter later if needed.
 
     const sdk = new NodeSDK({
-      resource: new Resource({
+      resource: resourceFromAttributes({
         [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
         [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || "development",
       }),
@@ -70,24 +86,20 @@ if (process.env.OTEL_ENABLED === "true") {
           "@opentelemetry/instrumentation-express": {
             enabled: true,
           },
-          "@opentelemetry/instrumentation-prisma": {
-            enabled: true,
-          },
         }) as unknown,
       ],
     });
 
-    sdk
-      .start()
-      .then(() => {
-        logger.info("OpenTelemetry initialized");
-      })
-      .catch((err: Error) => {
-        logger.error("Failed to initialize OpenTelemetry", { 
-          error: err.message,
-          stack: process.env.NODE_ENV === "development" ? err.stack : undefined
-        });
+    try {
+      sdk.start();
+      logger.info("OpenTelemetry initialized");
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      logger.error("Failed to initialize OpenTelemetry", { 
+        error: error.message,
+        stack: process.env.NODE_ENV === "development" ? error.stack : undefined
       });
+    }
 
     // Ensure clean shutdown
     const shutdown = async (): Promise<void> => {

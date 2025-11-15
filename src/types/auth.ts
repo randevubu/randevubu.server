@@ -216,7 +216,7 @@ export interface VerificationStats {
 // Request/Response Types
 export interface SendVerificationRequest {
   phoneNumber: string;
-  purpose?: VerificationPurpose;
+  // Purpose is auto-detected by backend
 }
 
 export interface VerifyLoginRequest {
@@ -406,6 +406,7 @@ export interface AuthenticatedUser {
   phoneNumber: string;
   isVerified: boolean;
   isActive: boolean;
+  language?: string | null;
   roles?: Array<{
     id: string;
     name: string;
