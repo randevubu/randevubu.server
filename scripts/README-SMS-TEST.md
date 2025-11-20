@@ -71,3 +71,5 @@ docker compose -f docker-compose.production.yml exec app1 node scripts/test-sms-
 - `test-sms-service-simple.js` - JavaScript version (runs directly with node)
 
 
+
+

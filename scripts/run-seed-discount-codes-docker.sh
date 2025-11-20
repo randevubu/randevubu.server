@@ -28,3 +28,5 @@ docker-compose -f docker-compose.production.yml exec app1 npx ts-node /app/scrip
 echo "✅ Done!"
 
 
+
+

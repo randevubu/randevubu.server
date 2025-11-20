@@ -14,3 +14,5 @@ CREATE INDEX IF NOT EXISTS "businesses_averageRating_idx" ON "public"."businesse
 CREATE INDEX IF NOT EXISTS "businesses_totalRatings_idx" ON "public"."businesses"("totalRatings");
 
 
+
+
