@@ -31,12 +31,16 @@ COPY . .
 RUN npx prisma generate
 
 # Build TypeScript (without source maps for production)
-# Build without source maps and declarations to reduce size
-RUN npx tsc --sourceMap false --declaration false --declarationMap false && \
-    # Remove any remaining source maps and declaration files (safety net)
-    find dist -type f \( -name "*.map" -o -name "*.d.ts" \) -delete 2>/dev/null || true && \
+# If you have tsconfig.production.json, use: tsc -p tsconfig.production.json
+# Otherwise, the find commands below will clean up source maps
+RUN npm run build && \
+    # Remove source maps and declaration files to reduce size (~20-30MB)
+    find dist -type f -name "*.map" -delete && \
+    find dist -type f -name "*.d.ts" -delete && \
+    find dist -type f -name "*.d.ts.map" -delete && \
     # Remove test files if any were copied
-    find dist -type d \( -name "tests" -o -name "__tests__" \) -exec rm -rf {} + 2>/dev/null || true
+    find dist -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true && \
+    find dist -type d -name "__tests__" -exec rm -rf {} + 2>/dev/null || true
 
 # ============================================
 # Stage 3: Production (minimal runtime)
@@ -56,21 +60,7 @@ COPY prisma ./prisma/
 # Install ONLY production dependencies
 # Use npm ci for faster, reliable, reproducible builds
 RUN npm ci --only=production && \
-    npm cache clean --force && \
-    # Remove unnecessary files from node_modules to reduce size
-    find node_modules -type d -name "test" -exec rm -rf {} + 2>/dev/null || true && \
-    find node_modules -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true && \
-    find node_modules -type d -name "__tests__" -exec rm -rf {} + 2>/dev/null || true && \
-    find node_modules -type d -name "*.test.js" -exec rm -rf {} + 2>/dev/null || true && \
-    find node_modules -type f -name "*.map" -delete 2>/dev/null || true && \
-    find node_modules -type f -name "*.d.ts" -delete 2>/dev/null || true && \
-    find node_modules -type f -name "*.md" -delete 2>/dev/null || true && \
-    find node_modules -type f -name "*.txt" -delete 2>/dev/null || true && \
-    find node_modules -type f -name "LICENSE" -delete 2>/dev/null || true && \
-    find node_modules -type f -name "CHANGELOG*" -delete 2>/dev/null || true && \
-    find node_modules -type f -name "README*" -delete 2>/dev/null || true && \
-    find node_modules -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true && \
-    find node_modules -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true
+    npm cache clean --force
 
 # Generate Prisma client
 RUN npx prisma generate
@@ -84,11 +74,7 @@ RUN rm -rf /tmp/* && \
     rm -rf node_modules/prisma && \
     # Remove npm documentation and man pages
     rm -rf /usr/local/share/man && \
-    rm -rf /usr/local/share/doc && \
-    # Remove TypeScript from node_modules if present (not needed at runtime)
-    rm -rf node_modules/typescript 2>/dev/null || true && \
-    # Remove other build tools that might have been installed
-    rm -rf node_modules/@types 2>/dev/null || true
+    rm -rf /usr/local/share/doc
 
 # Copy built application from builder
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist

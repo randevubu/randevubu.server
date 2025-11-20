@@ -23,3 +23,5 @@ END$$;
 CREATE INDEX IF NOT EXISTS "businesses_googlePlaceId_idx" ON public.businesses("googlePlaceId");
 
 
+
+
