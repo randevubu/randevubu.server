@@ -21,7 +21,7 @@ export interface StandardError {
   key: ErrorTranslationKey;
 
   /** Parameters for dynamic translation (e.g., {businessName: "My Salon"}) */
-  params?: Record<string, any>;
+  params?: Record<string, unknown>;
 
   /** Additional error details for debugging */
   details?: any;
@@ -47,19 +47,19 @@ export interface ErrorResponse {
 /**
  * Standard API success response
  */
-export interface SuccessResponse<T = any> {
+export interface SuccessResponse<T = unknown> {
   success: true;
   statusCode: number;
   data?: T;
   message?: string;
   key?: string; // Translation key for frontend i18n (e.g., 'success.appointment.created')
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
 }
 
 /**
  * Generic API response (success or error)
  */
-export type ApiResponse<T = any> = SuccessResponse<T> | ErrorResponse;
+export type ApiResponse<T = unknown> = SuccessResponse<T> | ErrorResponse;
 
 /**
  * App Error class for application-specific errors

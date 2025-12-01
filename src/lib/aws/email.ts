@@ -1,7 +1,6 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { config as appConfig } from '../../config/environment';
-import logger from '../../utils/Logger/logger';
-
+import logger from "../../utils/Logger/logger";
 export interface SendEmailOptions {
   to: string;
   from?: string;

@@ -1,3 +1,5 @@
+import { ClosureType } from './business';
+
 // Notification Domain Types
 export interface NotificationResult {
   success: boolean;
@@ -15,7 +17,7 @@ export interface EnhancedClosureData {
   endDate: Date;
   reason: string;
   message?: string;
-  type: 'TEMPORARY' | 'PERMANENT' | 'RESCHEDULE';
+  type: ClosureType | 'TEMPORARY' | 'PERMANENT' | 'RESCHEDULE';
   isRecurring: boolean;
   recurringPattern?: {
     frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY';
@@ -78,7 +80,8 @@ export enum NotificationStatus {
   SENT = 'SENT',
   DELIVERED = 'DELIVERED',
   FAILED = 'FAILED',
-  CANCELLED = 'CANCELLED'
+  CANCELLED = 'CANCELLED',
+  READ = 'READ'
 }
 
 export enum NotificationChannel {
@@ -86,6 +89,15 @@ export enum NotificationChannel {
   EMAIL = 'EMAIL',
   PUSH = 'PUSH',
   IN_APP = 'IN_APP'
+}
+
+export interface NotificationPayload {
+  type?: string;
+  appointmentId?: string;
+  businessId?: string;
+  actionUrl?: string;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 

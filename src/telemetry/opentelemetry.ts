@@ -1,5 +1,4 @@
 import logger from "../utils/Logger/logger";
-
 // OpenTelemetry bootstrap. Safe no-op when disabled via env.
 // Enable by setting OTEL_ENABLED=true and providing OTLP endpoint/token.
 

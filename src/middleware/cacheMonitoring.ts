@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { cacheService } from '../services/cacheService';
+import { cacheService } from '../services/core/cacheService';
 import { CacheResponse } from '../types/request';
-import logger from '../utils/Logger/logger';
-
+import logger from "../utils/Logger/logger";
 /**
  * Cache monitoring middleware
  * Tracks cache performance metrics and provides real-time monitoring

@@ -9,7 +9,7 @@ import { AppointmentRepository } from '../../../repositories/appointmentReposito
 import { RBACService } from '../rbac/rbacService';
 import { PermissionName } from '../../../types/auth';
 import { getCurrentTimeInIstanbul } from '../../../utils/timezoneHelper';
-
+import logger from "../../../utils/Logger/logger";
 export class BusinessClosureService {
   constructor(
     private businessClosureRepository: BusinessClosureRepository,
@@ -85,7 +85,7 @@ export class BusinessClosureService {
     if (affectedAppointments.length > 0) {
       // For now, we'll create the closure but businesses need to handle affected appointments
       // In a full implementation, we might automatically cancel or reschedule
-      console.warn(`Creating closure that affects ${affectedAppointments.length} appointments`);
+      logger.warn(`Creating closure that affects ${affectedAppointments.length} appointments`);
     }
 
     return await this.businessClosureRepository.create(businessId, userId, data);

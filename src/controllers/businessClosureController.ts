@@ -9,6 +9,7 @@ import { BusinessClosureService, ClosureAnalyticsService } from '../services/dom
 import { NotificationService } from '../services/domain/notification';
 import { AuthenticatedRequest } from '../types/request';
 import {
+  AppointmentData,
   AvailabilityAlertRequest,
   ClosureType,
   CreateEnhancedClosureRequest,
@@ -902,14 +903,16 @@ export class BusinessClosureController {
         const affectedAppointments = await this.appointmentRescheduleService.getAffectedAppointments(closure.id);
         
         for (const appointment of affectedAppointments) {
+          const businessName =
+            appointment.business?.name || closure.businessName || 'Unknown Business';
           const enhancedClosureData = {
             id: closure.id,
             businessId: closure.businessId,
-            businessName: 'Business Name', // TODO: Get from business service
+            businessName,
             startDate: closure.startDate,
             endDate: closure.endDate || new Date(),
             reason: closure.reason,
-            type: closure.type as any,
+            type: closure.type,
             message: closureData.notificationMessage,
             isRecurring: false,
             affectedAppointments: 0,
@@ -949,14 +952,16 @@ export class BusinessClosureController {
       const results = [];
 
       for (const appointment of affectedAppointments) {
+        const businessName =
+          appointment.business?.name || 'Unknown Business';
         const enhancedClosureData = {
           id: closureId,
           businessId: appointment.businessId,
-          businessName: 'Business Name', // TODO: Get from included business relation
+          businessName,
           startDate: appointment.startTime,
           endDate: new Date(),
           reason: 'Business closure notification',
-          type: 'OTHER' as any,
+          type: ClosureType.OTHER,
           message,
           isRecurring: false,
           affectedAppointments: 0,
@@ -1072,9 +1077,9 @@ export class BusinessClosureController {
         closureId,
         {
           ...rescheduleOptions,
-          businessHoursOnly: (rescheduleOptions as any).businessHoursOnly ?? true,
-          respectStaffAvailability: (rescheduleOptions as any).respectStaffAvailability ?? true,
-          maxSuggestions: (rescheduleOptions as any).maxSuggestions ?? 3
+          businessHoursOnly: rescheduleOptions.businessHoursOnly ?? true,
+          respectStaffAvailability: rescheduleOptions.respectStaffAvailability ?? true,
+          maxSuggestions: rescheduleOptions.maxSuggestions ?? 3
         }
       );
 
@@ -1335,7 +1340,7 @@ export class BusinessClosureController {
       }
 
       // If no endDate provided or startDate equals endDate, treat as zero-duration closure
-      let affectedAppointments: any[] = [];
+      let affectedAppointments: AppointmentData[] = [];
       if (end && end > start) {
         // Only check for affected appointments if there's an actual time range
         affectedAppointments = await this.businessClosureService.getAffectedAppointments(

@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { NextFunction, Request, Response } from "express";
 import { NotificationValidationRequest as BaseNotificationValidationRequest } from "../types/request";
-
+import logger from "../utils/Logger/logger";
 const prisma = new PrismaClient();
 
 export interface NotificationValidationRequest extends BaseNotificationValidationRequest {
@@ -97,7 +97,7 @@ export async function validateNotificationSettings(
 
     next();
   } catch (error) {
-    console.error("Notification validation error:", error);
+    logger.error("Notification validation error:", error);
     res.status(400).json({
       success: false,
       error: {
@@ -303,7 +303,7 @@ export async function validateNotificationSettingsWithDetailedErrors(
 
     next();
   } catch (error) {
-    console.error("Notification validation error:", error);
+    logger.error("Notification validation error:", error);
     res.status(400).json({
       success: false,
       error: {

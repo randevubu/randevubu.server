@@ -1,73 +1,105 @@
-import logger from "../../../utils/Logger/logger";
 import { SMSMessageTemplates } from "../../../utils/smsMessageTemplates";
 import { Netgsm } from '@netgsm/sms';
 
 import { SMSSendOptions, SMSResponse } from '../../../types/sms';
-
+import logger from "../../../utils/Logger/logger";
 export class SMSService {
   private readonly netgsm: Netgsm;
   private readonly sender: string;
+  private readonly username: string;
+  private readonly password: string;
 
   constructor() {
-    const username = process.env.NETGSM_USERNAME || "";
-    const password = process.env.NETGSM_PASSWORD || "";
-    this.sender = process.env.NETGSM_MSGHEADER || "";
+    // Get raw credentials from environment
+    const rawUsername = process.env.NETGSM_USERNAME || "";
+    const rawPassword = process.env.NETGSM_PASSWORD || "";
+    const rawSender = process.env.NETGSM_MSGHEADER || "";
 
-    // Log credential status (masked for security)
-    const maskedUsername = username ? `${username.substring(0, 3)}***${username.slice(-2)}` : "NOT SET";
-    const maskedPassword = password ? "***" : "NOT SET";
+    // Trim credentials to remove accidental whitespace
+    this.username = rawUsername.trim();
+    this.password = rawPassword.trim();
+    this.sender = rawSender.trim();
+
+    // Log credential status (masked for security) with detailed debugging
+    const maskedUsername = this.username ? `${this.username.substring(0, 3)}***${this.username.slice(-2)}` : "NOT SET";
+    const maskedPassword = this.password ? "***" : "NOT SET";
     const maskedSender = this.sender || "NOT SET";
 
     logger.info("SMS Service: Initializing NetGSM", {
-      usernameConfigured: !!username,
-      passwordConfigured: !!password,
+      usernameConfigured: !!this.username,
+      passwordConfigured: !!this.password,
       senderConfigured: !!this.sender,
       maskedUsername,
       maskedSender,
+      usernameLength: this.username.length,
+      passwordLength: this.password.length,
+      senderLength: this.sender.length,
+      // Debug: Check for raw vs trimmed differences
+      usernameTrimmed: rawUsername !== this.username,
+      passwordTrimmed: rawPassword !== this.password,
+      senderTrimmed: rawSender !== this.sender,
     });
 
-    if (!username || !password) {
+    if (!this.username || !this.password) {
       logger.warn(
         "SMS API credentials not configured. SMS sending will be disabled.",
         {
-          hasUsername: !!username,
-          hasPassword: !!password,
+          hasUsername: !!this.username,
+          hasPassword: !!this.password,
           hasSender: !!this.sender,
+          usernameRaw: `"${rawUsername}"`,
+          usernameLength: rawUsername.length,
+          passwordLength: rawPassword.length,
         }
       );
     }
 
-    this.netgsm = new Netgsm({
-      username,
-      password
-    });
+    try {
+      this.netgsm = new Netgsm({
+        username: this.username,
+        password: this.password
+      });
+      
+      logger.debug("SMS Service: NetGSM client initialized successfully", {
+        usernameConfigured: !!this.username,
+        passwordConfigured: !!this.password,
+      });
+    } catch (error) {
+      logger.error("SMS Service: Failed to initialize NetGSM client", {
+        error: error instanceof Error ? error.message : String(error),
+        username: this.username,
+        hasPassword: !!this.password,
+      });
+      // Initialize with empty credentials to prevent crashes
+      this.netgsm = new Netgsm({
+        username: "",
+        password: ""
+      });
+    }
   }
 
   async sendSMS(options: SMSSendOptions): Promise<SMSResponse> {
     const { phoneNumber, message, context } = options;
 
-    // Verify credentials are loaded
-    const username = process.env.NETGSM_USERNAME || "";
-    const password = process.env.NETGSM_PASSWORD || "";
-    const maskedUsername = username ? `${username.substring(0, 3)}***${username.slice(-2)}` : "NOT SET";
+    const maskedUsername = this.username ? `${this.username.substring(0, 3)}***${this.username.slice(-2)}` : "NOT SET";
     
-      logger.info("SMS Service: Starting SMS send process", {
+    logger.info("SMS Service: Starting SMS send process", {
       phoneNumber: this.maskPhoneNumber(phoneNumber),
       messageLength: message.length,
-      hasCredentials: !!(username && password),
+      hasCredentials: !!(this.username && this.password),
       hasSender: !!this.sender,
       maskedUsername,
       sender: this.sender || "Not configured",
       requestId: context?.requestId,
     });
 
-    // Double-check credentials at runtime
-    if (!username || !password) {
+    // Check credentials are loaded
+    if (!this.username || !this.password) {
       const errorMsg = "SMS credentials not found in environment variables. Please check NETGSM_USERNAME and NETGSM_PASSWORD.";
       logger.error("SMS Service: " + errorMsg, {
         phoneNumber: this.maskPhoneNumber(phoneNumber),
-        hasUsername: !!username,
-        hasPassword: !!password,
+        hasUsername: !!this.username,
+        hasPassword: !!this.password,
         requestId: context?.requestId,
       });
       
@@ -118,8 +150,15 @@ export class SMSService {
       // Send SMS using NetGSM API
       let response;
       try {
+        logger.debug("SMS Service: About to call NetGSM.sendRestSms()", {
+          msgheaderLength: this.sender.length,
+          messageLength: message.length,
+          phoneNumberLength: normalizedPhone.length,
+        });
+
         response = await this.netgsm.sendRestSms({
           msgheader: this.sender,
+          encoding: 'TR',  // Turkish character support
           messages: [
             {
               msg: message,
@@ -151,17 +190,25 @@ export class SMSService {
           errorMsg = String(apiError);
         }
         
+        // Enhanced error logging with credential validation info
+        const credentialValidation = this.validateCredentials();
+        
         logger.error("SMS Service: NetGSM API call failed", {
           phoneNumber: this.maskPhoneNumber(normalizedPhone),
           error: errorMsg,
           errorDetails: errorDetails ? JSON.stringify(errorDetails) : undefined,
           errorType: apiError instanceof Error ? apiError.constructor.name : typeof apiError,
           requestId: context?.requestId,
+          // Add credential diagnostic info
+          credentialValidationIssues: credentialValidation.issues,
+          credentialDetails: credentialValidation.details,
         });
         if (errorDetails) {
           logger.error("NetGSM API error details", {
             errorDetails: JSON.stringify(errorDetails),
             requestId: context?.requestId,
+            // Also include credential info here
+            credentialValidation: credentialValidation,
           });
         }
 
@@ -246,12 +293,15 @@ export class SMSService {
 
   private normalizePhoneNumber(phoneNumber: string): string | null {
     try {
+      // Input: E.164 format like "+905466604336" (from phoneVerificationService)
+      // NetGSM requires: format like "5466604336" (without country code and leading +)
+      
       // Remove all non-digit characters
       const digits = phoneNumber.replace(/\D/g, "");
 
       // Handle Turkish phone numbers - NetGSM expects format: 5xxxxxxxxx
       if (digits.startsWith("90")) {
-        // Has country code, remove it and return the rest
+        // Has country code (90), remove it and keep the rest
         const withoutCountryCode = digits.substring(2);
         if (
           withoutCountryCode.startsWith("5") &&
@@ -260,16 +310,21 @@ export class SMSService {
           return withoutCountryCode;
         }
       } else if (digits.startsWith("0")) {
-        // Remove leading 0
+        // Has leading 0, remove it and keep the rest
         const withoutZero = digits.substring(1);
         if (withoutZero.startsWith("5") && withoutZero.length === 10) {
           return withoutZero;
         }
       } else if (digits.startsWith("5") && digits.length === 10) {
-        // Already in correct format
+        // Already in correct format (5xxxxxxxxx)
         return digits;
       }
 
+      logger.warn("Phone number format not recognized", {
+        originalPhone: this.maskPhoneNumber(phoneNumber),
+        digits,
+        length: digits.length,
+      });
       return null;
     } catch (error) {
       logger.warn("Phone number normalization failed", {
@@ -299,5 +354,58 @@ export class SMSService {
       message: testMessage,
       context: { requestId: "test" },
     });
+  }
+
+  /**
+   * Validate credentials and provide detailed diagnostic information
+   */
+  validateCredentials(): {
+    valid: boolean;
+    issues: string[];
+    details: {
+      usernameSet: boolean;
+      passwordSet: boolean;
+      senderSet: boolean;
+      usernameLength: number;
+      passwordLength: number;
+      senderLength: number;
+      usernameStartsWith: string;
+      hasSpecialChars: boolean;
+    };
+  } {
+    const issues: string[] = [];
+
+    if (!this.username) {
+      issues.push("NETGSM_USERNAME is not set");
+    } else if (this.username.length < 3) {
+      issues.push("NETGSM_USERNAME appears to be too short");
+    }
+
+    if (!this.password) {
+      issues.push("NETGSM_PASSWORD is not set");
+    } else if (this.password.length < 6) {
+      issues.push("NETGSM_PASSWORD appears to be too short");
+    }
+
+    if (!this.sender) {
+      issues.push("NETGSM_MSGHEADER is not set");
+    }
+
+    const hasSpecialChars = /[^a-zA-Z0-9._-]/.test(this.username + this.password);
+
+    return {
+      valid: issues.length === 0,
+      issues,
+      details: {
+        usernameSet: !!this.username,
+        passwordSet: !!this.password,
+        senderSet: !!this.sender,
+        usernameLength: this.username.length,
+        passwordLength: this.password.length,
+        senderLength: this.sender.length,
+        usernameStartsWith: this.username.substring(0, 1),
+        hasSpecialChars,
+      },
+    };
   }
 }

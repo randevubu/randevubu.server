@@ -5,10 +5,9 @@ import {
   UserNotFoundError,
   ValidationError,
 } from "../../../types/errors";
-import logger from "../../../utils/Logger/logger";
 
 import { Permission, Role, UserPermissions } from '../../../types/rbac';
-
+import logger from "../../../utils/Logger/logger";
 export interface PermissionContext {
   userId: string;
   resource: string;

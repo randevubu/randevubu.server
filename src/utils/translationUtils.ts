@@ -6,8 +6,8 @@
  */
 
 import { Request } from "express";
-import { TranslationService } from "../services/translationServiceFallback";
-import { TranslationParams } from "../services/translationServiceFallback";
+import { TranslationService } from "../services/core/translationService";
+import { TranslationParams } from "../services/core/translationService";
 import { getLanguageFromRequest } from "../middleware/language";
 
 // Singleton instance (lazy initialization)

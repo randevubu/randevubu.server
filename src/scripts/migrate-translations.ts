@@ -1,3 +1,4 @@
+import logger from "../utils/Logger/logger";
 /**
  * Migration script for future database translation system
  * Currently using fallback translation service
@@ -6,8 +7,8 @@
 // Note: This script is for future use when database migration is ready
 // For now, translations are handled by the fallback service
 
-console.log('Translation migration script - Database migration not yet applied');
-console.log('Using fallback translation service for now');
+logger.info('Translation migration script - Database migration not yet applied');
+logger.info('Using fallback translation service for now');
 
 const translations = {
   tr: {
@@ -31,22 +32,22 @@ const translations = {
 };
 
 async function migrateTranslations() {
-  console.log('Translation migration not yet available - using fallback service');
-  console.log('To enable database translations:');
-  console.log('1. Run: npx prisma migrate dev --name add-translations-table');
-  console.log('2. Update this script to use the database');
-  console.log('3. Switch to the full TranslationService');
+  logger.info('Translation migration not yet available - using fallback service');
+  logger.info('To enable database translations:');
+  logger.info('1. Run: npx prisma migrate dev --name add-translations-table');
+  logger.info('2. Update this script to use the database');
+  logger.info('3. Switch to the full TranslationService');
 }
 
 // Run migration if called directly
 if (require.main === module) {
   migrateTranslations()
     .then(() => {
-      console.log('Migration completed successfully');
+      logger.info('Migration completed successfully');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('Migration failed:', error);
+      logger.error('Migration failed:', error);
       process.exit(1);
     });
 }

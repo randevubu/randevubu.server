@@ -4,61 +4,102 @@ import { BusinessContextRequest } from "../../../src/middleware/businessContext"
 import { AuthenticatedRequest } from "../../../src/types/request";
 import { AppointmentStatus } from "../../../src/types/business";
 import { sendSuccessResponse } from "../../../src/utils/responseUtils";
+import type { AppointmentService } from "../../../src/services/domain/appointment/appointmentService";
 import { TestHelpers } from "../../utils/testHelpers";
 
 // Mock dependencies
-jest.mock("../../../src/services/appointmentService");
-jest.mock("../../../src/utils/logger");
+jest.mock("../../../src/services/domain/appointment/appointmentService");
+jest.mock("../../../src/utils/Logger/logger");
+jest.mock("../../../src/utils/responseUtils", () => {
+  const actual = jest.requireActual("../../../src/utils/responseUtils");
+  return {
+    __esModule: true,
+    ...actual,
+    sendSuccessResponse: jest.fn(),
+  };
+});
 
-// Mock errorResponse functions
-jest.mock("../../../src/utils/errorResponse", () => ({
-  ...jest.requireActual("../../../src/utils/errorResponse"),
-  sendSuccessResponse: jest.fn(),
-  handleRouteError: jest.fn(),
-}));
+const successResponseSpy =
+  sendSuccessResponse as jest.MockedFunction<typeof sendSuccessResponse>;
 
 describe("AppointmentController", () => {
   let appointmentController: AppointmentController;
-  let mockAppointmentService: any;
+  interface AppointmentServiceMock {
+    getMyAppointments: jest.Mock;
+    createAppointment: jest.Mock;
+    getAppointmentById: jest.Mock;
+    getCustomerAppointments: jest.Mock;
+    getBusinessAppointments: jest.Mock;
+    searchAppointments: jest.Mock;
+    updateAppointment: jest.Mock;
+    updateAppointmentStatus: jest.Mock;
+    cancelAppointment: jest.Mock;
+    confirmAppointment: jest.Mock;
+    completeAppointment: jest.Mock;
+    markNoShow: jest.Mock;
+    getUpcomingAppointments: jest.Mock;
+    getTodaysAppointments: jest.Mock;
+    getAppointmentStats: jest.Mock;
+    getAllAppointments: jest.Mock;
+    batchUpdateAppointmentStatus: jest.Mock;
+    batchCancelAppointments: jest.Mock;
+    getAppointmentsByDateRange: jest.Mock;
+    getAppointmentsByStatus: jest.Mock;
+    getAppointmentsByService: jest.Mock;
+    getAppointmentsByStaff: jest.Mock;
+    getNearestAppointmentInCurrentHour: jest.Mock;
+    getAppointmentsInCurrentHour: jest.Mock;
+    getPublicAppointments: jest.Mock;
+  }
+
+  const createAppointmentServiceMock = (): AppointmentServiceMock => ({
+    getMyAppointments: jest.fn(),
+    createAppointment: jest.fn(),
+    getAppointmentById: jest.fn(),
+    getCustomerAppointments: jest.fn(),
+    getBusinessAppointments: jest.fn(),
+    searchAppointments: jest.fn(),
+    updateAppointment: jest.fn(),
+    updateAppointmentStatus: jest.fn(),
+    cancelAppointment: jest.fn(),
+    confirmAppointment: jest.fn(),
+    completeAppointment: jest.fn(),
+    markNoShow: jest.fn(),
+    getUpcomingAppointments: jest.fn(),
+    getTodaysAppointments: jest.fn(),
+    getAppointmentStats: jest.fn(),
+    getAllAppointments: jest.fn(),
+    batchUpdateAppointmentStatus: jest.fn(),
+    batchCancelAppointments: jest.fn(),
+    getAppointmentsByDateRange: jest.fn(),
+    getAppointmentsByStatus: jest.fn(),
+    getAppointmentsByService: jest.fn(),
+    getAppointmentsByStaff: jest.fn(),
+    getNearestAppointmentInCurrentHour: jest.fn(),
+    getAppointmentsInCurrentHour: jest.fn(),
+    getPublicAppointments: jest.fn(),
+  });
+
+  let mockAppointmentService: AppointmentServiceMock;
   let mockRequest: AuthenticatedRequest;
   let mockResponse: Response;
   let mockBusinessContextRequest: BusinessContextRequest;
+  const createDate = (date: string, time = "00:00"): Date =>
+    new Date(`${date}T${time}:00.000Z`);
 
   beforeEach(() => {
     // Reset all mocks
     jest.clearAllMocks();
+    successResponseSpy.mockReset();
+    successResponseSpy.mockResolvedValue(undefined);
 
     // Create mock AppointmentService
-    mockAppointmentService = {
-      getMyAppointments: jest.fn(),
-      createAppointment: jest.fn(),
-      getAppointmentById: jest.fn(),
-      getCustomerAppointments: jest.fn(),
-      getBusinessAppointments: jest.fn(),
-      searchAppointments: jest.fn(),
-      updateAppointment: jest.fn(),
-      updateAppointmentStatus: jest.fn(),
-      cancelAppointment: jest.fn(),
-      confirmAppointment: jest.fn(),
-      completeAppointment: jest.fn(),
-      markNoShow: jest.fn(),
-      getUpcomingAppointments: jest.fn(),
-      getTodaysAppointments: jest.fn(),
-      getAppointmentStats: jest.fn(),
-      getAllAppointments: jest.fn(),
-      batchUpdateAppointmentStatus: jest.fn(),
-      batchCancelAppointments: jest.fn(),
-      getAppointmentsByDateRange: jest.fn(),
-      getAppointmentsByStatus: jest.fn(),
-      getAppointmentsByService: jest.fn(),
-      getAppointmentsByStaff: jest.fn(),
-      getNearestAppointmentInCurrentHour: jest.fn(),
-      getAppointmentsInCurrentHour: jest.fn(),
-      getPublicAppointments: jest.fn(),
-    };
+    mockAppointmentService = createAppointmentServiceMock();
 
     // Create AppointmentController instance
-    appointmentController = new AppointmentController(mockAppointmentService);
+    appointmentController = new AppointmentController(
+      mockAppointmentService as unknown as AppointmentService
+    );
 
     // Create mock request and response
     mockRequest = TestHelpers.createMockRequest() as AuthenticatedRequest;
@@ -101,10 +142,10 @@ describe("AppointmentController", () => {
         appointments: [
           {
             id: "appointment-1",
-            date: "2024-01-15",
+            date: createDate("2024-01-15"),
             status: AppointmentStatus.CONFIRMED,
-            startTime: "10:00",
-            endTime: "11:00",
+            startTime: createDate("2024-01-15", "10:00"),
+            endTime: createDate("2024-01-15", "11:00"),
             duration: 60,
             price: 100,
             currency: "TRY",
@@ -123,10 +164,10 @@ describe("AppointmentController", () => {
           },
           {
             id: "appointment-2",
-            date: "2024-01-16",
+            date: createDate("2024-01-16"),
             status: AppointmentStatus.CONFIRMED,
-            startTime: "11:00",
-            endTime: "12:00",
+            startTime: createDate("2024-01-16", "11:00"),
+            endTime: createDate("2024-01-16", "12:00"),
             duration: 60,
             price: 100,
             currency: "TRY",
@@ -176,15 +217,17 @@ describe("AppointmentController", () => {
           limit: undefined,
         }
       );
-      expect(sendSuccessResponse).toHaveBeenCalledWith(
+      expect(successResponseSpy).toHaveBeenCalledWith(
         mockResponse,
+        "success.appointment.retrievedList",
         expect.objectContaining({
           appointments: expect.any(Array),
           total: expect.any(Number),
           page: expect.any(Number),
           totalPages: expect.any(Number),
         }),
-        "Appointments retrieved successfully"
+        200,
+        mockBusinessContextRequest
       );
     });
 
@@ -217,14 +260,12 @@ describe("AppointmentController", () => {
       // Assert
       expect(mockAppointmentService.getMyAppointments).toHaveBeenCalledWith(
         "user-123",
-        {
+        expect.objectContaining({
           status: AppointmentStatus.CONFIRMED,
-          date: "2024-01-15",
           businessId: "business-123",
-          staffId: undefined,
           page: 1,
           limit: 10,
-        }
+        })
       );
     });
   });
@@ -262,11 +303,13 @@ describe("AppointmentController", () => {
         "user-123",
         appointmentData
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockAppointment,
-        message: "Appointment created successfully",
-      });
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.created",
+        mockAppointment,
+        201,
+        mockRequest
+      );
     });
   });
 
@@ -295,10 +338,13 @@ describe("AppointmentController", () => {
         "user-123",
         appointmentId
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockAppointment,
-      });
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.retrieved",
+        mockAppointment,
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -332,16 +378,18 @@ describe("AppointmentController", () => {
       expect(
         mockAppointmentService.getCustomerAppointments
       ).toHaveBeenCalledWith("user-123", customerId, 1, 20);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockAppointments.appointments,
-        meta: {
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.customerRetrieved",
+        expect.objectContaining({
+          appointments: mockAppointments.appointments,
           total: 2,
           page: 1,
           totalPages: 1,
-          limit: 20,
-        },
-      });
+        }),
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -349,7 +397,19 @@ describe("AppointmentController", () => {
     it("should get business appointments successfully", async () => {
       // Arrange
       const businessId = "business-123";
-      mockRequest.params = { businessId };
+      const requestWithBusiness = mockRequest as BusinessContextRequest & {
+        business: {
+          id: string;
+          name: string;
+          ownerId: string;
+        };
+      };
+      requestWithBusiness.params = { businessId };
+      requestWithBusiness.business = {
+        id: businessId,
+        name: "Test Business",
+        ownerId: "owner-123",
+      };
 
       const mockAppointments = {
         appointments: [
@@ -367,25 +427,31 @@ describe("AppointmentController", () => {
 
       // Act
       await appointmentController.getBusinessAppointments(
-        mockRequest,
+        requestWithBusiness,
         mockResponse
       );
 
       // Assert
       expect(
         mockAppointmentService.getBusinessAppointments
-      ).toHaveBeenCalledWith("user-123", businessId, 1, 20, undefined);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockAppointments.appointments,
-        meta: {
-          total: 2,
-          page: 1,
-          totalPages: 1,
-          limit: 20,
-          businessId: businessId,
-        },
-      });
+      ).toHaveBeenCalledWith("user-123", businessId, 1, 20);
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.businessRetrieved",
+        expect.objectContaining({
+          appointments: mockAppointments.appointments,
+          meta: expect.objectContaining({
+            total: 2,
+            page: 1,
+            totalPages: 1,
+            limit: 20,
+            businessId,
+            businessName: "Test Business",
+          }),
+        }),
+        200,
+        requestWithBusiness
+      );
     });
   });
 
@@ -418,17 +484,20 @@ describe("AppointmentController", () => {
         1,
         20
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockResults.appointments,
-        meta: expect.objectContaining({
-          total: expect.any(Number),
-          page: expect.any(Number),
-          totalPages: expect.any(Number),
-          limit: expect.any(Number),
-          filters: expect.any(Object),
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.searchCompleted",
+        expect.objectContaining({
+          appointments: mockResults.appointments,
+          total: mockResults.total,
+          page: mockResults.page,
+          totalPages: mockResults.totalPages,
+          limit: 20,
+          filters: expect.objectContaining(searchFilters),
         }),
-      });
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -464,11 +533,13 @@ describe("AppointmentController", () => {
         appointmentId,
         updateData
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockUpdatedAppointment,
-        message: "Appointment updated successfully",
-      });
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.updated",
+        mockUpdatedAppointment,
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -502,11 +573,14 @@ describe("AppointmentController", () => {
         appointmentId,
         { status }
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockUpdatedAppointment,
-        message: `Appointment status updated to ${status}`,
-      });
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.statusUpdated",
+        mockUpdatedAppointment,
+        200,
+        mockRequest,
+        { status }
+      );
     });
   });
 
@@ -538,11 +612,13 @@ describe("AppointmentController", () => {
         appointmentId,
         reason
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockCancelledAppointment,
-        message: "Appointment cancelled successfully",
-      });
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.cancelled",
+        mockCancelledAppointment,
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -569,11 +645,13 @@ describe("AppointmentController", () => {
         "user-123",
         appointmentId
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockConfirmedAppointment,
-        message: "Appointment confirmed successfully",
-      });
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.confirmed",
+        mockConfirmedAppointment,
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -604,11 +682,13 @@ describe("AppointmentController", () => {
         appointmentId,
         undefined
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockCompletedAppointment,
-        message: "Appointment completed successfully",
-      });
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.completed",
+        mockCompletedAppointment,
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -635,11 +715,13 @@ describe("AppointmentController", () => {
         "user-123",
         appointmentId
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockNoShowAppointment,
-        message: "Appointment marked as no-show",
-      });
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.markedNoShow",
+        mockNoShowAppointment,
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -665,14 +747,17 @@ describe("AppointmentController", () => {
       expect(
         mockAppointmentService.getUpcomingAppointments
       ).toHaveBeenCalledWith("user-123", 10);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockAppointments,
-        meta: expect.objectContaining({
-          total: expect.any(Number),
-          limit: expect.any(Number),
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.upcomingRetrieved",
+        expect.objectContaining({
+          appointments: mockAppointments,
+          total: mockAppointments.length,
+          limit: 10,
         }),
-      });
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -680,14 +765,26 @@ describe("AppointmentController", () => {
     it("should get today appointments successfully", async () => {
       // Arrange
       const businessId = "business-123";
-      mockBusinessContextRequest.params = { businessId };
+      const requestWithBusiness = mockBusinessContextRequest as BusinessContextRequest & {
+        business: {
+          id: string;
+          name: string;
+          ownerId: string;
+        };
+      };
+      requestWithBusiness.params = { businessId };
+      requestWithBusiness.business = {
+        id: businessId,
+        name: "Test Business",
+        ownerId: "owner-123",
+      };
 
       const mockAppointments = [
         {
           id: "appointment-1",
-          date: "2024-01-15",
-          startTime: "10:00",
-          endTime: "11:00",
+          date: createDate("2024-01-15"),
+          startTime: createDate("2024-01-15", "10:00"),
+          endTime: createDate("2024-01-15", "11:00"),
           duration: 60,
           status: "CONFIRMED",
           price: 100,
@@ -702,9 +799,9 @@ describe("AppointmentController", () => {
         },
         {
           id: "appointment-2",
-          date: "2024-01-15",
-          startTime: "11:00",
-          endTime: "12:00",
+          date: createDate("2024-01-15"),
+          startTime: createDate("2024-01-15", "11:00"),
+          endTime: createDate("2024-01-15", "12:00"),
           duration: 60,
           status: "CONFIRMED",
           price: 100,
@@ -725,7 +822,7 @@ describe("AppointmentController", () => {
 
       // Act
       await appointmentController.getTodaysAppointments(
-        mockBusinessContextRequest,
+        requestWithBusiness,
         mockResponse
       );
 
@@ -734,24 +831,19 @@ describe("AppointmentController", () => {
         "user-123",
         businessId
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: expect.arrayContaining([
-          expect.objectContaining({
-            id: expect.any(String),
-            date: expect.any(String),
-            startTime: expect.any(String),
-            endTime: expect.any(String),
-            duration: expect.any(Number),
-            status: expect.any(String),
-            price: expect.any(Number),
-            currency: expect.any(String),
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.todaysRetrieved",
+        expect.objectContaining({
+          appointments: expect.any(Array),
+          meta: expect.objectContaining({
+            total: mockAppointments.length,
+            businessId,
           }),
-        ]),
-        meta: expect.objectContaining({
-          total: expect.any(Number),
         }),
-      });
+        200,
+        requestWithBusiness
+      );
     });
   });
 
@@ -783,16 +875,16 @@ describe("AppointmentController", () => {
         undefined,
         undefined
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockStats,
-        meta: expect.objectContaining({
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.statsRetrieved",
+        expect.objectContaining({
+          stats: mockStats,
           businessId: "business-123",
-          accessibleBusinesses: expect.any(Number),
-          startDate: undefined,
-          endDate: undefined,
         }),
-      });
+        200,
+        mockBusinessContextRequest
+      );
     });
   });
 
@@ -819,16 +911,19 @@ describe("AppointmentController", () => {
         1,
         20
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockAppointments.appointments,
-        meta: {
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.allRetrieved",
+        expect.objectContaining({
+          appointments: mockAppointments.appointments,
           total: 2,
           page: 1,
           totalPages: 1,
           limit: 20,
-        },
-      });
+        }),
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -854,10 +949,14 @@ describe("AppointmentController", () => {
       expect(
         mockAppointmentService.batchUpdateAppointmentStatus
       ).toHaveBeenCalledWith("user-123", appointmentIds, status);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        message: "2 appointments updated to CONFIRMED",
-      });
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.batchUpdated",
+        undefined,
+        200,
+        mockRequest,
+        { count: appointmentIds.length }
+      );
     });
   });
 
@@ -883,10 +982,14 @@ describe("AppointmentController", () => {
       expect(
         mockAppointmentService.batchCancelAppointments
       ).toHaveBeenCalledWith("user-123", appointmentIds, reason);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        message: "2 appointments cancelled",
-      });
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.batchCancelled",
+        undefined,
+        200,
+        mockRequest,
+        { count: appointmentIds.length }
+      );
     });
   });
 
@@ -903,17 +1006,15 @@ describe("AppointmentController", () => {
       const mockAppointments = [
         {
           id: "appointment-1",
-          date: "2024-01-15",
-          startTime: "10:00",
-          endTime: "11:00",
+          startTime: createDate("2024-01-15", "10:00"),
+          endTime: createDate("2024-01-15", "11:00"),
           duration: 60,
           status: "CONFIRMED",
         },
         {
           id: "appointment-2",
-          date: "2024-01-20",
-          startTime: "11:00",
-          endTime: "12:00",
+          startTime: createDate("2024-01-20", "11:00"),
+          endTime: createDate("2024-01-20", "12:00"),
           duration: 60,
           status: "CONFIRMED",
         },
@@ -940,25 +1041,19 @@ describe("AppointmentController", () => {
         1,
         1000
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: expect.arrayContaining([
-          expect.objectContaining({
-            id: expect.any(String),
-            date: expect.any(String),
-            startTime: expect.any(String),
-            endTime: expect.any(String),
-            duration: expect.any(Number),
-            status: expect.any(String),
-          }),
-        ]),
-        meta: expect.objectContaining({
-          total: expect.any(Number),
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.byDateRange",
+        expect.objectContaining({
+          appointments: expect.any(Array),
+          total: mockAppointments.length,
           businessId,
           startDate,
           endDate,
         }),
-      });
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -999,18 +1094,21 @@ describe("AppointmentController", () => {
         1,
         20
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockAppointments,
-        meta: expect.objectContaining({
-          total: expect.any(Number),
-          page: expect.any(Number),
-          totalPages: expect.any(Number),
-          limit: expect.any(Number),
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.byStatus",
+        expect.objectContaining({
+          appointments: mockAppointments,
+          total: mockAppointments.length,
+          page: 1,
+          totalPages: 1,
+          limit: 20,
           businessId,
           status,
         }),
-      });
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -1048,17 +1146,20 @@ describe("AppointmentController", () => {
         1,
         20
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockAppointments,
-        meta: expect.objectContaining({
-          total: expect.any(Number),
-          page: expect.any(Number),
-          totalPages: expect.any(Number),
-          limit: expect.any(Number),
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.byService",
+        expect.objectContaining({
+          appointments: mockAppointments,
+          total: mockAppointments.length,
+          page: 1,
+          totalPages: 1,
+          limit: 20,
           serviceId,
         }),
-      });
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -1096,17 +1197,20 @@ describe("AppointmentController", () => {
         1,
         20
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockAppointments,
-        meta: expect.objectContaining({
-          total: expect.any(Number),
-          page: expect.any(Number),
-          totalPages: expect.any(Number),
-          limit: expect.any(Number),
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.byStaff",
+        expect.objectContaining({
+          appointments: mockAppointments,
+          total: mockAppointments.length,
+          page: 1,
+          totalPages: 1,
+          limit: 20,
           staffId,
         }),
-      });
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -1142,28 +1246,16 @@ describe("AppointmentController", () => {
       expect(
         mockAppointmentService.getNearestAppointmentInCurrentHour
       ).toHaveBeenCalledWith("user-123");
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: {
+      expect(successResponseSpy).toHaveBeenCalledWith(
+        mockResponse,
+        "success.appointment.currentHourNearest",
+        expect.objectContaining({
           id: "appointment-123",
           businessId: "business-123",
-          date: "2024-01-15",
-          startTime: expect.any(Date),
-          endTime: expect.any(Date),
-          status: "CONFIRMED",
-          service: {
-            id: "service-1",
-            name: "Test Service",
-            duration: 60,
-          },
-          business: {
-            id: "business-123",
-            name: "Test Business",
-            timezone: "Europe/Istanbul",
-          },
-          timeUntilAppointment: expect.any(Number),
-        },
-      });
+        }),
+        200,
+        mockRequest
+      );
     });
   });
 
@@ -1215,53 +1307,25 @@ describe("AppointmentController", () => {
       expect(
         mockAppointmentService.getAppointmentsInCurrentHour
       ).toHaveBeenCalledWith("user-123");
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: [
-          {
-            id: "appointment-1",
-            businessId: "business-123",
-            date: "2024-01-15",
-            startTime: expect.any(Date),
-            endTime: expect.any(Date),
-            status: "CONFIRMED",
-            service: {
-              id: "service-1",
-              name: "Test Service",
-              duration: 60,
-            },
-            business: {
-              id: "business-123",
-              name: "Test Business",
-              timezone: "Europe/Istanbul",
-            },
-            timeUntilAppointment: expect.any(Number),
-          },
-          {
-            id: "appointment-2",
-            businessId: "business-123",
-            date: "2024-01-15",
-            startTime: expect.any(Date),
-            endTime: expect.any(Date),
-            status: "CONFIRMED",
-            service: {
-              id: "service-2",
-              name: "Test Service 2",
-              duration: 60,
-            },
-            business: {
-              id: "business-123",
-              name: "Test Business",
-              timezone: "Europe/Istanbul",
-            },
-            timeUntilAppointment: expect.any(Number),
-          },
-        ],
-        meta: {
-          count: 2,
+      expect(successResponseSpy).toHaveBeenCalledTimes(1);
+      const [responseArg, keyArg, dataArg] = successResponseSpy.mock.calls[0];
+      expect(responseArg).toBe(mockResponse);
+      expect(keyArg).toBe("success.appointment.currentHourRetrieved");
+      expect(typeof dataArg).toBe("object");
+      expect(dataArg).not.toBeNull();
+      const responseData = dataArg as {
+        appointments: unknown[];
+        count: number;
+        currentHour?: number;
+      };
+      expect(responseData).toEqual(
+        expect.objectContaining({
+          count: mockAppointments.length,
           currentHour: expect.any(Number),
-        },
-      });
+        })
+      );
+      expect(Array.isArray(responseData.appointments)).toBe(true);
+      expect(responseData.appointments).toHaveLength(mockAppointments.length);
     });
   });
 });

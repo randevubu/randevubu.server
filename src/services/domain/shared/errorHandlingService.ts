@@ -3,10 +3,11 @@ import {
   ValidationError, 
   ForbiddenError,
   BusinessError,
-  ErrorContext 
+  ErrorContext,
+  ErrorCode
 } from '../../../types/errors';
-import logger from '../../../utils/Logger/logger';
-
+import { ERROR_CODES } from '../../../constants/errorCodes';
+import logger from "../../../utils/Logger/logger";
 /**
  * ErrorHandlingService
  * 
@@ -22,6 +23,25 @@ import logger from '../../../utils/Logger/logger';
 export class ErrorHandlingService {
   
   /**
+   * Map resource types to appropriate error codes
+   * Maps common resource names to ERROR_CODES values
+   */
+  private getNotFoundErrorCode(resource: string): string {
+    const resourceLower = resource.toLowerCase();
+    const mapping: Record<string, string> = {
+      'business': ERROR_CODES.BUSINESS_NOT_FOUND,
+      'service': ERROR_CODES.SERVICE_NOT_FOUND,
+      'customer': ERROR_CODES.CUSTOMER_NOT_FOUND,
+      'staff': ERROR_CODES.STAFF_NOT_FOUND,
+      'role': ERROR_CODES.ROLE_NOT_FOUND,
+      'appointment': ERROR_CODES.APPOINTMENT_NOT_FOUND,
+      'subscription': ERROR_CODES.SUBSCRIPTION_NOT_FOUND,
+    };
+    
+    return mapping[resourceLower] || ERROR_CODES.VALIDATION_ERROR;
+  }
+
+  /**
    * Create a standardized "not found" error
    * Industry Standard: Consistent resource not found handling
    */
@@ -30,15 +50,24 @@ export class ErrorHandlingService {
     id: string,
     context?: ErrorContext
   ): never {
+    const errorCode = this.getNotFoundErrorCode(resource);
     const message = `${resource} not found`;
 
     this.logErrorEvent('RESOURCE_NOT_FOUND', {
       resource,
       id,
+      errorCode,
       ...(context && { context })
     });
 
-    throw new NotFoundError(message, context, { additionalData: { resource, id } });
+    // Use BusinessError for business resources, NotFoundError for others
+    // Note: Error classes use ErrorCode enum, but error handler maps by string code
+    // The error code string will be used by the error handler for translation
+    if (resource.toLowerCase() === 'business') {
+      throw new BusinessError(message, context, { additionalData: { resource, id, errorCode } });
+    }
+    
+    throw new NotFoundError(message, context, { additionalData: { resource, id, errorCode } });
   }
 
   /**
@@ -374,7 +403,7 @@ export class ErrorHandlingService {
    */
   private logErrorEvent(
     eventType: string, 
-    data: Record<string, any>
+    data: Record<string, unknown>
   ): void {
     try {
       logger.error('Error handling service event', {
@@ -384,7 +413,7 @@ export class ErrorHandlingService {
       });
     } catch (error) {
       // Don't fail the main operation if logging fails
-      console.error('Failed to log error event:', error);
+      logger.error('Failed to log error event:', error);
     }
   }
 }

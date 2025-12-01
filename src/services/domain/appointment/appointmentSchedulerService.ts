@@ -2,11 +2,11 @@
 import { PrismaClient } from "@prisma/client";
 import * as cron from "node-cron";
 import { AppointmentStatus } from "../../../types/business";
-import logger from "../../../utils/Logger/logger";
+
 import { getCurrentTimeInIstanbul } from "../../../utils/timezoneHelper";
 
 import { AppointmentSchedulerConfig } from '../../../types/appointment';
-
+import logger from "../../../utils/Logger/logger";
 export class AppointmentSchedulerService {
   private autoCompleteTask: cron.ScheduledTask | null = null;
   private isRunning: boolean = false;

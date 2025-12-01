@@ -7,11 +7,10 @@ import { NotificationRateLimitService, RateLimitResult } from './notificationRat
 import { NotificationAuditService } from './notificationAuditService';
 import { NotificationMonitoringService } from './notificationMonitoringService';
 import { NotificationChannel, NotificationStatus } from '../../../types/business';
-
-import { SecureNotificationRequest, SecureNotificationResult } from '../../../types/notification';
+import { NotificationPayload, SecureNotificationRequest, SecureNotificationResult } from '../../../types/notification';
 import { RepositoryContainer } from '../../../repositories';
 import { UsageService } from '../usage/usageService';
-
+import logger from "../../../utils/Logger/logger";
 export interface BroadcastNotificationRequest {
   businessId: string;
   userId: string;
@@ -19,7 +18,7 @@ export interface BroadcastNotificationRequest {
   body: string;
   notificationType: 'HOLIDAY' | 'PROMOTION' | 'BROADCAST';
   channels: NotificationChannel[];
-  data?: Record<string, any>;
+  data?: NotificationPayload;
   filters?: {
     relationshipType?: 'ACTIVE' | 'INACTIVE' | 'ALL';
     minAppointments?: number;
@@ -33,7 +32,7 @@ export interface BroadcastNotificationRequest {
 
 export class SecureNotificationService {
   private monitoringService: NotificationMonitoringService;
-  private notificationGateway: UnifiedNotificationGateway;
+  private notificationGateway: UnifiedNotificationGateway | null;
 
   constructor(
     private prisma: PrismaClient,
@@ -50,7 +49,7 @@ export class SecureNotificationService {
       this.notificationGateway = new UnifiedNotificationGateway(prisma, repositories, usageService);
     } else {
       // Fallback: direct use of notificationService (legacy mode)
-      this.notificationGateway = null as any;
+      this.notificationGateway = null;
     }
   }
 
@@ -447,10 +446,10 @@ export class SecureNotificationService {
    */
   private async processNotificationBatch(
     recipientIds: string[],
-    notificationData: {
+      notificationData: {
       title: string;
       body: string;
-      data?: Record<string, any>;
+        data?: NotificationPayload;
       businessId: string;
       notificationType: string;
     }
@@ -524,7 +523,7 @@ export class SecureNotificationService {
     notificationData: {
       title: string;
       body: string;
-      data?: Record<string, any>;
+      data?: NotificationPayload;
       businessId: string;
       notificationType: string;
     }
@@ -729,7 +728,7 @@ export class SecureNotificationService {
       };
 
     } catch (error) {
-      console.error('Error getting notification stats:', error);
+      logger.error('Error getting notification stats:', error);
       throw new Error('Failed to get notification statistics');
     }
   }
@@ -751,7 +750,7 @@ export class SecureNotificationService {
       return await this.auditService.getSecurityAlerts(businessId, hours);
 
     } catch (error) {
-      console.error('Error getting security alerts:', error);
+      logger.error('Error getting security alerts:', error);
       throw new Error('Failed to get security alerts');
     }
   }

@@ -1,7 +1,7 @@
 import { Server } from "http";
-import logger from "./Logger/logger";
-import { SHUTDOWN_CONFIG } from "../config/shutdown";
 
+import { SHUTDOWN_CONFIG } from "../config/shutdown";
+import logger from "./Logger/logger";
 // Production-ready service interfaces
 interface ShutdownableService {
   stop(): void | Promise<void>;

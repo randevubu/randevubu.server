@@ -11,12 +11,12 @@ import { AppointmentSchedulerService } from "../../services/domain/appointment/a
 import { RBACService } from "../../services/domain/rbac/rbacService";
 import { SMSService } from "../../services/domain/sms/smsService";
 import { UsageService } from "../../services/domain/usage/usageService";
-import logger from "../../utils/Logger/logger";
+
 // import { TestSubscriptionHelper } from "../../../tests/fixtures/testSubscriptionHelper";
 import { RepositoryContainer } from "../../repositories";
 import { realTimeCache } from "../../middleware/cacheMiddleware";
 import { trackCachePerformance } from "../../middleware/cacheMonitoring";
-
+import logger from "../../utils/Logger/logger";
 const router = Router();
 
 // Apply cache monitoring to all routes
@@ -104,7 +104,7 @@ if (process.env.NODE_ENV === "development") {
           note: "Please move tests/fixtures/testSubscriptionHelper.ts to src/utils or another location within src/"
         });
       } catch (error) {
-        console.error("Create test subscription error:", error);
+        logger.error("Create test subscription error:", error);
         return res.status(500).json({
           error: "Failed to create test subscription",
           details: error instanceof Error ? error.message : "Unknown error",
@@ -153,7 +153,7 @@ if (process.env.NODE_ENV === "development") {
           testingSchedule: [], // testHelper.getTestingSchedule(),
         });
       } catch (error) {
-        console.error("List test subscriptions error:", error);
+        logger.error("List test subscriptions error:", error);
         return res.status(500).json({
           error: "Failed to list test subscriptions",
           details: error instanceof Error ? error.message : "Unknown error",
@@ -186,7 +186,7 @@ if (process.env.NODE_ENV === "development") {
           deleted: 0, // result,
         });
       } catch (error) {
-        console.error("Cleanup test data error:", error);
+        logger.error("Cleanup test data error:", error);
         return res.status(500).json({
           error: "Failed to cleanup test data",
           details: error instanceof Error ? error.message : "Unknown error",
@@ -235,7 +235,7 @@ if (process.env.NODE_ENV === "development") {
           ],
         });
       } catch (error) {
-        console.error("Get scheduler status error:", error);
+        logger.error("Get scheduler status error:", error);
         return res.status(500).json({
           error: "Failed to get scheduler status",
           details: error instanceof Error ? error.message : "Unknown error",

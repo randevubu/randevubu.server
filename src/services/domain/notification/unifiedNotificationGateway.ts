@@ -1,16 +1,16 @@
 import { PrismaClient } from '@prisma/client';
 import { NotificationService } from './notificationService';
 import { NotificationChannel } from '../../../types/business';
-import { NotificationResult, NotificationStatus } from '../../../types/notification';
+import { NotificationPayload, NotificationResult, NotificationStatus } from '../../../types/notification';
 import { RepositoryContainer } from '../../../repositories';
 import { UsageService } from '../usage/usageService';
-
+import logger from "../../../utils/Logger/logger";
 export interface TransactionalNotificationRequest {
   businessId: string;
   customerId: string;
   title: string;
   body: string;
-  data?: Record<string, any>;
+  data?: NotificationPayload;
   appointmentId?: string;
   url?: string;
   // Override settings for critical transactional messages
@@ -23,7 +23,7 @@ export interface MarketingNotificationRequest {
   customerIds: string[];
   title: string;
   body: string;
-  data?: Record<string, any>;
+  data?: NotificationPayload;
   url?: string;
   // Marketing messages MUST respect all settings
 }
@@ -34,7 +34,7 @@ export interface SystemAlertRequest {
   title: string;
   body: string;
   smsMessage?: string; // Optional SMS-specific message (uses template)
-  data?: Record<string, any>;
+  data?: NotificationPayload;
   appointmentId?: string;
   url?: string;
   // System alerts (like new appointments) respect business settings
@@ -44,11 +44,11 @@ export interface BulkNotificationRequest {
   businessId: string;
   recipients: Array<{
     customerId: string;
-    personalizedData?: Record<string, any>;
+    personalizedData?: NotificationPayload;
   }>;
   title: string;
   body: string;
-  baseData?: Record<string, any>;
+  baseData?: NotificationPayload;
   url?: string;
 }
 
@@ -98,7 +98,7 @@ export class UnifiedNotificationGateway {
     );
 
     if (!businessSettings) {
-      console.warn(`No notification settings found for business ${request.businessId}, using defaults`);
+      logger.warn(`No notification settings found for business ${request.businessId}, using defaults`);
     }
 
     // Get user notification preferences
@@ -131,7 +131,7 @@ export class UnifiedNotificationGateway {
 
       // Check business quiet hours
       if (businessSettings?.quietHours && this.isInQuietHours(now, businessSettings.quietHours, businessSettings.timezone)) {
-        console.log(`Skipping notification - within business quiet hours`);
+        logger.info(`Skipping notification - within business quiet hours`);
         return {
           success: false,
           results: [],
@@ -148,7 +148,7 @@ export class UnifiedNotificationGateway {
           endTime: userPreferences.quietHours.end
         };
         if (this.isInQuietHours(now, quietHoursConfig, userPreferences.timezone)) {
-          console.log(`Skipping notification - within user quiet hours`);
+          logger.info(`Skipping notification - within user quiet hours`);
           return {
             success: false,
             results: [],
@@ -213,7 +213,7 @@ export class UnifiedNotificationGateway {
     );
 
     if (!businessSettings) {
-      console.warn(`No notification settings found for business ${request.businessId}, using defaults`);
+      logger.warn(`No notification settings found for business ${request.businessId}, using defaults`);
     }
 
     // Determine channels - for system alerts, use business settings
@@ -222,7 +222,7 @@ export class UnifiedNotificationGateway {
     // Check business quiet hours
     const now = new Date();
     if (businessSettings?.quietHours && this.isInQuietHours(now, businessSettings.quietHours, businessSettings.timezone)) {
-      console.log(`Skipping system alert - within business quiet hours`);
+      logger.info(`Skipping system alert - within business quiet hours`);
       return {
         success: false,
         results: [],
@@ -333,7 +333,7 @@ export class UnifiedNotificationGateway {
     body: string,
     businessId: string,
     appointmentId?: string,
-    data?: Record<string, any>,
+    data?: NotificationPayload,
     url?: string,
     smsMessage?: string // Optional SMS-specific message
   ): Promise<NotificationGatewayResult> {
@@ -432,7 +432,7 @@ export class UnifiedNotificationGateway {
             });
         }
       } catch (error) {
-        console.error(`Error sending notification through ${channel}:`, error);
+        logger.error(`Error sending notification through ${channel}:`, error);
         results.push({
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -545,7 +545,7 @@ export class UnifiedNotificationGateway {
         return current >= start && current <= end;
       }
     } catch (error) {
-      console.error('Error checking quiet hours:', error);
+      logger.error('Error checking quiet hours:', error);
       return false;
     }
   }

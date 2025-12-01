@@ -16,7 +16,8 @@ import { RBACService } from '../services/domain/rbac';
 import { TokenService } from '../services/domain/token';
 import { StaffService } from '../services/domain/staff';
 import { AuthenticatedRequest, AuthenticatedRequestWithFile } from '../types/request';
-import { BusinessData, BusinessSubscriptionData } from '../types/business';
+import { AppointmentStatus, BusinessData, BusinessSubscriptionData } from '../types/business';
+import { TokenPair } from '../types/auth';
 // Cache invalidation handled by routes, not controllers
 import {
   handleRouteError,
@@ -27,7 +28,58 @@ import {
 } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
+import logger from "../utils/Logger/logger";
 
+interface BusinessCreationResponse {
+  success: boolean;
+  data: BusinessData;
+  message?: string;
+  tokens?: TokenPair;
+}
+
+interface GoogleIntegrationResponse {
+  googlePlaceId?: string | null;
+  googleOriginalUrl?: string | null;
+  googleIntegrationEnabled: boolean;
+  googleLinkedAt?: Date | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  internalRatings: {
+    averageRating?: number | null;
+    totalRatings?: number;
+    lastRatingAt?: Date | null;
+  };
+  urls: {
+    maps?: string;
+    reviews?: string;
+    writeReview?: string;
+    embed?: string;
+  };
+}
+
+type BusinessWithSubscriptionResponse = BusinessData & {
+  subscription?: (BusinessSubscriptionData & {
+    plan?: {
+      id: string;
+      name: string;
+      displayName: string;
+      description: string | null;
+      price: number;
+      currency: string;
+      billingInterval: string;
+      maxBusinesses: number;
+      maxStaffPerBusiness: number;
+      maxAppointmentsPerDay: number;
+      features: string[];
+      isPopular: boolean;
+      limits?: {
+        maxBusinesses: number;
+        maxStaffPerBusiness: number;
+        maxAppointmentsPerDay: number;
+      };
+    } | null;
+  }) | null;
+};
 export class BusinessController {
   constructor(
     private businessService: BusinessService,
@@ -104,7 +156,10 @@ export class BusinessController {
                 displayName: business.businessType.displayName,
                 icon: business.businessType.icon,
                 category: business.businessType.category
-              } : null
+              } : null,
+              averageRating: business.averageRating ?? null,
+              totalRatings: business.totalRatings ?? 0,
+              lastRatingAt: business.lastRatingAt ?? null
             };
 
             // Add subscription info if requested and available
@@ -255,11 +310,13 @@ export class BusinessController {
         
         tokens = {
           accessToken: tokenPair.accessToken,
-          refreshToken: tokenPair.refreshToken
+          refreshToken: tokenPair.refreshToken,
+          expiresIn: tokenPair.expiresIn,
+          refreshExpiresIn: tokenPair.refreshExpiresIn
         };
         
         if (process.env.NODE_ENV === 'development') {
-          console.log('✅ ROLE UPDATE: OWNER role verified and new tokens generated', {
+          logger.info('✅ ROLE UPDATE: OWNER role verified and new tokens generated', {
             userId,
             rolesBefore: userRolesBefore,
             rolesAfter: userRolesAfter,
@@ -268,7 +325,7 @@ export class BusinessController {
         }
       }
 
-      const response: { success: boolean; data: BusinessData; message?: string; tokens?: any } = {
+      const response: BusinessCreationResponse = {
         success: true,
         data: business,
         message: 'Business created successfully'
@@ -316,25 +373,29 @@ export class BusinessController {
       }
 
       // Format response based on what was requested
-      let responseData: BusinessData | (BusinessData & { subscription?: any }) = business;
-      if (includeSubscription === 'true' && 'subscription' in business) {
-        const businessWithSub = business as Record<string, unknown>;
-        const subscription = businessWithSub.subscription as Record<string, unknown> | undefined;
-        const plan = subscription?.plan as Record<string, unknown> | undefined;
-        
+      let responseData: BusinessData | BusinessWithSubscriptionResponse = business;
+      if (includeSubscription === 'true') {
+        const businessWithSubscription = business as BusinessWithSubscriptionResponse;
+        const subscription = businessWithSubscription.subscription;
+        const plan = subscription?.plan;
+
         responseData = {
-          ...business,
-          subscription: subscription ? {
-            ...subscription,
-            plan: plan ? {
-              ...plan,
-              limits: {
-                maxBusinesses: plan.maxBusinesses,
-                maxStaffPerBusiness: plan.maxStaffPerBusiness,
-                maxAppointmentsPerDay: plan.maxAppointmentsPerDay
+          ...businessWithSubscription,
+          subscription: subscription
+            ? {
+                ...subscription,
+                plan: plan
+                  ? {
+                      ...plan,
+                      limits: {
+                        maxBusinesses: plan.maxBusinesses,
+                        maxStaffPerBusiness: plan.maxStaffPerBusiness,
+                        maxAppointmentsPerDay: plan.maxAppointmentsPerDay
+                      }
+                    }
+                  : undefined
               }
-            } : undefined
-          } : null
+            : null
         };
       }
 
@@ -1574,7 +1635,7 @@ export class BusinessController {
         date: testTime,
         startTime: testTime,
         endTime: new Date(testTime.getTime() + 60 * 60 * 1000), // 1 hour duration
-        status: 'CONFIRMED' as any,
+        status: AppointmentStatus.CONFIRMED,
         service: {
           id: 'test-service',
           name: 'Test Service',
@@ -2197,9 +2258,9 @@ export class BusinessController {
     req: BusinessContextRequest,
     res: Response
   ): Promise<void> {
-    console.log('✅ [CONTROLLER] updateGoogleIntegration - ENTRY POINT REACHED');
+    logger.info('✅ [CONTROLLER] updateGoogleIntegration - ENTRY POINT REACHED');
     try {
-      console.log('🔍 [GOOGLE INTEGRATION PUT] Starting...', {
+      logger.info('🔍 [GOOGLE INTEGRATION PUT] Starting...', {
         params: req.params,
         body: req.body,
         userId: req.user?.id,
@@ -2210,7 +2271,7 @@ export class BusinessController {
       const userId = req.user!.id;
       const validatedData = updateGoogleIntegrationSchema.parse(req.body);
 
-      console.log('🔍 [GOOGLE INTEGRATION PUT] Calling service...', { userId, businessId: id, data: validatedData });
+      logger.info('🔍 [GOOGLE INTEGRATION PUT] Calling service...', { userId, businessId: id, data: validatedData });
 
       const business = await this.businessService.updateGoogleIntegration(
         userId,
@@ -2218,7 +2279,7 @@ export class BusinessController {
         validatedData
       );
 
-      console.log('🔍 [GOOGLE INTEGRATION PUT] Business updated:', business.id);
+      logger.info('🔍 [GOOGLE INTEGRATION PUT] Business updated:', business.id);
 
       await sendSuccessResponse(
         res,
@@ -2227,9 +2288,9 @@ export class BusinessController {
         200,
         req
       );
-      console.log('✅ [CONTROLLER] updateGoogleIntegration - RESPONSE SENT');
+      logger.info('✅ [CONTROLLER] updateGoogleIntegration - RESPONSE SENT');
     } catch (error) {
-      console.log('❌ [CONTROLLER] updateGoogleIntegration - ERROR:', error);
+      logger.info('❌ [CONTROLLER] updateGoogleIntegration - ERROR:', error);
       handleRouteError(error, req, res);
     }
   }
@@ -2243,21 +2304,21 @@ export class BusinessController {
     req: Request,
     res: Response
   ): Promise<void> {
-    console.log('✅ [CONTROLLER] getGoogleIntegration - ENTRY POINT REACHED');
+    logger.info('✅ [CONTROLLER] getGoogleIntegration - ENTRY POINT REACHED');
     try {
-      console.log('🔍 [GOOGLE INTEGRATION GET] Starting...', {
+      logger.info('🔍 [GOOGLE INTEGRATION GET] Starting...', {
         params: req.params,
         timestamp: new Date().toISOString()
       });
 
       const { id } = req.params;
 
-      console.log('🔍 [GOOGLE INTEGRATION GET] Calling service...', { businessId: id });
+      logger.info('🔍 [GOOGLE INTEGRATION GET] Calling service...', { businessId: id });
 
       // Public endpoint - get settings including coordinates
       const settings = await this.businessService.getGoogleIntegrationSettings('', id);
 
-      console.log('🔍 [GOOGLE INTEGRATION GET] Settings retrieved:', {
+      logger.info('🔍 [GOOGLE INTEGRATION GET] Settings retrieved:', {
         googlePlaceId: settings.googlePlaceId,
         googleOriginalUrl: settings.googleOriginalUrl,
         googleIntegrationEnabled: settings.googleIntegrationEnabled,
@@ -2271,13 +2332,13 @@ export class BusinessController {
 
       // Generate URLs if enabled and linked
       // These URLs work without any API key - completely free!
-      let urls;
+      let urls: GoogleIntegrationResponse['urls'] = {};
       if (settings.googleIntegrationEnabled) {
         // ✅ PRIORITY 1: Use original URL if available (BEST - Direct to full business profile)
         if (settings.googleOriginalUrl) {
           const originalUrl = settings.googleOriginalUrl;
 
-          console.log('✅ [GOOGLE INTEGRATION GET] Using ORIGINAL URL (best option):', {
+          logger.info('✅ [GOOGLE INTEGRATION GET] Using ORIGINAL URL (best option):', {
             originalUrl
           });
 
@@ -2292,14 +2353,14 @@ export class BusinessController {
               : originalUrl
           };
 
-          console.log('✅ [GOOGLE INTEGRATION GET] Generated URLs from original URL:', urls);
+          logger.info('✅ [GOOGLE INTEGRATION GET] Generated URLs from original URL:', urls);
         }
         // ✅ PRIORITY 2: Use coordinates if available (RELIABLE - Shows exact pin)
         else if (settings.latitude && settings.longitude) {
           const lat = settings.latitude;
           const lng = settings.longitude;
 
-          console.log('✅ [GOOGLE INTEGRATION GET] Using COORDINATES (exact pin location):', {
+          logger.info('✅ [GOOGLE INTEGRATION GET] Using COORDINATES (exact pin location):', {
             lat,
             lng
           });
@@ -2326,7 +2387,7 @@ export class BusinessController {
               reviewsUrl = `https://www.google.com/maps?cid=${decimalCid}`;
               writeReviewUrl = `https://www.google.com/maps?cid=${decimalCid}`;
               
-              console.log('✅ Using CID for business profile:', decimalCid);
+              logger.info('✅ Using CID for business profile:', decimalCid);
             } else {
               // PlaceID format - use coordinates as fallback
               embedUrl = `https://maps.google.com/maps?q=${lat},${lng}&output=embed&z=17`;
@@ -2349,7 +2410,7 @@ export class BusinessController {
             embed: embedUrl
           };
 
-          console.log('✅ [GOOGLE INTEGRATION GET] Generated coordinate-based URLs:', urls);
+          logger.info('✅ [GOOGLE INTEGRATION GET] Generated coordinate-based URLs:', urls);
         } 
         // FALLBACK: Use Place ID or CID if coordinates not available
         else if (settings.googlePlaceId) {
@@ -2361,7 +2422,7 @@ export class BusinessController {
                                  googleId.startsWith('EI') ||
                                  googleId.startsWith('GhIJ');
 
-          console.log('⚠️ [GOOGLE INTEGRATION GET] No coordinates - falling back to Google ID:', {
+          logger.info('⚠️ [GOOGLE INTEGRATION GET] No coordinates - falling back to Google ID:', {
             googleId,
             isCIDFormat,
             isPlaceIDFormat
@@ -2374,7 +2435,7 @@ export class BusinessController {
             const hexCid = cidParts[1].replace('0x', '');
             const decimalCid = parseInt(hexCid, 16);
 
-            console.log('🔍 [GOOGLE INTEGRATION GET] CID conversion:', {
+            logger.info('🔍 [GOOGLE INTEGRATION GET] CID conversion:', {
               hexCid,
               decimalCid
             });
@@ -2407,7 +2468,7 @@ export class BusinessController {
             };
           } else {
             // Unknown format - try to use it as-is
-            console.warn('⚠️ [GOOGLE INTEGRATION GET] Unknown Google ID format:', googleId);
+            logger.warn('⚠️ [GOOGLE INTEGRATION GET] Unknown Google ID format:', googleId);
             urls = {
               maps: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleId)}`,
               reviews: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleId)}`,
@@ -2416,18 +2477,18 @@ export class BusinessController {
             };
           }
 
-          console.log('🔍 [GOOGLE INTEGRATION GET] Generated ID-based URLs:', urls);
+          logger.info('🔍 [GOOGLE INTEGRATION GET] Generated ID-based URLs:', urls);
         } else {
-          console.log('⚠️ [GOOGLE INTEGRATION GET] No URLs generated - no coordinates or place ID');
+          logger.info('⚠️ [GOOGLE INTEGRATION GET] No URLs generated - no coordinates or place ID');
         }
       } else {
-        console.log('🔍 [GOOGLE INTEGRATION GET] No URLs generated - integration disabled');
+        logger.info('🔍 [GOOGLE INTEGRATION GET] No URLs generated - integration disabled');
       }
 
       // Google Places API has been removed - ratings are no longer fetched from Google
 
       // Separate internal and Google ratings in the response
-      const responseData: any = {
+      const responseData: GoogleIntegrationResponse = {
         // Google integration settings
         googlePlaceId: settings.googlePlaceId,
         googleOriginalUrl: settings.googleOriginalUrl,
@@ -2454,9 +2515,9 @@ export class BusinessController {
         200,
         req
       );
-      console.log('✅ [CONTROLLER] getGoogleIntegration - RESPONSE SENT');
+      logger.info('✅ [CONTROLLER] getGoogleIntegration - RESPONSE SENT');
     } catch (error) {
-      console.log('❌ [CONTROLLER] getGoogleIntegration - ERROR:', error);
+      logger.info('❌ [CONTROLLER] getGoogleIntegration - ERROR:', error);
       handleRouteError(error, req, res);
     }
   }

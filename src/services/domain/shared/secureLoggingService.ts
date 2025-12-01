@@ -1,5 +1,4 @@
-import logger from '../../../utils/Logger/logger';
-
+import logger from "../../../utils/Logger/logger";
 /**
  * SecureLoggingService
  * 

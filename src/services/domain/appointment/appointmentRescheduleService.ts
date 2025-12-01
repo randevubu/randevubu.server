@@ -12,7 +12,7 @@ import {
   AvailabilitySlot,
   ClosureData
 } from '../../../types/appointment';
-
+import logger from "../../../utils/Logger/logger";
 export class AppointmentRescheduleService {
   private businessRepository: BusinessRepository;
 
@@ -462,7 +462,7 @@ export class AppointmentRescheduleService {
         await this.notificationService.sendRescheduleNotification(appointment.id, suggestions);
         customerNotified = true;
       } catch (error) {
-        console.error(`Failed to notify customer: ${error}`);
+        logger.error(`Failed to notify customer: ${error}`);
       }
     }
 

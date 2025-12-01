@@ -1,11 +1,12 @@
+import logger from "../utils/Logger/logger";
 /**
  * Test script to verify translation system works
  */
 
-import { TranslationService } from '../services/translationServiceFallback';
+import { TranslationService } from '../services/core/translationService';
 
 async function testTranslations() {
-  console.log('🧪 Testing Translation System...\n');
+  logger.info('🧪 Testing Translation System...\n');
 
   const translationService = new TranslationService();
 
@@ -58,15 +59,15 @@ async function testTranslations() {
         testCase.language
       );
       
-      console.log(`✅ ${testCase.language.toUpperCase()} - ${testCase.key}:`);
-      console.log(`   ${result}\n`);
+      logger.info(`✅ ${testCase.language.toUpperCase()} - ${testCase.key}:`);
+      logger.info(`   ${result}\n`);
     } catch (error) {
-      console.error(`❌ Error testing ${testCase.key}:`, error);
+      logger.error(`❌ Error testing ${testCase.key}:`, error);
     }
   }
 
   // Test bulk translation
-  console.log('🔄 Testing bulk translation...');
+  logger.info('🔄 Testing bulk translation...');
   try {
     const bulkResult = await translationService.translateBulk(
       ['notifications.appointmentReminder', 'notifications.availabilityAlert'],
@@ -74,35 +75,35 @@ async function testTranslations() {
       'tr'
     );
     
-    console.log('✅ Bulk translation result:');
+    logger.info('✅ Bulk translation result:');
     Object.entries(bulkResult).forEach(([key, value]) => {
-      console.log(`   ${key}: ${value}`);
+      logger.info(`   ${key}: ${value}`);
     });
   } catch (error) {
-    console.error('❌ Bulk translation error:', error);
+    logger.error('❌ Bulk translation error:', error);
   }
 
   // Test validation
-  console.log('\n🔍 Testing validation...');
+  logger.info('\n🔍 Testing validation...');
   try {
     const validation = await translationService.validateTranslations();
-    console.log(`✅ Validation complete - Missing: ${validation.missing.length}, Invalid: ${validation.invalid.length}`);
+    logger.info(`✅ Validation complete - Missing: ${validation.missing.length}, Invalid: ${validation.invalid.length}`);
   } catch (error) {
-    console.error('❌ Validation error:', error);
+    logger.error('❌ Validation error:', error);
   }
 
-  console.log('\n🎉 Translation system test completed!');
+  logger.info('\n🎉 Translation system test completed!');
 }
 
 // Run test if called directly
 if (require.main === module) {
   testTranslations()
     .then(() => {
-      console.log('\n✅ All tests passed!');
+      logger.info('\n✅ All tests passed!');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('\n❌ Test failed:', error);
+      logger.error('\n❌ Test failed:', error);
       process.exit(1);
     });
 }

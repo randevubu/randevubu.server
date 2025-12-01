@@ -7,9 +7,9 @@ import {
   AppointmentSearchFilters,
   AppointmentStatus
 } from '../types/business';
-import { 
-  BusinessSettings, 
-  PriceVisibilitySettings, 
+import {
+  BusinessSettings,
+  PriceVisibilitySettings,
   StaffPrivacySettings,
   StaffDisplayInfo,
   FilteredAppointmentData
@@ -17,7 +17,7 @@ import {
 import { createDateTimeInIstanbul, getCurrentTimeInIstanbul, createDateRangeFilter } from '../utils/timezoneHelper';
 
 export class AppointmentRepository {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: PrismaClient) { }
 
   // Helper method to check if prices should be hidden based on business settings
   private shouldHidePrice(businessSettings: BusinessSettings | null, serviceShowPrice: boolean = true): boolean {
@@ -55,11 +55,11 @@ export class AppointmentRepository {
 
   // Helper method to filter price information from appointment data
   private filterPriceInfo<T extends { price?: number | unknown; currency?: string; service?: { price?: number | unknown; currency?: string } }>(
-    appointment: T, 
+    appointment: T,
     shouldHide: boolean
   ): T {
     if (!shouldHide) return appointment;
-    
+
     return {
       ...appointment,
       price: 0,
@@ -76,15 +76,15 @@ export class AppointmentRepository {
 
   // Helper method to filter staff information from appointment data
   private filterStaffInfo<T extends { staff?: StaffDisplayInfo }>(
-    appointment: T, 
-    shouldHide: boolean, 
+    appointment: T,
+    shouldHide: boolean,
     businessSettings: BusinessSettings | null
   ): T {
     if (!shouldHide || !appointment.staff) return appointment;
-    
+
     const staffRole = appointment.staff.role || 'STAFF';
     const displayName = this.getStaffDisplayName(staffRole, businessSettings);
-    
+
     return {
       ...appointment,
       staff: {
@@ -303,9 +303,9 @@ export class AppointmentRepository {
       appointments: appointments.map(apt => {
         const businessSettings = this.extractBusinessSettings(apt.business?.settings);
         const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
-        
+
         const filteredApt = this.filterPriceInfo(apt, shouldHide);
-        
+
         return this.mapPrismaResultToAppointmentWithDetails(filteredApt);
       }),
       total,
@@ -323,7 +323,7 @@ export class AppointmentRepository {
   }> {
     // Build where clause - if businessOwnerId provided, only count appointments from their businesses
     const whereClause: Record<string, unknown> = { customerId };
-    
+
     if (businessOwnerId) {
       whereClause.business = {
         ownerId: businessOwnerId
@@ -341,7 +341,7 @@ export class AppointmentRepository {
       this.prisma.appointment.count({
         where: whereClause
       }),
-      
+
       // Completed appointments
       this.prisma.appointment.count({
         where: {
@@ -349,7 +349,7 @@ export class AppointmentRepository {
           status: AppointmentStatus.COMPLETED
         }
       }),
-      
+
       // Cancelled appointments
       this.prisma.appointment.count({
         where: {
@@ -357,7 +357,7 @@ export class AppointmentRepository {
           status: AppointmentStatus.CANCELED
         }
       }),
-      
+
       // No-show appointments
       this.prisma.appointment.count({
         where: {
@@ -365,7 +365,7 @@ export class AppointmentRepository {
           status: AppointmentStatus.NO_SHOW
         }
       }),
-      
+
       // Last appointment date
       this.prisma.appointment.findFirst({
         where: whereClause,
@@ -410,16 +410,16 @@ export class AppointmentRepository {
         // Businesses owned by user
         { business: { ownerId: userId } },
         // Businesses where user is active staff
-        { 
-          business: { 
-            staff: { 
-              some: { 
-                userId, 
-                isActive: true, 
-                leftAt: null 
-              } 
-            } 
-          } 
+        {
+          business: {
+            staff: {
+              some: {
+                userId,
+                isActive: true,
+                leftAt: null
+              }
+            }
+          }
         }
       ]
     };
@@ -500,7 +500,7 @@ export class AppointmentRepository {
       appointments: appointments.map(apt => {
         const businessSettings = this.extractBusinessSettings(apt.business?.settings);
         const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
-        
+
         return this.mapPrismaResultToAppointmentWithDetails(this.filterPriceInfo(apt, shouldHide));
       }),
       total,
@@ -570,7 +570,7 @@ export class AppointmentRepository {
     totalPages: number;
   }> {
     const skip = (page - 1) * limit;
-    
+
     const where: Record<string, unknown> = {};
 
     if (filters.businessId) {
@@ -719,7 +719,7 @@ export class AppointmentRepository {
   async findUpcomingByCustomerId(customerId: string, limit = 10): Promise<AppointmentWithDetails[]> {
     const { getCurrentTimeInIstanbul } = require('../utils/timezoneHelper');
     const now = getCurrentTimeInIstanbul();
-    
+
     const result = await this.prisma.appointment.findMany({
       where: {
         customerId,
@@ -916,12 +916,12 @@ export class AppointmentRepository {
         }
       }
     });
-    
+
     return result.map(apt => {
       const businessSettings = this.extractBusinessSettings(apt.business?.settings);
       const shouldHidePrice = this.shouldHidePrice(businessSettings, apt.service.showPrice);
       const shouldHideStaffNames = this.shouldHideStaffNames(businessSettings);
-      
+
       let appointment: FilteredAppointmentData = {
         ...apt,
         price: Number(apt.price),
@@ -947,13 +947,13 @@ export class AppointmentRepository {
           phoneNumber: apt.customer.phoneNumber
         } : undefined
       };
-      
+
       // Apply price filtering
       appointment = this.filterPriceInfo(appointment, shouldHidePrice);
-      
+
       // Apply staff privacy filtering
       appointment = this.filterStaffInfo(appointment, shouldHideStaffNames, businessSettings);
-      
+
       return this.mapToFilteredAppointmentData(appointment);
     });
   }
@@ -1021,12 +1021,12 @@ export class AppointmentRepository {
         }
       }
     });
-    
+
     return result.map(apt => {
       const businessSettings = this.extractBusinessSettings(apt.business?.settings);
       const shouldHidePrice = this.shouldHidePrice(businessSettings, apt.service.showPrice);
       const shouldHideStaffNames = this.shouldHideStaffNames(businessSettings);
-      
+
       let appointment: FilteredAppointmentData = {
         ...apt,
         price: Number(apt.price),
@@ -1052,13 +1052,13 @@ export class AppointmentRepository {
           phoneNumber: apt.customer.phoneNumber
         } : undefined
       };
-      
+
       // Apply price filtering
       appointment = this.filterPriceInfo(appointment, shouldHidePrice);
-      
+
       // Apply staff privacy filtering
       appointment = this.filterStaffInfo(appointment, shouldHideStaffNames, businessSettings);
-      
+
       return this.mapToFilteredAppointmentData(appointment);
     });
   }
@@ -1116,7 +1116,7 @@ export class AppointmentRepository {
     averageValue: number;
   }> {
     const where: Record<string, unknown> = { businessId };
-    
+
     if (startDate || endDate) {
       (where.date as Record<string, unknown>) = {};
       if (startDate) (where.date as Record<string, unknown>).gte = startDate;
@@ -1156,7 +1156,7 @@ export class AppointmentRepository {
     averageValue: number;
   }>> {
     const where: Record<string, unknown> = { businessId: { in: businessIds } };
-    
+
     if (startDate || endDate) {
       (where.date as Record<string, unknown>) = {};
       if (startDate) (where.date as Record<string, unknown>).gte = startDate;
@@ -1178,7 +1178,7 @@ export class AppointmentRepository {
       totalRevenue: number;
       averageValue: number;
     }> = {};
-    
+
     businessIds.forEach(businessId => {
       const businessAppointments = appointments.filter(a => a.businessId === businessId);
       const total = businessAppointments.length;
@@ -1224,6 +1224,31 @@ export class AppointmentRepository {
     });
     return result as Array<{ startTime: string; endTime: string; dayOfWeek: number; staffId: string | null }>;
   }
+
+  // Create working hours for a business
+  async createWorkingHours(data: {
+    businessId: string;
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+    staffId?: string | null;
+    isActive?: boolean;
+  }): Promise<void> {
+    await this.prisma.workingHours.create({
+      data: {
+        id: `wh_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+        businessId: data.businessId,
+        staffId: data.staffId ?? null,
+        dayOfWeek: data.dayOfWeek,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        isActive: data.isActive ?? true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    });
+  }
+
 
   // Appointments for a given day (optionally by staff) including staff user
   async findAppointmentsForDay(
@@ -1339,7 +1364,7 @@ export class AppointmentRepository {
     return appointments.map(apt => {
       const businessSettings = this.extractBusinessSettings(apt.business?.settings);
       const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
-      
+
       return this.filterPriceInfo(apt, shouldHide);
     }).map(apt => this.mapPrismaResultToAppointmentWithDetails(apt));
   }
@@ -1357,19 +1382,19 @@ export class AppointmentRepository {
     };
   }): Promise<number> {
     const whereClause: any = {};
-    
+
     if (filters.businessId) {
       whereClause.businessId = filters.businessId;
     }
-    
+
     if (filters.customerId) {
       whereClause.customerId = filters.customerId;
     }
-    
+
     if (filters.date) {
       whereClause.date = filters.date;
     }
-    
+
     if (filters.status) {
       whereClause.status = filters.status;
     }

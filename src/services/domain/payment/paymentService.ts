@@ -1,9 +1,9 @@
 import Iyzipay from 'iyzipay';
 import { PaymentStatus, SubscriptionStatus, TrialConversionData } from '../../../types/business';
 import { RepositoryContainer } from '../../../repositories';
-import logger from '../../../utils/Logger/logger';
-import { JsonValue } from '@prisma/client/runtime/library';
 
+import { JsonValue } from '@prisma/client/runtime/library';
+import logger from "../../../utils/Logger/logger";
 export interface PaymentCardData {
   cardHolderName: string;
   cardNumber: string;
@@ -444,7 +444,7 @@ export class PaymentService {
         }
       };
     } catch (error) {
-      console.error('Get subscription error:', error);
+      logger.error('Get subscription error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to retrieve subscription'
@@ -1082,7 +1082,7 @@ export class PaymentService {
         discountApplied
       };
     } catch (error) {
-      console.error('Renewal payment error:', error);
+      logger.error('Renewal payment error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to process renewal payment'
@@ -1128,7 +1128,7 @@ export class PaymentService {
         paymentMethodId: storedPaymentMethod.id
       };
     } catch (error) {
-      console.error('Store payment method error:', error);
+      logger.error('Store payment method error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to store payment method'

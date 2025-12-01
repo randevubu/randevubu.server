@@ -31,7 +31,7 @@ import {
 } from '../../schemas/staff.schemas';
 import { PermissionName } from '../../types/auth';
 import { AuthenticatedRequest } from '../../types/request';
-
+import logger from "../../utils/Logger/logger";
 export function createBusinessRoutes(businessController: BusinessController, subscriptionController: SubscriptionController): Router {
   const router = Router();
 
@@ -260,7 +260,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
   if (process.env.NODE_ENV === 'development') {
     router.use((req, res, next) => {
       if (req.method === 'GET' && req.path.includes('biz_')) {
-        console.log('🔍 DEBUG: Route matching attempt:', {
+        logger.info('🔍 DEBUG: Route matching attempt:', {
           method: req.method,
           path: req.path,
           params: req.params,
@@ -1109,11 +1109,11 @@ export function createBusinessRoutes(businessController: BusinessController, sub
     // The service layer will handle role validation and upgrade
     allowEmptyBusinessContext,
     (req: AuthenticatedRequest, res, next) => {
-      console.log('🔍 ROUTE DEBUG: POST /businesses endpoint hit');
-      console.log('🔍 ROUTE DEBUG: Request method:', req.method);
-      console.log('🔍 ROUTE DEBUG: Request path:', req.path);
-      console.log('🔍 ROUTE DEBUG: User:', req.user?.id);
-      console.log('🔍 ROUTE DEBUG: Business controller method:', typeof businessController.createBusiness);
+      logger.info('🔍 ROUTE DEBUG: POST /businesses endpoint hit');
+      logger.info('🔍 ROUTE DEBUG: Request method:', req.method);
+      logger.info('🔍 ROUTE DEBUG: Request path:', req.path);
+      logger.info('🔍 ROUTE DEBUG: User:', req.user?.id);
+      logger.info('🔍 ROUTE DEBUG: Business controller method:', typeof businessController.createBusiness);
       next();
     },
     businessController.createBusiness.bind(businessController)
@@ -1126,7 +1126,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
     async (req: AuthenticatedRequest, res) => {
       try {
         const userId = req.user!.id;
-        console.log('🧪 TEST: Creating business and fetching it immediately');
+        logger.info('🧪 TEST: Creating business and fetching it immediately');
         
         // Step 1: Create business
         const testData = {
@@ -1135,31 +1135,31 @@ export function createBusinessRoutes(businessController: BusinessController, sub
           description: 'Test business for immediate fetch test'
         };
         
-        console.log('🧪 TEST: Creating business...');
+        logger.info('🧪 TEST: Creating business...');
         const business = await businessController['businessService'].createBusiness(userId, testData);
-        console.log('🧪 TEST: Business created:', business.id);
+        logger.info('🧪 TEST: Business created:', business.id);
         
         // Step 2: Clear RBAC cache
-        console.log('🧪 TEST: Clearing RBAC cache...');
+        logger.info('🧪 TEST: Clearing RBAC cache...');
         businessController['rbacService']?.clearUserCache(userId);
         
         // Step 3: Wait a moment for database consistency
         await new Promise(resolve => setTimeout(resolve, 100));
         
         // Step 4: Try to fetch the business
-        console.log('🧪 TEST: Fetching businesses...');
+        logger.info('🧪 TEST: Fetching businesses...');
         const businesses = await businessController['businessService'].getMyBusinesses(userId);
-        console.log('🧪 TEST: Fetched businesses:', businesses.length);
+        logger.info('🧪 TEST: Fetched businesses:', businesses.length);
         
         // Step 5: Test business context middleware
-        console.log('🧪 TEST: Testing business context...');
+        logger.info('🧪 TEST: Testing business context...');
         const freshUserRoles = await businessController['businessService']['repositories'].roleRepository.getUserRoles(userId);
         
         const userRoles = freshUserRoles;
         const isOwner = userRoles.some((role: { name: string }) => role.name === 'OWNER');
         
-        console.log('🧪 TEST: User roles after business creation:', userRoles.map((r: { name: string }) => r.name));
-        console.log('🧪 TEST: Is owner:', isOwner);
+        logger.info('🧪 TEST: User roles after business creation:', userRoles.map((r: { name: string }) => r.name));
+        logger.info('🧪 TEST: Is owner:', isOwner);
         
         res.json({
           success: true,
@@ -1176,7 +1176,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
           }
         });
       } catch (error) {
-        console.error('🧪 TEST ERROR:', error);
+        logger.error('🧪 TEST ERROR:', error);
         res.status(500).json({
           success: false,
           error: error instanceof Error ? error.message : 'Test failed'
@@ -2786,20 +2786,20 @@ export function createBusinessRoutes(businessController: BusinessController, sub
     async (req, res, next) => {
       try {
         const slugOrId = req.params.slugOrId;
-        console.log('🔍 Catch-all route hit with slugOrId:', slugOrId);
+        logger.info('🔍 Catch-all route hit with slugOrId:', slugOrId);
 
         // First try as a slug (public access) - includes services
         const business = await businessController['businessService'].getBusinessBySlugWithServices(slugOrId);
         if (business) {
-          console.log('✅ Found business by slug:', business.id);
+          logger.info('✅ Found business by slug:', business.id);
           return res.json({
             success: true,
             data: business
           });
         }
 
-        console.log('❌ Not found as slug, trying as ID...');
-        console.log('🔍 User authenticated:', !!(req as AuthenticatedRequest).user);
+        logger.info('❌ Not found as slug, trying as ID...');
+        logger.info('🔍 User authenticated:', !!(req as AuthenticatedRequest).user);
 
         // If slug doesn't work and user is authenticated, try as ID
         if ((req as AuthenticatedRequest).user) {
@@ -2807,7 +2807,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
           const userId = authReq.user!.id;
           const { includeDetails, includeSubscription } = req.query;
 
-          console.log('🔍 Fetching business by ID:', slugOrId, 'for user:', userId);
+          logger.info('🔍 Fetching business by ID:', slugOrId, 'for user:', userId);
 
           // Call service directly instead of going through controller
           let businessById;
@@ -2840,7 +2840,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
           error: 'Business not found'
         });
       } catch (error) {
-        console.error('❌ Catch-all route error:', error);
+        logger.error('❌ Catch-all route error:', error);
         return next(error);
       }
     }

@@ -3,7 +3,6 @@ import { RBACService } from "../services/domain/rbac";
 import { ErrorContext, ForbiddenError } from "../types/errors";
 import { AuthenticatedRequest } from "../types/request";
 import logger from "../utils/Logger/logger";
-
 export interface AuthorizationOptions {
   resource: string;
   action: string;

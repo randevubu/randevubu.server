@@ -59,7 +59,7 @@ export interface ErrorContext {
   timestamp?: Date;
   endpoint?: string;
   method?: string;
-  additionalData?: Record<string, any>;
+  additionalData?: Record<string, unknown>;
 }
 
 export interface ErrorDetails {
@@ -71,7 +71,7 @@ export interface ErrorDetails {
   retryAfter?: number;
   cooldownSeconds?: number;
   suggestions?: string[];
-  additionalData?: Record<string, any>; // WARNING: may contain sensitive data - filter out in client responses
+  additionalData?: Record<string, unknown>; // WARNING: may contain sensitive data - filter out in client responses
 }
 
 // Base Application Error

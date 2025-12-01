@@ -33,10 +33,10 @@ import {
   InvalidTokenError,
   TokenExpiredError
 } from '../types/errors';
-import logger from '../utils/Logger/logger';
+
 import { extractDeviceInfo, createErrorContext } from '../utils/requestUtils';
 import { sendSuccessResponse, sendBaseErrorResponse } from '../utils/responseUtils';
-
+import logger from "../utils/Logger/logger";
 export class AuthController {
   constructor(
     private authService: AuthService,

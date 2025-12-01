@@ -1,8 +1,8 @@
 import { NextFunction, Request, Response } from "express";
 import { performance } from "perf_hooks";
-import logger from "./Logger/logger";
-import { AuthenticatedUser } from "../types/auth";
 
+import { AuthenticatedUser } from "../types/auth";
+import logger from "./Logger/logger";
 export interface SystemMetrics {
   memoryUsage: NodeJS.MemoryUsage;
   uptime: number;

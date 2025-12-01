@@ -16,7 +16,9 @@ import {
   CustomerEvaluationData,
   SubscriptionStatus
 } from '../types/business';
-
+import logger from "../utils/Logger/logger";
+import { NotFoundError, ValidationError } from '../types/errors';
+import { ERROR_CODES } from '../constants/errorCodes';
 export interface BusinessQueryOptions {
   includeInactive?: boolean;
   includeDeleted?: boolean;
@@ -87,6 +89,8 @@ export interface BusinessMinimalDetails {
   isVerified: boolean;
   isClosed: boolean;
   tags: string[];
+  averageRating: number | null;
+  totalRatings: number;
   businessType: {
     id: string;
     name: string;
@@ -197,7 +201,7 @@ export class BusinessRepository {
     const business = await this.prisma.$transaction(async (tx) => {
       // Debug logging for business hours
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔧 BUSINESS REPOSITORY: Business hours being stored:', JSON.stringify(data.businessHours, null, 2));
+        logger.info('🔧 BUSINESS REPOSITORY: Business hours being stored:', JSON.stringify(data.businessHours, null, 2));
       }
 
       // Create business
@@ -233,7 +237,7 @@ export class BusinessRepository {
 
       // Debug logging to verify business hours were stored
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔧 BUSINESS REPOSITORY: Business created with hours:', JSON.stringify(createdBusiness.businessHours, null, 2));
+        logger.info('🔧 BUSINESS REPOSITORY: Business created with hours:', JSON.stringify(createdBusiness.businessHours, null, 2));
       }
 
       // Get the OWNER role
@@ -242,7 +246,7 @@ export class BusinessRepository {
       });
 
       if (!ownerRole || !ownerRole.isActive) {
-        throw new Error('OWNER role not found or inactive');
+        throw new NotFoundError('OWNER role not found or inactive', undefined, { additionalData: { errorCode: ERROR_CODES.ROLE_NOT_FOUND } });
       }
 
       // Assign the role within the same transaction (upsert to handle existing roles)
@@ -683,6 +687,9 @@ export class BusinessRepository {
         closedUntil: true,
         closureReason: true,
         tags: true,
+        averageRating: true,
+        totalRatings: true,
+        lastRatingAt: true,
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
@@ -747,6 +754,9 @@ export class BusinessRepository {
         closedUntil: true,
         closureReason: true,
         tags: true,
+        averageRating: true,
+        totalRatings: true,
+        lastRatingAt: true,
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
@@ -804,6 +814,9 @@ export class BusinessRepository {
         isVerified: true,
         isClosed: true,
         tags: true,
+        averageRating: true,
+        totalRatings: true,
+        lastRatingAt: true,
         settings: true,
         businessType: {
           select: {
@@ -1192,6 +1205,9 @@ export class BusinessRepository {
         closedUntil: true,
         closureReason: true,
         tags: true,
+        averageRating: true,
+        totalRatings: true,
+        lastRatingAt: true,
         createdAt: true,
         updatedAt: true,
         deletedAt: true
@@ -1305,6 +1321,8 @@ export class BusinessRepository {
           isVerified: true,
           isClosed: true,
           tags: true,
+          averageRating: true,
+          totalRatings: true,
           businessType: {
             select: {
               id: true,
@@ -1375,6 +1393,9 @@ export class BusinessRepository {
         closedUntil: true,
         closureReason: true,
         tags: true,
+        averageRating: true,
+        totalRatings: true,
+        lastRatingAt: true,
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
@@ -1456,6 +1477,9 @@ export class BusinessRepository {
         closedUntil: true,
         closureReason: true,
         tags: true,
+        averageRating: true,
+        totalRatings: true,
+        lastRatingAt: true,
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
@@ -1568,17 +1592,17 @@ export class BusinessRepository {
   async addGalleryImage(businessId: string, imageUrl: string): Promise<BusinessData> {
     const business = await this.findById(businessId);
     if (!business) {
-      throw new Error('Business not found');
+      throw new NotFoundError('Business not found', undefined, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
     }
 
     const currentGallery = business.galleryImages || [];
     
     if (currentGallery.length >= 10) {
-      throw new Error('Maximum 10 gallery images allowed');
+      throw new ValidationError('Maximum 10 gallery images allowed', undefined, undefined, undefined);
     }
 
     if (currentGallery.includes(imageUrl)) {
-      throw new Error('Image already exists in gallery');
+      throw new ValidationError('Image already exists in gallery', undefined, undefined, undefined);
     }
 
     const updatedGallery = [...currentGallery, imageUrl];
@@ -1594,7 +1618,7 @@ export class BusinessRepository {
   async removeGalleryImage(businessId: string, imageUrl: string): Promise<BusinessData> {
     const business = await this.findById(businessId);
     if (!business) {
-      throw new Error('Business not found');
+      throw new NotFoundError('Business not found', undefined, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
     }
 
     const currentGallery = business.galleryImages || [];
@@ -1610,7 +1634,7 @@ export class BusinessRepository {
 
   async updateGalleryImages(businessId: string, imageUrls: string[]): Promise<BusinessData> {
     if (imageUrls.length > 10) {
-      throw new Error('Maximum 10 gallery images allowed');
+      throw new ValidationError('Maximum 10 gallery images allowed', undefined, undefined, undefined);
     }
 
     const result = await this.prisma.business.update({
@@ -1633,7 +1657,7 @@ export class BusinessRepository {
     });
 
     if (!result) {
-      throw new Error('Business not found');
+      throw new NotFoundError('Business not found', undefined, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
     }
 
     return {
@@ -1679,6 +1703,9 @@ export class BusinessRepository {
       closedUntil: prismaResult.closedUntil,
       closureReason: prismaResult.closureReason,
       tags: prismaResult.tags,
+      averageRating: prismaResult.averageRating ?? null,
+      totalRatings: prismaResult.totalRatings ?? 0,
+      lastRatingAt: prismaResult.lastRatingAt ?? null,
       createdAt: prismaResult.createdAt,
       updatedAt: prismaResult.updatedAt,
       deletedAt: prismaResult.deletedAt,
@@ -1743,6 +1770,8 @@ export class BusinessRepository {
       isVerified: prismaResult.isVerified,
       isClosed: prismaResult.isClosed,
       tags: prismaResult.tags,
+      averageRating: prismaResult.averageRating ?? null,
+      totalRatings: prismaResult.totalRatings ?? 0,
       businessType: prismaResult.businessType
     };
   }
@@ -1922,7 +1951,7 @@ export class BusinessRepository {
     });
 
     // Log the computed stats for debugging
-    console.log(`Rating stats for business ${businessId}:`, {
+    logger.info(`Rating stats for business ${businessId}:`, {
       averageRating,
       totalRatings,
       lastRatingAt

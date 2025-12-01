@@ -91,6 +91,54 @@ export const notificationsSent = new client.Counter({
   registers: [register],
 });
 
+export const pushQueueDepth = new client.Gauge({
+  name: "randevubu_push_queue_depth",
+  help: "Number of push notifications waiting for delivery",
+  registers: [register],
+});
+
+export const pushNotificationsQueued = new client.Counter({
+  name: "randevubu_push_notifications_queued_total",
+  help: "Total number of push notifications queued for delivery",
+  registers: [register],
+});
+
+export const pushInvalidSubscriptions = new client.Counter({
+  name: "randevubu_push_invalid_subscriptions_total",
+  help: "Total number of push subscriptions disabled after invalid responses",
+  registers: [register],
+});
+
+// Translation metrics
+export const translationsRequested = new client.Counter({
+  name: "randevubu_translations_requested_total",
+  help: "Total number of translation requests",
+  labelNames: ["language", "status"],
+  registers: [register],
+});
+
+export const translationCacheHits = new client.Counter({
+  name: "randevubu_translation_cache_hits_total",
+  help: "Total number of translation cache hits",
+  labelNames: ["language"],
+  registers: [register],
+});
+
+export const translationCacheMisses = new client.Counter({
+  name: "randevubu_translation_cache_misses_total",
+  help: "Total number of translation cache misses",
+  labelNames: ["language"],
+  registers: [register],
+});
+
+export const translationDuration = new client.Histogram({
+  name: "randevubu_translation_duration_seconds",
+  help: "Duration of translation operations in seconds",
+  labelNames: ["source"],
+  buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
+  registers: [register],
+});
+
 // Error rate counter
 export const errorTotal = new client.Counter({
   name: "randevubu_errors_total",

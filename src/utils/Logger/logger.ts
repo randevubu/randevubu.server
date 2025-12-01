@@ -2,22 +2,35 @@ import * as winston from 'winston';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import os from 'os';
+import path from 'path';
 import { getContext } from '../asyncContext';
 
+const resolveLogDir = (envVar: string | undefined, fallback: string) =>
+  envVar && envVar.trim().length > 0 ? envVar.trim() : fallback;
 
-// Ensure the log directories exist  (will be change, don't forget)
-// Use Docker-friendly paths instead of os.homedir()
-const errorLogDir = '/app/logs/errors'; // Logs directory inside the container
-const allLogDir = '/app/logs/all';      // Logs directory inside the container
+const baseLogDir =
+  process.env.LOG_BASE_DIR ||
+  (process.env.NODE_ENV === 'production'
+    ? '/app/logs'
+    : path.join(process.cwd(), 'logs'));
 
+const errorLogDir = resolveLogDir(
+  process.env.ERROR_LOG_DIR,
+  path.join(baseLogDir, 'errors')
+);
+const allLogDir = resolveLogDir(
+  process.env.ALL_LOG_DIR,
+  path.join(baseLogDir, 'all')
+);
 
-if (!fs.existsSync(errorLogDir)) {
-    fs.mkdirSync(errorLogDir, { recursive: true });
-}
+const ensureDirectory = (dirPath: string) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+};
 
-if (!fs.existsSync(allLogDir)) {
-    fs.mkdirSync(allLogDir, { recursive: true });
-}
+ensureDirectory(errorLogDir);
+ensureDirectory(allLogDir);
 
 const levels = {
     error: 0,
@@ -36,7 +49,7 @@ const colors = {
 };
 
 const level = () => {
-    return process.env.NODE_ENV === 'development' ? 'debug' : 'warn';
+  return process.env.NODE_ENV === 'development' ? 'debug' : 'warn';
 };
 
 const format = winston.format.combine(

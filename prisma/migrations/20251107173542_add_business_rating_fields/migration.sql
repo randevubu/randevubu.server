@@ -16,3 +16,4 @@ CREATE INDEX IF NOT EXISTS "businesses_totalRatings_idx" ON "public"."businesses
 
 
 
+

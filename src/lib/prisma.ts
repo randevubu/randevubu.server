@@ -1,7 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { config } from "../config/environment";
 import logger from "../utils/Logger/logger";
-
 // Connection pool configuration
 const getConnectionUrl = (): string => {
   const baseUrl = config.DATABASE_URL || '';

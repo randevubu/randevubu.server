@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import logger from '../utils/Logger/logger';
+
 import { sendSuccessResponse, sendBaseErrorResponse } from '../utils/responseUtils';
 import { BaseError, InternalServerError, ValidationError } from '../types/errors';
 import { createErrorContext } from '../utils/requestUtils';
 import { getEmailService } from '../lib/aws/email';
 import { validateBody } from '../middleware/validation';
 import { createUserRateLimiter } from '../middleware/userRateLimit';
-
+import logger from "../utils/Logger/logger";
 // Contact form schema
 const contactFormSchema = z.object({
   name: z.string().min(2, 'Ad en az 2 karakter olmalıdır').max(100, 'Ad en fazla 100 karakter olabilir'),
@@ -50,7 +50,7 @@ export class ContactController {
         });
 
         throw new InternalServerError(
-          'Mesaj gönderilemedi. Lütfen daha sonra tekrar deneyin.',
+          'Failed to send message',
           new Error(result.error || 'Unknown error'),
           context
         );
@@ -74,7 +74,7 @@ export class ContactController {
       if (error instanceof z.ZodError) {
         const context = createErrorContext(req);
         const validationError = new ValidationError(
-          'Geçersiz form verisi',
+          'Invalid form data',
           undefined,
           undefined,
           context
@@ -94,7 +94,7 @@ export class ContactController {
       } else {
         const originalError = error instanceof Error ? error : new Error(String(error));
         const internalError = new InternalServerError(
-          'Mesaj gönderilemedi',
+          'Failed to send message',
           originalError,
           createErrorContext(req)
         );

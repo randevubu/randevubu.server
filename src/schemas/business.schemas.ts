@@ -899,11 +899,11 @@ export const validateBusinessHours = (businessHours: unknown): boolean => {
     return false;
   }
   
-  const hoursObj = businessHours as Record<string, any>;
+  const hoursObj = businessHours as Record<string, unknown>;
   
   for (const day of days) {
     if (hoursObj[day]) {
-      const { open, close, closed } = hoursObj[day];
+      const { open, close, closed } = hoursObj[day] as { open: string; close: string; closed: boolean };
       
       if (typeof closed !== 'boolean') {
         return false;

@@ -1,9 +1,8 @@
 import { Response, NextFunction } from 'express';
-import { cacheService } from '../services/cacheService';
+import { cacheService } from '../services/core/cacheService';
 import { CacheRequest, CacheResponse } from '../types/request';
 import { CacheUtils } from '../utils/cacheUtils';
-import logger from '../utils/Logger/logger';
-
+import logger from "../utils/Logger/logger";
 /**
  * Cache invalidation middleware for mutations
  * This follows industry best practices by handling invalidation at the route level

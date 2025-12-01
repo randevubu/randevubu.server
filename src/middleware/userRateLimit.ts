@@ -1,8 +1,7 @@
 import { NextFunction, Response } from 'express';
 import { AuthenticatedRequest } from '../types/request';
-import logger from '../utils/Logger/logger';
 import { cacheManager } from '../lib/redis/redis';
-
+import logger from "../utils/Logger/logger";
 /**
  * Production-ready user-based rate limiting middleware
  *

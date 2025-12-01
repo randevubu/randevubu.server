@@ -116,3 +116,27 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Start application
 CMD ["node", "dist/index.js"]
 
+
+# ============================================
+# Stage 4: Development (with all dev deps)
+# ============================================
+FROM node:20-alpine AS development
+
+WORKDIR /app
+
+# Install build dependencies for native modules
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++
+
+# Install dependencies
+COPY package*.json ./
+COPY prisma ./prisma/
+RUN npm install
+
+# Copy source (will be overridden by bind mount in docker-compose.dev)
+COPY . .
+
+# Default dev command (can be overridden)
+CMD ["npm", "run", "dev"]

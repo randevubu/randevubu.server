@@ -1,3 +1,4 @@
+import logger from "../../utils/Logger/logger";
 /**
  * Fallback Translation Service
  * 
@@ -819,11 +820,11 @@ export class TranslationService {
       }
 
       // Return key as fallback
-      console.warn(`Translation not found for key: ${key}, language: ${targetLanguage}`);
+      logger.warn(`Translation not found for key: ${key}, language: ${targetLanguage}`);
       return key;
 
     } catch (error) {
-      console.error(`Translation error for key ${key}:`, error);
+      logger.error(`Translation error for key ${key}:`, error);
       return key;
     }
   }
@@ -836,7 +837,7 @@ export class TranslationService {
       const value = params[key];
       
       if (value === undefined || value === null) {
-        console.warn(`Missing parameter ${key} for translation template`);
+        logger.warn(`Missing parameter ${key} for translation template`);
         return match;
       }
 
@@ -890,7 +891,7 @@ export class TranslationService {
    */
   async clearCache(pattern?: string): Promise<void> {
     // No-op for fallback implementation
-    console.log('Cache clear requested (fallback implementation - no cache)');
+    logger.info('Cache clear requested (fallback implementation - no cache)');
   }
 
   /**
@@ -898,7 +899,7 @@ export class TranslationService {
    */
   async preloadTranslations(keys: string[], languages?: string[]): Promise<void> {
     // No-op for fallback implementation
-    console.log('Preload requested (fallback implementation - already loaded)');
+    logger.info('Preload requested (fallback implementation - already loaded)');
   }
 
   /**

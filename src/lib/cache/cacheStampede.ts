@@ -1,6 +1,17 @@
 import redis from '../redis/redis';
-import logger from '../../utils/Logger/logger';
+import logger from "../../utils/Logger/logger";
 
+/**
+ * Lua script for atomic lock release
+ * Ensures we only delete the lock if we still own it (prevents race conditions)
+ */
+const RELEASE_LOCK_SCRIPT = `
+  if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+  else
+    return 0
+  end
+`;
 /**
  * Cache Stampede Protection (Netflix/Twitter Pattern)
  *
@@ -96,10 +107,12 @@ export class CacheStampedeProtection {
         logger.error(`Error fetching data for cache key ${key}:`, error);
         throw error;
       } finally {
-        // Release lock (only if we still own it)
-        const currentLock = await redis.get(lockKey);
-        if (currentLock === lockValue) {
-          await redis.del(lockKey);
+        // Release lock atomically (only if we still own it)
+        // Uses Lua script to prevent race conditions
+        try {
+          await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, lockValue);
+        } catch (error) {
+          logger.error(`Failed to release lock for key ${key}:`, error);
         }
       }
     } else {
@@ -125,16 +138,23 @@ export class CacheStampedeProtection {
         const lockExists = await redis.exists(lockKey);
         if (!lockExists) {
           // Lock released but no cache - try to acquire lock ourselves
-          const retryLock = await redis.set(lockKey, `${Date.now()}`, 'EX', lockTimeout, 'NX');
+          const retryLockValue = `${Date.now()}`;
+          const retryLock = await redis.set(lockKey, retryLockValue, 'EX', lockTimeout, 'NX');
           if (retryLock === 'OK') {
             try {
               const data = await fetchFunction();
               await redis.setex(key, ttl, JSON.stringify(data));
-              await redis.del(lockKey);
+              // Release lock atomically
+              await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, retryLockValue);
               logger.debug(`Cache regenerated after retry: ${key}`);
               return data;
             } catch (error) {
-              await redis.del(lockKey);
+              // Release lock on error
+              try {
+                await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, retryLockValue);
+              } catch (releaseError) {
+                logger.error(`Failed to release lock on error for key ${key}:`, releaseError);
+              }
               throw error;
             }
           }
@@ -166,9 +186,11 @@ export class CacheStampedeProtection {
         const data = await fetchFunction();
         await redis.setex(key, ttl, JSON.stringify(data));
       } finally {
-        const currentLock = await redis.get(lockKey);
-        if (currentLock === lockValue) {
-          await redis.del(lockKey);
+        // Release lock atomically (only if we still own it)
+        try {
+          await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, lockValue);
+        } catch (error) {
+          logger.error(`Failed to release lock in regenerateCache for key ${key}:`, error);
         }
       }
     }
@@ -236,9 +258,11 @@ export class CacheStampedeProtection {
 
         logger.debug(`Batch cache regenerated for ${missingKeys.length} keys`);
       } finally {
-        const currentLock = await redis.get(lockKey);
-        if (currentLock === lockValue) {
-          await redis.del(lockKey);
+        // Release lock atomically (only if we still own it)
+        try {
+          await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, lockValue);
+        } catch (error) {
+          logger.error(`Failed to release batch lock:`, error);
         }
       }
     } else {
@@ -279,16 +303,45 @@ export class CacheStampedeProtection {
 
   /**
    * Get lock statistics (for monitoring)
+   * Uses SCAN instead of KEYS to avoid blocking Redis (production-safe)
    */
   static async getLockStats(): Promise<{
     activeLocks: number;
     lockKeys: string[];
   }> {
-    const keys = await redis.keys('lock:*');
-    return {
-      activeLocks: keys.length,
-      lockKeys: keys
-    };
+    try {
+      const keys: string[] = [];
+      let cursor = '0';
+
+      // Use SCAN instead of KEYS to prevent blocking Redis (Netflix/Twitter best practice)
+      do {
+        const [nextCursor, scannedKeys] = await redis.scan(
+          cursor,
+          'MATCH', 'lock:*',
+          'COUNT', 100  // Process 100 keys at a time
+        );
+
+        cursor = nextCursor;
+        keys.push(...scannedKeys);
+
+        // Limit to prevent excessive memory usage
+        if (keys.length > 10000) {
+          logger.warn('Lock stats: Too many lock keys found, truncating results');
+          break;
+        }
+      } while (cursor !== '0');
+
+      return {
+        activeLocks: keys.length,
+        lockKeys: keys
+      };
+    } catch (error) {
+      logger.error('Failed to get lock stats:', error);
+      return {
+        activeLocks: 0,
+        lockKeys: []
+      };
+    }
   }
 }
 

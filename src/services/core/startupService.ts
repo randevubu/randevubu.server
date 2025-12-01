@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import logger from '../utils/Logger/logger';
-
+import logger from "../../utils/Logger/logger";
 /**
  * Startup service for application initialization
  * Handles essential data checks and production setup
@@ -93,10 +92,10 @@ export class StartupService {
         logger.info(`📊 Existing roles: ${allRoles.map(r => r.name).join(', ')}`);
       }
 
-      // Ensure all 3 subscription plans exist
+      // Ensure all 6 subscription plans exist (basic/premium for each tier)
       const planCount = await this.prisma.subscriptionPlan.count();
 
-      if (planCount < 3) {
+      if (planCount < 6) {
         logger.info(`⚠️  Found ${planCount} subscription plans, creating missing plans...`);
 
         const plansToCreate = [

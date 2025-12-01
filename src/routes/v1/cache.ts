@@ -1,10 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth, requirePermission } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
-import { cacheService } from '../../services/cacheService';
+import { cacheService } from '../../services/core/cacheService';
 import { getCacheMetrics, getCacheHealth, getCachePerformanceReport, resetCacheMetrics } from '../../middleware/cacheMonitoring';
-import logger from '../../utils/Logger/logger';
-
+import logger from "../../utils/Logger/logger";
 export function createCacheRoutes(): Router {
   const router = Router();
 

@@ -2,8 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { PaymentService } from './paymentService';
 import { NotificationService } from '../notification/notificationService';
 import { SubscriptionStatus } from '../../../types/business';
-import logger from '../../../utils/Logger/logger';
-
+import logger from "../../../utils/Logger/logger";
 export interface RetryConfig {
   maxRetries: number;
   retrySchedule: number[]; // Days between retries
