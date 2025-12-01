@@ -1,12 +1,12 @@
-import { PrismaClient } from '@prisma/client';
-
+import { Prisma, PrismaClient } from '@prisma/client';
+import logger from "../../../utils/Logger/logger";
 export interface AuditEvent {
   id: string;
   businessId: string;
   userId: string;
   eventType: 'NOTIFICATION_SENT' | 'NOTIFICATION_FAILED' | 'RATE_LIMIT_EXCEEDED' | 'PERMISSION_DENIED' | 'CUSTOMER_OPTED_OUT' | 'BATCH_NOTIFICATION_SENT' | 'BROADCAST_SENT';
   action: string;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
   recipientCount?: number;
   success: boolean;
   errorCode?: string;
@@ -65,7 +65,7 @@ export class NotificationAuditService {
           userId: auditEvent.userId,
           eventType: auditEvent.eventType,
           action: auditEvent.action,
-          details: auditEvent.details,
+          details: this.toJson(auditEvent.details),
           recipientCount: auditEvent.recipientCount,
           success: auditEvent.success,
           errorCode: auditEvent.errorCode,
@@ -77,7 +77,7 @@ export class NotificationAuditService {
       });
 
       // Log to console for development
-      console.log(`[AUDIT] ${auditEvent.eventType}: ${auditEvent.action}`, {
+      logger.info(`[AUDIT] ${auditEvent.eventType}: ${auditEvent.action}`, {
         businessId: auditEvent.businessId,
         userId: auditEvent.userId,
         success: auditEvent.success,
@@ -85,7 +85,7 @@ export class NotificationAuditService {
       });
 
     } catch (error) {
-      console.error('Error logging audit event:', error);
+      logger.error('Error logging audit event:', error);
       // Don't throw error as audit logging shouldn't block operations
     }
   }
@@ -99,7 +99,7 @@ export class NotificationAuditService {
     userId: string,
     recipientCount: number,
     notificationType: string,
-    details: Record<string, any> = {},
+    details: Record<string, unknown> = {},
     metadata: {
       ipAddress?: string;
       userAgent?: string;
@@ -131,7 +131,7 @@ export class NotificationAuditService {
     errorCode: string,
     errorMessage: string,
     notificationType: string,
-    details: Record<string, any> = {},
+    details: Record<string, unknown> = {},
     metadata: {
       ipAddress?: string;
       userAgent?: string;
@@ -197,7 +197,7 @@ export class NotificationAuditService {
     userId: string,
     action: string,
     reason: string,
-    details: Record<string, any> = {},
+    details: Record<string, unknown> = {},
     metadata: {
       ipAddress?: string;
       userAgent?: string;
@@ -262,7 +262,7 @@ export class NotificationAuditService {
     notificationType: string,
     successCount: number,
     failureCount: number,
-    details: Record<string, any> = {},
+    details: Record<string, unknown> = {},
     metadata: {
       ipAddress?: string;
       userAgent?: string;
@@ -343,7 +343,7 @@ export class NotificationAuditService {
         userId: event.userId,
         eventType: event.eventType as any,
         action: event.action,
-        details: event.details as Record<string, any>,
+        details: event.details as Record<string, unknown>,
         recipientCount: event.recipientCount,
         success: event.success,
         errorCode: event.errorCode,
@@ -360,7 +360,7 @@ export class NotificationAuditService {
       };
 
     } catch (error) {
-      console.error('Error querying audit events:', error);
+      logger.error('Error querying audit events:', error);
       throw new Error('Failed to query audit events');
     }
   }
@@ -467,7 +467,7 @@ export class NotificationAuditService {
       };
 
     } catch (error) {
-      console.error('Error getting audit stats:', error);
+      logger.error('Error getting audit stats:', error);
       throw new Error('Failed to get audit statistics');
     }
   }
@@ -574,9 +574,13 @@ export class NotificationAuditService {
       return alerts;
 
     } catch (error) {
-      console.error('Error getting security alerts:', error);
+      logger.error('Error getting security alerts:', error);
       throw new Error('Failed to get security alerts');
     }
+  }
+
+  private toJson(details: Record<string, unknown>): Prisma.JsonObject {
+    return details as Prisma.JsonObject;
   }
 }
 

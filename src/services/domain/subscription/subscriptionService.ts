@@ -9,7 +9,7 @@ import { RBACService } from '../rbac/rbacService';
 import { PermissionName } from '../../../types/auth';
 import { PricingTierService, LocationBasedPricing } from '../pricing/pricingTierService';
 import { DiscountCodeService } from '../discount/discountCodeService';
-
+import logger from "../../../utils/Logger/logger";
 export class SubscriptionService {
   constructor(
     private subscriptionRepository: SubscriptionRepository,
@@ -665,7 +665,7 @@ export class SubscriptionService {
 
         renewed++;
       } catch (error) {
-        console.error(`Failed to renew subscription ${subscription.id}:`, error);
+        logger.error(`Failed to renew subscription ${subscription.id}:`, error);
         failed++;
       }
       processed++;
@@ -679,7 +679,7 @@ export class SubscriptionService {
     const trialsEndingSoon = await this.subscriptionRepository.findTrialsEndingSoon(3);
     
     // In a real implementation, this would send emails/notifications
-    console.log(`Found ${trialsEndingSoon.length} trials ending soon`);
+    logger.info(`Found ${trialsEndingSoon.length} trials ending soon`);
     
     return trialsEndingSoon.length;
   }
@@ -991,7 +991,7 @@ export class SubscriptionService {
 
       return { success: true };
     } catch (error) {
-      console.error('Automatic renewal failed:', error);
+      logger.error('Automatic renewal failed:', error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Renewal failed' 
@@ -1149,7 +1149,7 @@ export class SubscriptionService {
       const business = await this.subscriptionRepository.findBusinessById(businessId);
       
       if (!business) {
-        console.warn(`Business ${businessId} not found when ensuring business hours`);
+        logger.warn(`Business ${businessId} not found when ensuring business hours`);
         return;
       }
 
@@ -1168,11 +1168,11 @@ export class SubscriptionService {
         await this.subscriptionRepository.updateBusinessHours(businessId, defaultBusinessHours);
         
         if (process.env.NODE_ENV === 'development') {
-          console.log(`🔧 SUBSCRIPTION SERVICE: Set default business hours for business ${businessId}`);
+          logger.info(`🔧 SUBSCRIPTION SERVICE: Set default business hours for business ${businessId}`);
         }
       }
     } catch (error) {
-      console.error(`Error ensuring business hours for business ${businessId}:`, error);
+      logger.error(`Error ensuring business hours for business ${businessId}:`, error);
       // Don't throw error to avoid breaking subscription creation
     }
   }

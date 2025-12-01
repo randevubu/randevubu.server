@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-
+import logger from "../../../utils/Logger/logger";
 export interface GeolocationResult {
   city: string;
   state: string;
@@ -18,16 +18,16 @@ export class IPGeolocationService {
       // Remove IPv6 prefix if present
       const cleanIP = ip.replace(/^::ffff:/, '');
       
-      console.log(`🔍 IP Geolocation Debug: Detecting location for IP: ${cleanIP}`);
+      logger.info(`🔍 IP Geolocation Debug: Detecting location for IP: ${cleanIP}`);
       
       // Skip private/local IPs
       if (this.isPrivateIP(cleanIP)) {
-        console.log('🔍 IP Geolocation Debug: Private IP detected, skipping geolocation');
+        logger.info('🔍 IP Geolocation Debug: Private IP detected, skipping geolocation');
         return null;
       }
 
       // Use free IP geolocation service
-      console.log(`🔍 IP Geolocation Debug: Calling ipapi.co for IP: ${cleanIP}`);
+      logger.info(`🔍 IP Geolocation Debug: Calling ipapi.co for IP: ${cleanIP}`);
       const response = await fetch(`https://ipapi.co/${cleanIP}/json/`);
       
       if (!response.ok) {
@@ -35,7 +35,7 @@ export class IPGeolocationService {
       }
 
       const data = await response.json();
-      console.log(`🔍 IP Geolocation Debug: Response from ipapi.co:`, JSON.stringify(data, null, 2));
+      logger.info(`🔍 IP Geolocation Debug: Response from ipapi.co:`, JSON.stringify(data, null, 2));
       
       if (data.error) {
         throw new Error(`IP geolocation error: ${data.reason}`);
@@ -50,11 +50,11 @@ export class IPGeolocationService {
         accuracy: this.determineAccuracy(data)
       };
 
-      console.log(`🔍 IP Geolocation Debug: Final result:`, JSON.stringify(result, null, 2));
+      logger.info(`🔍 IP Geolocation Debug: Final result:`, JSON.stringify(result, null, 2));
       return result;
 
     } catch (error) {
-      console.warn('IP geolocation failed:', error);
+      logger.warn('IP geolocation failed:', error);
       return null;
     }
   }
@@ -66,7 +66,7 @@ export class IPGeolocationService {
     const realIP = req.headers['x-real-ip'];
     const cfConnectingIP = req.headers['cf-connecting-ip'];
     
-    console.log('🔍 IP Detection Debug: Headers:', {
+    logger.info('🔍 IP Detection Debug: Headers:', {
       'x-forwarded-for': forwarded,
       'x-real-ip': realIP,
       'cf-connecting-ip': cfConnectingIP,
@@ -78,23 +78,23 @@ export class IPGeolocationService {
     if (forwarded) {
       // X-Forwarded-For can contain multiple IPs, take the first one
       const ip = forwarded.split(',')[0].trim();
-      console.log(`🔍 IP Detection Debug: Using X-Forwarded-For: ${ip}`);
+      logger.info(`🔍 IP Detection Debug: Using X-Forwarded-For: ${ip}`);
       return ip;
     }
     
     if (realIP) {
-      console.log(`🔍 IP Detection Debug: Using X-Real-IP: ${realIP}`);
+      logger.info(`🔍 IP Detection Debug: Using X-Real-IP: ${realIP}`);
       return realIP;
     }
     
     if (cfConnectingIP) {
-      console.log(`🔍 IP Detection Debug: Using CF-Connecting-IP: ${cfConnectingIP}`);
+      logger.info(`🔍 IP Detection Debug: Using CF-Connecting-IP: ${cfConnectingIP}`);
       return cfConnectingIP;
     }
     
     // Fallback to connection remote address
     const fallbackIP = req.connection?.remoteAddress || req.socket?.remoteAddress || req.ip || '127.0.0.1';
-    console.log(`🔍 IP Detection Debug: Using fallback IP: ${fallbackIP}`);
+    logger.info(`🔍 IP Detection Debug: Using fallback IP: ${fallbackIP}`);
     return fallbackIP;
   }
 

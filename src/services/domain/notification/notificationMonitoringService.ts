@@ -1,6 +1,6 @@
 import { createLogger, format, transports } from 'winston';
 import { PrismaClient } from '@prisma/client';
-
+import logger from "../../../utils/Logger/logger";
 export interface NotificationMetrics {
   totalSent: number;
   totalFailed: number;

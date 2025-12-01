@@ -10,7 +10,7 @@ import { AppointmentService } from "../services/domain/appointment";
 import { AppointmentStatus } from "../types/business";
 import { AuthenticatedRequest, BusinessOwnershipRequest } from "../types/request";
 import { AppError } from "../types/responseTypes";
-import logger from "../utils/Logger/logger";
+
 import {
   handleRouteError,
   sendAppErrorResponse,
@@ -18,7 +18,9 @@ import {
 } from '../utils/responseUtils';
 import { formatDateForAPI, formatTimeForAPI } from '../utils/timezoneHelper';
 import { handleControllerError } from "../utils/errors/errorHandler";
+import logger from "../utils/Logger/logger";
 
+const noopNext: NextFunction = (() => undefined) as NextFunction;
 export class AppointmentController {
   constructor(private appointmentService: AppointmentService) {}
 
@@ -33,7 +35,7 @@ export class AppointmentController {
   async getMyAppointments(
     req: BusinessContextRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction = noopNext
   ): Promise<void> {
     try {
       const userId = req.user!.id;
@@ -77,7 +79,7 @@ export class AppointmentController {
   async createAppointment(
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction = noopNext
   ): Promise<void> {
     try {
       const validatedData = createAppointmentSchema.parse(req.body);
@@ -231,7 +233,7 @@ export class AppointmentController {
   async getStaffAppointments(
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction = noopNext
   ): Promise<void> {
     try {
       const { staffId } = req.params;
@@ -291,7 +293,7 @@ export class AppointmentController {
   async getBusinessAppointments(
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction = noopNext
   ): Promise<void> {
     try {
       // Business ownership already validated by middleware
@@ -682,7 +684,7 @@ export class AppointmentController {
   async getTodaysAppointments(
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction = noopNext
   ): Promise<void> {
     try {
       // Business ownership already validated by middleware
@@ -733,7 +735,7 @@ export class AppointmentController {
   async getMyTodaysAppointments(
     req: BusinessContextRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction = noopNext
   ): Promise<void> {
     try {
       const userId = req.user!.id;
@@ -1256,7 +1258,7 @@ export class AppointmentController {
    * Get nearest appointment in current hour for the authenticated user
    * GET /api/v1/appointments/nearest-current-hour
    */
-  async getNearestCurrentHour(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async getNearestCurrentHour(req: AuthenticatedRequest, res: Response, next: NextFunction = noopNext): Promise<void> {
     try {
       const userId = req.user!.id;
       
@@ -1295,7 +1297,7 @@ export class AppointmentController {
    * Get all appointments in current hour for the authenticated user
    * GET /api/v1/appointments/current-hour
    */
-  async getCurrentHourAppointments(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async getCurrentHourAppointments(req: AuthenticatedRequest, res: Response, next: NextFunction = noopNext): Promise<void> {
     try {
       const userId = req.user!.id;
 
@@ -1337,7 +1339,7 @@ export class AppointmentController {
   async getMonitorAppointments(
     req: BusinessOwnershipRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction = noopNext
   ): Promise<void> {
     try {
       const { businessId } = req.params;
@@ -1418,7 +1420,7 @@ export class AppointmentController {
   async getPublicAvailableSlots(
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction = noopNext
   ): Promise<void> {
     try {
       const { businessId } = req.params;

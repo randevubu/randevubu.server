@@ -26,7 +26,7 @@ import { PrismaClient } from '@prisma/client';
 import { CancellationPolicyService } from '../business/cancellationPolicyService';
 import { PolicyEnforcementContext, PolicyCheckResult } from '../../../types/cancellationPolicy';
 import { AuthorizationError } from '../../../utils/errors/customError';
-
+import logger from "../../../utils/Logger/logger";
 export class AppointmentService {
   private cancellationPolicyService: CancellationPolicyService;
   private notificationGateway: UnifiedNotificationGateway;
@@ -369,7 +369,7 @@ export class AppointmentService {
 
     // Debug logging (development only)
     if (process.env.NODE_ENV === 'development') {
-      console.log('🕐 Timezone Debug:', {
+      logger.info('🕐 Timezone Debug:', {
         inputDate: data.date,
         inputTime: data.startTime,
         appointmentDateTime: appointmentDateTime.toISOString(),
@@ -515,21 +515,21 @@ export class AppointmentService {
     // Send notification to business owner/staff about new appointment
     try {
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 APPOINTMENT CREATION - About to call notifyNewAppointment for appointment:', appointment.id);
+        logger.info('🔍 APPOINTMENT CREATION - About to call notifyNewAppointment for appointment:', appointment.id);
       }
       await this.notifyNewAppointment(appointment, service);
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 APPOINTMENT CREATION - notifyNewAppointment completed for appointment:', appointment.id);
+        logger.info('🔍 APPOINTMENT CREATION - notifyNewAppointment completed for appointment:', appointment.id);
       }
     } catch (notificationError) {
       // Log notification error but don't fail the appointment creation
-      console.error('❌ APPOINTMENT CREATION - Failed to send business owner notification:', notificationError);
+      logger.error('❌ APPOINTMENT CREATION - Failed to send business owner notification:', notificationError);
     }
 
     // Send booking confirmation SMS to customer
     try {
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 APPOINTMENT CREATION - Sending booking confirmation to customer:', customer.id);
+        logger.info('🔍 APPOINTMENT CREATION - Sending booking confirmation to customer:', customer.id);
       }
       await this.sendCustomerBookingConfirmation(appointment, service, {
         id: customer.id,
@@ -538,11 +538,11 @@ export class AppointmentService {
         phoneNumber: customer.phoneNumber
       });
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 APPOINTMENT CREATION - Customer confirmation sent for appointment:', appointment.id);
+        logger.info('🔍 APPOINTMENT CREATION - Customer confirmation sent for appointment:', appointment.id);
       }
     } catch (notificationError) {
       // Log notification error but don't fail the appointment creation
-      console.error('❌ APPOINTMENT CREATION - Failed to send customer confirmation:', notificationError);
+      logger.error('❌ APPOINTMENT CREATION - Failed to send customer confirmation:', notificationError);
     }
 
     return appointment;
@@ -1204,20 +1204,20 @@ export class AppointmentService {
   private async notifyNewAppointment(appointment: AppointmentData, service: { name: string; duration: number; price: number; currency: string }): Promise<void> {
     try {
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 NOTIFY NEW APPOINTMENT - Starting notification process for appointment:', appointment.id);
+        logger.info('🔍 NOTIFY NEW APPOINTMENT - Starting notification process for appointment:', appointment.id);
       }
       
       // Get business details to find owner/staff
       const business = await this.repositories.businessRepository.findById(appointment.businessId);
       
       if (!business) {
-        console.error('Business not found for notification:', appointment.businessId);
+        logger.error('Business not found for notification:', appointment.businessId);
         return;
       }
 
       if (!business.isActive) {
         if (process.env.NODE_ENV === 'development') {
-          console.log('Business is inactive, skipping notification:', appointment.businessId);
+          logger.info('Business is inactive, skipping notification:', appointment.businessId);
         }
         return;
       }
@@ -1225,7 +1225,7 @@ export class AppointmentService {
       // Get customer details for the notification
       const customer = await this.repositories?.userRepository.findById(appointment.customerId);
       if (!customer) {
-        console.error('Customer not found for notification:', appointment.customerId);
+        logger.error('Customer not found for notification:', appointment.customerId);
         return;
       }
 
@@ -1276,13 +1276,13 @@ export class AppointmentService {
       });
 
       if (result.success) {
-        console.log(`✅ Appointment notification sent to business owner: ${business.ownerId} via ${result.sentChannels.join(', ')}`);
+        logger.info(`✅ Appointment notification sent to business owner: ${business.ownerId} via ${result.sentChannels.join(', ')}`);
       } else {
-        console.log(`⚠️ Appointment notification skipped: ${result.skippedChannels.map(sc => sc.reason).join(', ')}`);
+        logger.info(`⚠️ Appointment notification skipped: ${result.skippedChannels.map(sc => sc.reason).join(', ')}`);
       }
 
     } catch (error) {
-      console.error('Error sending new appointment notification:', error);
+      logger.error('Error sending new appointment notification:', error);
       throw error;
     }
   }
@@ -1300,13 +1300,13 @@ export class AppointmentService {
       // Get business details
       const business = await this.businessRepository.findById(appointment.businessId);
       if (!business) {
-        console.error('Business not found for booking confirmation:', appointment.businessId);
+        logger.error('Business not found for booking confirmation:', appointment.businessId);
         return;
       }
 
       // Ensure customer has phone number
       if (!customer.phoneNumber) {
-        console.warn(`Customer ${customer.id} has no phone number for booking confirmation`);
+        logger.warn(`Customer ${customer.id} has no phone number for booking confirmation`);
         return;
       }
 
@@ -1341,13 +1341,13 @@ export class AppointmentService {
       );
 
       if (result.success) {
-        console.log(`✅ Booking confirmation SMS sent to customer: ${customer.phoneNumber.slice(0, 3)}***${customer.phoneNumber.slice(-3)}`);
+        logger.info(`✅ Booking confirmation SMS sent to customer: ${customer.phoneNumber.slice(0, 3)}***${customer.phoneNumber.slice(-3)}`);
       } else {
-        console.error(`❌ Failed to send booking confirmation SMS: ${result.error}`);
+        logger.error(`❌ Failed to send booking confirmation SMS: ${result.error}`);
       }
 
     } catch (error) {
-      console.error('❌ Error sending customer booking confirmation:', error);
+      logger.error('❌ Error sending customer booking confirmation:', error);
       // Don't throw - we don't want to fail appointment creation if notification fails
     }
   }
@@ -1425,16 +1425,16 @@ export class AppointmentService {
 
     // Debug logging to see what appointments we have
     if (process.env.NODE_ENV === 'development') {
-      console.log('🔍 Monitor Debug - Total appointments found:', appointmentsWithDetails.length);
-      console.log('🔍 Monitor Debug - Current time:', formatDateTimeForAPI(now));
-      console.log('🔍 Monitor Debug - Day range:', {
+      logger.info('🔍 Monitor Debug - Total appointments found:', appointmentsWithDetails.length);
+      logger.info('🔍 Monitor Debug - Current time:', formatDateTimeForAPI(now));
+      logger.info('🔍 Monitor Debug - Day range:', {
         start: formatDateTimeForAPI(dayStart),
         end: formatDateTimeForAPI(dayEnd)
       });
       appointmentsWithDetails.forEach(apt => {
         const aptStartTime = new Date(apt.startTime);
         const aptEndTime = new Date(apt.endTime);
-        console.log('🔍 Appointment:', {
+        logger.info('🔍 Appointment:', {
           id: apt.id,
           status: apt.status,
           startTime: formatDateTimeForAPI(aptStartTime),
@@ -1470,7 +1470,7 @@ export class AppointmentService {
       });
 
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Monitor Debug - Auto-updated appointments to IN_PROGRESS:', appointmentsToUpdate.length);
+        logger.info('🔍 Monitor Debug - Auto-updated appointments to IN_PROGRESS:', appointmentsToUpdate.length);
       }
     }
 
@@ -1489,7 +1489,7 @@ export class AppointmentService {
     ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
     if (process.env.NODE_ENV === 'development') {
-      console.log('🔍 Monitor Debug - Filtered results:', {
+      logger.info('🔍 Monitor Debug - Filtered results:', {
         inProgress: inProgressAppointments.length,
         confirmed: confirmedAppointments.length
       });

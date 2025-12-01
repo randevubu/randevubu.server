@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
-import logger from '../utils/Logger/logger';
+
 import { config } from '../config/environment';
 import {
   BaseError,
@@ -13,7 +13,7 @@ import { getTranslationKey, ErrorCode as ErrorCodeString, ErrorTranslationKey } 
 import { translateMessage } from "../utils/translationUtils";
 import { AuthenticatedRequest } from "../types/request";
 import { ErrorResponse, StandardError } from "../types/responseTypes";
-
+import logger from "../utils/Logger/logger";
 /**
  * Validate if language code is supported
  */

@@ -471,6 +471,13 @@ grep -r "console\." src/ --exclude-dir=node_modules
    - Add error tracking
    - Set up monitoring dashboards
 
+### Push Notification Observability Runbook
+
+- **Health Contract:** `NotificationService.getPushServiceHealth()` exposes whether VAPID keys are configured plus the live worker queue depth. Bubble this into `/health` so operators instantly know if the push stack is ready before triggering marketing sends.
+- **Key Metrics:** Monitor `randevubu_push_queue_depth`, `randevubu_push_notifications_queued_total`, and `randevubu_push_invalid_subscriptions_total`. Alert when depth stays >25 for five minutes or when invalid subscriptions spike >10% day-over-day.
+- **Delivery Flow:** API calls persist a `pushNotification` row (status `PENDING`) and enqueue work via `PushDeliveryWorker`, which handles retries/backoff and updates rows to `SENT`/`FAILED`. HTTP 410/404 responses automatically disable bad subscriptions.
+- **Runbook Actions:** For backlog growth, scale app replicas or raise `PUSH_WORKER_CONCURRENCY`. For widespread failures, inspect provider responses, pause batch jobs, and prune/rehydrate subscriptions with `updatePushSubscriptionStatus`.
+
 **Estimated Time to Production-Ready:** 2-3 hours (critical fixes only) or 1-2 days (with all recommendations)
 
 ---

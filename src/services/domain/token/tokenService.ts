@@ -17,7 +17,6 @@ import {
   UnauthorizedError,
 } from "../../../types/errors";
 import logger from "../../../utils/Logger/logger";
-
 export class TokenService {
   private static readonly DEFAULT_CONFIG: TokenServiceConfig = {
     accessTokenExpiry: "15m",

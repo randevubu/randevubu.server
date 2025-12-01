@@ -8,7 +8,7 @@ import {
   UpdatePermissionRequest,
   UpdateRoleRequest,
 } from "../types/auth";
-import logger from "../utils/Logger/logger";
+
 import {
   handleRouteError,
   sendSuccessResponse,
@@ -17,7 +17,7 @@ import {
 } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
-
+import logger from "../utils/Logger/logger";
 export class RoleController {
   constructor(private roleService: RoleService) {}
 

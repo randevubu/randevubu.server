@@ -29,7 +29,7 @@ import { CustomerManagementService } from './customerManagementService';
 import { CancellationPolicySettings } from '../../../types/businessSettings';
 import { CustomerPolicyStatus } from '../../../types/cancellationPolicy';
 import { CustomerManagementSettings, CustomerNote, CustomerEvaluation, CustomerLoyaltyStatus } from '../../../types/customerManagement';
-
+import logger from "../../../utils/Logger/logger";
 export class BusinessService {
   private cancellationPolicyService: CancellationPolicyService;
   private customerManagementService: CustomerManagementService;
@@ -57,17 +57,17 @@ export class BusinessService {
   ): Promise<BusinessData> {
     // Debug logging (development only)
     if (process.env.NODE_ENV === 'development') {
-      console.log('🔧 BUSINESS SERVICE: createBusiness called');
-      console.log('🔧 BUSINESS SERVICE: User ID:', userId);
-      console.log('🔧 BUSINESS SERVICE: Data:', data);
+      logger.info('🔧 BUSINESS SERVICE: createBusiness called');
+      logger.info('🔧 BUSINESS SERVICE: User ID:', userId);
+      logger.info('🔧 BUSINESS SERVICE: Data:', data);
     }
-    
+
     // Check permissions
     await this.rbacService.requirePermission(userId, PermissionName.CREATE_BUSINESS);
 
     // Generate unique slug
     const slug = await this.generateUniqueSlug(data.name);
-    
+
     // Generate website URL automatically
     const website = `https://randevubu.com/business/${slug}`;
 
@@ -84,7 +84,7 @@ export class BusinessService {
 
     // Debug logging for business hours
     if (process.env.NODE_ENV === 'development') {
-      console.log('🔧 BUSINESS SERVICE: Default business hours created:', JSON.stringify(defaultBusinessHours, null, 2));
+      logger.info('🔧 BUSINESS SERVICE: Default business hours created:', JSON.stringify(defaultBusinessHours, null, 2));
     }
 
     // Use repository method that handles transaction and role assignment
@@ -95,6 +95,35 @@ export class BusinessService {
       website: website,
       businessHours: defaultBusinessHours
     });
+
+    // Populate workingHours table for booking availability
+    // Map day names to day of week numbers (0 = Sunday, 1 = Monday, etc.)
+    const dayMapping: Record<string, number> = {
+      sunday: 0,
+      monday: 1,
+      tuesday: 2,
+      wednesday: 3,
+      thursday: 4,
+      friday: 5,
+      saturday: 6
+    };
+
+    // Create working hours records for each day that is open
+    for (const [day, hours] of Object.entries(defaultBusinessHours)) {
+      if (hours.isOpen) {
+        await this.repositories.appointmentRepository.createWorkingHours({
+          businessId: business.id,
+          dayOfWeek: dayMapping[day],
+          startTime: hours.openTime,
+          endTime: hours.closeTime,
+          isActive: true
+        });
+      }
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+      logger.info('🔧 BUSINESS SERVICE: Working hours populated for business:', business.id);
+    }
 
     // Update staff usage to count the owner
     if (this.usageService) {
@@ -121,15 +150,15 @@ export class BusinessService {
 
     // If user doesn't have global permission, check business-specific access
     const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
-    
+
     if (!hasGlobalView) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
-        userId, 
+        userId,
         'business',
         'view_own',
         { businessId }
       );
-      
+
       if (!hasBusinessAccess) {
         throw new Error('Access denied: You do not have permission to view this business');
       }
@@ -178,15 +207,15 @@ export class BusinessService {
 
     // If user doesn't have global permission, check business-specific access
     const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
-    
+
     if (!hasGlobalView) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
-        userId, 
+        userId,
         'business',
         'view_own',
         { businessId }
       );
-      
+
       if (!hasBusinessAccess) {
         throw new Error('Access denied: You do not have permission to view this business');
       }
@@ -236,7 +265,7 @@ export class BusinessService {
     }
 
     // Remove duplicates (in case user is both owner and staff of same business)
-    const uniqueBusinesses = businesses.filter((business, index, self) => 
+    const uniqueBusinesses = businesses.filter((business, index, self) =>
       self.findIndex(b => b.id === business.id) === index
     );
 
@@ -409,10 +438,10 @@ export class BusinessService {
   ): Promise<BusinessData> {
     // Check permissions - either global or business-specific
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-    
+
     if (!hasGlobalEdit) {
       await this.rbacService.requirePermission(
-        userId, 
+        userId,
         PermissionName.EDIT_OWN_BUSINESS,
         { businessId }
       );
@@ -422,14 +451,14 @@ export class BusinessService {
     if (data.name) {
       const slug = await this.generateUniqueSlug(data.name, businessId);
       const website = `https://randevubu.com/business/${slug}`;
-      
+
       // Add slug and website to update data
       const updateData = {
         ...data,
         slug,
         website
       };
-      
+
       return await this.businessRepository.update(businessId, updateData);
     }
 
@@ -443,10 +472,10 @@ export class BusinessService {
   ): Promise<BusinessData> {
     // Check permissions - either global or business-specific
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-    
+
     if (!hasGlobalEdit) {
       await this.rbacService.requirePermission(
-        userId, 
+        userId,
         PermissionName.EDIT_OWN_BUSINESS,
         { businessId }
       );
@@ -483,10 +512,10 @@ export class BusinessService {
   ): Promise<any> {
     // Check permissions - either global or business-specific
     const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
-    
+
     if (!hasGlobalView) {
       await this.rbacService.requirePermission(
-        userId, 
+        userId,
         PermissionName.VIEW_OWN_BUSINESS,
         { businessId }
       );
@@ -516,10 +545,10 @@ export class BusinessService {
   ): Promise<BusinessData> {
     // Check permissions - either global or business-specific
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-    
+
     if (!hasGlobalEdit) {
       await this.rbacService.requirePermission(
-        userId, 
+        userId,
         PermissionName.EDIT_OWN_BUSINESS,
         { businessId }
       );
@@ -568,10 +597,10 @@ export class BusinessService {
   ): Promise<BusinessStaffPrivacySettings> {
     // Check permissions - either global or business-specific
     const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
-    
+
     if (!hasGlobalView) {
       await this.rbacService.requirePermission(
-        userId, 
+        userId,
         PermissionName.VIEW_OWN_BUSINESS,
         { businessId }
       );
@@ -587,7 +616,7 @@ export class BusinessService {
     const settings = (currentBusiness.settings as Record<string, unknown>) || {};
     const staffPrivacy = (settings.staffPrivacy as Record<string, unknown>) || {};
     const customStaffLabels = (staffPrivacy.customStaffLabels as Record<string, unknown>) || {};
-    
+
     return {
       hideStaffNames: (staffPrivacy.hideStaffNames as boolean) || false,
       staffDisplayMode: (staffPrivacy.staffDisplayMode as 'NAMES' | 'ROLES' | 'GENERIC') || 'NAMES',
@@ -603,10 +632,10 @@ export class BusinessService {
   async deleteBusiness(userId: string, businessId: string): Promise<void> {
     // Check permissions
     const hasGlobalDelete = await this.rbacService.hasPermission(userId, 'business', 'delete_all');
-    
+
     if (!hasGlobalDelete) {
       await this.rbacService.requirePermission(
-        userId, 
+        userId,
         PermissionName.DELETE_OWN_BUSINESS,
         { businessId }
       );
@@ -628,7 +657,7 @@ export class BusinessService {
   }> {
     // Public search - no permission required for basic search
     // However, some filters might require permissions
-    
+
     return await this.businessRepository.search(filters, page, limit);
   }
 
@@ -654,7 +683,7 @@ export class BusinessService {
   ): Promise<BusinessData> {
     // Check permissions
     const hasGlobalClose = await this.rbacService.hasPermission(userId, 'business', 'close_all');
-    
+
     if (!hasGlobalClose) {
       await this.rbacService.requirePermission(
         userId,
@@ -674,7 +703,7 @@ export class BusinessService {
   async reopenBusiness(userId: string, businessId: string): Promise<BusinessData> {
     // Check permissions
     const hasGlobalReopen = await this.rbacService.hasPermission(userId, 'business', 'close_all');
-    
+
     if (!hasGlobalReopen) {
       await this.rbacService.requirePermission(
         userId,
@@ -737,7 +766,7 @@ export class BusinessService {
   ): Promise<BusinessData> {
     // Check permissions
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-    
+
     if (!hasGlobalEdit) {
       await this.rbacService.requirePermission(
         userId,
@@ -757,7 +786,7 @@ export class BusinessService {
   ): Promise<{ businessHours: BusinessHours }> {
     // Check permissions
     const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
-    
+
     if (!hasGlobalView) {
       await this.rbacService.requirePermission(
         userId,
@@ -798,7 +827,7 @@ export class BusinessService {
 
     const targetDate = date ? new Date(date) : new Date();
     const businessTimezone = timezone || business.timezone || 'Europe/Istanbul';
-    
+
     // Check for business hours override first
     const override = await this.repositories.businessRepository.findBusinessHoursOverride(businessId, targetDate.toISOString().split('T')[0]);
 
@@ -827,7 +856,7 @@ export class BusinessService {
     if (!dayHours || !dayHours.isOpen) {
       // Find next open day
       const nextOpenTime = await this.findNextOpenTime(business, targetDate, businessTimezone);
-      
+
       return {
         businessId,
         date: targetDate.toISOString().split('T')[0],
@@ -866,7 +895,7 @@ export class BusinessService {
   ): Promise<any> {
     // Check permissions
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-    
+
     if (!hasGlobalEdit) {
       await this.rbacService.requirePermission(
         userId,
@@ -910,7 +939,7 @@ export class BusinessService {
   ): Promise<any> {
     // Check permissions
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-    
+
     if (!hasGlobalEdit) {
       await this.rbacService.requirePermission(
         userId,
@@ -952,7 +981,7 @@ export class BusinessService {
   ): Promise<void> {
     // Check permissions
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-    
+
     if (!hasGlobalEdit) {
       await this.rbacService.requirePermission(
         userId,
@@ -972,7 +1001,7 @@ export class BusinessService {
   ): Promise<any[]> {
     // Check permissions
     const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
-    
+
     if (!hasGlobalView) {
       await this.rbacService.requirePermission(
         userId,
@@ -982,7 +1011,7 @@ export class BusinessService {
     }
 
     const where: { businessId: string; date?: { gte: Date; lte: Date } } = { businessId };
-    
+
     if (startDate && endDate) {
       where.date = {
         gte: new Date(startDate),
@@ -1009,21 +1038,21 @@ export class BusinessService {
     if (!businessHours) return undefined;
 
     const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    
+
     // Check next 7 days
     for (let i = 1; i <= 7; i++) {
       const checkDate = new Date(fromDate);
       checkDate.setDate(checkDate.getDate() + i);
-      
+
       const dayOfWeek = checkDate.getDay();
       const dayName = dayNames[dayOfWeek];
       const dayHours = (businessHours[dayName] as Record<string, unknown>) || {};
-      
+
       if (dayHours && dayHours.isOpen && dayHours.openTime) {
         return `${checkDate.toISOString().split('T')[0]}T${dayHours.openTime as string}:00`;
       }
     }
-    
+
     return undefined;
   }
 
@@ -1079,7 +1108,7 @@ export class BusinessService {
   } | null> {
     // Public method - no authentication required
     const businessWithServices = await this.businessRepository.findBySlugWithServices(slug);
-    
+
     if (!businessWithServices) {
       return null;
     }
@@ -1137,7 +1166,7 @@ export class BusinessService {
   ): Promise<void> {
     // Check permissions to manage staff
     const hasGlobalStaff = await this.rbacService.hasPermission(userId, 'staff', 'manage_all');
-    
+
     if (!hasGlobalStaff) {
       await this.rbacService.requirePermission(
         userId,
@@ -1160,7 +1189,7 @@ export class BusinessService {
   ): Promise<void> {
     // Check permissions to manage staff
     const hasGlobalStaff = await this.rbacService.hasPermission(userId, 'staff', 'manage_all');
-    
+
     if (!hasGlobalStaff) {
       await this.rbacService.requirePermission(
         userId,
@@ -1229,8 +1258,8 @@ export class BusinessService {
   }
 
   async batchCloseBusinesses(
-    userId: string, 
-    businessIds: string[], 
+    userId: string,
+    businessIds: string[],
     reason: string
   ): Promise<void> {
     await this.rbacService.requirePermission(userId, PermissionName.CLOSE_ALL_BUSINESSES);
@@ -1285,7 +1314,7 @@ export class BusinessService {
   ): Promise<{ imageUrl: string; business?: BusinessData }> {
     // Check if user is the owner of the business
     const business = await this.businessRepository.findById(businessId);
-    
+
     if (!business) {
       throw new ValidationError('Business not found');
     }
@@ -1298,7 +1327,7 @@ export class BusinessService {
 
     // If user doesn't have global permission, verify they own this business
     const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
-    
+
     if (!hasGlobalUpdate) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
         userId,
@@ -1328,7 +1357,7 @@ export class BusinessService {
           generatePresignedUrl: false, // We'll use the public URL
         }
       );
-      
+
       const imageUrl = uploadResult.publicUrl;
 
       if (imageType === 'gallery') {
@@ -1341,7 +1370,7 @@ export class BusinessService {
         return { imageUrl, business };
       }
     } catch (error) {
-      console.error('Error uploading business image:', error);
+      logger.error('Error uploading business image:', error);
       throw new Error('Failed to upload image');
     }
   }
@@ -1359,7 +1388,7 @@ export class BusinessService {
 
     // If user doesn't have global permission, check business-specific access
     const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
-    
+
     if (!hasGlobalUpdate) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
         userId,
@@ -1403,7 +1432,7 @@ export class BusinessService {
       // Update business record
       return await this.businessRepository.deleteBusinessImage(businessId, imageType);
     } catch (error) {
-      console.error('Error deleting business image:', error);
+      logger.error('Error deleting business image:', error);
       throw new Error('Failed to delete image');
     }
   }
@@ -1421,7 +1450,7 @@ export class BusinessService {
 
     // If user doesn't have global permission, check business-specific access
     const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
-    
+
     if (!hasGlobalUpdate) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
         userId,
@@ -1444,7 +1473,7 @@ export class BusinessService {
       // Remove from gallery
       return await this.businessRepository.removeGalleryImage(businessId, imageUrl);
     } catch (error) {
-      console.error('Error deleting gallery image:', error);
+      logger.error('Error deleting gallery image:', error);
       throw new Error('Failed to delete gallery image');
     }
   }
@@ -1466,7 +1495,7 @@ export class BusinessService {
 
     // If user doesn't have global permission, check business-specific access
     const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
-    
+
     if (!hasGlobalView) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
         userId,
@@ -1496,7 +1525,7 @@ export class BusinessService {
 
     // If user doesn't have global permission, check business-specific access
     const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
-    
+
     if (!hasGlobalUpdate) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
         userId,
@@ -1585,7 +1614,7 @@ export class BusinessService {
 
     // Get current settings for smart validation
     const currentSettings = await this.getBusinessNotificationSettings(userId, businessId);
-    
+
     // Merge with incoming updates for smart validation
     const mergedSettings = {
       ...currentSettings,
@@ -1842,9 +1871,9 @@ export class BusinessService {
     // Use the existing findByUserId method and filter by entity and time
     const logs = await this.repositories.auditLogRepository.findByUserId(userId, 100, 0);
     const cutoffTime = new Date(Date.now() - minutes * 60 * 1000);
-    
-    return logs.filter(log => 
-      log.entity === entity && 
+
+    return logs.filter(log =>
+      log.entity === entity &&
       new Date(log.createdAt) >= cutoffTime
     );
   }
@@ -1854,10 +1883,10 @@ export class BusinessService {
   async getBusinessReservationSettings(userId: string, businessId: string): Promise<any> {
     // Check permissions
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-    
+
     if (!hasGlobalEdit) {
       await this.rbacService.requirePermission(
-        userId, 
+        userId,
         PermissionName.EDIT_OWN_BUSINESS,
         { businessId }
       );
@@ -1893,10 +1922,10 @@ export class BusinessService {
   ): Promise<any> {
     // Check permissions
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-    
+
     if (!hasGlobalEdit) {
       await this.rbacService.requirePermission(
-        userId, 
+        userId,
         PermissionName.EDIT_OWN_BUSINESS,
         { businessId }
       );
@@ -2195,10 +2224,10 @@ export class BusinessService {
     // If URL is provided, extract both Place ID and coordinates
     if (data.googleUrl) {
       const { GooglePlaceIdExtractor } = await import('../../../utils/googlePlaceIdExtractor');
-      
+
       // Extract coordinates (PRIORITY for embedding)
       coordinates = GooglePlaceIdExtractor.extractCoordinates(data.googleUrl);
-      
+
       // Also extract Place ID if not provided
       if (!data.googlePlaceId) {
         finalPlaceId = GooglePlaceIdExtractor.extractPlaceId(data.googleUrl) || undefined;
@@ -2255,7 +2284,7 @@ export class BusinessService {
       updateData.latitude = coordinates.lat;
       updateData.longitude = coordinates.lng;
 
-      console.log('✅ Coordinates extracted and will be stored:', {
+      logger.info('✅ Coordinates extracted and will be stored:', {
         businessId,
         latitude: coordinates.lat,
         longitude: coordinates.lng
@@ -2264,7 +2293,7 @@ export class BusinessService {
 
     // Log that we're storing the original URL
     if (data.googleUrl) {
-      console.log('✅ Storing original Google Maps URL:', {
+      logger.info('✅ Storing original Google Maps URL:', {
         businessId,
         originalUrl: data.googleUrl
       });

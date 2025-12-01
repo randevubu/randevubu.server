@@ -1,3 +1,4 @@
+import logger from "../utils/Logger/logger";
 /**
  * XSS Sanitization Middleware
  *
@@ -8,8 +9,6 @@
 import { JSDOM } from 'jsdom';
 import DOMPurify from 'dompurify';
 import { NextFunction, Request, Response } from 'express';
-import logger from '../utils/Logger/logger';
-
 // Type for the JSDOM window that satisfies DOMPurify requirements
 type DOMWindow = Window & typeof globalThis;
 

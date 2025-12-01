@@ -7,7 +7,7 @@ import { SubscriptionService } from '../services/domain/subscription/subscriptio
 import { RBACService } from '../services/domain/rbac/rbacService';
 import { PermissionName } from '../types/auth';
 import { z } from 'zod';
-
+import logger from "../utils/Logger/logger";
 const updatePaymentMethodSchema = z.object({
   card: z.object({
     cardNumber: z.string().min(13).max(19),
@@ -87,7 +87,7 @@ export class PaymentMethodController {
         subscriptionId: result.id
       }, 200, req);
     } catch (error) {
-      console.error('Update payment method error:', error);
+      logger.error('Update payment method error:', error);
       sendAppErrorResponse(res, new AppError(
         error instanceof Error ? error.message : 'Internal server error',
         500
@@ -133,7 +133,7 @@ export class PaymentMethodController {
         nextBillingDate: autoRenewalStatus.nextBillingDate
       }, 200, req);
     } catch (error) {
-      console.error('Get payment method error:', error);
+      logger.error('Get payment method error:', error);
       sendAppErrorResponse(res, new AppError(
         error instanceof Error ? error.message : 'Internal server error',
         500
@@ -175,7 +175,7 @@ export class PaymentMethodController {
         status: 'PENDING_RETRY'
       }, 200, req);
     } catch (error) {
-      console.error('Retry payment error:', error);
+      logger.error('Retry payment error:', error);
       sendAppErrorResponse(res, new AppError(
         error instanceof Error ? error.message : 'Internal server error',
         500

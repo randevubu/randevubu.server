@@ -2,12 +2,13 @@ import { PrismaClient } from '@prisma/client';
 import { RepositoryContainer } from '../repositories';
 import { 
   ForbiddenError, 
-  UserNotFoundError, 
+  NotFoundError,
+  BusinessError,
   ValidationError,
   ErrorContext 
 } from '../types/errors';
-import logger from '../utils/Logger/logger';
-
+import { ERROR_CODES } from '../constants/errorCodes';
+import logger from "../utils/Logger/logger";
 /**
  * BusinessValidationMiddleware
  * 
@@ -52,7 +53,7 @@ export class BusinessValidationMiddleware {
           userId,
           context
         });
-        throw new UserNotFoundError('Business not found', context);
+        throw new NotFoundError('Business not found', context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
       }
 
       if (!business.isActive) {
@@ -62,7 +63,7 @@ export class BusinessValidationMiddleware {
           businessName: business.name,
           context
         });
-        throw new ValidationError('Business is inactive', context?.toString());
+        throw new BusinessError('Business is inactive', context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_INACTIVE } });
       }
 
       if (business.ownerId !== userId) {
@@ -88,7 +89,8 @@ export class BusinessValidationMiddleware {
       });
 
     } catch (error) {
-      if (error instanceof UserNotFoundError || 
+      if (error instanceof NotFoundError || 
+          error instanceof BusinessError || 
           error instanceof ValidationError || 
           error instanceof ForbiddenError) {
         throw error;
@@ -101,7 +103,7 @@ export class BusinessValidationMiddleware {
         context
       });
       
-        throw new ValidationError('Business validation failed', context?.toString());
+        throw new ValidationError('Business validation failed', undefined, undefined, context);
     }
   }
 
@@ -131,7 +133,7 @@ export class BusinessValidationMiddleware {
           userId,
           context
         });
-        throw new UserNotFoundError('Business not found', context);
+        throw new NotFoundError('Business not found', context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
       }
 
       if (!business.isActive) {
@@ -141,7 +143,7 @@ export class BusinessValidationMiddleware {
           businessName: business.name,
           context
         });
-        throw new ValidationError('Business is inactive', context?.toString());
+        throw new BusinessError('Business is inactive', context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_INACTIVE } });
       }
 
       // Check if user is owner
@@ -177,7 +179,8 @@ export class BusinessValidationMiddleware {
       });
 
     } catch (error) {
-      if (error instanceof UserNotFoundError || 
+      if (error instanceof NotFoundError || 
+          error instanceof BusinessError ||
           error instanceof ValidationError || 
           error instanceof ForbiddenError) {
         throw error;
@@ -190,7 +193,7 @@ export class BusinessValidationMiddleware {
         context
       });
       
-        throw new ValidationError('Business access validation failed', context?.toString());
+        throw new ValidationError('Business access validation failed', undefined, undefined, context);
     }
   }
 
@@ -218,7 +221,7 @@ export class BusinessValidationMiddleware {
           businessId,
           context
         });
-        throw new UserNotFoundError('Business not found', context);
+        throw new NotFoundError('Business not found', context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
       }
 
       if (!business.isActive) {
@@ -227,7 +230,7 @@ export class BusinessValidationMiddleware {
           businessName: business.name,
           context
         });
-        throw new ValidationError('Business is inactive', context?.toString());
+        throw new BusinessError('Business is inactive', context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_INACTIVE } });
       }
 
       return {
@@ -237,7 +240,7 @@ export class BusinessValidationMiddleware {
       };
 
     } catch (error) {
-      if (error instanceof UserNotFoundError || error instanceof ValidationError) {
+      if (error instanceof NotFoundError || error instanceof BusinessError || error instanceof ValidationError) {
         throw error;
       }
       
@@ -247,7 +250,7 @@ export class BusinessValidationMiddleware {
         context
       });
       
-        throw new ValidationError('Business validation failed', context?.toString());
+        throw new ValidationError('Business validation failed', undefined, undefined, context);
     }
   }
 
@@ -282,7 +285,7 @@ export class BusinessValidationMiddleware {
           userId,
           context
         });
-        throw new UserNotFoundError(`Businesses not found: ${notFoundIds.join(', ')}`, context);
+        throw new NotFoundError(`Businesses not found: ${notFoundIds.join(', ')}`, context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
       }
 
       const notOwnedBusinesses = businesses.filter(b => b.ownerId !== userId);
@@ -307,7 +310,7 @@ export class BusinessValidationMiddleware {
       });
 
     } catch (error) {
-      if (error instanceof UserNotFoundError || error instanceof ForbiddenError) {
+      if (error instanceof NotFoundError || error instanceof ForbiddenError) {
         throw error;
       }
       
@@ -318,7 +321,7 @@ export class BusinessValidationMiddleware {
         context
       });
       
-        throw new ValidationError('Multiple business validation failed', context?.toString());
+        throw new ValidationError('Multiple business validation failed', undefined, undefined, context);
     }
   }
 
@@ -328,7 +331,7 @@ export class BusinessValidationMiddleware {
    */
   private async logSecurityEvent(
     eventType: string, 
-    data: Record<string, any>
+    data: Record<string, unknown>
   ): Promise<void> {
     try {
       logger.info('Business validation security event', {

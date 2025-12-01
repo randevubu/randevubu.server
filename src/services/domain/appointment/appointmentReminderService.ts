@@ -1,13 +1,41 @@
 // @ts-ignore - node-cron is available in Docker container
 import * as cron from 'node-cron';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { NotificationService } from '../notification';
 import { AppointmentService } from './appointmentService';
 import { BusinessService } from '../business';
 import { UpcomingAppointment, AppointmentStatus, NotificationChannel } from '../../../types/business';
 import { getCurrentTimeInIstanbul } from '../../../utils/timezoneHelper';
 import redisClient from '../../../lib/redis/redis';
+import logger from "../../../utils/Logger/logger";
+import { OperationNotAllowedError } from '../../../types/errors';
 
+type AppointmentReminderQueryResult = Prisma.AppointmentGetPayload<{
+  include: {
+    service: {
+      select: {
+        id: true;
+        name: true;
+        duration: true;
+      };
+    };
+    business: {
+      select: {
+        id: true;
+        name: true;
+        timezone: true;
+      };
+    };
+    customer: {
+      select: {
+        id: true;
+        firstName: true;
+        lastName: true;
+        phoneNumber: true;
+      };
+    };
+  };
+}>;
 export class AppointmentReminderService {
   private cronJob: cron.ScheduledTask | null = null;
   private isRunning = false;
@@ -25,21 +53,21 @@ export class AppointmentReminderService {
   // Start the appointment reminder scheduler
   start(): void {
     if (this.cronJob) {
-      console.log('📅 Appointment reminder scheduler is already running');
+      logger.info('📅 Appointment reminder scheduler is already running');
       return;
     }
 
     // Run every minute to check for appointments needing reminders
     this.cronJob = cron.schedule('* * * * *', async () => {
       if (this.isRunning) {
-        console.log('⏭️ Appointment reminder check already running, skipping...');
+        logger.info('⏭️ Appointment reminder check already running, skipping...');
         return;
       }
 
       // Try to acquire distributed lock for horizontal scaling
       const lockAcquired = await this.acquireLock();
       if (!lockAcquired) {
-        console.log('⏭️ Another instance is processing reminders, skipping...');
+        logger.info('⏭️ Another instance is processing reminders, skipping...');
         return;
       }
 
@@ -47,7 +75,7 @@ export class AppointmentReminderService {
       try {
         await this.processAppointmentReminders();
       } catch (error) {
-        console.error('❌ Error in appointment reminder scheduler:', error);
+        logger.error('❌ Error in appointment reminder scheduler:', error);
       } finally {
         this.isRunning = false;
         await this.releaseLock();
@@ -57,7 +85,7 @@ export class AppointmentReminderService {
     });
 
     this.cronJob.start();
-    console.log('📅 Appointment reminder scheduler started (runs every minute)');
+    logger.info('📅 Appointment reminder scheduler started (runs every minute)');
   }
 
   // Stop the scheduler
@@ -65,7 +93,7 @@ export class AppointmentReminderService {
     if (this.cronJob) {
       this.cronJob.stop();
       this.cronJob = null;
-      console.log('📅 Appointment reminder scheduler stopped');
+      logger.info('📅 Appointment reminder scheduler stopped');
     }
   }
 
@@ -75,18 +103,18 @@ export class AppointmentReminderService {
     const currentHour = now.getHours();
     const currentMinutes = now.getMinutes();
     
-    console.log(`🔍 Checking for appointment reminders at ${now.toLocaleTimeString()}`);
+    logger.info(`🔍 Checking for appointment reminders at ${now.toLocaleTimeString()}`);
 
     try {
       // Get appointments in the next hour that haven't had reminders sent
       const upcomingAppointments = await this.getAppointmentsNeedingReminders(now);
       
       if (upcomingAppointments.length === 0) {
-        console.log('📅 No appointments need reminders at this time');
+        logger.info('📅 No appointments need reminders at this time');
         return;
       }
 
-      console.log(`📢 Found ${upcomingAppointments.length} appointments needing reminders`);
+      logger.info(`📢 Found ${upcomingAppointments.length} appointments needing reminders`);
 
       let successCount = 0;
       let failureCount = 0;
@@ -104,23 +132,23 @@ export class AppointmentReminderService {
           // Only mark as sent if at least one channel succeeded
           if (successful > 0) {
             await this.appointmentService.markReminderSent(appointment.id);
-            console.log(`✅ Reminder sent for appointment ${appointment.id} (${successful} successful, ${failed} failed)`);
+            logger.info(`✅ Reminder sent for appointment ${appointment.id} (${successful} successful, ${failed} failed)`);
           } else {
-            console.warn(`⚠️ All channels failed for appointment ${appointment.id} - will retry next cycle`);
+            logger.warn(`⚠️ All channels failed for appointment ${appointment.id} - will retry next cycle`);
           }
         } catch (error) {
           failureCount++;
-          console.error(`❌ Failed to send reminder for appointment ${appointment.id}:`, error);
+          logger.error(`❌ Failed to send reminder for appointment ${appointment.id}:`, error);
         }
       }
 
-      console.log(`📊 Reminder batch complete: ${successCount} successful, ${failureCount} failed`);
+      logger.info(`📊 Reminder batch complete: ${successCount} successful, ${failureCount} failed`);
 
       // Log metrics for monitoring
       await this.logReminderMetrics(upcomingAppointments.length, successCount, failureCount);
 
     } catch (error) {
-      console.error('❌ Error processing appointment reminders:', error);
+      logger.error('❌ Error processing appointment reminders:', error);
     }
   }
 
@@ -131,7 +159,7 @@ export class AppointmentReminderService {
     const twoHoursFromNow = new Date(currentTime.getTime() + 2 * 60 * 60 * 1000);
 
     // Query appointments in the next 1-2 hours that haven't had reminders sent
-    const appointments = await this.prisma.appointment.findMany({
+    const appointments: AppointmentReminderQueryResult[] = await this.prisma.appointment.findMany({
       where: {
         startTime: {
           gte: oneHourFromNow,
@@ -204,7 +232,7 @@ export class AppointmentReminderService {
 
     // Check if business has disabled appointment reminders
     if (!businessSettings.enableAppointmentReminders) {
-      console.log(`⏭️ Business ${appointment.businessId} has disabled appointment reminders`);
+      logger.info(`⏭️ Business ${appointment.businessId} has disabled appointment reminders`);
       return [];
     }
 
@@ -213,7 +241,7 @@ export class AppointmentReminderService {
 
     // User preferences can override business settings to disable reminders
     if (userPreferences && !userPreferences.enableAppointmentReminders) {
-      console.log(`⏭️ User ${appointment.customerId} has disabled appointment reminders`);
+      logger.info(`⏭️ User ${appointment.customerId} has disabled appointment reminders`);
       return [];
     }
 
@@ -228,19 +256,19 @@ export class AppointmentReminderService {
     });
 
     if (!shouldSendNow) {
-      console.log(`⏭️ Not yet time to send reminder for appointment ${appointment.id} (${(minutesUntilAppointment / 60).toFixed(1)}h until appointment)`);
+      logger.info(`⏭️ Not yet time to send reminder for appointment ${appointment.id} (${(minutesUntilAppointment / 60).toFixed(1)}h until appointment)`);
       return [];
     }
 
     // Check business quiet hours
     if (businessSettings.quietHours && this.isInBusinessQuietHours(getCurrentTimeInIstanbul(), businessSettings.quietHours, businessSettings.timezone)) {
-      console.log(`⏭️ Current time is within business quiet hours for appointment ${appointment.id}`);
+      logger.info(`⏭️ Current time is within business quiet hours for appointment ${appointment.id}`);
       return [];
     }
 
     // Check user quiet hours (if any)
     if (userPreferences?.quietHours && this.isInQuietHours(getCurrentTimeInIstanbul(), userPreferences.quietHours, userPreferences.timezone)) {
-      console.log(`⏭️ Current time is within user quiet hours for appointment ${appointment.id}`);
+      logger.info(`⏭️ Current time is within user quiet hours for appointment ${appointment.id}`);
       return [];
     }
 
@@ -262,7 +290,7 @@ export class AppointmentReminderService {
     });
 
     if (enabledChannels.length === 0) {
-      console.log(`⏭️ No enabled channels for appointment ${appointment.id}`);
+      logger.info(`⏭️ No enabled channels for appointment ${appointment.id}`);
       return [];
     }
 
@@ -282,8 +310,8 @@ export class AppointmentReminderService {
 
     // Send email if enabled
     if (enabledChannels.includes(NotificationChannel.EMAIL)) {
-      // TODO: Implement email reminders
-      console.log(`📧 Email reminder would be sent to user ${appointment.customerId}`);
+      const emailResults = await this.notificationService.sendEmailAppointmentReminder(appointment);
+      results.push(...emailResults);
     }
 
     return results;
@@ -296,10 +324,10 @@ export class AppointmentReminderService {
     failed: number;
     appointments: string[];
   }> {
-    console.log('🔄 Manual reminder check triggered');
+    logger.info('🔄 Manual reminder check triggered');
     
     if (this.isRunning) {
-      throw new Error('Reminder check is already running');
+      throw new OperationNotAllowedError('checkRemindersNow', 'Reminder check is already running', undefined);
     }
 
     this.isRunning = true;
@@ -326,7 +354,7 @@ export class AppointmentReminderService {
           await this.appointmentService.markReminderSent(appointment.id);
         } catch (error) {
           failureCount++;
-          console.error(`Failed to process appointment ${appointment.id}:`, error);
+          logger.error(`Failed to process appointment ${appointment.id}:`, error);
         }
       }
 
@@ -373,7 +401,7 @@ export class AppointmentReminderService {
       where.reminderSent = false;
     }
 
-    const appointments = await this.prisma.appointment.findMany({
+    const appointments: AppointmentReminderQueryResult[] = await this.prisma.appointment.findMany({
       where,
       include: {
         service: {
@@ -452,7 +480,7 @@ export class AppointmentReminderService {
         return current >= start && current <= end;
       }
     } catch (error) {
-      console.error('Error checking business quiet hours:', error);
+      logger.error('Error checking business quiet hours:', error);
       return false;
     }
   }
@@ -478,7 +506,7 @@ export class AppointmentReminderService {
         return current >= start && current <= end;
       }
     } catch (error) {
-      console.error('Error checking user quiet hours:', error);
+      logger.error('Error checking user quiet hours:', error);
       return false;
     }
   }
@@ -504,7 +532,7 @@ export class AppointmentReminderService {
       }
       return false;
     } catch (error) {
-      console.error('❌ Error acquiring reminder lock:', error);
+      logger.error('❌ Error acquiring reminder lock:', error);
       // If Redis is down, allow processing (fail open)
       return true;
     }
@@ -517,7 +545,7 @@ export class AppointmentReminderService {
     try {
       await redisClient.del(this.LOCK_KEY);
     } catch (error) {
-      console.error('❌ Error releasing reminder lock:', error);
+      logger.error('❌ Error releasing reminder lock:', error);
       // Lock will auto-expire, so this is not critical
     }
   }
@@ -531,7 +559,7 @@ export class AppointmentReminderService {
       return await this.sendAppointmentReminder(appointment);
     } catch (error) {
       if (attempt >= this.MAX_RETRIES) {
-        console.error(`❌ Failed to send reminder after ${this.MAX_RETRIES} attempts for appointment ${appointment.id}:`, error);
+        logger.error(`❌ Failed to send reminder after ${this.MAX_RETRIES} attempts for appointment ${appointment.id}:`, error);
         // Log to dead letter queue (could be database table or separate queue)
         await this.logFailedReminder(appointment, error);
         return [];
@@ -539,7 +567,7 @@ export class AppointmentReminderService {
 
       // Exponential backoff: 2^attempt seconds
       const delayMs = Math.pow(2, attempt) * 1000;
-      console.log(`⏳ Retry ${attempt}/${this.MAX_RETRIES} for appointment ${appointment.id} after ${delayMs}ms`);
+      logger.info(`⏳ Retry ${attempt}/${this.MAX_RETRIES} for appointment ${appointment.id} after ${delayMs}ms`);
 
       await new Promise(resolve => setTimeout(resolve, delayMs));
 
@@ -554,7 +582,7 @@ export class AppointmentReminderService {
   private async logFailedReminder(appointment: UpcomingAppointment, error: unknown): Promise<void> {
     try {
       // Log to console for now - could be expanded to separate table or monitoring service
-      console.error('📝 DEAD LETTER QUEUE - Failed reminder:', {
+      logger.error('📝 DEAD LETTER QUEUE - Failed reminder:', {
         appointmentId: appointment.id,
         customerId: appointment.customerId,
         businessId: appointment.businessId,
@@ -574,7 +602,7 @@ export class AppointmentReminderService {
       // });
 
     } catch (logError) {
-      console.error('❌ Error logging failed reminder:', logError);
+      logger.error('❌ Error logging failed reminder:', logError);
     }
   }
 
@@ -592,7 +620,7 @@ export class AppointmentReminderService {
       const timestamp = new Date().toISOString();
 
       // Log metrics to console (could be sent to monitoring service like Datadog, New Relic, etc.)
-      console.log('📊 REMINDER METRICS:', {
+      logger.info('📊 REMINDER METRICS:', {
         timestamp,
         totalProcessed,
         successCount,
@@ -609,7 +637,7 @@ export class AppointmentReminderService {
         await redisClient.hincrby(metricsKey, 'failureCount', failureCount);
         await redisClient.expire(metricsKey, 86400 * 7); // Keep for 7 days
       } catch (redisError) {
-        console.error('⚠️ Failed to store metrics in Redis:', redisError);
+        logger.error('⚠️ Failed to store metrics in Redis:', redisError);
       }
 
       // TODO: Send to external monitoring service
@@ -621,7 +649,7 @@ export class AppointmentReminderService {
       // });
 
     } catch (error) {
-      console.error('❌ Error logging reminder metrics:', error);
+      logger.error('❌ Error logging reminder metrics:', error);
     }
   }
 }

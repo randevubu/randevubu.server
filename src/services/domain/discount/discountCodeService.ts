@@ -2,7 +2,7 @@ import { DiscountType } from '@prisma/client';
 import { DiscountCodeRepository, DiscountCodeData, CreateDiscountCodeRequest, DiscountValidationResult } from '../../../repositories/discountCodeRepository';
 import { RBACService } from '../rbac';
 import { PermissionName } from '../../../types/auth';
-
+import logger from "../../../utils/Logger/logger";
 export interface CreateDiscountCodeServiceRequest extends Omit<CreateDiscountCodeRequest, 'code'> {
   code?: string; // Optional - will be auto-generated if not provided
 }
@@ -186,7 +186,7 @@ export class DiscountCodeService {
         finalAmount: validation.calculatedDiscount.finalAmount
       };
     } catch (error) {
-      console.error('Apply discount code error:', error);
+      logger.error('Apply discount code error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to apply discount code'
@@ -349,7 +349,7 @@ export class DiscountCodeService {
         }
       }
     } catch (error) {
-      console.error('Cleanup expired codes error:', error);
+      logger.error('Cleanup expired codes error:', error);
       errors++;
     }
 
@@ -394,7 +394,7 @@ export class DiscountCodeService {
         success: true
       };
     } catch (error) {
-      console.error('Store pending discount error:', error);
+      logger.error('Store pending discount error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to store pending discount'
@@ -468,7 +468,7 @@ export class DiscountCodeService {
         }
       };
     } catch (error) {
-      console.error('Apply pending discount error:', error);
+      logger.error('Apply pending discount error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to apply pending discount'
@@ -548,7 +548,7 @@ export class DiscountCodeService {
         success: true
       };
     } catch (error) {
-      console.error('Add discount to subscription error:', error);
+      logger.error('Add discount to subscription error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to add discount to subscription'
@@ -601,7 +601,7 @@ export class DiscountCodeService {
 
       return true;
     } catch (error) {
-      console.error('Can apply to payment error:', error);
+      logger.error('Can apply to payment error:', error);
       return false;
     }
   }

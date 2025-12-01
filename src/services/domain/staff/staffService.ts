@@ -9,9 +9,9 @@ import { PermissionName, CreateUserData, UpdateUserData, UserProfile, UserSecuri
 import { ErrorContext } from '../../../types/errors';
 import { ForbiddenError } from '../../../types/errors';
 import { ERROR_CODES } from '../../../constants/errorCodes';
-import logger from '../../../utils/Logger/logger';
-import { isValidPhoneNumber, parsePhoneNumber } from 'libphonenumber-js';
 
+import { isValidPhoneNumber, parsePhoneNumber } from 'libphonenumber-js';
+import logger from "../../../utils/Logger/logger";
 export interface InviteStaffRequest {
   businessId: string;
   phoneNumber: string;

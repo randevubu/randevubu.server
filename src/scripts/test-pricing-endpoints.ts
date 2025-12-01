@@ -2,11 +2,11 @@ import { PrismaClient } from '@prisma/client';
 import { RepositoryContainer } from '../repositories';
 import { ServiceContainer } from '../services';
 import { PricingTierService } from '../services/domain/pricing/pricingTierService';
-
+import logger from "../utils/Logger/logger";
 const prisma = new PrismaClient();
 
 async function testPricingEndpoints() {
-  console.log('🧪 Testing pricing endpoints...\n');
+  logger.info('🧪 Testing pricing endpoints...\n');
 
   try {
     // Initialize services
@@ -25,7 +25,7 @@ async function testPricingEndpoints() {
     const basePrice = 1000;
 
     for (const testCity of testCities) {
-      console.log(`📍 Testing ${testCity.city}:`);
+      logger.info(`📍 Testing ${testCity.city}:`);
       
       // Test pricing calculation
       const pricing = await services.pricingTierService.calculateLocationBasedPricing(
@@ -34,42 +34,42 @@ async function testPricingEndpoints() {
         testCity.state
       );
       
-      console.log(`  Base Price: ${pricing.basePrice} TL`);
-      console.log(`  Location Price: ${pricing.locationPrice} TL`);
-      console.log(`  Multiplier: ${pricing.multiplier}x`);
-      console.log(`  Tier: ${pricing.tier}`);
-      console.log(`  Expected Tier: ${testCity.expectedTier}`);
-      console.log(`  Expected Multiplier: ${testCity.expectedMultiplier}x`);
+      logger.info(`  Base Price: ${pricing.basePrice} TL`);
+      logger.info(`  Location Price: ${pricing.locationPrice} TL`);
+      logger.info(`  Multiplier: ${pricing.multiplier}x`);
+      logger.info(`  Tier: ${pricing.tier}`);
+      logger.info(`  Expected Tier: ${testCity.expectedTier}`);
+      logger.info(`  Expected Multiplier: ${testCity.expectedMultiplier}x`);
       
       // Verify results
       const tierCorrect = pricing.tier === testCity.expectedTier;
       const multiplierCorrect = Math.abs(pricing.multiplier - testCity.expectedMultiplier) < 0.01;
       
-      console.log(`  ✅ Tier Correct: ${tierCorrect}`);
-      console.log(`  ✅ Multiplier Correct: ${multiplierCorrect}`);
-      console.log(`  ${tierCorrect && multiplierCorrect ? '✅' : '❌'} Test Result: ${tierCorrect && multiplierCorrect ? 'PASS' : 'FAIL'}\n`);
+      logger.info(`  ✅ Tier Correct: ${tierCorrect}`);
+      logger.info(`  ✅ Multiplier Correct: ${multiplierCorrect}`);
+      logger.info(`  ${tierCorrect && multiplierCorrect ? '✅' : '❌'} Test Result: ${tierCorrect && multiplierCorrect ? 'PASS' : 'FAIL'}\n`);
     }
 
     // Test subscription service methods
-    console.log('🔧 Testing subscription service methods...\n');
+    logger.info('🔧 Testing subscription service methods...\n');
     
     // Test getAllPlansWithLocationPricing
-    console.log('Testing getAllPlansWithLocationPricing:');
+    logger.info('Testing getAllPlansWithLocationPricing:');
     const plansWithLocation = await services.subscriptionService.getAllPlansWithLocationPricing('Istanbul');
-    console.log(`  Found ${plansWithLocation.length} plans for Istanbul`);
+    logger.info(`  Found ${plansWithLocation.length} plans for Istanbul`);
     
     if (plansWithLocation.length > 0) {
       const firstPlan = plansWithLocation[0];
-      console.log(`  First plan: ${firstPlan.displayName}`);
-      console.log(`  Base price: ${firstPlan.basePrice || 'N/A'} TL`);
-      console.log(`  Location price: ${firstPlan.price} TL`);
-      console.log(`  Location info:`, firstPlan.locationPricing);
+      logger.info(`  First plan: ${firstPlan.displayName}`);
+      logger.info(`  Base price: ${firstPlan.basePrice || 'N/A'} TL`);
+      logger.info(`  Location price: ${firstPlan.price} TL`);
+      logger.info(`  Location info:`, firstPlan.locationPricing);
     }
     
-    console.log('\n✅ All tests completed successfully!');
+    logger.info('\n✅ All tests completed successfully!');
     
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    logger.error('❌ Test failed:', error);
     throw error;
   } finally {
     await prisma.$disconnect();
@@ -80,11 +80,11 @@ async function testPricingEndpoints() {
 if (require.main === module) {
   testPricingEndpoints()
     .then(() => {
-      console.log('🎉 Pricing endpoint tests completed');
+      logger.info('🎉 Pricing endpoint tests completed');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('💥 Pricing endpoint tests failed:', error);
+      logger.error('💥 Pricing endpoint tests failed:', error);
       process.exit(1);
     });
 }

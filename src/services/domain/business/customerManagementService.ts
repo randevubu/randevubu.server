@@ -104,6 +104,12 @@ export class CustomerManagementService {
       orderBy: { createdAt: 'desc' }
     });
 
+    const authorIds = notes
+      .map((note: any) => note.authorId)
+      .filter((id): id is string => Boolean(id));
+
+    const roleMap = await this.getStaffRoleMap(businessId, authorIds);
+
     return notes.map((note: any) => ({
       id: note.id,
       customerId: note.customerId,
@@ -114,12 +120,14 @@ export class CustomerManagementService {
       isPrivate: note.isPrivate,
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
-      author: note.author ? {
-        id: note.author.id,
-        firstName: note.author.firstName || '',
-        lastName: note.author.lastName || '',
-        role: 'STAFF' // TODO: Get actual role from business staff
-      } : undefined
+      author: note.author
+        ? {
+            id: note.author.id,
+            firstName: note.author.firstName || '',
+            lastName: note.author.lastName || '',
+            role: roleMap.get(note.author.id) || 'STAFF'
+          }
+        : undefined
     }));
   }
 
@@ -173,6 +181,11 @@ export class CustomerManagementService {
       }
     });
 
+    const staffRole = await this.prisma.businessStaff.findFirst({
+      where: { businessId, userId: authorId },
+      select: { role: true }
+    });
+
     return {
       id: note.id,
       customerId: note.customerId,
@@ -183,12 +196,14 @@ export class CustomerManagementService {
       isPrivate: note.isPrivate,
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
-      author: note.author ? {
-        id: note.author.id,
-        firstName: note.author.firstName || '',
-        lastName: note.author.lastName || '',
-        role: 'STAFF'
-      } : undefined
+      author: note.author
+        ? {
+            id: note.author.id,
+            firstName: note.author.firstName || '',
+            lastName: note.author.lastName || '',
+            role: staffRole?.role || 'STAFF'
+          }
+        : undefined
     };
   }
 
@@ -230,6 +245,17 @@ export class CustomerManagementService {
       10 - appointmentCount;
 
     const benefits = this.getLoyaltyBenefits(loyaltyTier);
+    const firstAppointment = await this.prisma.appointment.findFirst({
+      where: {
+        businessId,
+        customerId,
+        status: {
+          in: ['CONFIRMED', 'COMPLETED']
+        }
+      },
+      orderBy: { startTime: 'asc' },
+      select: { startTime: true }
+    });
 
     return {
       customerId,
@@ -239,7 +265,7 @@ export class CustomerManagementService {
       loyaltyTier,
       nextTierAppointments: Math.max(0, nextTierAppointments),
       benefits,
-      joinedAt: new Date() // TODO: Get actual join date
+      joinedAt: firstAppointment?.startTime || new Date()
     };
   }
 
@@ -422,5 +448,30 @@ export class CustomerManagementService {
     };
 
     return benefits[tier];
+  }
+
+  private async getStaffRoleMap(businessId: string, userIds: string[]): Promise<Map<string, string>> {
+    const roleMap = new Map<string, string>();
+
+    if (!userIds.length) {
+      return roleMap;
+    }
+
+    const staffMembers = await this.prisma.businessStaff.findMany({
+      where: {
+        businessId,
+        userId: { in: Array.from(new Set(userIds)) }
+      },
+      select: {
+        userId: true,
+        role: true
+      }
+    });
+
+    staffMembers.forEach(member => {
+      roleMap.set(member.userId, member.role);
+    });
+
+    return roleMap;
   }
 }

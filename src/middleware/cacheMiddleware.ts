@@ -1,11 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { cacheService } from '../services/cacheService';
+import { cacheService } from '../services/core/cacheService';
 import { cacheManager } from '../lib/redis/redis';
 import { CachedRequest, CacheConfig, CacheResponse } from '../types/cache';
 import { CacheKeyGenerator } from '../utils/cacheKeyGenerator';
 import { CacheUtils } from '../utils/cacheUtils';
-import logger from '../utils/Logger/logger';
-
+import logger from "../utils/Logger/logger";
 // Cache categories with different TTLs
 export const CACHE_CATEGORIES = {
   STATIC: { ttl: 3600, keyPrefix: 'static' },      // 1 hour

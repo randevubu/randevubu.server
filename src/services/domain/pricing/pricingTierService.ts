@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-
+import logger from "../../../utils/Logger/logger";
 export interface PricingTierData {
   id: string;
   name: string;
@@ -128,7 +128,7 @@ export class PricingTierService {
 
   // Initialize pricing tiers and city mappings (placeholder for database version)
   async initializePricingTiers(): Promise<void> {
-    console.log('Pricing tiers initialized with hardcoded data');
+    logger.info('Pricing tiers initialized with hardcoded data');
   }
 
   // Public method to get city tier

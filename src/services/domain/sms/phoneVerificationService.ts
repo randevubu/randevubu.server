@@ -11,13 +11,13 @@ import {
   VerificationCodeInvalidError,
   VerificationMaxAttemptsError,
 } from "../../../types/errors";
-import logger from "../../../utils/Logger/logger";
+
 import { SMSMessageTemplates } from "../../../utils/smsMessageTemplates";
 import { SMSService } from "./smsService";
 import { TokenService } from "../token";
 
 import { SendVerificationOptions } from '../../../types/sms';
-
+import logger from "../../../utils/Logger/logger";
 export class PhoneVerificationService {
   private static readonly CODE_EXPIRY_MINUTES = 10;
   private static readonly MAX_ATTEMPTS = 3;
@@ -82,7 +82,16 @@ export class PhoneVerificationService {
       Date.now() + PhoneVerificationService.CODE_EXPIRY_MINUTES * 60 * 1000
     );
 
-    console.log("📝 STORING VERIFICATION CODE:", {
+    if (process.env.NODE_ENV === 'development') {
+      logger.info('DEV verification code generated', {
+        phoneNumber: normalizedPhone,
+        purpose,
+        code,
+        requestId: context?.requestId,
+      });
+    }
+
+    logger.info("📝 STORING VERIFICATION CODE:", {
       normalizedPhone,
       codeLength: code.length,
       hashedCodeLength: hashedCode.length,
@@ -138,7 +147,7 @@ export class PhoneVerificationService {
     purpose: PrismaVerificationPurpose,
     context?: ErrorContext
   ): Promise<VerificationResult> {
-    console.log("🔍 VERIFICATION SERVICE CALLED:", {
+    logger.info("🔍 VERIFICATION SERVICE CALLED:", {
       phoneNumber,
       code,
       purpose,
@@ -147,11 +156,11 @@ export class PhoneVerificationService {
 
     const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
     if (!normalizedPhone) {
-      console.log("❌ PHONE NUMBER INVALID:", phoneNumber);
+      logger.info("❌ PHONE NUMBER INVALID:", phoneNumber);
       throw new InvalidPhoneNumberError(phoneNumber, context);
     }
 
-    console.log("✅ PHONE NUMBER NORMALIZED:", {
+    logger.info("✅ PHONE NUMBER NORMALIZED:", {
       original: phoneNumber,
       normalized: normalizedPhone,
     });
@@ -171,7 +180,7 @@ export class PhoneVerificationService {
         purpose
       );
 
-    console.log("🔎 DATABASE LOOKUP RESULT:", {
+    logger.info("🔎 DATABASE LOOKUP RESULT:", {
       found: !!verification,
       verificationId: verification?.id,
       phoneMatch: verification?.phoneNumber === normalizedPhone,
@@ -250,7 +259,7 @@ export class PhoneVerificationService {
     }
 
     // Verify the code
-    console.log("🔐 VERIFYING CODE:", {
+    logger.info("🔐 VERIFYING CODE:", {
       providedCode: code,
       providedCodeLength: code.length,
       hashedCodeFromDB: verification.code.substring(0, 20) + '...',
@@ -258,7 +267,7 @@ export class PhoneVerificationService {
 
     const isValidCode = await this.tokenService.verifyCode(code, verification.code);
 
-    console.log("✔️ CODE VERIFICATION RESULT:", {
+    logger.info("✔️ CODE VERIFICATION RESULT:", {
       isValid: isValidCode,
       providedCode: code,
     });
@@ -442,19 +451,22 @@ export class PhoneVerificationService {
     purpose: PrismaVerificationPurpose,
     context?: ErrorContext
   ): Promise<void> {
-    // Log verification code for debugging (only in development)
+    // In development mode: Only log the code, don't send actual SMS
     if (process.env.NODE_ENV === 'development') {
       logger.info(
-        `Verification code generated: ${code} for phone: ${this.maskPhoneNumber(phoneNumber)}, purpose: ${purpose}`,
+        `🔐 [DEV MODE] Verification code generated (SMS NOT sent): ${code}`,
         {
           phoneNumber: this.maskPhoneNumber(phoneNumber),
           purpose,
+          code,
           requestId: context?.requestId,
+          note: 'SMS sending is disabled in development mode. Use this code for testing.',
         }
       );
+      return; // Skip actual SMS sending in development
     }
 
-    // Create message based on purpose using centralized templates
+    // Production mode: Send actual SMS via NetGSM
     const message = SMSMessageTemplates.verification.getMessage(code, purpose);
 
     logger.info("Sending SMS verification code", {

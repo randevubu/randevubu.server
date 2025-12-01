@@ -9,7 +9,9 @@ import { BusinessRepository } from '../../../repositories/businessRepository';
 import { RBACService } from '../rbac/rbacService';
 import { UsageService } from '../usage/usageService';
 import { PermissionName } from '../../../types/auth';
-import { cacheService } from '../../../services/cacheService';
+import { cacheService } from '../../../services/core/cacheService';
+import { NotFoundError, ValidationError, OperationNotAllowedError } from '../../../types/errors';
+import { ERROR_CODES } from '../../../constants/errorCodes';
 
 export class OfferingService {
   constructor(
@@ -143,7 +145,7 @@ export class OfferingService {
   ): Promise<ServiceData> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new Error('Service not found');
+      throw new NotFoundError('Service not found', undefined, { additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND } });
     }
 
     // Check permissions to manage services for this business
@@ -164,7 +166,7 @@ export class OfferingService {
   async deleteService(userId: string, serviceId: string): Promise<void> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new Error('Service not found');
+      throw new NotFoundError('Service not found', undefined, { additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND } });
     }
 
     // Check permissions to manage services for this business
@@ -214,7 +216,7 @@ export class OfferingService {
   }> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new Error('Service not found');
+      throw new NotFoundError('Service not found', undefined, { additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND } });
     }
 
     // Check permissions to view analytics for this business
@@ -250,7 +252,7 @@ export class OfferingService {
     }
 
     if (priceMultiplier <= 0) {
-      throw new Error('Price multiplier must be positive');
+      throw new ValidationError('Price multiplier must be positive', 'priceMultiplier', undefined, undefined);
     }
 
     await this.serviceRepository.bulkUpdatePrices(businessId, priceMultiplier);
@@ -315,7 +317,7 @@ export class OfferingService {
 
     // This would need to be implemented in the repository
     // For now, we'll throw an error
-    throw new Error('Admin service listing not implemented');
+    throw new OperationNotAllowedError('getAllServices', 'Admin service listing not implemented', undefined);
   }
 
   async toggleServiceStatus(
@@ -325,7 +327,7 @@ export class OfferingService {
   ): Promise<ServiceData> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new Error('Service not found');
+      throw new NotFoundError('Service not found', undefined, { additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND } });
     }
 
     // Check permissions to manage services for this business
@@ -350,7 +352,7 @@ export class OfferingService {
   ): Promise<ServiceData> {
     const originalService = await this.serviceRepository.findById(serviceId);
     if (!originalService) {
-      throw new Error('Service not found');
+      throw new NotFoundError('Service not found', undefined, { additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND } });
     }
 
     // Check permissions to manage services for this business

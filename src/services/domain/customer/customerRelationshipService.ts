@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { BusinessData } from '../../../types/business';
 
 import { CustomerRelationship, CustomerValidationResult, BusinessCustomerStats } from '../../../types/customer';
-
+import logger from "../../../utils/Logger/logger";
 export class CustomerRelationshipService {
   constructor(private prisma: PrismaClient) {}
 
@@ -132,7 +132,7 @@ export class CustomerRelationshipService {
       };
 
     } catch (error) {
-      console.error('Error validating customer relationship:', error);
+      logger.error('Error validating customer relationship:', error);
         return {
           isValid: false,
           reason: 'NOT_FOUND',
@@ -161,6 +161,7 @@ export class CustomerRelationshipService {
           startTime: true,
           status: true,
           price: true,
+          serviceId: true,
           createdAt: true
         },
         orderBy: { startTime: 'desc' }
@@ -188,6 +189,19 @@ export class CustomerRelationshipService {
       );
 
       const lastAppointmentDate = confirmedAppointments[0]?.startTime;
+      const firstAppointmentDate = confirmedAppointments[confirmedAppointments.length - 1]?.startTime;
+
+      const serviceFrequency = confirmedAppointments.reduce((map, apt: any) => {
+        if (apt.serviceId) {
+          map.set(apt.serviceId, (map.get(apt.serviceId) || 0) + 1);
+        }
+        return map;
+      }, new Map<string, number>());
+
+      const preferredServices = Array.from(serviceFrequency.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([serviceId]) => serviceId);
 
       // Determine relationship type
       let relationshipType: 'ACTIVE' | 'INACTIVE' | 'NO_RELATIONSHIP';
@@ -210,10 +224,11 @@ export class CustomerRelationshipService {
         customerId,
         businessId,
         relationshipType: isOptedOut ? 'OPTED_OUT' : (relationshipType === 'NO_RELATIONSHIP' ? 'INACTIVE' : relationshipType),
+        firstAppointmentDate,
         lastAppointmentDate,
         totalAppointments: confirmedAppointments.length,
         totalSpent,
-        preferredServices: [], // TODO: Calculate from appointment history
+        preferredServices,
         notificationPreferences: {
           sms: notificationPrefs?.enableAppointmentReminders ?? true,
           email: notificationPrefs?.enableBusinessNotifications ?? true,
@@ -224,7 +239,7 @@ export class CustomerRelationshipService {
       };
 
     } catch (error) {
-      console.error('Error getting customer relationship:', error);
+      logger.error('Error getting customer relationship:', error);
       return null;
     }
   }
@@ -333,7 +348,7 @@ export class CustomerRelationshipService {
       };
 
     } catch (error) {
-      console.error('Error getting business customers:', error);
+      logger.error('Error getting business customers:', error);
       throw new Error('Failed to retrieve business customers');
     }
   }
@@ -360,22 +375,65 @@ export class CustomerRelationshipService {
         includeBlocked: true
       });
 
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      let totalSpentAggregate = 0;
+      let totalAppointmentsAggregate = 0;
+
+      allCustomers.customers.forEach(customer => {
+        totalSpentAggregate += customer.totalSpent;
+        totalAppointmentsAggregate += customer.totalAppointments;
+      });
+
+      const newCustomersThisMonth = allCustomers.customers.filter(customer => {
+        return customer.firstAppointmentDate && customer.firstAppointmentDate >= startOfMonth;
+      }).length;
+
+      const returningCustomers = allCustomers.customers.filter(customer => {
+        return (
+          customer.firstAppointmentDate &&
+          customer.firstAppointmentDate < startOfMonth &&
+          customer.lastAppointmentDate &&
+          customer.lastAppointmentDate >= startOfMonth
+        );
+      }).length;
+
+      const topSpendingCustomers = allCustomers.customers
+        .map(customer => ({
+          customerId: customer.customerId,
+          totalSpent: customer.totalSpent,
+          appointmentCount: customer.totalAppointments
+        }))
+        .sort((a, b) => b.totalSpent - a.totalSpent)
+        .slice(0, 5);
+
+      const averageSpending = allCustomers.total > 0
+        ? totalSpentAggregate / allCustomers.total
+        : 0;
+
+      const averageAppointmentsPerCustomer = allCustomers.total > 0
+        ? totalAppointmentsAggregate / allCustomers.total
+        : 0;
+
+      const customerRetentionRate = allCustomers.total > 0
+        ? (recentCustomers.total / allCustomers.total) * 100
+        : 0;
+
       return {
         totalCustomers: allCustomers.total,
         activeCustomers: allCustomers.customers.filter(c => c.relationshipType === 'ACTIVE').length,
         optedOutCustomers: allCustomers.customers.filter(c => c.relationshipType === 'OPTED_OUT').length,
         blockedCustomers: allCustomers.customers.filter(c => c.relationshipType === 'BLOCKED').length,
         last30DaysCustomers: recentCustomers.total,
-        newCustomersThisMonth: 0, // TODO: Calculate this
-        returningCustomers: 0, // TODO: Calculate this
-        averageSpending: 0, // TODO: Calculate this
-        topSpendingCustomers: [], // TODO: Calculate this
-        customerRetentionRate: 0, // TODO: Calculate this
-        averageAppointmentsPerCustomer: 0 // TODO: Calculate this
+        newCustomersThisMonth,
+        returningCustomers,
+        averageSpending,
+        topSpendingCustomers,
+        customerRetentionRate,
+        averageAppointmentsPerCustomer
       };
 
     } catch (error) {
-      console.error('Error getting business customer stats:', error);
+      logger.error('Error getting business customer stats:', error);
       throw new Error('Failed to retrieve customer statistics');
     }
   }

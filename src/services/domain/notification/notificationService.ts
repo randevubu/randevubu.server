@@ -1,9 +1,14 @@
-import { Prisma } from '@prisma/client';
+import {
+  Prisma,
+  NotificationStatus as PrismaNotificationStatus,
+  NotificationChannel as PrismaNotificationChannel,
+} from '@prisma/client';
 // @ts-ignore - web-push is available in Docker container
 import * as webpush from 'web-push';
-import logger from '../../../utils/Logger/logger';
+
 import { UsageService } from '../usage/usageService';
 import { RepositoryContainer } from '../../../repositories';
+import { NotificationDataConfig } from '../../../repositories/notificationRepository';
 import { 
   NotificationChannel,
   PushSubscriptionData,
@@ -11,28 +16,43 @@ import {
   NotificationPreferenceData,
   NotificationPreferenceRequest,
   SendPushNotificationRequest,
-  UpcomingAppointment
+  UpcomingAppointment,
+  PushNotificationData
 } from '../../../types/business';
-import { NotificationStatus } from '../../../types/notification';
-import { TranslationService, TranslationParams } from '../../translationServiceFallback';
-
-import { NotificationResult, EnhancedClosureData } from '../../../types/notification';
+import { NotificationResult, EnhancedClosureData, NotificationPayload, NotificationStatus } from '../../../types/notification';
+import { TranslationService, TranslationParams } from '../../core/translationService';
 import { TimeSlot, RescheduleSuggestion } from '../../../types/appointment';
-
+import { getEmailService } from '../../../lib/aws/email';
+import logger from "../../../utils/Logger/logger";
+import { PushDeliveryWorker } from './pushDeliveryWorker';
+import { ValidationError } from '../../../types/errors';
+import { ERROR_CODES } from '../../../constants/errorCodes';
+import pLimit from 'p-limit';
 export class NotificationService {
   private translationService: TranslationService;
+  private emailService = getEmailService();
+  private pushDeliveryWorker: PushDeliveryWorker;
+  private pushEnabled: boolean;
 
-  constructor(private repositories: RepositoryContainer, private usageService?: UsageService) {
+  constructor(
+    private repositories: RepositoryContainer,
+    private usageService?: UsageService,
+    pushDeliveryWorker?: PushDeliveryWorker
+  ) {
     this.translationService = new TranslationService();
+    this.pushDeliveryWorker =
+      pushDeliveryWorker ?? new PushDeliveryWorker(this.repositories.notificationRepository);
     // Configure web-push if VAPID keys are available
     const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
     const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
     const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:admin@randevubu.com';
+
+    this.pushEnabled = Boolean(vapidPublicKey && vapidPrivateKey);
     
-    if (vapidPublicKey && vapidPrivateKey) {
-      webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    if (this.pushEnabled) {
+      webpush.setVapidDetails(vapidSubject, vapidPublicKey!, vapidPrivateKey!);
     } else {
-      console.warn('VAPID keys not configured. Push notifications will not work.');
+      logger.error('VAPID keys not configured. Push notifications are disabled.');
     }
   }
 
@@ -140,8 +160,12 @@ export class NotificationService {
       }
 
       const preferences = availabilityAlert.notificationPreferences as {
-        channels: NotificationChannel[];
+        channels: PrismaNotificationChannel[];
       };
+
+      const preferredChannels = preferences.channels.map(channel =>
+        this.mapFromPrismaNotificationChannel(channel)
+      );
 
       const message = await this.generateAvailabilityMessage(
         business.name,
@@ -152,7 +176,7 @@ export class NotificationService {
 
       const results: NotificationResult[] = [];
 
-      for (const channel of preferences.channels) {
+      for (const channel of preferredChannels) {
         const result = await this.sendAvailabilityNotification(
           customerId,
           channel,
@@ -202,7 +226,7 @@ export class NotificationService {
       return await this.sendEmailNotification(appointment.customerId, {
         id: appointmentId,
         businessId: appointment.businessId,
-        businessName: appointment.business?.name || 'Business Name',
+        businessName: appointment.business?.name || 'Unknown Business',
         startDate: appointment.startTime,
         endDate: appointment.endTime,
         reason: 'Reschedule required due to business closure',
@@ -229,18 +253,59 @@ export class NotificationService {
     customerId: string,
     closureData: EnhancedClosureData
   ): Promise<NotificationResult> {
-    // TODO: Implement actual email service integration (SendGrid, AWS SES, etc.)
-    console.log(`Sending email notification to customer ${customerId} about closure ${closureData.id}`);
-    
-    // Simulate email sending
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    return {
-      success: true,
-      messageId: `email-${Date.now()}`,
-      channel: NotificationChannel.EMAIL,
-      status: NotificationStatus.SENT
-    };
+    try {
+      const customer = await this.repositories.userRepository.findById(customerId);
+      const customerEmail = (customer as { email?: string | null })?.email ?? undefined;
+
+      if (!customer || !customerEmail) {
+        return {
+          success: false,
+          error: 'Customer email not found',
+          channel: NotificationChannel.EMAIL,
+          status: NotificationStatus.FAILED
+        };
+      }
+
+      const message =
+        closureData.message || (await this.generateClosureMessage(closureData, 'tr'));
+
+      const { subject, html, text } = this.buildClosureEmailPayload(
+        customer.firstName,
+        closureData,
+        message
+      );
+
+      const response = await this.emailService.sendEmail({
+        to: customerEmail,
+        subject,
+        html,
+        text
+      });
+
+      if (!response.success) {
+        return {
+          success: false,
+          error: response.error || 'Failed to send email notification',
+          channel: NotificationChannel.EMAIL,
+          status: NotificationStatus.FAILED
+        };
+      }
+
+      return {
+        success: true,
+        messageId: response.messageId,
+        channel: NotificationChannel.EMAIL,
+        status: NotificationStatus.SENT
+      };
+    } catch (error) {
+      logger.error('Error sending closure email notification', { error, customerId, closureId: closureData.id });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to send email notification',
+        channel: NotificationChannel.EMAIL,
+        status: NotificationStatus.FAILED
+      };
+    }
   }
 
   private async sendSMSNotification(
@@ -409,7 +474,7 @@ export class NotificationService {
     slots: TimeSlot[]
   ): Promise<NotificationResult> {
     // TODO: Implement based on channel type
-    console.log(`Sending ${channel} availability notification to customer ${customerId}`);
+    logger.info(`Sending ${channel} availability notification to customer ${customerId}`);
     
     return {
       success: true,
@@ -426,12 +491,17 @@ export class NotificationService {
     message: string,
     result: NotificationResult
   ): Promise<void> {
+    const prismaStatus =
+      this.mapToPrismaNotificationStatus(result.status) ??
+      PrismaNotificationStatus.PENDING;
+    const prismaChannel = this.mapToPrismaNotificationChannel(channel);
+
     await this.repositories.notificationRepository.createClosureNotification({
       closureId,
       customerId,
-      channel,
+      channel: prismaChannel,
       message,
-      status: (result.status ?? NotificationStatus.PENDING) as any
+      status: prismaStatus
     });
   }
 
@@ -573,7 +643,7 @@ export class NotificationService {
         endDate: (preferredDates[0]?.endDate || new Date()).toISOString()
       },
       notificationPreferences: { 
-        channels: notificationChannels,
+        channels: this.mapToPrismaNotificationChannels(notificationChannels),
         timing: [60, 24 * 60]
       }
     });
@@ -603,7 +673,7 @@ export class NotificationService {
     
     try {
       // For now, just log the notification - implement actual SMS sending later
-      console.log(`SMS to ${phoneNumber}: ${message}`);
+      logger.info(`SMS to ${phoneNumber}: ${message}`);
       
       return {
         success: true,
@@ -637,7 +707,7 @@ export class NotificationService {
     
     try {
       // For now, just log the notification - implement actual SMS sending later
-      console.log(`SMS to ${phoneNumber}: ${message}`);
+      logger.info(`SMS to ${phoneNumber}: ${message}`);
       
       return {
         success: true,
@@ -671,7 +741,7 @@ export class NotificationService {
     
     try {
       // For now, just log the notification - implement actual SMS sending later
-      console.log(`SMS to ${phoneNumber}: ${message}`);
+      logger.info(`SMS to ${phoneNumber}: ${message}`);
       
       return {
         success: true,
@@ -709,7 +779,7 @@ export class NotificationService {
     const message = await this.translationService.translate('notifications.paymentRetryFailure', translationParams, language);
     
     try {
-      console.log(`SMS to ${phoneNumber}: ${message}`);
+      logger.info(`SMS to ${phoneNumber}: ${message}`);
       
       return {
         success: true,
@@ -748,7 +818,7 @@ export class NotificationService {
     
     try {
       // Send to support team (could be email, Slack, etc.)
-      console.log(`🚨 ESCALATION - SMS to ${phoneNumber}: ${message}`);
+      logger.info(`🚨 ESCALATION - SMS to ${phoneNumber}: ${message}`);
       
       // Also log for support team monitoring
       logger.warn(`Payment escalation for business ${businessName}: ${failureCount} failures`);
@@ -787,7 +857,7 @@ export class NotificationService {
     const message = await this.translationService.translate('notifications.subscriptionCancellation', translationParams, language);
     
     try {
-      console.log(`SMS to ${phoneNumber}: ${message}`);
+      logger.info(`SMS to ${phoneNumber}: ${message}`);
       
       return {
         success: true,
@@ -823,7 +893,7 @@ export class NotificationService {
     const message = await this.translationService.translate('notifications.gracePeriodWarning', translationParams, language);
     
     try {
-      console.log(`SMS to ${phoneNumber}: ${message}`);
+      logger.info(`SMS to ${phoneNumber}: ${message}`);
       
       return {
         success: true,
@@ -895,7 +965,7 @@ export class NotificationService {
   async sendEmail(email: string, subject: string, message: string): Promise<NotificationResult> {
     try {
       // TODO: Implement actual email sending
-      console.log(`Email to ${email}: ${subject} - ${message}`);
+      logger.info(`Email to ${email}: ${subject} - ${message}`);
       
       return {
         success: true,
@@ -918,7 +988,7 @@ export class NotificationService {
   async sendPushNotificationSimple(userId: string, title: string, message: string): Promise<NotificationResult> {
     try {
       // TODO: Implement actual push notification sending
-      console.log(`Push to user ${userId}: ${title} - ${message}`);
+      logger.info(`Push to user ${userId}: ${title} - ${message}`);
       
       return {
         success: true,
@@ -940,7 +1010,7 @@ export class NotificationService {
   async subscribeToPush(userId: string, subscriptionData: PushSubscriptionRequest): Promise<PushSubscriptionData> {
     const subscriptionId = `push_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    console.log('Creating/updating push subscription:', {
+    logger.info('Creating/updating push subscription:', {
       userId,
       endpoint: subscriptionData.endpoint,
       subscriptionId
@@ -960,28 +1030,24 @@ export class NotificationService {
   }
 
   async unsubscribeFromPush(userId: string, endpoint?: string, subscriptionId?: string): Promise<boolean> {
-    const where: any = { userId };
-    
-    if (subscriptionId) {
-      where.id = subscriptionId;
-    } else if (endpoint) {
-      where.endpoint = endpoint;
-    } else {
-      throw new Error('Either endpoint or subscriptionId must be provided');
+    if (!subscriptionId && !endpoint) {
+      throw new ValidationError('Either endpoint or subscriptionId must be provided', undefined, undefined, undefined);
     }
 
-    return await this.repositories.notificationRepository.deactivatePushSubscription(userId, subscriptionId, endpoint);
+    return await this.repositories.notificationRepository.deactivatePushSubscription(
+      userId,
+      subscriptionId,
+      endpoint
+    );
   }
 
   async getUserPushSubscriptions(userId: string, activeOnly = true): Promise<PushSubscriptionData[]> {
-    const where: any = { userId };
-    if (activeOnly) {
-      where.isActive = true;
-    }
-
     const subscriptions = await this.repositories.notificationRepository.findPushSubscriptionsByUser(userId);
+    const filteredSubscriptions = activeOnly
+      ? subscriptions.filter(sub => sub.isActive)
+      : subscriptions;
     // Map repository type to business type, converting null to undefined
-    return subscriptions.map(sub => ({
+    return filteredSubscriptions.map(sub => ({
       ...sub,
       deviceName: sub.deviceName ?? undefined,
       deviceType: sub.deviceType ?? undefined,
@@ -995,21 +1061,40 @@ export class NotificationService {
   ): Promise<NotificationPreferenceData> {
     const preferenceId = `pref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    const result = await this.repositories.notificationRepository.upsertUserNotificationPreference(userId, {
-      ...preferences,
-      quietHours: preferences.quietHours ? {
-        enabled: true,
-        startTime: preferences.quietHours.start,
-        endTime: preferences.quietHours.end,
-        days: [1, 2, 3, 4, 5, 6, 7],
-        timezone: preferences.quietHours.timezone
-      } : null
-    });
+    const prismaPreferredChannels = preferences.preferredChannels
+      ? {
+          channels: this.mapToPrismaNotificationChannels(
+            preferences.preferredChannels.channels
+          ),
+        }
+      : undefined;
+
+    const result =
+      await this.repositories.notificationRepository.upsertUserNotificationPreference(
+        userId,
+        {
+          ...preferences,
+          preferredChannels: prismaPreferredChannels,
+          quietHours: preferences.quietHours
+            ? {
+                enabled: true,
+                startTime: preferences.quietHours.start,
+                endTime: preferences.quietHours.end,
+                days: [1, 2, 3, 4, 5, 6, 7],
+                timezone: preferences.quietHours.timezone,
+              }
+            : null,
+        }
+      );
     // Map repository type to business type
     return {
       ...result,
       preferredChannels: {
-        channels: result.preferredChannels.channels as NotificationChannel[]
+        channels: result.preferredChannels.channels.map(channel =>
+          this.mapFromPrismaNotificationChannel(
+            channel as unknown as PrismaNotificationChannel
+          )
+        )
       },
       quietHours: result.quietHours ? {
         start: result.quietHours.startTime,
@@ -1028,7 +1113,11 @@ export class NotificationService {
     return {
       ...preferences,
       preferredChannels: {
-        channels: preferences.preferredChannels.channels as NotificationChannel[]
+        channels: preferences.preferredChannels.channels.map(channel =>
+          this.mapFromPrismaNotificationChannel(
+            channel as unknown as PrismaNotificationChannel
+          )
+        )
       },
       quietHours: preferences.quietHours ? {
         start: preferences.quietHours.startTime,
@@ -1038,10 +1127,26 @@ export class NotificationService {
     };
   }
 
+  getPushServiceHealth() {
+    return {
+      enabled: this.pushEnabled,
+      queueDepth: this.pushDeliveryWorker.getCurrentDepth()
+    };
+  }
+
   async sendPushNotification(request: SendPushNotificationRequest): Promise<NotificationResult[]> {
+    if (!this.pushEnabled) {
+      return [{
+        success: false,
+        error: 'Push notifications are disabled: missing VAPID configuration',
+        channel: NotificationChannel.PUSH,
+        status: NotificationStatus.FAILED
+      }];
+    }
+
     const subscriptions = await this.getUserPushSubscriptions(request.userId, true);
 
-    console.log(`Found ${subscriptions.length} active push subscriptions for user ${request.userId}:`,
+    logger.info(`Found ${subscriptions.length} active push subscriptions for user ${request.userId}:`,
       subscriptions.map(s => ({ id: s.id, endpoint: s.endpoint.substring(0, 50) + '...', isActive: s.isActive }))
     );
 
@@ -1058,13 +1163,13 @@ export class NotificationService {
     
     for (const subscription of subscriptions) {
       try {
-        const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
         // Create push notification record
         // For test appointments, set appointmentId to null to avoid foreign key constraints
         const isTestAppointment = request.appointmentId?.startsWith('test-');
 
-        await this.repositories.notificationRepository.createPushNotification({
+        const notificationData = this.normalizeNotificationData(request.data);
+
+        const notification = await this.repositories.notificationRepository.createPushNotification({
           subscriptionId: subscription.id,
           appointmentId: isTestAppointment ? null : request.appointmentId,
           businessId: request.businessId,
@@ -1072,96 +1177,52 @@ export class NotificationService {
           body: request.body,
           icon: request.icon,
           badge: request.badge,
-          data: request.data,
-          status: NotificationStatus.PENDING
+          data: notificationData ?? null,
+          status: PrismaNotificationStatus.PENDING
         });
 
+        const notificationId = notification.id;
+
         // Prepare web-push payload
+        const pushPayloadData = {
+          ...(request.data ?? {}),
+          appointmentId: request.appointmentId,
+          businessId: request.businessId,
+          url: request.url,
+          notificationId,
+        };
+
         const payload = JSON.stringify({
           title: request.title,
           body: request.body,
           icon: request.icon,
           badge: request.badge,
-          data: {
-            ...request.data,
-            appointmentId: request.appointmentId,
-            businessId: request.businessId,
-            url: request.url,
-            notificationId,
-          }
+          data: pushPayloadData
         });
 
-        // Send push notification
-        const pushSubscription = {
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: subscription.p256dh,
-            auth: subscription.auth,
-          }
-        };
-
-        await webpush.sendNotification(pushSubscription, payload);
-
-        // Update notification status
-        await this.repositories.notificationRepository.updatePushNotificationStatus(notificationId, NotificationStatus.SENT);
-
-        // Update subscription last used
-        await this.repositories.notificationRepository.updatePushSubscriptionLastUsed(subscription.id);
+        this.pushDeliveryWorker.enqueue({
+          subscription,
+          notificationId,
+          payload,
+          request,
+        });
 
         results.push({
           success: true,
           messageId: notificationId,
           channel: NotificationChannel.PUSH,
-          status: NotificationStatus.SENT
+          status: NotificationStatus.PENDING
         });
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-        // Log detailed error information for debugging
-        console.error('Push notification error details:', {
+        logger.error('Failed to queue push notification', {
           subscriptionId: subscription.id,
           endpoint: subscription.endpoint,
           error: errorMessage,
           errorObject: error
         });
-
-        // Check if subscription is invalid
-        const statusCode = (error as { statusCode?: number })?.statusCode;
-        const errorBody = (error as { body?: string })?.body || '';
-
-        const isInvalidSubscription = statusCode === 410 ||
-                                    statusCode === 404 ||
-                                    errorMessage.includes('410') ||
-                                    errorMessage.includes('gone') ||
-                                    errorMessage.includes('expired') ||
-                                    errorMessage.includes('unsubscribed') ||
-                                    errorBody.includes('expired') ||
-                                    errorBody.includes('unsubscribed');
-
-        console.log('Subscription validity check:', {
-          statusCode,
-          errorBody,
-          isInvalidSubscription,
-          subscriptionId: subscription.id
-        });
-
-        if (isInvalidSubscription) {
-          console.log(`Disabling invalid subscription: ${subscription.id}, endpoint: ${subscription.endpoint}`);
-          // Disable invalid subscription
-          // @ts-ignore - pushSubscription model exists in Prisma schema
-          await this.repositories.notificationRepository.updatePushSubscriptionStatus(subscription.userId, subscription.endpoint, false);
-          console.log(`Successfully disabled subscription: ${subscription.id}`);
-        }
-
-        // Update notification status
-        if (subscription.id) {
-          try {
-            await this.repositories.notificationRepository.updatePushNotificationStatusBySubscription(subscription.id, NotificationStatus.FAILED, errorMessage);
-          } catch (dbError) {
-            console.error('Failed to update notification status:', dbError);
-          }
-        }
 
         results.push({
           success: false,
@@ -1326,6 +1387,111 @@ export class NotificationService {
     }
   }
 
+  async sendEmailAppointmentReminder(appointment: UpcomingAppointment): Promise<NotificationResult[]> {
+    const preferences = await this.getNotificationPreferences(appointment.customerId);
+
+    if (preferences && !preferences.enableAppointmentReminders) {
+      return [{
+        success: false,
+        error: 'User has disabled appointment reminders',
+        channel: NotificationChannel.EMAIL,
+        status: NotificationStatus.FAILED
+      }];
+    }
+
+    if (preferences?.quietHours && this.isInQuietHours(new Date(), preferences.quietHours, preferences.timezone)) {
+      return [{
+        success: false,
+        error: 'Current time is within user quiet hours',
+        channel: NotificationChannel.EMAIL,
+        status: NotificationStatus.FAILED
+      }];
+    }
+
+    const customerEmail = (appointment.customer as { email?: string | null })?.email ?? undefined;
+    if (!customerEmail) {
+      return [{
+        success: false,
+        error: 'Customer email not found',
+        channel: NotificationChannel.EMAIL,
+        status: NotificationStatus.FAILED
+      }];
+    }
+
+    const locale = preferences?.timezone?.includes('Istanbul') ? 'tr-TR' : 'en-US';
+    const appointmentDate = this.formatDateTimeForEmail(
+      appointment.startTime,
+      appointment.business.timezone,
+      locale,
+      { dateStyle: 'full', timeStyle: 'short' }
+    );
+
+    const subject = locale === 'tr-TR'
+      ? `Randevu Hatırlatması - ${appointment.business.name}`
+      : `Appointment Reminder - ${appointment.business.name}`;
+
+    const greetingName = appointment.customer.firstName || appointment.customer.lastName || '';
+    const greeting = greetingName
+      ? (locale === 'tr-TR' ? `Merhaba ${greetingName},` : `Hello ${greetingName},`)
+      : locale === 'tr-TR' ? 'Merhaba,' : 'Hello,';
+
+    const textBody = locale === 'tr-TR'
+      ? `${greeting}\n\n${appointment.business.name} işletmesindeki ${appointment.service.name} randevunuz ${appointmentDate} tarihinde gerçekleşecek.\n\nDeğişiklik yapmak isterseniz lütfen bizimle iletişime geçin.`
+      : `${greeting}\n\nYour ${appointment.service.name} appointment at ${appointment.business.name} is scheduled for ${appointmentDate}.\n\nPlease contact us if you need to make any changes.`;
+
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
+        <p>${greeting}</p>
+        <p>${locale === 'tr-TR'
+          ? `Bu, ${appointment.business.name} işletmesindeki ${appointment.service.name} randevunuz için bir hatırlatmadır.`
+          : `This is a reminder for your ${appointment.service.name} appointment at ${appointment.business.name}.`}</p>
+        <div style="margin:16px 0;padding:16px;background-color:#f9fafb;border-left:4px solid #6366f1;">
+          <p style="margin:0;"><strong>${locale === 'tr-TR' ? 'Tarih ve Saat:' : 'Date & Time:'}</strong> ${appointmentDate}</p>
+          <p style="margin:4px 0;"><strong>${locale === 'tr-TR' ? 'Hizmet:' : 'Service:'}</strong> ${appointment.service.name}</p>
+        </div>
+        <p>${locale === 'tr-TR'
+          ? 'Değişiklik yapmak isterseniz lütfen bizimle iletişime geçin veya uygulama üzerinden randevunuzu güncelleyin.'
+          : 'If you need to make changes, please contact us or update your appointment in the app.'}</p>
+        <p style="margin-top:24px;color:#6b7280;">${locale === 'tr-TR'
+          ? 'RandevuBu üzerinden gönderilmiştir.'
+          : 'Sent via RandevuBu.'}</p>
+      </div>
+    `;
+
+    try {
+      const response = await this.emailService.sendEmail({
+        to: customerEmail,
+        subject,
+        html: htmlBody,
+        text: textBody
+      });
+
+      if (!response.success) {
+        return [{
+          success: false,
+          error: response.error || 'Failed to send email reminder',
+          channel: NotificationChannel.EMAIL,
+          status: NotificationStatus.FAILED
+        }];
+      }
+
+      return [{
+        success: true,
+        messageId: response.messageId,
+        channel: NotificationChannel.EMAIL,
+        status: NotificationStatus.SENT
+      }];
+    } catch (error) {
+      logger.error('Error sending email appointment reminder', { error, appointmentId: appointment.id });
+      return [{
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to send email reminder',
+        channel: NotificationChannel.EMAIL,
+        status: NotificationStatus.FAILED
+      }];
+    }
+  }
+
   async sendBatchPushNotifications(userIds: string[], notification: Omit<SendPushNotificationRequest, 'userId'>): Promise<{
     successful: number;
     failed: number;
@@ -1333,7 +1499,7 @@ export class NotificationService {
   }> {
     // Industry Standard: Batch processing with concurrency control
     const BATCH_SIZE = 50;
-    const MAX_CONCURRENT = 10;
+    const MAX_CONCURRENT = Number(process.env.PUSH_BATCH_MAX_CONCURRENT ?? 10);
     const allResults: NotificationResult[] = [];
     let successful = 0;
     let failed = 0;
@@ -1341,13 +1507,16 @@ export class NotificationService {
     // Process in batches to avoid overwhelming the system
     for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
       const batch = userIds.slice(i, i + BATCH_SIZE);
-      
+
+      const limit = pLimit(MAX_CONCURRENT);
       // Process batch with concurrency control
-      const batchPromises = batch.map(userId => 
-        this.sendPushNotification({
-          userId,
-          ...notification
-        })
+      const batchPromises = batch.map(userId =>
+        limit(() =>
+          this.sendPushNotification({
+            userId,
+            ...notification
+          })
+        )
       );
 
       // Use Promise.allSettled to handle individual failures
@@ -1408,7 +1577,7 @@ export class NotificationService {
         return current >= start && current <= end;
       }
     } catch (error) {
-      console.error('Error checking quiet hours:', error);
+      logger.error('Error checking quiet hours:', error);
       return false;
     }
   }
@@ -1416,6 +1585,66 @@ export class NotificationService {
   private timeStringToMinutes(timeStr: string): number {
     const [hours, minutes] = timeStr.split(':').map(Number);
     return hours * 60 + minutes;
+  }
+
+  private buildClosureEmailPayload(
+    firstName: string | null | undefined,
+    closureData: EnhancedClosureData,
+    message: string
+  ) {
+    const greetingName = firstName ? `Merhaba ${firstName},` : 'Merhaba,';
+    const start = this.formatDateTimeForEmail(closureData.startDate);
+    const end = closureData.endDate ? this.formatDateTimeForEmail(closureData.endDate) : null;
+
+    const subject = closureData.businessName
+      ? `${closureData.businessName} - Kapanış Bildirimi`
+      : 'İşletme Kapanış Bildirimi';
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
+        <p>${greetingName}</p>
+        <p>${message}</p>
+        <div style="margin:16px 0;padding:16px;background-color:#fef2f2;border-left:4px solid #dc2626;">
+          <p style="margin:0;"><strong>Başlangıç:</strong> ${start}</p>
+          ${end ? `<p style="margin:4px 0;"><strong>Bitiş:</strong> ${end}</p>` : ''}
+          <p style="margin:4px 0;"><strong>İşletme:</strong> ${closureData.businessName}</p>
+          ${closureData.reason ? `<p style="margin:4px 0;"><strong>Neden:</strong> ${closureData.reason}</p>` : ''}
+        </div>
+        <p>Randevunuz etkileniyorsa, yeni bir tarih belirlemek için lütfen bizimle iletişime geçin.</p>
+        <p style="margin-top:24px;color:#6b7280;">RandevuBu üzerinden gönderilmiştir.</p>
+      </div>
+    `;
+
+    const text = `${greetingName}
+
+${message}
+
+Başlangıç: ${start}
+${end ? `Bitiş: ${end}\n` : ''}İşletme: ${closureData.businessName}
+${closureData.reason ? `Neden: ${closureData.reason}\n` : ''}
+
+Randevunuz etkileniyorsa, yeni bir tarih için bizimle iletişime geçebilirsiniz.`;
+
+    return { subject, html, text };
+  }
+
+  private formatDateTimeForEmail(
+    value: Date,
+    timezone?: string,
+    locale: string = 'tr-TR',
+    options?: Intl.DateTimeFormatOptions
+  ): string {
+    try {
+      return new Intl.DateTimeFormat(locale, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: timezone,
+        ...(options || {})
+      }).format(value);
+    } catch (error) {
+      logger.error('Failed to format date for email', { error });
+      return value.toLocaleString(locale);
+    }
   }
 
   async getNotificationHistory(
@@ -1430,49 +1659,62 @@ export class NotificationService {
       to?: Date;
     }
   ): Promise<{
-    notifications: any[];
+    notifications: PushNotificationData[];
     total: number;
     page: number;
     totalPages: number;
   }> {
     const page = options?.page || 1;
     const limit = Math.min(100, options?.limit || 20);
-    const skip = (page - 1) * limit;
-
-    // Get user's subscriptions
-    const subscriptions = await this.repositories.notificationRepository.findPushSubscriptionsByUser(userId);
-
-    const subscriptionIds = subscriptions.map((s: any) => s.id);
-
-    const where: any = {
-      subscriptionId: { in: subscriptionIds }
-    };
-
-    if (options?.status) {
-      where.status = options.status;
-    }
-    if (options?.appointmentId) {
-      where.appointmentId = options.appointmentId;
-    }
-    if (options?.businessId) {
-      where.businessId = options.businessId;
-    }
-    if (options?.from || options?.to) {
-      where.createdAt = {};
-      if (options.from) where.createdAt.gte = options.from;
-      if (options.to) where.createdAt.lte = options.to;
-    }
 
     const [notifications, total] = await Promise.all([
-      this.repositories.notificationRepository.findPushNotificationsByUser(userId, { page, limit, status: options?.status as any }),
-      this.repositories.notificationRepository.countPushNotificationsByUser(userId, { status: options?.status as any })
+      this.repositories.notificationRepository.findPushNotificationsByUser(userId, {
+        page,
+        limit,
+        status: this.mapToPrismaNotificationStatus(options?.status),
+        startDate: options?.from,
+        endDate: options?.to
+      }),
+      this.repositories.notificationRepository.countPushNotificationsByUser(userId, {
+        status: this.mapToPrismaNotificationStatus(options?.status)
+      })
     ]);
 
+    const normalizedNotifications = notifications
+      .filter(notification => {
+        if (options?.appointmentId && notification.appointmentId !== options.appointmentId) {
+          return false;
+        }
+        if (options?.businessId && notification.businessId !== options.businessId) {
+          return false;
+        }
+        return true;
+      })
+      .map<PushNotificationData>((notification) => ({
+        id: notification.id,
+        subscriptionId: notification.subscriptionId,
+        appointmentId: notification.appointmentId,
+        businessId: notification.businessId,
+        title: notification.title,
+        body: notification.body,
+        icon: notification.icon ?? null,
+        badge: notification.badge ?? null,
+        data: this.normalizeNotificationPayload(notification.data ?? null),
+        status: this.mapFromPrismaNotificationStatus(
+          notification.status as unknown as PrismaNotificationStatus
+        ),
+        sentAt: notification.sentAt ?? null,
+        deliveredAt: notification.deliveredAt ?? null,
+        readAt: notification.readAt ?? null,
+        errorMessage: notification.errorMessage ?? null,
+        retryCount: notification.retryCount,
+        maxRetries: notification.maxRetries,
+        createdAt: notification.createdAt,
+        updatedAt: notification.updatedAt,
+      }));
+
     return {
-      notifications: notifications.map((n: any) => ({
-        ...n,
-        data: n.data ? JSON.parse(n.data as string) : null
-      })),
+      notifications: normalizedNotifications,
       total,
       page,
       totalPages: Math.ceil(total / limit)
@@ -1481,5 +1723,131 @@ export class NotificationService {
 
   async getVapidPublicKey(): Promise<string | null> {
     return process.env.VAPID_PUBLIC_KEY || null;
+  }
+
+  private normalizeNotificationData(
+    data?: NotificationPayload
+  ): NotificationDataConfig | undefined {
+    if (!data) {
+      return undefined;
+    }
+
+    const {
+      type,
+      appointmentId,
+      businessId,
+      actionUrl,
+      metadata,
+      ...rest
+    } = data;
+
+    const mergedMetadata: Record<string, unknown> = {
+      ...(metadata as Record<string, unknown> | undefined),
+      ...rest,
+    };
+
+    return {
+      type: typeof type === 'string' ? type : 'CUSTOM',
+      appointmentId: typeof appointmentId === 'string' ? appointmentId : undefined,
+      businessId: typeof businessId === 'string' ? businessId : undefined,
+      actionUrl: typeof actionUrl === 'string' ? actionUrl : undefined,
+      metadata:
+        Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
+    };
+  }
+
+  private normalizeNotificationPayload(
+    data: NotificationDataConfig | null
+  ): NotificationPayload | null {
+    if (!data) {
+      return null;
+    }
+
+    return {
+      type: data.type,
+      appointmentId: data.appointmentId,
+      businessId: data.businessId,
+      actionUrl: data.actionUrl,
+      metadata: data.metadata,
+    };
+  }
+
+  private mapToPrismaNotificationStatus(
+    status?: NotificationStatus
+  ): PrismaNotificationStatus | undefined {
+    if (!status) {
+      return undefined;
+    }
+
+    switch (status) {
+      case NotificationStatus.PENDING:
+        return PrismaNotificationStatus.PENDING;
+      case NotificationStatus.SENT:
+        return PrismaNotificationStatus.SENT;
+      case NotificationStatus.DELIVERED:
+        return PrismaNotificationStatus.DELIVERED;
+      case NotificationStatus.FAILED:
+        return PrismaNotificationStatus.FAILED;
+      case NotificationStatus.READ:
+        return PrismaNotificationStatus.DELIVERED;
+      case NotificationStatus.CANCELLED:
+        return PrismaNotificationStatus.FAILED;
+      default:
+        return undefined;
+    }
+  }
+
+  private mapFromPrismaNotificationStatus(
+    status: PrismaNotificationStatus
+  ): NotificationStatus {
+    switch (status) {
+      case PrismaNotificationStatus.PENDING:
+        return NotificationStatus.PENDING;
+      case PrismaNotificationStatus.SENT:
+        return NotificationStatus.SENT;
+      case PrismaNotificationStatus.DELIVERED:
+        return NotificationStatus.DELIVERED;
+      case PrismaNotificationStatus.FAILED:
+        return NotificationStatus.FAILED;
+      default:
+        return NotificationStatus.PENDING;
+    }
+  }
+
+  private mapToPrismaNotificationChannels(
+    channels: NotificationChannel[]
+  ): PrismaNotificationChannel[] {
+    return channels.map((channel) => this.mapToPrismaNotificationChannel(channel));
+  }
+
+  private mapToPrismaNotificationChannel(
+    channel: NotificationChannel
+  ): PrismaNotificationChannel {
+    switch (channel) {
+      case NotificationChannel.EMAIL:
+        return PrismaNotificationChannel.EMAIL;
+      case NotificationChannel.SMS:
+        return PrismaNotificationChannel.SMS;
+      case NotificationChannel.PUSH:
+      case NotificationChannel.IN_APP:
+        return PrismaNotificationChannel.PUSH;
+      default:
+        return PrismaNotificationChannel.PUSH;
+    }
+  }
+
+  private mapFromPrismaNotificationChannel(
+    channel: PrismaNotificationChannel
+  ): NotificationChannel {
+    switch (channel) {
+      case PrismaNotificationChannel.EMAIL:
+        return NotificationChannel.EMAIL;
+      case PrismaNotificationChannel.SMS:
+        return NotificationChannel.SMS;
+      case PrismaNotificationChannel.PUSH:
+        return NotificationChannel.PUSH;
+      default:
+        return NotificationChannel.PUSH;
+    }
   }
 }

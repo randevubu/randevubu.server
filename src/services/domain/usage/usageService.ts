@@ -9,7 +9,7 @@ import { PermissionName } from '../../../types/auth';
 import { RepositoryContainer } from '../../../repositories';
 
 import { UsageAlerts } from '../../../types/usage';
-
+import logger from "../../../utils/Logger/logger";
 export class UsageService {
   constructor(
     private usageRepository: UsageRepository,
@@ -118,7 +118,7 @@ export class UsageService {
     const summary = await this.usageRepository.getUsageSummary(businessId);
     if (summary && summary.currentMonth && summary.currentMonth.smssSent > summary.planLimits.smsQuota) {
       // Here you could integrate with notification service to alert business owner
-      console.warn(`Business ${businessId} has exceeded SMS quota: ${summary.currentMonth.smssSent}/${summary.planLimits.smsQuota}`);
+      logger.warn(`Business ${businessId} has exceeded SMS quota: ${summary.currentMonth.smssSent}/${summary.planLimits.smsQuota}`);
     }
   }
 

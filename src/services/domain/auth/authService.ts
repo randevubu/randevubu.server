@@ -23,12 +23,11 @@ import {
   VerificationCodeInvalidError,
   VerificationMaxAttemptsError,
 } from "../../../types/errors";
-import logger from "../../../utils/Logger/logger";
 import { ReliabilityScoreCalculator } from "../userBehavior/reliabilityScoreCalculator";
 import { PhoneVerificationService } from "../sms/phoneVerificationService";
 import { RBACService } from "../rbac/rbacService";
 import { TokenService } from "../token/tokenService";
-
+import logger from "../../../utils/Logger/logger";
 export class AuthService {
   constructor(
     private repositories: RepositoryContainer,
@@ -43,14 +42,14 @@ export class AuthService {
     deviceInfo?: DeviceInfo,
     context?: ErrorContext
   ): Promise<LoginResult> {
-    console.log("🚀 AUTH SERVICE CALLED:", {
+    logger.info("🚀 AUTH SERVICE CALLED:", {
       phoneNumber,
       verificationCode,
       requestId: context?.requestId,
     });
 
     const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
-    console.log("✅ AUTH SERVICE PHONE NORMALIZED:", {
+    logger.info("✅ AUTH SERVICE PHONE NORMALIZED:", {
       original: phoneNumber,
       normalized: normalizedPhone,
     });
@@ -63,12 +62,30 @@ export class AuthService {
       requestId: context?.requestId,
     });
 
+    // Auto-detect purpose: check if user exists (same logic as sendVerificationCode)
+    let purpose: VerificationPurpose = VerificationPurpose.REGISTRATION;
+    try {
+      const existingUser = await this.repositories.userRepository.findByPhoneNumber(normalizedPhone);
+      purpose = existingUser ? VerificationPurpose.LOGIN : VerificationPurpose.REGISTRATION;
+      logger.info("Detected verification purpose", {
+        normalizedPhone: this.maskPhoneNumber(normalizedPhone),
+        purpose,
+        userExists: !!existingUser,
+        requestId: context?.requestId,
+      });
+    } catch (error) {
+      logger.warn("Failed to check if user exists, defaulting to REGISTRATION", {
+        error: error instanceof Error ? error.message : String(error),
+        requestId: context?.requestId,
+      });
+    }
+
     // Verify the phone verification code
     try {
       const verificationResult = await this.phoneVerificationService.verifyCode(
         normalizedPhone,
         verificationCode,
-        VerificationPurpose.REGISTRATION,
+        purpose,
         context
       );
 

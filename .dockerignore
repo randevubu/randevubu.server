@@ -100,3 +100,5 @@ temp/
 
 # Monitoring files
 monitoring/
+
+RULES.md

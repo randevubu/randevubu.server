@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-
+import logger from "../../../utils/Logger/logger";
 export interface RateLimitConfig {
   maxNotificationsPerHour: number;
   maxNotificationsPerDay: number;
@@ -110,7 +110,7 @@ export class NotificationRateLimitService {
       };
 
     } catch (error) {
-      console.error('Error checking rate limit:', error);
+      logger.error('Error checking rate limit:', error);
       return {
         allowed: false,
         remaining: 0,
@@ -148,7 +148,7 @@ export class NotificationRateLimitService {
       await this.updateUsageCache(businessId, recipientCount, now);
 
     } catch (error) {
-      console.error('Error recording notification usage:', error);
+      logger.error('Error recording notification usage:', error);
       // Don't throw error as this shouldn't block notification sending
     }
   }
@@ -400,7 +400,7 @@ export class NotificationRateLimitService {
   ): Promise<void> {
     // In production, use Redis or similar for distributed caching
     // This is a simplified in-memory implementation
-    console.log(`Updated usage cache for business ${businessId}: +${recipientCount} notifications at ${now.toISOString()}`);
+    logger.info(`Updated usage cache for business ${businessId}: +${recipientCount} notifications at ${now.toISOString()}`);
   }
 
   /**
@@ -453,7 +453,7 @@ export class NotificationRateLimitService {
   async resetRateLimits(businessId: string, reason: string): Promise<void> {
     try {
       // Log the reset action
-      console.log(`Rate limits reset for business ${businessId}. Reason: ${reason}`);
+      logger.info(`Rate limits reset for business ${businessId}. Reason: ${reason}`);
       
       // In production, you might want to:
       // 1. Log this action in an audit log
@@ -461,7 +461,7 @@ export class NotificationRateLimitService {
       // 3. Update rate limit cache
       
     } catch (error) {
-      console.error('Error resetting rate limits:', error);
+      logger.error('Error resetting rate limits:', error);
       throw new Error('Failed to reset rate limits');
     }
   }

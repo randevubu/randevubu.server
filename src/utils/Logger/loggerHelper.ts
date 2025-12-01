@@ -16,7 +16,7 @@ interface LogMeta {
   resourceId?: string | number;
   source: string;
   requestDetails: RequestDetails;
-  extra?: Record<string, any>;
+  extra?: Record<string, unknown>;
 }
 
 // Helper function to extract request details safely

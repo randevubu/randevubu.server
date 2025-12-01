@@ -9,7 +9,6 @@ import {
   UserRoleData,
 } from "../types/auth";
 import logger from "../utils/Logger/logger";
-
 export class RoleRepository {
   constructor(private prisma: PrismaClient) {}
 

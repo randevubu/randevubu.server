@@ -1,3 +1,4 @@
+import logger from "./Logger/logger";
 /**
  * Response Utility Functions
  *
@@ -52,7 +53,7 @@ export async function sendSuccessResponse<T>(
       // If translation fails, use the original message/key
       // Don't log in production to avoid noise
       if (process.env.NODE_ENV === 'development') {
-        console.debug('Translation failed for success message', { message, error });
+        logger.debug('Translation failed for success message', { message, error });
       }
     }
   }
@@ -154,7 +155,7 @@ export async function sendPaginatedResponse<T>(
       );
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.debug('Translation failed for success message', { message, error });
+        logger.debug('Translation failed for success message', { message, error });
       }
     }
   }
@@ -193,7 +194,7 @@ export async function sendSuccessWithMeta<T>(
   res: Response,
   message: string,
   data: T,
-  meta: Record<string, any>,
+  meta: Record<string, unknown>,
   statusCode: number = 200,
   req?: Request,
   params?: Record<string, string | number | boolean | Date>
@@ -216,7 +217,7 @@ export async function sendSuccessWithMeta<T>(
       );
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.debug('Translation failed for success message', { message, error });
+        logger.debug('Translation failed for success message', { message, error });
       }
     }
   }
@@ -241,7 +242,7 @@ export function handleRouteError(
   res: Response,
   next?: any
 ): void {
-  console.error('Route error:', error);
+  logger.error('Route error:', error);
   
   const statusCode = error.statusCode || error.status || 500;
   const message = error.message || 'Internal server error';

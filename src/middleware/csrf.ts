@@ -2,7 +2,6 @@ import { NextFunction, Request, Response } from "express";
 import crypto from "crypto";
 import { ErrorContext, ForbiddenError } from "../types/errors";
 import logger from "../utils/Logger/logger";
-
 export interface CSRFOptions {
   cookieName?: string;
   headerName?: string;

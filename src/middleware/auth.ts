@@ -11,9 +11,9 @@ import {
   UserNotVerifiedError,
 } from "../types/errors";
 import { AuthenticatedRequest } from "../types/request";
-import logger from "../utils/Logger/logger";
-import { updateLanguageFromUser } from "./language";
 
+import { updateLanguageFromUser } from "./language";
+import logger from "../utils/Logger/logger";
 export class AuthMiddleware {
   constructor(
     private repositories: RepositoryContainer,

@@ -2,7 +2,8 @@ import { Response } from "express";
 import { ReportsService } from "../services/domain/reports";
 import { GuaranteedAuthRequest } from "../types/auth";
 import { BaseError } from "../types/errors";
-import logger from "../utils/Logger/logger";
+import { BusinessContextRequest } from "../types/request";
+
 import {
   handleRouteError,
   sendSuccessResponse,
@@ -11,6 +12,8 @@ import {
 } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
+import logger from "../utils/Logger/logger";
+type ReportsRequest = GuaranteedAuthRequest & BusinessContextRequest;
 
 export class ReportsController {
   constructor(private reportsService: ReportsService) {}
@@ -20,7 +23,7 @@ export class ReportsController {
    * GET /api/v1/reports/overview
    */
   getBusinessOverview = async (
-    req: GuaranteedAuthRequest,
+    req: ReportsRequest,
     res: Response
   ): Promise<void> => {
     try {
@@ -28,7 +31,7 @@ export class ReportsController {
       const { businessId, startDate, endDate } = req.query;
 
       // Get businessId from query or business context
-      const resolvedBusinessId = businessId || (req as any).businessContext?.primaryBusinessId;
+      const resolvedBusinessId = businessId || req.businessContext?.primaryBusinessId;
 
       // Validate businessId parameter
       if (!resolvedBusinessId || typeof resolvedBusinessId !== 'string') {
@@ -107,7 +110,7 @@ export class ReportsController {
    * GET /api/v1/reports/revenue
    */
   getRevenueReport = async (
-    req: GuaranteedAuthRequest,
+    req: ReportsRequest,
     res: Response
   ): Promise<void> => {
     try {
@@ -115,7 +118,7 @@ export class ReportsController {
       const { businessId, startDate, endDate } = req.query;
 
       // Get businessId from query or business context
-      const resolvedBusinessId = businessId || (req as any).businessContext?.primaryBusinessId;
+      const resolvedBusinessId = businessId || req.businessContext?.primaryBusinessId;
 
       // Validate businessId parameter
       if (!resolvedBusinessId || typeof resolvedBusinessId !== 'string') {
@@ -968,6 +971,12 @@ export class ReportsController {
         ),
       ]);
 
+      const nextAppointments = await this.reportsService.getUpcomingAppointments(
+        userId,
+        businessId as string,
+        5
+      );
+
       // Calculate real-time metrics
       const metrics = {
         todayAppointments: overview.totalAppointments,
@@ -977,7 +986,7 @@ export class ReportsController {
         onlineBookings: Math.floor(overview.totalAppointments * 0.7), // Mock
         walkIns: Math.floor(overview.totalAppointments * 0.3), // Mock
         currentUtilization: 78.5, // Mock real-time utilization
-        nextAppointments: [], // TODO: Get upcoming appointments
+        nextAppointments,
         staffOnline: 4, // Mock online staff count
         lastUpdated: new Date().toISOString(),
       };

@@ -10,7 +10,7 @@ import {
   sendAppErrorResponse,
   BusinessErrors
 } from '../utils/errorResponse';
-
+import logger from "../utils/Logger/logger";
 // Re-export types for convenience
 export type { BusinessContext, BusinessContextRequest, GuaranteedBusinessContextRequest };
 
@@ -19,14 +19,14 @@ export class BusinessContextMiddleware {
 
   async attachBusinessContext(req: BusinessContextRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      console.log('🔍 [attachBusinessContext] Starting...', { url: req.url, method: req.method, hasUser: !!req.user });
+      logger.info('🔍 [attachBusinessContext] Starting...', { url: req.url, method: req.method, hasUser: !!req.user });
       if (!req.user) {
-        console.log('🔍 [attachBusinessContext] No user, skipping');
+        logger.info('🔍 [attachBusinessContext] No user, skipping');
         return next();
       }
 
       const userId = req.user.id;
-      console.log('🔍 [attachBusinessContext] Fetching user roles for:', userId);
+      logger.info('🔍 [attachBusinessContext] Fetching user roles for:', userId);
 
       // Fetch fresh user roles from database to ensure we have the latest roles
       // This is important after business creation when roles might have changed
@@ -43,8 +43,8 @@ export class BusinessContextMiddleware {
         }
       });
 
-      console.log('🔍 [attachBusinessContext] User roles query completed, count:', freshUserRoles.length);
-      console.log('🔍 [attachBusinessContext] User roles fetched:', freshUserRoles.map(ur => ur.role.name));
+      logger.info('🔍 [attachBusinessContext] User roles query completed, count:', freshUserRoles.length);
+      logger.info('🔍 [attachBusinessContext] User roles fetched:', freshUserRoles.map(ur => ur.role.name));
       const userRoles = freshUserRoles.map(ur => ur.role);
       
       const isOwner = userRoles.some(role => role.name === 'OWNER');
@@ -53,7 +53,7 @@ export class BusinessContextMiddleware {
 
       // Debug logging (development only)
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 BusinessContext Debug:', {
+        logger.info('🔍 BusinessContext Debug:', {
           userId,
           userRoles: userRoles.map(r => r.name),
           isOwner,
@@ -64,7 +64,7 @@ export class BusinessContextMiddleware {
 
       if (!isOwner && !isStaff && !isCustomer) {
         if (process.env.NODE_ENV === 'development') {
-          console.log('🔍 BusinessContext: No relevant roles, exiting early');
+          logger.info('🔍 BusinessContext: No relevant roles, exiting early');
         }
         return next();
       }
@@ -73,7 +73,7 @@ export class BusinessContextMiddleware {
       let primaryBusinessId: string | null = null;
 
       if (isOwner) {
-        console.log('🔍 [attachBusinessContext] User is OWNER, fetching owned businesses...');
+        logger.info('🔍 [attachBusinessContext] User is OWNER, fetching owned businesses...');
         const ownedBusinesses = await this.prisma.business.findMany({
           where: {
             ownerId: userId,
@@ -83,13 +83,13 @@ export class BusinessContextMiddleware {
           select: { id: true, name: true },
           orderBy: { createdAt: 'asc' }
         });
-        console.log('🔍 [attachBusinessContext] Owned businesses query completed, count:', ownedBusinesses.length);
+        logger.info('🔍 [attachBusinessContext] Owned businesses query completed, count:', ownedBusinesses.length);
         businessIds.push(...ownedBusinesses.map(b => b.id));
         primaryBusinessId = ownedBusinesses[0]?.id || null;
       }
 
       if (isStaff) {
-        console.log('🔍 [attachBusinessContext] User is STAFF, fetching staff businesses...');
+        logger.info('🔍 [attachBusinessContext] User is STAFF, fetching staff businesses...');
         const staffBusinesses = await this.prisma.businessStaff.findMany({
           where: {
             userId,
@@ -108,7 +108,7 @@ export class BusinessContextMiddleware {
           orderBy: { joinedAt: 'asc' }
         });
 
-        console.log('🔍 [attachBusinessContext] Staff businesses query completed, count:', staffBusinesses.length);
+        logger.info('🔍 [attachBusinessContext] Staff businesses query completed, count:', staffBusinesses.length);
         const staffBusinessIds = staffBusinesses.map(bs => bs.business.id);
         businessIds.push(...staffBusinessIds.filter(id => !businessIds.includes(id)));
 
@@ -125,13 +125,13 @@ export class BusinessContextMiddleware {
         isCustomer: isCustomer || false
       };
 
-      console.log('🔍 [attachBusinessContext] Context created successfully:', {
+      logger.info('🔍 [attachBusinessContext] Context created successfully:', {
         businessIds: req.businessContext.businessIds,
         primaryBusinessId: req.businessContext.primaryBusinessId,
         isOwner,
         isStaff
       });
-      console.log('🔍 [attachBusinessContext] Calling next()...');
+      logger.info('🔍 [attachBusinessContext] Calling next()...');
 
       next();
     } catch (error) {
@@ -203,7 +203,7 @@ export class BusinessContextMiddleware {
    */
   requireSpecificBusinessAccess(paramName = 'id') {
     return (req: BusinessContextRequest, res: Response, next: NextFunction): void => {
-      console.log('🔍 [requireSpecificBusinessAccess] Checking access...', {
+      logger.info('🔍 [requireSpecificBusinessAccess] Checking access...', {
         paramName,
         businessId: req.params[paramName],
         url: req.url,
@@ -215,7 +215,7 @@ export class BusinessContextMiddleware {
       const businessId = req.params[paramName] || req.query[paramName] as string;
       
       if (!businessId) {
-        console.log('❌ [requireSpecificBusinessAccess] No business ID found');
+        logger.info('❌ [requireSpecificBusinessAccess] No business ID found');
         res.status(400).json({
           success: false,
           error: 'Business ID is required'
@@ -224,7 +224,7 @@ export class BusinessContextMiddleware {
       }
 
       if (!req.businessContext || !this.validateBusinessAccess(businessId, req.businessContext)) {
-        console.log('❌ [requireSpecificBusinessAccess] Access denied', {
+        logger.info('❌ [requireSpecificBusinessAccess] Access denied', {
           hasContext: !!req.businessContext,
           requestedId: businessId,
           availableIds: req.businessContext?.businessIds
@@ -234,7 +234,7 @@ export class BusinessContextMiddleware {
         return sendAppErrorResponse(res, error);
       }
       
-      console.log('✅ [requireSpecificBusinessAccess] Access granted');
+      logger.info('✅ [requireSpecificBusinessAccess] Access granted');
       next();
     };
   }

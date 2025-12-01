@@ -31,7 +31,9 @@ import {
   ValidationService, 
   createValidationService 
 } from './domain/shared';
-import { StartupService } from './startupService';
+import { StartupService } from './core/startupService';
+import { TranslationService } from './core/translationService';
+import { cacheService } from './core/cacheService';
 
 // Service container for dependency injection
 export class ServiceContainer {
@@ -62,6 +64,7 @@ export class ServiceContainer {
   public readonly startupService: StartupService;
   public readonly pricingTierService: PricingTierService;
   public readonly dailyNotebookService: DailyNotebookService;
+  public readonly translationService: TranslationService;
   
   // Shared services
   public readonly errorHandlingService: ErrorHandlingService;
@@ -194,6 +197,9 @@ export class ServiceContainer {
     // Daily Notebook service
     this.dailyNotebookService = new DailyNotebookService(repositories.dailyNotebookRepository);
     
+    // Translation service
+    this.translationService = new TranslationService();
+    
     // Shared services
     this.errorHandlingService = errorHandlingService;
     this.secureLoggingService = secureLoggingService;
@@ -229,6 +235,7 @@ export {
   PricingTierService,
   IPGeolocationService,
   DailyNotebookService,
+  TranslationService,
   // Shared services
   ErrorHandlingService,
   errorHandlingService,

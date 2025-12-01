@@ -11,7 +11,7 @@ import {
 } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
-
+import logger from "../utils/Logger/logger";
 const createSubscriptionPaymentSchema = z.object({
   planId: z.string(),
   card: z.object({
@@ -418,9 +418,9 @@ export class PaymentController {
         if (payment.success) {
           // Process successful payment webhook
           // Add your webhook processing logic here
-          console.log('Payment webhook processed successfully:', paymentId);
+          logger.info('Payment webhook processed successfully:', paymentId);
         } else {
-          console.error('Failed to retrieve payment for webhook:', paymentId);
+          logger.error('Failed to retrieve payment for webhook:', paymentId);
         }
       }
 
@@ -432,7 +432,7 @@ export class PaymentController {
           req
       );
     } catch (error) {
-      console.error('Webhook processing error:', error);
+      logger.error('Webhook processing error:', error);
       handleRouteError(error, req, res);
     }
   }

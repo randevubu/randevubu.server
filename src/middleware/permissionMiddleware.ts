@@ -5,8 +5,7 @@ import {
   ValidationError,
   ErrorContext 
 } from '../types/errors';
-import logger from '../utils/Logger/logger';
-
+import logger from "../utils/Logger/logger";
 /**
  * PermissionMiddleware
  * 
@@ -248,7 +247,7 @@ export class PermissionMiddleware {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
       
-      throw new ValidationError('Business permission validation failed', errorContext?.toString());
+      throw new ValidationError('Business permission validation failed', undefined, undefined, errorContext);
     }
   }
 
@@ -309,7 +308,7 @@ export class PermissionMiddleware {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
       
-      throw new ValidationError('Staff permission validation failed', errorContext?.toString());
+      throw new ValidationError('Staff permission validation failed', undefined, undefined, errorContext);
     }
   }
 
@@ -366,7 +365,7 @@ export class PermissionMiddleware {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
       
-      throw new ValidationError('Customer permission validation failed', errorContext?.toString());
+      throw new ValidationError('Customer permission validation failed', undefined, undefined, errorContext);
     }
   }
 
@@ -376,7 +375,7 @@ export class PermissionMiddleware {
    */
   private async logPermissionEvent(
     eventType: string, 
-    data: Record<string, any>
+    data: Record<string, unknown>
   ): Promise<void> {
     try {
       logger.info('Permission middleware security event', {

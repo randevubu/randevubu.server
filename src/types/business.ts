@@ -1,5 +1,15 @@
 // Business Domain Types - Enterprise Architecture
 import { Prisma } from '@prisma/client';
+import {
+  NotificationChannel as DomainNotificationChannel,
+  NotificationPayload,
+  NotificationStatus as DomainNotificationStatus,
+} from './notification';
+
+export const NotificationChannel = DomainNotificationChannel;
+export type NotificationChannel = DomainNotificationChannel;
+export const NotificationStatus = DomainNotificationStatus;
+export type NotificationStatus = DomainNotificationStatus;
 
 export interface BusinessTypeData {
   id: string;
@@ -95,6 +105,9 @@ export interface BusinessData {
   closedUntil?: Date;
   closureReason?: string;
   tags: string[];
+  averageRating?: number | null;
+  totalRatings?: number;
+  lastRatingAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;
@@ -199,6 +212,7 @@ export interface UserBehaviorData {
 export interface BusinessClosureData {
   id: string;
   businessId: string;
+  businessName?: string;
   startDate: Date;
   endDate?: Date;
   reason: string;
@@ -666,24 +680,11 @@ export interface AppointmentWithDetails extends AppointmentData {
     firstName?: string;
     lastName?: string;
     phoneNumber: string;
+    email?: string | null;
   };
 }
 
 // Enhanced Closure System Types
-export enum NotificationChannel {
-  EMAIL = 'EMAIL',
-  SMS = 'SMS',
-  PUSH = 'PUSH'
-}
-
-export enum NotificationStatus {
-  PENDING = 'PENDING',
-  SENT = 'SENT',
-  FAILED = 'FAILED',
-  DELIVERED = 'DELIVERED',
-  READ = 'READ'
-}
-
 export enum CustomerResponse {
   ACCEPTED = 'ACCEPTED',
   DECLINED = 'DECLINED',
@@ -731,7 +732,7 @@ export interface ClosureNotificationData {
   message: string;
   sentAt?: Date;
   status: NotificationStatus;
-  errorMessage?: string;
+  errorMessage?: string | null;
   createdAt: Date;
 }
 
@@ -856,6 +857,9 @@ export interface RescheduleOptionsRequest {
   preferredTimeSlots: 'MORNING' | 'AFTERNOON' | 'EVENING' | 'ANY';
   notifyCustomers: boolean;
   allowWeekends: boolean;
+  businessHoursOnly?: boolean;
+  respectStaffAvailability?: boolean;
+  maxSuggestions?: number;
 }
 
 export interface ClosureAnalyticsRequest {
@@ -959,18 +963,18 @@ export interface NotificationPreferenceData {
 export interface PushNotificationData {
   id: string;
   subscriptionId: string;
-  appointmentId?: string;
-  businessId?: string;
+  appointmentId?: string | null;
+  businessId?: string | null;
   title: string;
   body: string;
-  icon?: string;
-  badge?: string;
-  data?: any;
+  icon?: string | null;
+  badge?: string | null;
+  data?: NotificationPayload | null;
   status: NotificationStatus;
-  sentAt?: Date;
-  deliveredAt?: Date;
-  readAt?: Date;
-  errorMessage?: string;
+  sentAt?: Date | null;
+  deliveredAt?: Date | null;
+  readAt?: Date | null;
+  errorMessage?: string | null;
   retryCount: number;
   maxRetries: number;
   createdAt: Date;
@@ -1015,7 +1019,7 @@ export interface SendPushNotificationRequest {
   body: string;
   icon?: string;
   badge?: string;
-  data?: any;
+  data?: NotificationPayload;
   url?: string;
 }
 

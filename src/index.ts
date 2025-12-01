@@ -27,7 +27,7 @@ import { sanitizeBody, sanitizeQuery } from "./middleware/sanitization";
 import { RepositoryContainer } from "./repositories";
 import { createRoutes } from "./routes";
 import { ServiceContainer } from "./services";
-import logger from "./utils/Logger/logger";
+
 import {
   gracefulShutdown,
   setServicesForShutdown,
@@ -42,8 +42,8 @@ import {
 } from "./utils/monitoring";
 import { cacheManager } from "./lib/redis/redis";
 import { CacheMonitoring } from "./middleware/cacheMonitoring";
-import { cacheService } from "./services/cacheService";
-
+import { cacheService } from "./services/core/cacheService";
+import logger from "./utils/Logger/logger";
 // Validate configuration on startup
 try {
   validateConfig();

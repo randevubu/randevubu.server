@@ -2,14 +2,14 @@ import { Request, Response, NextFunction } from 'express';
 import { BusinessRepository } from '../repositories/businessRepository';
 import { AppointmentRepository } from '../repositories/appointmentRepository';
 import { PrismaClient, AppointmentStatus } from '@prisma/client';
-import { 
+import {
   ReservationSettings, 
   BusinessSettings, 
   ReservationValidationRequest as ReservationValidationRequestType,
   ReservationValidationResult,
   ReservationValidationError
 } from '../types/reservationSettings';
-
+import logger from "../utils/Logger/logger";
 export interface ReservationValidationRequest extends Request {
   businessId?: string;
   date?: Date;
@@ -134,7 +134,7 @@ export class ReservationValidationMiddleware {
 
       next();
     } catch (error) {
-      console.error('Reservation validation error:', error);
+      logger.error('Reservation validation error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to validate reservation rules',
@@ -183,7 +183,7 @@ export class ReservationValidationMiddleware {
 
       next();
     } catch (error) {
-      console.error('Advance booking validation error:', error);
+      logger.error('Advance booking validation error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to validate advance booking rules'
@@ -210,7 +210,7 @@ export class ReservationValidationMiddleware {
         maxDailyAppointments: reservationSettings?.maxDailyAppointments || 50
       };
     } catch (error) {
-      console.error('Error getting reservation settings:', error);
+      logger.error('Error getting reservation settings:', error);
       return null;
     }
   };

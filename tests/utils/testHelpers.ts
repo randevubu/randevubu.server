@@ -25,14 +25,16 @@ export class TestHelpers {
    * Create a mock Express Response object
    */
   static createMockResponse(): Response {
-    const res: any = {};
-    res.status = jest.fn().mockReturnValue(res);
-    res.json = jest.fn().mockReturnValue(res);
-    res.send = jest.fn().mockReturnValue(res);
-    res.sendStatus = jest.fn().mockReturnValue(res);
-    res.set = jest.fn().mockReturnValue(res);
-    res.cookie = jest.fn().mockReturnValue(res);
-    res.clearCookie = jest.fn().mockReturnValue(res);
+    const res: Partial<Response> = {};
+
+    res.status = jest.fn().mockImplementation(() => res as Response);
+    res.json = jest.fn().mockImplementation(() => res as Response);
+    res.send = jest.fn().mockImplementation(() => res as Response);
+    res.sendStatus = jest.fn().mockImplementation(() => res as Response);
+    res.set = jest.fn().mockImplementation(() => res as Response);
+    res.cookie = jest.fn().mockImplementation(() => res as Response);
+    res.clearCookie = jest.fn().mockImplementation(() => res as Response);
+
     return res as Response;
   }
 
@@ -68,7 +70,7 @@ export class TestHelpers {
   /**
    * Create mock subscription data
    */
-  static createMockSubscription(overrides: any = {}) {
+  static createMockSubscription(overrides: Record<string, unknown> = {}) {
     const now = new Date();
     const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
@@ -97,7 +99,7 @@ export class TestHelpers {
   /**
    * Create mock trial subscription data
    */
-  static createMockTrialSubscription(overrides: any = {}) {
+  static createMockTrialSubscription(overrides: Record<string, unknown> = {}) {
     const now = new Date();
     const trialEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
@@ -118,7 +120,7 @@ export class TestHelpers {
   /**
    * Create mock subscription plan data
    */
-  static createMockPlan(overrides: any = {}) {
+  static createMockPlan(overrides: Record<string, unknown> = {}) {
     return {
       id: 'plan-basic-tier1',
       name: 'basic_tier1',
@@ -150,7 +152,7 @@ export class TestHelpers {
   /**
    * Create mock discount code data
    */
-  static createMockDiscountCode(overrides: any = {}) {
+  static createMockDiscountCode(overrides: Record<string, unknown> = {}) {
     return {
       id: 'dc-123',
       code: 'WELCOME20',
@@ -180,7 +182,7 @@ export class TestHelpers {
   /**
    * Create mock payment data
    */
-  static createMockPayment(overrides: any = {}) {
+  static createMockPayment(overrides: Record<string, unknown> = {}) {
     return {
       id: 'pay-123',
       businessId: 'business-123',
@@ -207,7 +209,7 @@ export class TestHelpers {
   /**
    * Create mock card data for testing
    */
-  static createMockCardData(overrides: any = {}) {
+  static createMockCardData(overrides: Record<string, unknown> = {}) {
     return {
       cardHolderName: 'John Doe',
       cardNumber: '5528790000000008', // Iyzico test card
@@ -221,7 +223,7 @@ export class TestHelpers {
   /**
    * Create mock buyer data for testing
    */
-  static createMockBuyerData(overrides: any = {}) {
+  static createMockBuyerData(overrides: Record<string, unknown> = {}) {
     return {
       name: 'John',
       surname: 'Doe',
@@ -238,7 +240,7 @@ export class TestHelpers {
   /**
    * Create mock discount validation result
    */
-  static createMockDiscountValidation(isValid: boolean = true, overrides: any = {}) {
+  static createMockDiscountValidation(isValid: boolean = true, overrides: Record<string, unknown> = {}) {
     if (!isValid) {
       return {
         isValid: false,
@@ -294,65 +296,46 @@ export class TestHelpers {
    * Mock Prisma client
    */
   static createMockPrisma() {
-    return {
-      businessSubscription: {
-        findUnique: jest.fn(),
-        findFirst: jest.fn(),
-        findMany: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn(),
-        count: jest.fn()
-      },
-      subscriptionPlan: {
-        findUnique: jest.fn(),
-        findFirst: jest.fn(),
-        findMany: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn()
-      },
-      discountCode: {
-        findUnique: jest.fn(),
-        findFirst: jest.fn(),
-        findMany: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn()
-      },
-      discountCodeUsage: {
-        findUnique: jest.fn(),
-        findFirst: jest.fn(),
-        findMany: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn(),
-        count: jest.fn()
-      },
-      payment: {
-        findUnique: jest.fn(),
-        findFirst: jest.fn(),
-        findMany: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn()
-      },
-      paymentMethod: {
-        findUnique: jest.fn(),
-        findFirst: jest.fn(),
-        findMany: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn()
-      },
-      $transaction: jest.fn((callback) => callback({
-        businessSubscription: this.businessSubscription,
-        subscriptionPlan: this.subscriptionPlan,
-        discountCode: this.discountCode,
-        discountCodeUsage: this.discountCodeUsage,
-        payment: this.payment,
-        paymentMethod: this.paymentMethod
-      }))
+    type PrismaMockModel = {
+      findUnique: jest.Mock;
+      findFirst: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+      delete: jest.Mock;
+      count?: jest.Mock;
     };
+
+    type MockPrismaClient = {
+      businessSubscription: PrismaMockModel;
+      subscriptionPlan: PrismaMockModel;
+      discountCode: PrismaMockModel;
+      discountCodeUsage: PrismaMockModel;
+      payment: PrismaMockModel;
+      paymentMethod: PrismaMockModel;
+      $transaction: jest.Mock;
+    };
+
+    const createModel = (withCount = false): PrismaMockModel => ({
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      ...(withCount ? { count: jest.fn() } : {})
+    });
+
+    const prisma = {} as MockPrismaClient;
+
+    prisma.businessSubscription = createModel(true);
+    prisma.subscriptionPlan = createModel();
+    prisma.discountCode = createModel();
+    prisma.discountCodeUsage = createModel(true);
+    prisma.payment = createModel();
+    prisma.paymentMethod = createModel();
+    prisma.$transaction = jest.fn((callback: (tx: MockPrismaClient) => unknown) => callback(prisma));
+
+    return prisma;
   }
 }

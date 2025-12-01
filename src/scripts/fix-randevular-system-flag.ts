@@ -1,3 +1,4 @@
+import logger from "../utils/Logger/logger";
 /**
  * Fix isSystem flag for Randevular (appointments) columns
  * 
@@ -6,8 +7,6 @@
  */
 
 import prisma from '../lib/prisma';
-import logger from '../utils/Logger/logger';
-
 async function fixRandevularSystemFlag() {
   try {
     logger.info('Starting fix for Randevular system flag...');

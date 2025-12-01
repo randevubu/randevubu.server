@@ -1184,6 +1184,68 @@ export class ReportsService {
     };
   }
 
+  async getUpcomingAppointments(
+    userId: string,
+    businessId?: string,
+    limit = 5
+  ): Promise<
+    Array<{
+      id: string;
+      startTime: Date;
+      endTime: Date;
+      serviceName: string;
+      customerName: string;
+    }>
+  > {
+    const businesses = await this.getUserBusinesses(userId, businessId);
+    if (businesses.length === 0) {
+      return [];
+    }
+
+    const targetBusiness = businesses[0];
+    const now = new Date();
+
+    const appointments = await this.repositories.prismaClient.appointment.findMany({
+      where: {
+        businessId: targetBusiness.id,
+        startTime: {
+          gte: now
+        },
+        status: {
+          in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS]
+        }
+      },
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        service: {
+          select: {
+            name: true
+          }
+        },
+        customer: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        }
+      },
+      orderBy: {
+        startTime: 'asc'
+      },
+      take: limit
+    });
+
+    return appointments.map((appointment) => ({
+      id: appointment.id,
+      startTime: appointment.startTime,
+      endTime: appointment.endTime,
+      serviceName: appointment.service?.name || 'Hizmet',
+      customerName: `${appointment.customer?.firstName || ''} ${appointment.customer?.lastName || ''}`.trim()
+    }));
+  }
+
   async getCustomerAnalyticsReport(
     userId: string,
     businessId?: string,
