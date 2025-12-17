@@ -18,6 +18,8 @@ import { PaymentRepository } from './paymentRepository';
 import { BusinessNotificationSettingsRepository } from './businessNotificationSettingsRepository';
 import { NotificationRepository } from './notificationRepository';
 import { DailyNotebookRepository } from './dailyNotebookRepository';
+import { WorkingHoursRepository } from './workingHoursRepository';
+import { RescheduleSuggestionRepository } from './rescheduleSuggestionRepository';
 
 // Repository container for dependency injection
 export class RepositoryContainer {
@@ -40,6 +42,8 @@ export class RepositoryContainer {
   public readonly businessNotificationSettingsRepository: BusinessNotificationSettingsRepository;
   public readonly notificationRepository: NotificationRepository;
   public readonly dailyNotebookRepository: DailyNotebookRepository;
+  public readonly workingHoursRepository: WorkingHoursRepository;
+  public readonly rescheduleSuggestionRepository: RescheduleSuggestionRepository;
 
   constructor(private prisma: PrismaClient) {
     this.userRepository = new PrismaUserRepository(prisma);
@@ -61,6 +65,8 @@ export class RepositoryContainer {
     this.businessNotificationSettingsRepository = new BusinessNotificationSettingsRepository(prisma);
     this.notificationRepository = new NotificationRepository(prisma);
     this.dailyNotebookRepository = new DailyNotebookRepository(prisma);
+    this.workingHoursRepository = new WorkingHoursRepository(prisma);
+    this.rescheduleSuggestionRepository = new RescheduleSuggestionRepository(prisma);
   }
 
   get prismaClient(): PrismaClient {
@@ -71,7 +77,7 @@ export class RepositoryContainer {
 // Export repository implementations
 export {
   PrismaUserRepository,
-  PrismaPhoneVerificationRepository, 
+  PrismaPhoneVerificationRepository,
   PrismaRefreshTokenRepository,
   PrismaAuditLogRepository,
   BusinessRepository,
@@ -88,7 +94,9 @@ export {
   PaymentRepository,
   BusinessNotificationSettingsRepository,
   NotificationRepository,
-  DailyNotebookRepository
+  DailyNotebookRepository,
+  WorkingHoursRepository,
+  RescheduleSuggestionRepository
 };
 
 // Export interfaces for testing/mocking

@@ -13,8 +13,7 @@ interface DatabaseService {
 
 interface ShutdownServices {
   subscriptionSchedulerService?: ShutdownableService;
-  appointmentSchedulerService?: ShutdownableService;
-  appointmentReminderService?: ShutdownableService;
+  jobScheduler?: ShutdownableService;
   prisma?: DatabaseService;
   [key: string]: any;
 }
@@ -83,8 +82,7 @@ const stopBackgroundServices = async (): Promise<void> => {
 
   const serviceNames = [
     'subscriptionSchedulerService',
-    'appointmentSchedulerService', 
-    'appointmentReminderService'
+    'jobScheduler'
   ];
 
   for (const serviceName of serviceNames) {
@@ -117,27 +115,27 @@ const closeDatabaseConnections = async (): Promise<void> => {
 const drainActiveConnections = async (server: Server): Promise<void> => {
   return new Promise((resolve) => {
     const startTime = Date.now();
-    
+
     const checkConnections = () => {
       const serverConnections = (server as any)._connections || 0;
       const elapsed = Date.now() - startTime;
-      
+
       if (serverConnections === 0) {
         logger.info("✅ All active connections drained");
         resolve();
         return;
       }
-      
+
       if (elapsed >= CONNECTION_DRAIN_TIMEOUT) {
         logger.warn(`⚠️ Connection drain timeout reached, proceeding with ${serverConnections} active connections`);
         resolve();
         return;
       }
-      
+
       logger.info(`🔄 Draining connections... (${serverConnections} active, ${elapsed}ms elapsed)`);
       setTimeout(checkConnections, 1000);
     };
-    
+
     // Start checking after a brief delay to allow current requests to complete
     setTimeout(checkConnections, 1000);
   });

@@ -1,63 +1,48 @@
 import {
   AppointmentData,
+  AppointmentSearchFilters,
+  AppointmentStatus,
   AppointmentWithDetails,
   CreateAppointmentRequest,
-  UpdateAppointmentRequest,
-  AppointmentSearchFilters,
-  AppointmentStatus
+  UpdateAppointmentRequest
 } from '../../../types/business';
 // Removed DTO imports - keeping service layer focused on business logic
+import { PrismaClient } from '@prisma/client';
+import { RepositoryContainer } from '../../../repositories';
 import { AppointmentRepository } from '../../../repositories/appointmentRepository';
-import { ServiceRepository } from '../../../repositories/serviceRepository';
-import { UserBehaviorRepository } from '../../../repositories/userBehaviorRepository';
 import { BusinessClosureRepository } from '../../../repositories/businessClosureRepository';
 import { BusinessRepository } from '../../../repositories/businessRepository';
-import { RepositoryContainer } from '../../../repositories';
-import { RBACService } from '../rbac';
+import { ServiceRepository } from '../../../repositories/serviceRepository';
+import { UserBehaviorRepository } from '../../../repositories/userBehaviorRepository';
 import { PermissionName } from '../../../types/auth';
-import { createDateTimeInIstanbul, getCurrentTimeInIstanbul, formatDateTimeForAPI } from '../../../utils/timezoneHelper';
-import { BusinessContext } from '../../../middleware/businessContext';
-import { BusinessService } from '../business';
-import { NotificationService } from '../notification';
-import { UnifiedNotificationGateway } from '../notification/unifiedNotificationGateway';
-import { ReservationSettings, BusinessSettings } from '../../../types/reservationSettings';
-import { UsageService } from '../usage';
-import { PrismaClient } from '@prisma/client';
-import { CancellationPolicyService } from '../business/cancellationPolicyService';
-import { PolicyEnforcementContext, PolicyCheckResult } from '../../../types/cancellationPolicy';
+import { PolicyEnforcementContext } from '../../../types/cancellationPolicy';
+import { BusinessSettings, ReservationSettings } from '../../../types/reservationSettings';
 import { AuthorizationError } from '../../../utils/errors/customError';
 import logger from "../../../utils/Logger/logger";
+import { createDateTimeInIstanbul, formatDateTimeForAPI, getCurrentTimeInIstanbul } from '../../../utils/timezoneHelper';
+import { BusinessService } from '../business';
+import { CancellationPolicyService } from '../business/cancellationPolicyService';
+import { NotificationService } from '../notification';
+import { UnifiedNotificationGateway } from '../notification/unifiedNotificationGateway';
+import { RBACService } from '../rbac';
+import { UsageService } from '../usage';
 export class AppointmentService {
-  private cancellationPolicyService: CancellationPolicyService;
-  private notificationGateway: UnifiedNotificationGateway;
-
   constructor(
-    private appointmentRepository: AppointmentRepository,
-    private serviceRepository: ServiceRepository,
-    private userBehaviorRepository: UserBehaviorRepository,
-    private businessClosureRepository: BusinessClosureRepository,
-    private businessRepository: BusinessRepository,
-    private rbacService: RBACService,
-    private businessService: BusinessService,
-    private notificationService: NotificationService,
-    private usageService: UsageService,
-    private repositories: RepositoryContainer,
-    private prisma?: PrismaClient
+    private readonly appointmentRepository: AppointmentRepository,
+    private readonly serviceRepository: ServiceRepository,
+    private readonly userBehaviorRepository: UserBehaviorRepository,
+    private readonly businessClosureRepository: BusinessClosureRepository,
+    private readonly businessRepository: BusinessRepository,
+    private readonly rbacService: RBACService,
+    private readonly businessService: BusinessService,
+    private readonly notificationService: NotificationService,
+    private readonly usageService: UsageService,
+    private readonly repositories: RepositoryContainer,
+    private readonly cancellationPolicyService: CancellationPolicyService,
+    private readonly notificationGateway: UnifiedNotificationGateway,
+    private readonly prisma?: PrismaClient
   ) {
-    this.cancellationPolicyService = new CancellationPolicyService(
-      this.userBehaviorRepository,
-      this.businessRepository
-    );
-    // Get prisma instance - use provided prisma or fall back to creating new client
-    const prismaInstance = prisma || (repositories as any).prisma;
-    if (!prismaInstance) {
-      throw new Error('Prisma client is required for UnifiedNotificationGateway');
-    }
-    this.notificationGateway = new UnifiedNotificationGateway(
-      prismaInstance,
-      repositories,
-      usageService
-    );
+    // No manual instantiation - all dependencies injected
   }
 
   // Helper method to split permission name into resource and action
@@ -98,7 +83,7 @@ export class AppointmentService {
 
     // 1. Check maximum advance booking days
     const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (daysDifference > rules.maxAdvanceBookingDays) {
       throw new Error(`Appointments cannot be booked more than ${rules.maxAdvanceBookingDays} days in advance`);
     }
@@ -106,7 +91,7 @@ export class AppointmentService {
     // 2. Check minimum advance booking - use service setting if provided, otherwise business setting
     const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     const minAdvanceHours = serviceMinAdvanceBooking !== undefined ? serviceMinAdvanceBooking : rules.minNotificationHours;
-    
+
     if (hoursDifference < minAdvanceHours) {
       throw new Error(`Appointments must be booked at least ${minAdvanceHours} hours in advance`);
     }
@@ -114,7 +99,7 @@ export class AppointmentService {
     // 3. Check maximum daily appointments for this specific business
     const appointmentDateStart = new Date(appointmentDateTime);
     appointmentDateStart.setHours(0, 0, 0, 0);
-    
+
     const appointmentDateEnd = new Date(appointmentDateTime);
     appointmentDateEnd.setHours(23, 59, 59, 999);
 
@@ -124,7 +109,7 @@ export class AppointmentService {
       appointmentDateStart,
       appointmentDateEnd
     );
-    
+
     // Filter out cancelled appointments
     const activeAppointmentsCount = existingAppointments.filter(
       apt => apt.status !== 'CANCELED'
@@ -147,7 +132,7 @@ export class AppointmentService {
         const newStart = appointmentDateTime;
         const duration = serviceDuration || 60; // Default to 60 minutes if not provided
         const newEnd = new Date(appointmentDateTime.getTime() + duration * 60000);
-        
+
         // Check if appointments overlap
         return (newStart < existingEnd && newEnd > existingStart);
       });
@@ -173,7 +158,7 @@ export class AppointmentService {
       where: { id: businessId },
       select: { id: true, settings: true }
     });
-    
+
     if (!business) {
       throw new Error('Business not found');
     }
@@ -197,14 +182,14 @@ export class AppointmentService {
 
     // 1. Check maximum advance booking days
     const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (daysDifference > rules.maxAdvanceBookingDays) {
       throw new Error(`Appointments cannot be booked more than ${rules.maxAdvanceBookingDays} days in advance`);
     }
 
     // 2. Check minimum notification period
     const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-    
+
     if (hoursDifference < rules.minNotificationHours) {
       throw new Error(`Appointments must be booked at least ${rules.minNotificationHours} hours in advance`);
     }
@@ -212,7 +197,7 @@ export class AppointmentService {
     // 3. Check maximum daily appointments for this specific business
     const appointmentDateStart = new Date(appointmentDateTime);
     appointmentDateStart.setHours(0, 0, 0, 0);
-    
+
     const appointmentDateEnd = new Date(appointmentDateTime);
     appointmentDateEnd.setHours(23, 59, 59, 999);
 
@@ -226,7 +211,7 @@ export class AppointmentService {
         }
       }
     });
-    
+
     // Filter out cancelled appointments
     const activeAppointmentsCount = existingAppointments.filter(
       (apt: any) => apt.status !== 'CANCELED'
@@ -249,7 +234,7 @@ export class AppointmentService {
         const newStart = appointmentDateTime;
         const duration = serviceDuration || 60; // Default to 60 minutes if not provided
         const newEnd = new Date(appointmentDateTime.getTime() + duration * 60000);
-        
+
         // Check if appointments overlap
         return (newStart < existingEnd && newEnd > existingStart);
       });
@@ -335,7 +320,7 @@ export class AppointmentService {
       data.businessId,
       new Date(data.date)
     );
-    
+
     if (isClosed) {
       throw new Error(`Business is closed: ${closure?.reason || 'Unknown reason'}`);
     }
@@ -350,16 +335,16 @@ export class AppointmentService {
     if (!this.repositories?.staffRepository) {
       throw new Error('Staff repository not available');
     }
-    
+
     const staffMember = await this.repositories.staffRepository.findById(data.staffId);
     if (!staffMember) {
       throw new Error('Staff member not found');
     }
-    
+
     if (!staffMember.isActive) {
       throw new Error('Staff member is not active');
     }
-    
+
     if (staffMember.businessId !== data.businessId) {
       throw new Error('Staff member does not belong to this business');
     }
@@ -412,90 +397,90 @@ export class AppointmentService {
     if (!this.prisma) {
       throw new Error('Prisma client not available for transaction');
     }
-    
+
     let appointment: AppointmentData;
     try {
       appointment = await this.prisma.$transaction(async (tx) => {
-      // Create appointment within transaction using the transaction client
-      const service = await tx.service.findUnique({
-        where: { id: data.serviceId }
-      });
+        // Create appointment within transaction using the transaction client
+        const service = await tx.service.findUnique({
+          where: { id: data.serviceId }
+        });
 
-      if (!service) {
-        throw new Error('Service not found');
-      }
-
-      // CRITICAL: Re-validate business rules within transaction using transaction client
-      await this.validateBusinessReservationRulesInTransaction(tx, data.businessId, appointmentDateTime, customerId, service.duration);
-
-      const startDateTime = createDateTimeInIstanbul(data.date, data.startTime);
-      const endDateTime = new Date(startDateTime.getTime() + service.duration * 60000);
-
-      // Re-check conflicts IN TRANSACTION to prevent race conditions
-      const conflicting = await tx.appointment.findMany({
-        where: {
-          businessId: data.businessId,
-          staffId: data.staffId,
-          date: createDateTimeInIstanbul(data.date, '00:00'),
-          status: { in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS] },
-          OR: [
-            { AND: [{ startTime: { lte: startDateTime } }, { endTime: { gt: startDateTime } }] },
-            { AND: [{ startTime: { lt: endDateTime } }, { endTime: { gte: endDateTime } }] },
-            { AND: [{ startTime: { gte: startDateTime } }, { endTime: { lte: endDateTime } }] }
-          ]
+        if (!service) {
+          throw new Error('Service not found');
         }
-      });
-      if (conflicting.length > 0) {
-        throw new Error('Staff member is not available at the selected time');
-      }
-      const appointmentId = `apt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      const result = await tx.appointment.create({
-        data: {
-          id: appointmentId,
-          businessId: data.businessId,
-          serviceId: data.serviceId,
-          staffId: data.staffId,
-          customerId,
-          date: createDateTimeInIstanbul(data.date, '00:00'),
-          startTime: startDateTime,
-          endTime: endDateTime,
-          duration: service.duration,
-          status: AppointmentStatus.CONFIRMED,
-          price: service.price,
-          currency: service.currency,
-          customerNotes: data.customerNotes,
-          bookedAt: getCurrentTimeInIstanbul(),
-          reminderSent: false
+        // CRITICAL: Re-validate business rules within transaction using transaction client
+        await this.validateBusinessReservationRulesInTransaction(tx, data.businessId, appointmentDateTime, customerId, service.duration);
+
+        const startDateTime = createDateTimeInIstanbul(data.date, data.startTime);
+        const endDateTime = new Date(startDateTime.getTime() + service.duration * 60000);
+
+        // Re-check conflicts IN TRANSACTION to prevent race conditions
+        const conflicting = await tx.appointment.findMany({
+          where: {
+            businessId: data.businessId,
+            staffId: data.staffId,
+            date: createDateTimeInIstanbul(data.date, '00:00'),
+            status: { in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS] },
+            OR: [
+              { AND: [{ startTime: { lte: startDateTime } }, { endTime: { gt: startDateTime } }] },
+              { AND: [{ startTime: { lt: endDateTime } }, { endTime: { gte: endDateTime } }] },
+              { AND: [{ startTime: { gte: startDateTime } }, { endTime: { lte: endDateTime } }] }
+            ]
+          }
+        });
+        if (conflicting.length > 0) {
+          throw new Error('Staff member is not available at the selected time');
         }
-      });
-      
-      // Map the result to AppointmentData format
-      return {
-        id: result.id,
-        businessId: result.businessId,
-        serviceId: result.serviceId,
-        staffId: result.staffId || undefined,
-        customerId: result.customerId,
-        date: result.date,
-        startTime: result.startTime,
-        endTime: result.endTime,
-        duration: result.duration,
-        status: result.status as AppointmentStatus,
-        price: Number(result.price),
-        currency: result.currency,
-        customerNotes: result.customerNotes || undefined,
-        internalNotes: result.internalNotes || undefined,
-        bookedAt: result.bookedAt,
-        confirmedAt: result.confirmedAt || undefined,
-        completedAt: result.completedAt || undefined,
-        canceledAt: result.canceledAt || undefined,
-        cancelReason: result.cancelReason || undefined,
-        reminderSent: result.reminderSent,
-        reminderSentAt: result.reminderSentAt || undefined,
-        createdAt: result.createdAt,
-        updatedAt: result.updatedAt
-      };
+        const appointmentId = `apt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        const result = await tx.appointment.create({
+          data: {
+            id: appointmentId,
+            businessId: data.businessId,
+            serviceId: data.serviceId,
+            staffId: data.staffId,
+            customerId,
+            date: createDateTimeInIstanbul(data.date, '00:00'),
+            startTime: startDateTime,
+            endTime: endDateTime,
+            duration: service.duration,
+            status: AppointmentStatus.CONFIRMED,
+            price: service.price,
+            currency: service.currency,
+            customerNotes: data.customerNotes,
+            bookedAt: getCurrentTimeInIstanbul(),
+            reminderSent: false
+          }
+        });
+
+        // Map the result to AppointmentData format
+        return {
+          id: result.id,
+          businessId: result.businessId,
+          serviceId: result.serviceId,
+          staffId: result.staffId || undefined,
+          customerId: result.customerId,
+          date: result.date,
+          startTime: result.startTime,
+          endTime: result.endTime,
+          duration: result.duration,
+          status: result.status as AppointmentStatus,
+          price: Number(result.price),
+          currency: result.currency,
+          customerNotes: result.customerNotes || undefined,
+          internalNotes: result.internalNotes || undefined,
+          bookedAt: result.bookedAt,
+          confirmedAt: result.confirmedAt || undefined,
+          completedAt: result.completedAt || undefined,
+          canceledAt: result.canceledAt || undefined,
+          cancelReason: result.cancelReason || undefined,
+          reminderSent: result.reminderSent,
+          reminderSentAt: result.reminderSentAt || undefined,
+          createdAt: result.createdAt,
+          updatedAt: result.updatedAt
+        };
       });
     } catch (e: any) {
       const msg = String(e?.message || '');
@@ -559,7 +544,7 @@ export class AppointmentService {
     const isCustomer = appointment.customer.id === userId;
     const { resource: viewAllResource, action: viewAllAction } = this.splitPermissionName(PermissionName.VIEW_ALL_APPOINTMENTS);
     const hasGlobalView = await this.rbacService.hasPermission(userId, viewAllResource, viewAllAction);
-    
+
     if (!isCustomer && !hasGlobalView) {
       const { resource: viewOwnResource, action: viewOwnAction } = this.splitPermissionName(PermissionName.VIEW_OWN_APPOINTMENTS);
       const hasBusinessView = await this.rbacService.hasPermission(
@@ -568,7 +553,7 @@ export class AppointmentService {
         viewOwnAction,
         { businessId: appointment.businessId }
       );
-      
+
       if (!hasBusinessView) {
         throw new Error('Access denied: You do not have permission to view this appointment');
       }
@@ -616,11 +601,11 @@ export class AppointmentService {
     const userPermissions = await this.rbacService.getUserPermissions(userId);
     const roleNames = userPermissions.roles.map(role => role.name);
     const hasBusinessRole = roleNames.some(role => ['OWNER', 'STAFF'].includes(role));
-    
+
     if (!hasBusinessRole) {
       throw new AuthorizationError('Access denied. Business role required.');
     }
-    
+
 
     // Get appointments from all businesses user has access to
     return await this.appointmentRepository.findByUserBusinesses(userId, filters);
@@ -640,7 +625,7 @@ export class AppointmentService {
     // Check permissions to view business appointments
     const { resource: viewAllResource, action: viewAllAction } = this.splitPermissionName(PermissionName.VIEW_ALL_APPOINTMENTS);
     const hasGlobalView = await this.rbacService.hasPermission(userId, viewAllResource, viewAllAction);
-    
+
     if (!hasGlobalView) {
       await this.rbacService.requirePermission(
         userId,
@@ -667,7 +652,7 @@ export class AppointmentService {
     if (filters.businessId) {
       const { resource: viewAllResource, action: viewAllAction } = this.splitPermissionName(PermissionName.VIEW_ALL_APPOINTMENTS);
       const hasGlobalView = await this.rbacService.hasPermission(userId, viewAllResource, viewAllAction);
-      
+
       if (!hasGlobalView) {
         await this.rbacService.requirePermission(
           userId,
@@ -720,7 +705,7 @@ export class AppointmentService {
     const isCustomer = appointment.customerId === userId;
     const { resource: editAllResource, action: editAllAction } = this.splitPermissionName(PermissionName.EDIT_ALL_APPOINTMENTS);
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, editAllResource, editAllAction);
-    
+
     if (!isCustomer && !hasGlobalEdit) {
       const { resource: editOwnResource, action: editOwnAction } = this.splitPermissionName(PermissionName.EDIT_OWN_APPOINTMENTS);
       const hasBusinessEdit = await this.rbacService.hasPermission(
@@ -729,7 +714,7 @@ export class AppointmentService {
         editOwnAction,
         { businessId: appointment.businessId }
       );
-      
+
       if (!hasBusinessEdit) {
         throw new Error('Access denied: You do not have permission to update this appointment');
       }
@@ -746,7 +731,7 @@ export class AppointmentService {
       // Customers can only update notes and cancel
       const allowedFields = ['customerNotes', 'status'];
       const hasRestrictedFields = Object.keys(data).some(key => !allowedFields.includes(key));
-      
+
       if (hasRestrictedFields) {
         throw new Error('Customers can only update notes or cancel appointments');
       }
@@ -762,14 +747,14 @@ export class AppointmentService {
       const newDate = data.date ? createDateTimeInIstanbul(data.date, '00:00') : appointment.date;
       const dateStr = data.date || appointment.date.toISOString().split('T')[0];
       const newStartTime = data.startTime ? createDateTimeInIstanbul(dateStr, data.startTime) : appointment.startTime;
-      
+
       // CRITICAL: Validate business reservation rules for rescheduling
       await this.validateBusinessReservationRules(appointment.businessId, newStartTime, appointment.customerId);
-      
+
       const service = await this.serviceRepository.findById(appointment.serviceId);
       if (service) {
         const newEndTime = new Date(newStartTime.getTime() + service.duration * 60000);
-        
+
         const conflicts = await this.appointmentRepository.findConflictingAppointments(
           appointment.businessId,
           newDate,
@@ -809,7 +794,7 @@ export class AppointmentService {
     const isCustomer = appointment.customerId === userId;
     const { resource: cancelAllResource, action: cancelAllAction } = this.splitPermissionName(PermissionName.CANCEL_ALL_APPOINTMENTS);
     const hasGlobalCancel = await this.rbacService.hasPermission(userId, cancelAllResource, cancelAllAction);
-    
+
     if (!isCustomer && !hasGlobalCancel) {
       const { resource: cancelOwnResource, action: cancelOwnAction } = this.splitPermissionName(PermissionName.CANCEL_OWN_APPOINTMENTS);
       const hasBusinessCancel = await this.rbacService.hasPermission(
@@ -818,7 +803,7 @@ export class AppointmentService {
         cancelOwnAction,
         { businessId: appointment.businessId }
       );
-      
+
       if (!hasBusinessCancel) {
         throw new Error('Access denied: You do not have permission to cancel this appointment');
       }
@@ -856,7 +841,7 @@ export class AppointmentService {
     // Update user behavior if customer cancelled
     if (isCustomer) {
       await this.handleCustomerCancellation(userId, appointment);
-      
+
       // Handle policy violation if customer exceeded limits
       await this.cancellationPolicyService.handlePolicyViolation(
         appointment.customerId,
@@ -881,7 +866,7 @@ export class AppointmentService {
     // Only businesses can mark no-shows
     const { resource: noShowResource, action: noShowAction } = this.splitPermissionName(PermissionName.MARK_NO_SHOW);
     const hasGlobalNoShow = await this.rbacService.hasPermission(userId, noShowResource, noShowAction);
-    
+
     if (!hasGlobalNoShow) {
       await this.rbacService.requirePermission(
         userId,
@@ -938,10 +923,10 @@ export class AppointmentService {
     const now = getCurrentTimeInIstanbul();
     const currentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
     const nextHour = new Date(currentHour.getTime() + 60 * 60 * 1000);
-    
+
     return await this.appointmentRepository.findNearestAppointmentInTimeRange(
-      userId, 
-      currentHour, 
+      userId,
+      currentHour,
       nextHour
     );
   }
@@ -950,10 +935,10 @@ export class AppointmentService {
     const now = getCurrentTimeInIstanbul();
     const currentHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
     const nextHour = new Date(currentHour.getTime() + 60 * 60 * 1000);
-    
+
     return await this.appointmentRepository.findAppointmentsInTimeRange(
-      userId, 
-      currentHour, 
+      userId,
+      currentHour,
       nextHour
     );
   }
@@ -1067,7 +1052,7 @@ export class AppointmentService {
     // Only businesses can confirm appointments
     const { resource: confirmResource, action: confirmAction } = this.splitPermissionName(PermissionName.CONFIRM_APPOINTMENTS);
     const hasGlobalConfirm = await this.rbacService.hasPermission(userId, confirmResource, confirmAction);
-    
+
     if (!hasGlobalConfirm) {
       await this.rbacService.requirePermission(
         userId,
@@ -1094,7 +1079,7 @@ export class AppointmentService {
     // Only businesses can complete appointments
     const { resource: completeResource, action: completeAction } = this.splitPermissionName(PermissionName.COMPLETE_APPOINTMENTS);
     const hasGlobalComplete = await this.rbacService.hasPermission(userId, completeResource, completeAction);
-    
+
     if (!hasGlobalComplete) {
       await this.rbacService.requirePermission(
         userId,
@@ -1206,10 +1191,10 @@ export class AppointmentService {
       if (process.env.NODE_ENV === 'development') {
         logger.info('🔍 NOTIFY NEW APPOINTMENT - Starting notification process for appointment:', appointment.id);
       }
-      
+
       // Get business details to find owner/staff
       const business = await this.repositories.businessRepository.findById(appointment.businessId);
-      
+
       if (!business) {
         logger.error('Business not found for notification:', appointment.businessId);
         return;
@@ -1239,7 +1224,7 @@ export class AppointmentService {
       // Create notification content using centralized templates for SMS
       const { SMSMessageTemplates } = await import('../../../utils/smsMessageTemplates');
       const customerName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Müşteri';
-      
+
       // For SMS: Use template
       const smsMessage = SMSMessageTemplates.business.newAppointmentBooking({
         customerName,
@@ -1450,8 +1435,8 @@ export class AppointmentService {
     // Find CONFIRMED appointments that should be IN_PROGRESS
     const appointmentsToUpdate = appointmentsWithDetails.filter(
       apt => apt.status === AppointmentStatus.CONFIRMED &&
-      new Date(apt.startTime) <= now &&
-      new Date(apt.endTime) > now
+        new Date(apt.startTime) <= now &&
+        new Date(apt.endTime) > now
     );
 
     // Update them to IN_PROGRESS
@@ -1478,14 +1463,14 @@ export class AppointmentService {
     // Current appointment: IN_PROGRESS (currently happening)
     const inProgressAppointments = appointmentsWithDetails.filter(
       apt => apt.status === AppointmentStatus.IN_PROGRESS &&
-      new Date(apt.startTime) <= now &&
-      new Date(apt.endTime) > now
+        new Date(apt.startTime) <= now &&
+        new Date(apt.endTime) > now
     );
 
     // Future appointments: CONFIRMED and starting in the future
     const confirmedAppointments = appointmentsWithDetails.filter(
       apt => apt.status === AppointmentStatus.CONFIRMED &&
-      new Date(apt.startTime) > now
+        new Date(apt.startTime) > now
     ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
     if (process.env.NODE_ENV === 'development') {

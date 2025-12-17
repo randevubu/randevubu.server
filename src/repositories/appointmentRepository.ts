@@ -1403,4 +1403,79 @@ export class AppointmentRepository {
       where: whereClause
     });
   }
+
+  // ============================================================================
+  // Background Job Methods (for AppointmentScheduler)
+  // ============================================================================
+
+  /**
+   * Find confirmed appointments that have passed their end time
+   * Used by auto-complete background job
+   */
+  async findConfirmedAppointmentsPastEndTime(now: Date): Promise<AppointmentWithDetails[]> {
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        status: AppointmentStatus.CONFIRMED,
+        endTime: {
+          lt: now,
+        },
+      },
+      include: {
+        business: {
+          select: {
+            name: true,
+            timezone: true,
+          },
+        },
+        service: {
+          select: {
+            name: true,
+          },
+        },
+        customer: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+        staff: {
+          select: {
+            role: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return appointments.map(apt => this.mapPrismaResultToAppointmentWithDetails(apt));
+  }
+
+  /**
+   * Mark multiple appointments as completed
+   * Used by auto-complete background job
+   */
+  async markAppointmentsAsCompleted(
+    appointmentIds: string[],
+    now: Date
+  ): Promise<{ count: number }> {
+    const result = await this.prisma.appointment.updateMany({
+      where: {
+        id: {
+          in: appointmentIds,
+        },
+      },
+      data: {
+        status: AppointmentStatus.COMPLETED,
+        completedAt: now,
+        updatedAt: now,
+      },
+    });
+
+    return { count: result.count };
+  }
 }

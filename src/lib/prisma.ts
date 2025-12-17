@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { config } from "../config/environment";
 import logger from "../utils/Logger/logger";
+
 // Connection pool configuration
 const getConnectionUrl = (): string => {
   const baseUrl = config.DATABASE_URL || '';
@@ -25,6 +26,9 @@ const getConnectionUrl = (): string => {
 
   return url.toString();
 };
+
+// Slow query threshold in milliseconds
+const SLOW_QUERY_THRESHOLD = config.NODE_ENV === 'production' ? 1000 : 500;
 
 // Create a single Prisma client instance with connection pooling
 const prisma = new PrismaClient({
@@ -107,28 +111,115 @@ function normalizePrismaResult<T>(obj: T): T {
   return obj;
 }
 
-// Note: Prisma v6+ removed $use middleware
-// The normalizePrismaResult function is available for manual use in repositories
-// Prisma v6 handles Decimal and null values more gracefully by default
+// Query performance tracking
+const queryStats = {
+  totalQueries: 0,
+  slowQueries: 0,
+  totalDuration: 0,
+  slowestQuery: { query: '', duration: 0 },
+};
 
-// Log queries in development
-if (process.env.NODE_ENV === "development") {
-  prisma.$on("query", (e) => {
-    logger.debug(`Query: ${e.query}`);
-    logger.debug(`Params: ${e.params}`);
-    logger.debug(`Duration: ${e.duration}ms`);
+// Enhanced query logging with slow query detection
+prisma.$on("query", (e) => {
+  queryStats.totalQueries++;
+  queryStats.totalDuration += e.duration;
+
+  // Track slowest query
+  if (e.duration > queryStats.slowestQuery.duration) {
+    queryStats.slowestQuery = {
+      query: e.query,
+      duration: e.duration,
+    };
+  }
+
+  // Log slow queries in all environments
+  if (e.duration > SLOW_QUERY_THRESHOLD) {
+    queryStats.slowQueries++;
+
+    logger.warn('Slow query detected', {
+      query: e.query,
+      params: e.params,
+      duration: `${e.duration}ms`,
+      threshold: `${SLOW_QUERY_THRESHOLD}ms`,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Detailed logging in development only
+  if (config.NODE_ENV === "development") {
+    const logLevel = e.duration > SLOW_QUERY_THRESHOLD ? 'warn' : 'debug';
+    logger[logLevel]('Query executed', {
+      query: e.query,
+      params: e.params,
+      duration: `${e.duration}ms`,
+    });
+  }
+});
+
+// Log info events
+prisma.$on("info", (e) => {
+  logger.info('Prisma info', {
+    message: e.message,
+    timestamp: e.timestamp,
   });
-}
+});
+
+// Log warning events
+prisma.$on("warn", (e) => {
+  logger.warn('Prisma warning', {
+    message: e.message,
+    timestamp: e.timestamp,
+  });
+});
 
 // Log errors
 prisma.$on("error", (e) => {
-  logger.error(`Prisma Error: ${e.message}`);
-  logger.error(`Target: ${e.target}`);
+  logger.error('Prisma error', {
+    message: e.message,
+    target: e.target,
+    timestamp: e.timestamp,
+  });
 });
+
+// Export query stats for monitoring
+export const getQueryStats = () => ({
+  ...queryStats,
+  avgDuration: queryStats.totalQueries > 0
+    ? Math.round(queryStats.totalDuration / queryStats.totalQueries)
+    : 0,
+  slowQueryPercentage: queryStats.totalQueries > 0
+    ? Math.round((queryStats.slowQueries / queryStats.totalQueries) * 100)
+    : 0,
+});
+
+// Reset stats (useful for testing/monitoring)
+export const resetQueryStats = () => {
+  queryStats.totalQueries = 0;
+  queryStats.slowQueries = 0;
+  queryStats.totalDuration = 0;
+  queryStats.slowestQuery = { query: '', duration: 0 };
+};
 
 // Graceful shutdown
-process.on("beforeExit", async () => {
-  await prisma.$disconnect();
-});
+const shutdownPrisma = async () => {
+  logger.info('Closing Prisma connection (graceful shutdown)...');
+
+  // Log final query stats
+  const stats = getQueryStats();
+  logger.info('Final query statistics', stats);
+
+  try {
+    await prisma.$disconnect();
+    logger.info('✅ Prisma connection closed successfully');
+  } catch (error) {
+    logger.error('Error closing Prisma connection', error);
+    process.exit(1);
+  }
+};
+
+process.on('SIGTERM', shutdownPrisma);
+process.on('SIGINT', shutdownPrisma);
+process.on("beforeExit", shutdownPrisma);
 
 export default prisma;
+export { normalizePrismaResult };

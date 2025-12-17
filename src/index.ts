@@ -105,16 +105,16 @@ app.use(
       if (!origin) {
         return callback(null, true);
       }
-      
+
       // Normalize origin (remove trailing slash, convert to lowercase for comparison)
       const normalizedOrigin = origin.toLowerCase().replace(/\/$/, '');
       const normalizedAllowed = config.CORS_ORIGINS.map(o => o.toLowerCase().replace(/\/$/, ''));
-      
+
       // Check if origin is in allowed list (case-insensitive)
       if (normalizedAllowed.includes(normalizedOrigin)) {
         return callback(null, true);
       }
-      
+
       // Log blocked origin for security monitoring
       logger.warn("CORS blocked origin", { origin });
       return callback(new Error("Not allowed by CORS"));
@@ -342,12 +342,13 @@ app.get("/health", async (req: Request, res: Response) => {
       subscriptionScheduler: services.subscriptionSchedulerService
         ? "available"
         : "unavailable",
-      appointmentScheduler: services.appointmentSchedulerService
+      jobScheduler: services.jobScheduler
         ? "available"
         : "unavailable",
-      appointmentReminder: services.appointmentReminderService
-        ? "available"
-        : "unavailable",
+      jobSchedulerRunning: services.jobScheduler?.hasRunningJobs()
+        ? "running"
+        : "stopped",
+
       notification: services.notificationService ? "available" : "unavailable",
       payment: services.paymentService ? "available" : "unavailable",
     };
@@ -490,30 +491,22 @@ const server = app.listen(PORT, async () => {
     );
   }
 
-  // Start appointment scheduler
+  // Start background jobs (new job scheduler)
   if (config.NODE_ENV !== "test") {
-    services.appointmentSchedulerService.start();
+    services.jobScheduler.start();
     logger.info(
-      `📅 Appointment auto-completion scheduler started in ${config.NODE_ENV} mode`
+      `📅 Background jobs started in ${config.NODE_ENV} mode`
     );
   }
 
-  // Start appointment reminder service
-  if (config.NODE_ENV !== "test") {
-    services.appointmentReminderService.start();
-    logger.info(
-      `📅 Appointment reminder service started (checks every minute)`
-    );
-  } else {
-    logger.info(`📅 Appointment reminder service disabled in test mode`);
-  }
+
 });
 
 // Graceful shutdown handlers
 const shutdownHandler = async () => {
   // Cleanup cache monitoring
   CacheMonitoring.cleanup();
-  
+
   await gracefulShutdown(server);
 };
 

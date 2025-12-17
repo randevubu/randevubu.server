@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import * as jwt from "jsonwebtoken";
+import * as jose from "jose";
 import { config } from "../../../config/environment";
 import { RepositoryContainer } from "../../../repositories";
 import {
@@ -17,6 +17,7 @@ import {
   UnauthorizedError,
 } from "../../../types/errors";
 import logger from "../../../utils/Logger/logger";
+
 export class TokenService {
   private static readonly DEFAULT_CONFIG: TokenServiceConfig = {
     accessTokenExpiry: "15m",
@@ -28,19 +29,26 @@ export class TokenService {
   // Bcrypt salt rounds for verification code hashing (12+ recommended for production)
   private static readonly BCRYPT_SALT_ROUNDS = 12;
 
+  // Cache secret keys as Uint8Array for jose
+  private accessSecretKey: Uint8Array | null = null;
+  private refreshSecretKey: Uint8Array | null = null;
+
   constructor(
     private repositories: RepositoryContainer,
     private tokenConfig: TokenServiceConfig = TokenService.DEFAULT_CONFIG
-  ) {}
+  ) { }
 
-  private validateSecrets(context?: ErrorContext): { accessSecret: string; refreshSecret: string } {
-    const accessSecret = config.JWT_ACCESS_SECRET || config.JWT_SECRET;
-    const refreshSecret = config.JWT_REFRESH_SECRET || config.JWT_SECRET;
+  private validateSecretsAndGetKeys(context?: ErrorContext): {
+    accessSecret: Uint8Array;
+    refreshSecret: Uint8Array;
+  } {
+    const accessSecret = config.JWT_ACCESS_SECRET;
+    const refreshSecret = config.JWT_REFRESH_SECRET;
 
     if (!accessSecret || !refreshSecret) {
       throw new ConfigurationError(
-        "JWT_SECRET",
-        "JWT secrets are not configured",
+        "JWT_SECRETS",
+        "JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be configured",
         context
       );
     }
@@ -48,13 +56,24 @@ export class TokenService {
     // Ensure access and refresh tokens use different secrets for security
     if (accessSecret === refreshSecret) {
       throw new ConfigurationError(
-        "JWT_SECRET",
+        "JWT_SECRETS",
         "Access and refresh token secrets must be different for security",
         context
       );
     }
 
-    return { accessSecret, refreshSecret };
+    // Cache the keys as Uint8Array for jose
+    if (!this.accessSecretKey) {
+      this.accessSecretKey = new TextEncoder().encode(accessSecret);
+    }
+    if (!this.refreshSecretKey) {
+      this.refreshSecretKey = new TextEncoder().encode(refreshSecret);
+    }
+
+    return {
+      accessSecret: this.accessSecretKey,
+      refreshSecret: this.refreshSecretKey,
+    };
   }
 
   async generateTokenPair(
@@ -63,7 +82,7 @@ export class TokenService {
     deviceInfo?: DeviceInfo,
     context?: ErrorContext
   ): Promise<TokenPair> {
-    const { accessSecret, refreshSecret } = this.validateSecrets(context);
+    const { accessSecret, refreshSecret } = this.validateSecretsAndGetKeys(context);
 
     const accessTokenPayload: JWTPayload = {
       userId,
@@ -80,30 +99,22 @@ export class TokenService {
     };
 
     try {
-      // Generate JWT tokens with separate secrets
-      const signOptions: jwt.SignOptions = {
-        expiresIn: this.tokenConfig.accessTokenExpirySeconds,
-        issuer: "randevubu-server",
-        audience: "randevubu-client",
-        algorithm: "HS256",
-      };
-      const accessToken = jwt.sign(
-        accessTokenPayload,
-        accessSecret,
-        signOptions
-      );
+      // Generate JWT tokens with jose (HS256 algorithm)
+      const accessToken = await new jose.SignJWT(accessTokenPayload as unknown as jose.JWTPayload)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt()
+        .setIssuer("randevubu-server")
+        .setAudience("randevubu-client")
+        .setExpirationTime(`${this.tokenConfig.accessTokenExpirySeconds}s`)
+        .sign(accessSecret);
 
-      const refreshSignOptions: jwt.SignOptions = {
-        expiresIn: this.tokenConfig.refreshTokenExpirySeconds,
-        issuer: "randevubu-server",
-        audience: "randevubu-client",
-        algorithm: "HS256",
-      };
-      const refreshToken = jwt.sign(
-        refreshTokenPayload,
-        refreshSecret,
-        refreshSignOptions
-      );
+      const refreshToken = await new jose.SignJWT(refreshTokenPayload as unknown as jose.JWTPayload)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt()
+        .setIssuer("randevubu-server")
+        .setAudience("randevubu-client")
+        .setExpirationTime(`${this.tokenConfig.refreshTokenExpirySeconds}s`)
+        .sign(refreshSecret);
 
       // Store refresh token in database
       await this.repositories.refreshTokenRepository.create({
@@ -157,14 +168,16 @@ export class TokenService {
     token: string,
     context?: ErrorContext
   ): Promise<JWTPayload> {
-    const { accessSecret } = this.validateSecrets(context);
+    const { accessSecret } = this.validateSecretsAndGetKeys(context);
 
     try {
-      const decoded = jwt.verify(token, accessSecret, {
+      const { payload } = await jose.jwtVerify(token, accessSecret, {
         issuer: "randevubu-server",
         audience: "randevubu-client",
         algorithms: ["HS256"],
-      }) as JWTPayload;
+      });
+
+      const decoded = payload as unknown as JWTPayload;
 
       if (decoded.type !== "access") {
         throw new InvalidTokenError("Invalid token type", context);
@@ -172,14 +185,14 @@ export class TokenService {
 
       return decoded;
     } catch (error) {
-      if (error instanceof jwt.JsonWebTokenError) {
-        throw new InvalidTokenError("Invalid access token format", context);
-      }
-      if (error instanceof jwt.TokenExpiredError) {
+      if (error instanceof jose.errors.JWTExpired) {
         throw new TokenExpiredError("Access token has expired", context);
       }
-      if (error instanceof jwt.NotBeforeError) {
-        throw new InvalidTokenError("Access token not active yet", context);
+      if (error instanceof jose.errors.JWTInvalid) {
+        throw new InvalidTokenError("Invalid access token format", context);
+      }
+      if (error instanceof jose.errors.JWTClaimValidationFailed) {
+        throw new InvalidTokenError("Access token validation failed", context);
       }
       throw error;
     }
@@ -190,23 +203,23 @@ export class TokenService {
     deviceInfo?: DeviceInfo,
     context?: ErrorContext
   ): Promise<TokenPair> {
-    const { refreshSecret } = this.validateSecrets(context);
+    const { refreshSecret } = this.validateSecretsAndGetKeys(context);
 
     try {
       logger.debug("Attempting JWT verification", {
         tokenStart: refreshToken.substring(0, 50),
         tokenLength: refreshToken.length,
-        hasJwtRefreshSecret: !!refreshSecret,
-        secretStart: refreshSecret?.substring(0, 10),
         requestId: context?.requestId,
       });
 
-      // Verify refresh token JWT
-      const decoded = jwt.verify(refreshToken, refreshSecret, {
+      // Verify refresh token JWT with jose
+      const { payload } = await jose.jwtVerify(refreshToken, refreshSecret, {
         issuer: "randevubu-server",
         audience: "randevubu-client",
         algorithms: ["HS256"],
-      }) as JWTPayload & { tokenValue: string };
+      });
+
+      const decoded = payload as unknown as (JWTPayload & { tokenValue: string });
 
       logger.debug("JWT verification successful", {
         userId: decoded.userId,
@@ -295,34 +308,32 @@ export class TokenService {
       });
 
       return newTokenPair;
-    } catch (error) {
-      if (error instanceof jwt.JsonWebTokenError) {
-        logger.error('JWT verification failed - JsonWebTokenError', {
-          errorName: error.name,
+    } catch (error: unknown) {
+      if (error instanceof jose.errors.JWTExpired) {
+        logger.error('Refresh token expired', {
+          errorName: 'JWTExpired',
           errorMessage: error.message,
-          errorStack: error.stack,
+          requestId: context?.requestId,
+        });
+        throw new TokenExpiredError("Refresh token has expired", context);
+      }
+      if (error instanceof jose.errors.JWTInvalid) {
+        logger.error('JWT verification failed', {
+          errorName: 'JWTInvalid',
+          errorMessage: error.message,
           tokenStart: refreshToken.substring(0, 50),
           tokenLength: refreshToken.length,
           requestId: context?.requestId,
         });
         throw new InvalidTokenError("Invalid refresh token format", context);
       }
-      if (error instanceof jwt.TokenExpiredError) {
-        logger.error('Refresh token expired - TokenExpiredError', {
-          errorName: error.name,
-          errorMessage: error.message,
-          expiredAt: error.expiredAt?.toISOString(),
-          requestId: context?.requestId,
-        });
-        throw new TokenExpiredError("Refresh token has expired", context);
-      }
-      if (error instanceof jwt.NotBeforeError) {
-        logger.error('Refresh token not active yet - NotBeforeError', {
-          errorName: error.name,
+      if (error instanceof jose.errors.JWTClaimValidationFailed) {
+        logger.error('JWT claim validation failed', {
+          errorName: 'JWTClaimValidationFailed',
           errorMessage: error.message,
           requestId: context?.requestId,
         });
-        throw new InvalidTokenError("Refresh token not active yet", context);
+        throw new InvalidTokenError("Refresh token validation failed", context);
       }
 
       logger.error('Token refresh failed - Unknown error', {
@@ -504,11 +515,11 @@ export class TokenService {
     };
   }
 
-  // Token validation utilities
-  isTokenExpired(token: string): boolean {
+  // Token validation utilities using jose
+  async isTokenExpired(token: string): Promise<boolean> {
     try {
-      const decoded = jwt.decode(token) as JWTPayload;
-      if (!decoded || !decoded.exp) return true;
+      const decoded = jose.decodeJwt(token);
+      if (!decoded.exp) return true;
 
       return decoded.exp * 1000 < Date.now();
     } catch {
@@ -518,7 +529,7 @@ export class TokenService {
 
   getTokenPayload(token: string): JWTPayload | null {
     try {
-      return jwt.decode(token) as JWTPayload;
+      return jose.decodeJwt(token) as unknown as JWTPayload;
     } catch {
       return null;
     }
@@ -526,8 +537,8 @@ export class TokenService {
 
   getTokenExpirationTime(token: string): Date | null {
     try {
-      const decoded = jwt.decode(token) as JWTPayload;
-      if (!decoded || !decoded.exp) return null;
+      const decoded = jose.decodeJwt(token);
+      if (!decoded.exp) return null;
 
       return new Date(decoded.exp * 1000);
     } catch {

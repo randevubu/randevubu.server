@@ -1,0 +1,61 @@
+# Gitleaks Configuration
+# https://github.com/gitleaks/gitleaks
+
+title = "Randevubu Server Gitleaks Config"
+
+# Custom rules for detecting secrets
+[[rules]]
+id = "jwt-secret"
+description = "JWT Secret Key"
+regex = '''(?i)(jwt[_-]?(access|refresh)?[_-]?secret)\s*[:=]\s*["']?([a-zA-Z0-9_\-]{20,})["']?'''
+tags = ["jwt", "secret"]
+
+[[rules]]
+id = "database-url"
+description = "Database Connection String"
+regex = '''(?i)(database[_-]?url|db[_-]?url)\s*[:=]\s*["']?(postgresql|mysql|mongodb)://[^\s"']+["']?'''
+tags = ["database", "connection-string"]
+
+[[rules]]
+id = "redis-password"
+description = "Redis Password"
+regex = '''(?i)(redis[_-]?password|redis[_-]?auth)\s*[:=]\s*["']?([a-zA-Z0-9_\-]{8,})["']?'''
+tags = ["redis", "password"]
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key ID"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["aws", "access-key"]
+
+[[rules]]
+id = "aws-secret-key"
+description = "AWS Secret Access Key"
+regex = '''(?i)aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*["']?([a-zA-Z0-9/+=]{40})["']?'''
+tags = ["aws", "secret"]
+
+[[rules]]
+id = "private-key"
+description = "Private Key"
+regex = '''-----BEGIN\s+(RSA|EC|OPENSSH|DSA|PGP)\s+PRIVATE KEY-----'''
+tags = ["key", "private"]
+
+# Allowlist for common false positives
+[allowlist]
+description = "Allowlist for false positives"
+paths = [
+  '''\.env\.example$''',
+  '''\.env\.template$''',
+  '''README\.md$''',
+  '''docs/.*''',
+]
+
+# Specific strings to ignore (placeholders)
+regexes = [
+  '''replace-with-.*''',
+  '''your-.*-key''',
+  '''example\.com''',
+  '''localhost''',
+  '''test-secret''',
+  '''dummy-.*''',
+]

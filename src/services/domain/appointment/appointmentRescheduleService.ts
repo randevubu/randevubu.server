@@ -1,7 +1,12 @@
-import { PrismaClient, Appointment, BusinessClosure, AppointmentStatus } from '@prisma/client';
+import { Appointment, AppointmentStatus } from '@prisma/client';
 import { NotificationService } from '../notification';
-import { AppointmentData } from '../../../types/business';
+import { AppointmentData, BusinessClosureData } from '../../../types/business';
 import { BusinessRepository } from '../../../repositories/businessRepository';
+import { AppointmentRepository } from '../../../repositories/appointmentRepository';
+import { BusinessClosureRepository } from '../../../repositories/businessClosureRepository';
+import { ServiceRepository } from '../../../repositories/serviceRepository';
+import { WorkingHoursRepository } from '../../../repositories/workingHoursRepository';
+import { RescheduleSuggestionRepository } from '../../../repositories/rescheduleSuggestionRepository';
 import { ReservationSettings, BusinessSettings } from '../../../types/reservationSettings';
 
 import {
@@ -13,15 +18,23 @@ import {
   ClosureData
 } from '../../../types/appointment';
 import logger from "../../../utils/Logger/logger";
-export class AppointmentRescheduleService {
-  private businessRepository: BusinessRepository;
 
+/**
+ * AppointmentRescheduleService
+ * 
+ * Handles appointment rescheduling logic when business closures occur.
+ * Uses repository pattern - no direct Prisma access.
+ */
+export class AppointmentRescheduleService {
   constructor(
-    private prisma: PrismaClient,
-    private notificationService: NotificationService
-  ) {
-    this.businessRepository = new BusinessRepository(prisma);
-  }
+    private readonly businessRepository: BusinessRepository,
+    private readonly appointmentRepository: AppointmentRepository,
+    private readonly businessClosureRepository: BusinessClosureRepository,
+    private readonly serviceRepository: ServiceRepository,
+    private readonly workingHoursRepository: WorkingHoursRepository,
+    private readonly rescheduleSuggestionRepository: RescheduleSuggestionRepository,
+    private readonly notificationService: NotificationService
+  ) { }
 
   // Helper method to validate business reservation rules for rescheduling
   private async validateBusinessReservationRules(
@@ -49,7 +62,7 @@ export class AppointmentRescheduleService {
 
     // 1. Check maximum advance booking days
     const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (daysDifference > rules.maxAdvanceBookingDays) {
       throw new Error(`Appointments cannot be rescheduled more than ${rules.maxAdvanceBookingDays} days in advance`);
     }
@@ -57,7 +70,7 @@ export class AppointmentRescheduleService {
     // 2. Check minimum advance booking - use service setting if provided, otherwise business setting
     const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     const minAdvanceHours = serviceMinAdvanceBooking !== undefined ? serviceMinAdvanceBooking : rules.minNotificationHours;
-    
+
     if (hoursDifference < minAdvanceHours) {
       throw new Error(`Appointments must be rescheduled at least ${minAdvanceHours} hours in advance`);
     }
@@ -65,37 +78,41 @@ export class AppointmentRescheduleService {
     // 3. Check maximum daily appointments for this specific business
     const appointmentDateStart = new Date(appointmentDateTime);
     appointmentDateStart.setHours(0, 0, 0, 0);
-    
+
     const appointmentDateEnd = new Date(appointmentDateTime);
     appointmentDateEnd.setHours(23, 59, 59, 999);
 
-    // Get existing appointments count for this business on this day
-    const existingAppointments = await this.prisma.appointment.findMany({
-      where: {
-        businessId,
-        date: {
-          gte: appointmentDateStart,
-          lte: appointmentDateEnd
-        }
+    // Get existing appointments count for this business on this day using repository
+    const count = await this.appointmentRepository.getAppointmentsCount({
+      businessId,
+      date: {
+        gte: appointmentDateStart,
+        lte: appointmentDateEnd
+      },
+      status: {
+        not: 'CANCELED'
       }
     });
-    
-    // Filter out cancelled appointments
-    const activeAppointmentsCount = existingAppointments.filter(
-      apt => apt.status !== 'CANCELED'
-    ).length;
 
-    if (activeAppointmentsCount >= rules.maxDailyAppointments) {
+    if (count >= rules.maxDailyAppointments) {
       throw new Error(`Maximum daily appointments (${rules.maxDailyAppointments}) has been reached for this business on this date`);
     }
 
     // 4. Check if customer already has an appointment with this business on the same day
     if (customerId) {
-      const customerAppointmentsOnSameDay = existingAppointments.filter(
-        apt => apt.customerId === customerId && apt.status !== 'CANCELED'
-      );
+      const customerAppointmentsCount = await this.appointmentRepository.getAppointmentsCount({
+        businessId,
+        customerId,
+        date: {
+          gte: appointmentDateStart,
+          lte: appointmentDateEnd
+        },
+        status: {
+          not: 'CANCELED'
+        }
+      });
 
-      if (customerAppointmentsOnSameDay.length > 0) {
+      if (customerAppointmentsCount > 0) {
         throw new Error('You already have an appointment with this business on this date');
       }
     }
@@ -103,9 +120,7 @@ export class AppointmentRescheduleService {
 
   async getAffectedAppointments(closureId: string): Promise<any[]> {
     try {
-      const closure = await this.prisma.businessClosure.findUnique({
-        where: { id: closureId }
-      });
+      const closure = await this.businessClosureRepository.findById(closureId);
 
       if (!closure) {
         throw new Error('Closure not found');
@@ -113,22 +128,15 @@ export class AppointmentRescheduleService {
 
       const endDate = closure.endDate || new Date('2099-12-31');
 
-      return await this.prisma.appointment.findMany({
-        where: {
-          businessId: closure.businessId,
-          startTime: {
-            gte: closure.startDate,
-            lte: endDate
-          },
-          status: AppointmentStatus.CONFIRMED
-        },
-        include: {
-          customer: true,
-          service: true,
-          staff: true,
-          business: true
-        }
+      // Use appointment repository to search for affected appointments
+      const result = await this.appointmentRepository.search({
+        businessId: closure.businessId,
+        status: AppointmentStatus.CONFIRMED as any,
+        startDate: closure.startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
       });
+
+      return result.appointments;
     } catch (error) {
       throw new Error(`Failed to get affected appointments: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -139,15 +147,7 @@ export class AppointmentRescheduleService {
     closureData: ClosureData
   ): Promise<RescheduleSuggestion[]> {
     try {
-      const appointment = await this.prisma.appointment.findUnique({
-        where: { id: appointmentId },
-        include: {
-          service: true,
-          staff: true,
-          business: true,
-          customer: true
-        }
-      });
+      const appointment = await this.appointmentRepository.findByIdWithDetails(appointmentId);
 
       if (!appointment) {
         throw new Error('Appointment not found');
@@ -170,15 +170,17 @@ export class AppointmentRescheduleService {
 
       // Create reschedule suggestion record
       const suggestionId = `suggestion-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
-      await this.prisma.rescheduleSuggestion.create({
-        data: {
-          id: suggestionId,
-          originalAppointmentId: appointmentId,
-          closureId: closureData.id,
-          suggestedDates: JSON.stringify(availableSlots),
-          customerResponse: null
-        }
+
+      await this.rescheduleSuggestionRepository.create({
+        id: suggestionId,
+        originalAppointment: {
+          connect: { id: appointmentId }
+        },
+        closure: {
+          connect: { id: closureData.id }
+        },
+        suggestedDates: JSON.stringify(availableSlots),
+        customerResponse: null
       });
 
       return [{
@@ -211,9 +213,7 @@ export class AppointmentRescheduleService {
       const affectedAppointments = await this.getAffectedAppointments(closureId);
       const results: RescheduleResult[] = [];
 
-      const closure = await this.prisma.businessClosure.findUnique({
-        where: { id: closureId }
-      });
+      const closure = await this.businessClosureRepository.findById(closureId);
 
       if (!closure) {
         throw new Error('Closure not found');
@@ -267,61 +267,39 @@ export class AppointmentRescheduleService {
     preferredTime: 'MORNING' | 'AFTERNOON' | 'EVENING' | 'ANY' = 'ANY'
   ): Promise<TimeSlot[]> {
     try {
-      // Get business working hours
-      const workingHours = await this.prisma.workingHours.findMany({
-        where: {
-          businessId,
-          staffId: staffId || null,
-          isActive: true
-        }
-      });
+      // Get business working hours using repository
+      const workingHours = await this.workingHoursRepository.findByBusiness(
+        businessId,
+        staffId || null,
+        true
+      );
 
-      // Get existing appointments in the date range
-      const existingAppointments = await this.prisma.appointment.findMany({
-        where: {
-          businessId,
-          staffId: staffId || undefined,
-          startTime: {
-            gte: startDate,
-            lte: endDate
-          },
-          status: AppointmentStatus.CONFIRMED
-        }
+      // Get existing appointments in the date range using repository
+      const existingAppointmentsResult = await this.appointmentRepository.search({
+        businessId,
+        staffId,
+        status: AppointmentStatus.CONFIRMED as any,
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
       });
+      const existingAppointments = existingAppointmentsResult.appointments;
 
-      // Get business closures in the date range
-      const closures = await this.prisma.businessClosure.findMany({
-        where: {
-          businessId,
-          isActive: true,
-          OR: [
-            {
-              startDate: {
-                lte: endDate
-              },
-              endDate: {
-                gte: startDate
-              }
-            },
-            {
-              startDate: {
-                lte: endDate
-              },
-              endDate: null
-            }
-          ]
-        }
-      });
+      // Get business closures in the date range using repository
+      const closures = await this.businessClosureRepository.findByDateRange(
+        businessId,
+        startDate,
+        endDate
+      );
 
       const availableSlots: TimeSlot[] = [];
       let currentDate = new Date(startDate);
 
       while (currentDate <= endDate && availableSlots.length < 10) { // Limit to 10 suggestions
         const dayOfWeek = currentDate.getDay();
-        
+
         // Find working hours for this day
         const dayWorkingHours = workingHours.filter(wh => wh.dayOfWeek === dayOfWeek);
-        
+
         if (dayWorkingHours.length > 0) {
           for (const workingHour of dayWorkingHours) {
             // Check if this day is during a closure
@@ -368,12 +346,7 @@ export class AppointmentRescheduleService {
     selectedSlotIndex?: number
   ): Promise<void> {
     try {
-      const suggestion = await this.prisma.rescheduleSuggestion.findUnique({
-        where: { id: suggestionId },
-        include: {
-          originalAppointment: true
-        }
-      });
+      const suggestion = await this.rescheduleSuggestionRepository.findByIdWithAppointment(suggestionId);
 
       if (!suggestion) {
         throw new Error('Reschedule suggestion not found');
@@ -383,13 +356,7 @@ export class AppointmentRescheduleService {
         throw new Error('Unauthorized to respond to this suggestion');
       }
 
-      await this.prisma.rescheduleSuggestion.update({
-        where: { id: suggestionId },
-        data: {
-          customerResponse: response,
-          responseAt: new Date()
-        }
-      });
+      await this.rescheduleSuggestionRepository.updateCustomerResponse(suggestionId, response);
 
       if (response === 'ACCEPTED' && selectedSlotIndex !== undefined) {
         const suggestedSlots = JSON.parse(suggestion.suggestedDates as string) as TimeSlot[];
@@ -397,40 +364,31 @@ export class AppointmentRescheduleService {
 
         if (selectedSlot) {
           // CRITICAL: Validate business reservation rules before rescheduling
-          const appointment = await this.prisma.appointment.findUnique({
-            where: { id: suggestion.originalAppointmentId },
-            include: { business: true, service: true }
-          });
-          
+          const appointment = await this.appointmentRepository.findByIdWithDetails(suggestion.originalAppointmentId);
+
           if (appointment) {
+            const service = await this.serviceRepository.findById(appointment.serviceId);
+
             await this.validateBusinessReservationRules(
               appointment.businessId,
               new Date(selectedSlot.startTime),
               appointment.customerId,
-              appointment.service?.minAdvanceBooking
+              service?.minAdvanceBooking
             );
           }
 
-          // Update the original appointment with new time
-          await this.prisma.appointment.update({
-            where: { id: suggestion.originalAppointmentId },
-            data: {
-              startTime: new Date(selectedSlot.startTime),
-              endTime: new Date(selectedSlot.endTime),
-              status: AppointmentStatus.CONFIRMED
-            }
+          // Update the original appointment with new time using repository
+          await this.appointmentRepository.update(suggestion.originalAppointmentId, {
+            startTime: new Date(selectedSlot.startTime).toISOString(),
+            status: AppointmentStatus.CONFIRMED as any
           });
         }
       } else if (response === 'DECLINED') {
-        // Cancel the original appointment
-        await this.prisma.appointment.update({
-          where: { id: suggestion.originalAppointmentId },
-          data: {
-            status: AppointmentStatus.CANCELED,
-            cancelReason: 'Customer declined reschedule due to business closure',
-            canceledAt: new Date()
-          }
-        });
+        // Cancel the original appointment using repository
+        await this.appointmentRepository.cancel(
+          suggestion.originalAppointmentId,
+          'Customer declined reschedule due to business closure'
+        );
       }
     } catch (error) {
       throw new Error(`Failed to record customer response: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -439,7 +397,7 @@ export class AppointmentRescheduleService {
 
   private async processAppointmentReschedule(
     appointment: AppointmentData,
-    closure: BusinessClosure,
+    closure: BusinessClosureData,
     options: RescheduleOptions
   ): Promise<RescheduleResult> {
     const closureData: ClosureData = {
@@ -453,7 +411,7 @@ export class AppointmentRescheduleService {
 
     // Generate suggestions
     const suggestions = await this.generateRescheduleSuggestions(appointment.id, closureData);
-    
+
     let customerNotified = false;
 
     // Notify customer if requested
@@ -470,13 +428,10 @@ export class AppointmentRescheduleService {
     if (options.autoReschedule && suggestions[0]?.suggestedSlots.length > 0) {
       try {
         const bestSlot = suggestions[0].suggestedSlots[0]; // Use first available slot
-        
+
         // Get service information for validation
-        const service = await this.prisma.service.findUnique({
-          where: { id: appointment.serviceId },
-          select: { minAdvanceBooking: true }
-        });
-        
+        const service = await this.serviceRepository.findById(appointment.serviceId);
+
         // CRITICAL: Validate business reservation rules before auto-rescheduling
         await this.validateBusinessReservationRules(
           appointment.businessId,
@@ -484,14 +439,10 @@ export class AppointmentRescheduleService {
           appointment.customerId,
           service?.minAdvanceBooking
         );
-        
-        await this.prisma.appointment.update({
-          where: { id: appointment.id },
-          data: {
-            startTime: new Date(bestSlot.startTime),
-            endTime: new Date(bestSlot.endTime),
-            status: AppointmentStatus.CONFIRMED
-          }
+
+        await this.appointmentRepository.update(appointment.id, {
+          startTime: new Date(bestSlot.startTime).toISOString(),
+          status: AppointmentStatus.CONFIRMED as any
         });
 
         return {
@@ -532,20 +483,20 @@ export class AppointmentRescheduleService {
     preferredTime: 'MORNING' | 'AFTERNOON' | 'EVENING' | 'ANY'
   ): TimeSlot[] {
     const slots: TimeSlot[] = [];
-    
+
     const [startHour, startMinute] = startTime.split(':').map(Number);
     const [endHour, endMinute] = endTime.split(':').map(Number);
-    
+
     const dayStart = new Date(date);
     dayStart.setHours(startHour, startMinute, 0, 0);
-    
+
     const dayEnd = new Date(date);
     dayEnd.setHours(endHour, endMinute, 0, 0);
-    
+
     // Apply preferred time filter
     let searchStart = new Date(dayStart);
     let searchEnd = new Date(dayEnd);
-    
+
     switch (preferredTime) {
       case 'MORNING':
         searchEnd = new Date(date);
@@ -562,26 +513,26 @@ export class AppointmentRescheduleService {
         searchStart.setHours(17, 0, 0, 0);
         break;
     }
-    
+
     // Ensure search window is within working hours
     searchStart = new Date(Math.max(searchStart.getTime(), dayStart.getTime()));
     searchEnd = new Date(Math.min(searchEnd.getTime(), dayEnd.getTime()));
-    
+
     let currentSlot = new Date(searchStart);
-    
+
     while (currentSlot.getTime() + (duration * 60 * 1000) <= searchEnd.getTime()) {
       const slotEnd = new Date(currentSlot.getTime() + (duration * 60 * 1000));
-      
+
       slots.push({
         startTime: new Date(currentSlot),
         endTime: slotEnd,
         isAvailable: true
       });
-      
+
       // Move to next 30-minute slot
       currentSlot.setMinutes(currentSlot.getMinutes() + 30);
     }
-    
+
     return slots;
   }
 
@@ -592,13 +543,13 @@ export class AppointmentRescheduleService {
   ): boolean {
     const slotStart = new Date(slot.startTime);
     const slotEnd = new Date(slot.endTime);
-    
+
     return (slotStart < appointmentEnd && slotEnd > appointmentStart);
   }
 
   private getPreferredTimeFromOriginal(originalTime: Date): 'MORNING' | 'AFTERNOON' | 'EVENING' | 'ANY' {
     const hour = originalTime.getHours();
-    
+
     if (hour < 12) return 'MORNING';
     if (hour < 17) return 'AFTERNOON';
     return 'EVENING';
@@ -610,7 +561,7 @@ export class AppointmentRescheduleService {
     closureData: ClosureData
   ): string {
     const formatDateTime = (date: Date) => date.toLocaleString();
-    
+
     return `Your appointment at ${(appointment as any).business?.name || 'Business'} for ${(appointment as any).service?.name || 'Service'} scheduled on ${formatDateTime(appointment.startTime)} needs to be rescheduled due to: ${closureData.reason}. We have ${suggestedSlots.length} alternative times available.`;
   }
 
@@ -622,12 +573,7 @@ export class AppointmentRescheduleService {
     pending: number;
   }> {
     try {
-      const suggestions = await this.prisma.rescheduleSuggestion.findMany({
-        where: { closureId },
-        include: {
-          originalAppointment: true
-        }
-      });
+      const suggestions = await this.rescheduleSuggestionRepository.findByClosure(closureId);
 
       const stats = {
         totalAffected: suggestions.length,

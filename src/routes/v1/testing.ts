@@ -7,10 +7,11 @@ import {
 import { requireAuth } from "../../middleware/authUtils";
 import { BusinessContextRequest } from "../../middleware/businessContext";
 import { UsageRepository } from "../../repositories/usageRepository";
-import { AppointmentSchedulerService } from "../../services/domain/appointment/appointmentSchedulerService";
 import { RBACService } from "../../services/domain/rbac/rbacService";
 import { SMSService } from "../../services/domain/sms/smsService";
 import { UsageService } from "../../services/domain/usage/usageService";
+import { JobScheduler } from "../../jobs/base";
+import { AutoCompleteAppointmentsJob } from "../../jobs/appointment";
 
 // import { TestSubscriptionHelper } from "../../../tests/fixtures/testSubscriptionHelper";
 import { RepositoryContainer } from "../../repositories";
@@ -30,8 +31,14 @@ if (process.env.NODE_ENV === "development") {
   const usageRepository = new UsageRepository(prisma);
   const rbacService = new RBACService({ usageRepository } as any);
   const usageService = new UsageService(usageRepository, rbacService, repositories);
-  const appointmentScheduler = new AppointmentSchedulerService(prisma, {
-    developmentMode: true,
+
+  // Initialize job scheduler for testing
+  const jobScheduler = new JobScheduler();
+  const autoCompleteJob = new AutoCompleteAppointmentsJob(repositories.appointmentRepository);
+  jobScheduler.register(autoCompleteJob, {
+    schedule: '*/1 * * * *',
+    timezone: 'Europe/Istanbul',
+    enabled: false // Don't auto-start in testing routes
   });
 
   /**
@@ -136,19 +143,19 @@ if (process.env.NODE_ENV === "development") {
           success: true,
           count: 0, // testSubscriptions.length,
           subscriptions: [], // testSubscriptions.map((sub: { id: string; business: { name: string }; plan: { displayName: string }; status: string; currentPeriodEnd: Date; autoRenewal: boolean; failedPaymentCount: number }) => ({
-            // id: sub.id,
-            // businessName: sub.business.name,
-            // planName: sub.plan.displayName,
-            // status: sub.status,
-            // currentPeriodEnd: sub.currentPeriodEnd,
-            // autoRenewal: sub.autoRenewal,
-            // failedPaymentCount: sub.failedPaymentCount,
-            // minutesUntilExpiry: Math.max(
-            //   0,
-            //   Math.ceil(
-            //     (sub.currentPeriodEnd.getTime() - Date.now()) / (1000 * 60)
-            //   )
-            // ),
+          // id: sub.id,
+          // businessName: sub.business.name,
+          // planName: sub.plan.displayName,
+          // status: sub.status,
+          // currentPeriodEnd: sub.currentPeriodEnd,
+          // autoRenewal: sub.autoRenewal,
+          // failedPaymentCount: sub.failedPaymentCount,
+          // minutesUntilExpiry: Math.max(
+          //   0,
+          //   Math.ceil(
+          //     (sub.currentPeriodEnd.getTime() - Date.now()) / (1000 * 60)
+          //   )
+          // ),
           // })),
           testingSchedule: [], // testHelper.getTestingSchedule(),
         });
@@ -384,15 +391,14 @@ if (process.env.NODE_ENV === "development") {
     "/appointments/auto-complete",
     async (req: Request, res: Response): Promise<Response> => {
       try {
-        const result = await appointmentScheduler.triggerAutoComplete();
+        await jobScheduler.triggerJob('appointment_auto_complete');
         logger.info(
-          `🔧 Manual trigger: Auto-completed ${result.completed} appointments`
+          `🔧 Manual trigger: Appointment auto-complete job executed`
         );
 
         return res.json({
           success: true,
-          message: `Auto-completed ${result.completed} appointments`,
-          data: result,
+          message: `Appointment auto-complete job triggered successfully`,
         });
       } catch (error) {
         logger.error("❌ Error in manual appointment auto-completion:", error);
@@ -420,7 +426,7 @@ if (process.env.NODE_ENV === "development") {
     realTimeCache,
     async (req: Request, res: Response): Promise<Response> => {
       try {
-        const status = appointmentScheduler.getStatus();
+        const status = jobScheduler.getStatus('appointment_auto_complete');
 
         return res.json({
           success: true,

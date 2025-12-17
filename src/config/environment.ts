@@ -8,7 +8,6 @@ interface Config {
   API_VERSION: string;
   CORS_ORIGINS: string[];
   DATABASE_URL?: string;
-  JWT_SECRET?: string;
   JWT_ACCESS_SECRET?: string;
   JWT_REFRESH_SECRET?: string;
   REDIS_URL?: string;
@@ -26,13 +25,13 @@ const getConfig = (): Config => {
   const nodeEnv = process.env.NODE_ENV || 'development';
   const port = parseInt(process.env.PORT || '3001', 10);
   const apiVersion = process.env.API_VERSION || 'v1';
-  
+
   let corsOrigins: string[];
   if (nodeEnv === 'production') {
-    corsOrigins = process.env.CORS_ORIGINS 
+    corsOrigins = process.env.CORS_ORIGINS
       ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim()).filter(origin => origin.length > 0)
       : [];
-    
+
     // In production, CORS_ORIGINS must be explicitly set
     if (corsOrigins.length === 0) {
       throw new Error('CORS_ORIGINS must be set in production environment. Please set it in your environment variables.');
@@ -47,7 +46,6 @@ const getConfig = (): Config => {
     API_VERSION: apiVersion,
     CORS_ORIGINS: corsOrigins,
     DATABASE_URL: process.env.DATABASE_URL,
-    JWT_SECRET: process.env.JWT_SECRET,
     JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
     JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
     REDIS_URL: process.env.REDIS_URL,
