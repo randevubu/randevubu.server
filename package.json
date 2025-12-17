@@ -47,7 +47,8 @@
     "test:translations": "ts-node src/scripts/test-translations.ts",
     "test:sms": "ts-node scripts/test-sms-service.ts",
     "test:sms:diagnostic": "ts-node scripts/test-sms-diagnostic.ts",
-    "test:sms:docker": "docker compose -f docker-compose.production.yml exec app1 npx ts-node scripts/test-sms-service.ts"
+    "test:sms:docker": "docker compose -f docker-compose.production.yml exec app1 npx ts-node scripts/test-sms-service.ts",
+    "prepare": "husky"
   },
   "keywords": [],
   "author": "",
@@ -93,6 +94,8 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.2.0",
+    "@commitlint/config-conventional": "^20.2.0",
     "@types/axios": "^0.9.36",
     "@types/bcrypt": "^5.0.2",
     "@types/compression": "^1.8.1",
@@ -109,8 +112,11 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "@types/uuid": "^10.0.0",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
+    "lint-staged": "^16.2.7",
     "nodemon": "^3.0.1",
+    "prettier": "^3.7.4",
     "prisma": "^6.14.0",
     "ts-jest": "^29.4.5",
     "ts-node": "^10.9.1",

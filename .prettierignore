@@ -1,0 +1,30 @@
+# Dependencies
+node_modules
+dist
+build
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+
+# Test coverage
+coverage
+
+# Prisma
+prisma/migrations
+
+# Build artifacts
+*.tsbuildinfo
