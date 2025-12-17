@@ -4,6 +4,8 @@ yarn-debug.log*
 yarn-error.log*
 .env
 .env.production
+.env.local
+.env.*.local
 .DS_Store
 *.log
 logs/
@@ -12,3 +14,11 @@ dist/
 build/
 coverage/
 /src/generated/prisma
+
+# Documentation with sensitive information
+docs/
+NETGSM_DEBUG_REPORT.md
+
+# Debug and troubleshooting files
+*_DEBUG_REPORT.md
+*_TROUBLESHOOTING.md
