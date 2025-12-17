@@ -22,3 +22,6 @@ NETGSM_DEBUG_REPORT.md
 # Debug and troubleshooting files
 *_DEBUG_REPORT.md
 *_TROUBLESHOOTING.md
+
+# Agent workflows and configuration
+.agent/
