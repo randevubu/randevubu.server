@@ -7,7 +7,12 @@ import { ServiceContainer } from '../../services';
 import { validateQuery } from '../../middleware/validation';
 import { requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
-import { staticCache, dynamicCache, semiDynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
+import {
+  staticCache,
+  dynamicCache,
+  semiDynamicCache,
+  realTimeCache,
+} from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import { BusinessContextMiddleware } from '../../middleware/businessContext';
 import {
@@ -15,16 +20,22 @@ import {
   exportReportSchema,
   dashboardConfigSchema,
   businessComparisonSchema,
-  advancedFilterSchema
+  advancedFilterSchema,
 } from '../../schemas/reports.schemas';
 import prisma from '../../lib/prisma';
+import { ResponseHelper } from '../../utils/responseHelper';
 
 // Initialize dependencies
 const repositories = new RepositoryContainer(prisma);
 const services = new ServiceContainer(repositories, prisma);
+const responseHelper = new ResponseHelper(services.translationService);
 const reportsService = new ReportsService(repositories);
-const reportsController = new ReportsController(reportsService);
-const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
+const reportsController = new ReportsController(reportsService, responseHelper);
+const authMiddleware = new AuthMiddleware(
+  repositories,
+  services.tokenService,
+  services.rbacService
+);
 const businessContextMiddleware = new BusinessContextMiddleware(prisma);
 
 export function createReportsRoutes(): Router {

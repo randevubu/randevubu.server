@@ -7,10 +7,14 @@ import { createErrorContext } from '../utils/requestUtils';
 import { getEmailService } from '../lib/aws/email';
 import { validateBody } from '../middleware/validation';
 import { createUserRateLimiter } from '../middleware/userRateLimit';
-import logger from "../utils/Logger/logger";
+import { ResponseHelper } from '../utils/responseHelper';
+import logger from '../utils/Logger/logger';
 // Contact form schema
 const contactFormSchema = z.object({
-  name: z.string().min(2, 'Ad en az 2 karakter olmalıdır').max(100, 'Ad en fazla 100 karakter olabilir'),
+  name: z
+    .string()
+    .min(2, 'Ad en az 2 karakter olmalıdır')
+    .max(100, 'Ad en fazla 100 karakter olabilir'),
   email: z.string().email('Geçerli bir e-posta adresi giriniz'),
   phone: z.string().min(10, 'Geçerli bir telefon numarası giriniz').max(20),
   subject: z.string().min(3, 'Konu en az 3 karakter olmalıdır').max(200),
@@ -18,6 +22,7 @@ const contactFormSchema = z.object({
 });
 
 export class ContactController {
+  constructor(private responseHelper: ResponseHelper) {}
   /**
    * Send contact form email
    * POST /api/v1/contact
@@ -61,7 +66,7 @@ export class ContactController {
         context,
       });
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.contact.sent',
         {

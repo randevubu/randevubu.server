@@ -17,7 +17,6 @@ coverage/
 
 # Documentation with sensitive information
 docs/
-NETGSM_DEBUG_REPORT.md
 
 # Debug and troubleshooting files
 *_DEBUG_REPORT.md

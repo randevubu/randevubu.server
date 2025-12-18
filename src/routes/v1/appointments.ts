@@ -1,35 +1,34 @@
-import { Router, Request, Response, NextFunction } from "express";
-import { AppointmentController } from "../../controllers/appointmentController";
-import { dynamicCache, realTimeCache, cache } from "../../middleware/cacheMiddleware";
-import { trackCachePerformance } from "../../middleware/cacheMonitoring";
-import { invalidateAppointmentCache } from "../../middleware/cacheInvalidation";
-import prisma from "../../lib/prisma";
-import { BusinessOwnershipRequest } from "../../types/auth";
+import { Router, Request, Response, NextFunction } from 'express';
+import { AppointmentController } from '../../controllers/appointmentController';
+import { dynamicCache, realTimeCache, cache } from '../../middleware/cacheMiddleware';
+import { trackCachePerformance } from '../../middleware/cacheMonitoring';
+import { initializeCacheInvalidationMiddleware } from '../../middleware/cacheInvalidation';
+import prisma from '../../lib/prisma';
+import { BusinessOwnershipRequest } from '../../types/auth';
 import {
   attachBusinessContext,
   requireBusinessAccess,
-} from "../../middleware/attachBusinessContext";
-import { AuthMiddleware } from "../../middleware/auth";
-import { AuthorizationMiddleware } from "../../middleware/authorization";
+} from '../../middleware/attachBusinessContext';
+import { AuthMiddleware } from '../../middleware/auth';
+import { AuthorizationMiddleware } from '../../middleware/authorization';
 import {
   initializeBusinessOwnershipMiddleware,
   requireBusinessAccess as requireBusinessOwnershipAccess,
-} from "../../middleware/businessOwnership";
-import { createReservationValidationMiddleware } from "../../middleware/reservationValidation";
-import { RepositoryContainer } from "../../repositories";
-import { ServiceContainer } from "../../services";
+} from '../../middleware/businessOwnership';
+import { createReservationValidationMiddleware } from '../../middleware/reservationValidation';
+import { RepositoryContainer } from '../../repositories';
+import { ServiceContainer } from '../../services';
 
 // Initialize middleware dependencies (aligns with v1 routes pattern)
 const repositories = new RepositoryContainer(prisma);
 const services = new ServiceContainer(repositories, prisma);
+const cacheInvalidation = initializeCacheInvalidationMiddleware(services.cacheService);
 const authMiddleware = new AuthMiddleware(
   repositories,
   services.tokenService,
   services.rbacService
 );
-const authorizationMiddleware = new AuthorizationMiddleware(
-  services.rbacService
-);
+const authorizationMiddleware = new AuthorizationMiddleware(services.rbacService);
 
 // Initialize business ownership middleware
 initializeBusinessOwnershipMiddleware(prisma);
@@ -37,9 +36,7 @@ initializeBusinessOwnershipMiddleware(prisma);
 // Initialize reservation validation middleware
 const reservationValidation = createReservationValidationMiddleware(prisma);
 
-export function createAppointmentRoutes(
-  appointmentController: AppointmentController
-): Router {
+export function createAppointmentRoutes(appointmentController: AppointmentController): Router {
   const router = Router();
 
   // Apply cache monitoring to all routes
@@ -120,7 +117,7 @@ export function createAppointmentRoutes(
    *         description: Access denied - business role required
    */
   router.get(
-    "/my-appointments",
+    '/my-appointments',
     dynamicCache,
     requireBusinessAccess,
     appointmentController.getMyAppointments.bind(appointmentController)
@@ -218,8 +215,8 @@ export function createAppointmentRoutes(
    *         description: Forbidden - insufficient permissions to create appointments for others
    */
   router.post(
-    "/",
-    invalidateAppointmentCache,
+    '/',
+    cacheInvalidation.invalidateAppointmentCache,
     reservationValidation.validateReservationRules,
     appointmentController.createAppointment.bind(appointmentController)
   );
@@ -465,14 +462,14 @@ export function createAppointmentRoutes(
    */
   // Explicit route for current user's customer appointments
   router.get(
-    "/customer",
+    '/customer',
     dynamicCache,
     appointmentController.getCustomerAppointments.bind(appointmentController)
   );
 
   // Explicit route for specific customerId (admin/staff)
   router.get(
-    "/customer/:customerId",
+    '/customer/:customerId',
     dynamicCache,
     appointmentController.getCustomerAppointments.bind(appointmentController)
   );
@@ -500,7 +497,7 @@ export function createAppointmentRoutes(
    *         description: Appointment not found
    */
   router.get(
-    "/:id",
+    '/:id',
     dynamicCache,
     appointmentController.getAppointmentById.bind(appointmentController)
   );
@@ -528,8 +525,8 @@ export function createAppointmentRoutes(
    *         description: Appointment not found
    */
   router.put(
-    "/:id",
-    invalidateAppointmentCache,
+    '/:id',
+    cacheInvalidation.invalidateAppointmentCache,
     reservationValidation.validateAdvanceBooking,
     appointmentController.updateAppointment.bind(appointmentController)
   );
@@ -615,8 +612,8 @@ export function createAppointmentRoutes(
    *         description: Appointment not found
    */
   router.put(
-    "/:id/status",
-    invalidateAppointmentCache,
+    '/:id/status',
+    cacheInvalidation.invalidateAppointmentCache,
     appointmentController.updateAppointmentStatus.bind(appointmentController)
   );
 
@@ -774,8 +771,8 @@ export function createAppointmentRoutes(
    *                   example: "Appointment not found"
    */
   router.post(
-    "/:id/cancel",
-    invalidateAppointmentCache,
+    '/:id/cancel',
+    cacheInvalidation.invalidateAppointmentCache,
     appointmentController.cancelAppointment.bind(appointmentController)
   );
 
@@ -805,16 +802,16 @@ export function createAppointmentRoutes(
    *         description: Appointment not found
    */
   router.post(
-    "/:id/confirm",
-    invalidateAppointmentCache,
+    '/:id/confirm',
+    cacheInvalidation.invalidateAppointmentCache,
     authorizationMiddleware.requireAnyMiddleware(
       authorizationMiddleware.requirePermission({
-        resource: "appointment",
-        action: "confirm",
+        resource: 'appointment',
+        action: 'confirm',
       }),
       authorizationMiddleware.requirePermission({
-        resource: "appointment",
-        action: "edit_all",
+        resource: 'appointment',
+        action: 'edit_all',
       })
     ),
     appointmentController.confirmAppointment.bind(appointmentController)
@@ -846,16 +843,16 @@ export function createAppointmentRoutes(
    *         description: Appointment not found
    */
   router.post(
-    "/:id/complete",
-    invalidateAppointmentCache,
+    '/:id/complete',
+    cacheInvalidation.invalidateAppointmentCache,
     authorizationMiddleware.requireAnyMiddleware(
       authorizationMiddleware.requirePermission({
-        resource: "appointment",
-        action: "complete",
+        resource: 'appointment',
+        action: 'complete',
       }),
       authorizationMiddleware.requirePermission({
-        resource: "appointment",
-        action: "edit_all",
+        resource: 'appointment',
+        action: 'edit_all',
       })
     ),
     appointmentController.completeAppointment.bind(appointmentController)
@@ -887,16 +884,16 @@ export function createAppointmentRoutes(
    *         description: Appointment not found
    */
   router.post(
-    "/:id/no-show",
-    invalidateAppointmentCache,
+    '/:id/no-show',
+    cacheInvalidation.invalidateAppointmentCache,
     authorizationMiddleware.requireAnyMiddleware(
       authorizationMiddleware.requirePermission({
-        resource: "appointment",
-        action: "mark_no_show",
+        resource: 'appointment',
+        action: 'mark_no_show',
       }),
       authorizationMiddleware.requirePermission({
-        resource: "appointment",
-        action: "edit_all",
+        resource: 'appointment',
+        action: 'edit_all',
       })
     ),
     appointmentController.markNoShow.bind(appointmentController)
@@ -917,7 +914,7 @@ export function createAppointmentRoutes(
    *         description: Unauthorized
    */
   router.get(
-    "/my/upcoming",
+    '/my/upcoming',
     appointmentController.getUpcomingAppointments.bind(appointmentController)
   );
 
@@ -946,7 +943,7 @@ export function createAppointmentRoutes(
    *         description: Forbidden
    */
   router.get(
-    "/business/:businessId",
+    '/business/:businessId',
     requireBusinessOwnershipAccess,
     appointmentController.getBusinessAppointments.bind(appointmentController)
   );
@@ -975,7 +972,7 @@ export function createAppointmentRoutes(
    *         description: Forbidden
    */
   router.get(
-    "/business/:businessId/today",
+    '/business/:businessId/today',
     requireBusinessOwnershipAccess,
     appointmentController.getTodaysAppointments.bind(appointmentController)
   );
@@ -1065,7 +1062,7 @@ export function createAppointmentRoutes(
    *         description: Access denied - business role required
    */
   router.get(
-    "/my/today",
+    '/my/today',
     requireBusinessAccess,
     appointmentController.getMyTodaysAppointments.bind(appointmentController)
   );
@@ -1094,7 +1091,7 @@ export function createAppointmentRoutes(
    *         description: Forbidden
    */
   router.get(
-    "/business/:businessId/stats",
+    '/business/:businessId/stats',
     requireBusinessOwnershipAccess,
     appointmentController.getAppointmentStats.bind(appointmentController)
   );
@@ -1178,7 +1175,7 @@ export function createAppointmentRoutes(
    *         description: Access denied - business role required
    */
   router.get(
-    "/my/stats",
+    '/my/stats',
     requireBusinessAccess,
     appointmentController.getAppointmentStats.bind(appointmentController)
   );
@@ -1205,7 +1202,7 @@ export function createAppointmentRoutes(
    *         description: Unauthorized
    */
   router.get(
-    "/business/:businessId/date-range",
+    '/business/:businessId/date-range',
     appointmentController.getAppointmentsByDateRange.bind(appointmentController)
   );
 
@@ -1238,7 +1235,7 @@ export function createAppointmentRoutes(
    *         description: Forbidden
    */
   router.get(
-    "/business/:businessId/status/:status",
+    '/business/:businessId/status/:status',
     requireBusinessOwnershipAccess,
     appointmentController.getAppointmentsByStatus.bind(appointmentController)
   );
@@ -1268,15 +1265,15 @@ export function createAppointmentRoutes(
    *         description: Forbidden
    */
   router.get(
-    "/service/:serviceId",
+    '/service/:serviceId',
     authorizationMiddleware.requireAnyMiddleware(
       authorizationMiddleware.requirePermission({
-        resource: "appointment",
-        action: "view_all",
+        resource: 'appointment',
+        action: 'view_all',
       }),
       authorizationMiddleware.requirePermission({
-        resource: "appointment",
-        action: "view_own",
+        resource: 'appointment',
+        action: 'view_own',
       })
     ),
     appointmentController.getAppointmentsByService.bind(appointmentController)
@@ -1306,15 +1303,15 @@ export function createAppointmentRoutes(
    *         description: Forbidden
    */
   router.get(
-    "/staff/:staffId",
+    '/staff/:staffId',
     authorizationMiddleware.requireAnyMiddleware(
       authorizationMiddleware.requirePermission({
-        resource: "appointment",
-        action: "view_all",
+        resource: 'appointment',
+        action: 'view_all',
       }),
       authorizationMiddleware.requirePermission({
-        resource: "appointment",
-        action: "view_own",
+        resource: 'appointment',
+        action: 'view_own',
       })
     ),
     appointmentController.getAppointmentsByStaff.bind(appointmentController)
@@ -1335,10 +1332,7 @@ export function createAppointmentRoutes(
    *       401:
    *         description: Unauthorized
    */
-  router.get(
-    "/search",
-    appointmentController.searchAppointments.bind(appointmentController)
-  );
+  router.get('/search', appointmentController.searchAppointments.bind(appointmentController));
 
   // Admin routes
   /**
@@ -1359,10 +1353,10 @@ export function createAppointmentRoutes(
    *         description: Forbidden
    */
   router.get(
-    "/admin/all",
+    '/admin/all',
     authorizationMiddleware.requirePermission({
-      resource: "appointment",
-      action: "view_all",
+      resource: 'appointment',
+      action: 'view_all',
     }),
     appointmentController.getAllAppointments.bind(appointmentController)
   );
@@ -1385,14 +1379,12 @@ export function createAppointmentRoutes(
    *         description: Forbidden
    */
   router.post(
-    "/admin/batch-update-status",
+    '/admin/batch-update-status',
     authorizationMiddleware.requirePermission({
-      resource: "appointment",
-      action: "edit_all",
+      resource: 'appointment',
+      action: 'edit_all',
     }),
-    appointmentController.batchUpdateAppointmentStatus.bind(
-      appointmentController
-    )
+    appointmentController.batchUpdateAppointmentStatus.bind(appointmentController)
   );
 
   /**
@@ -1413,10 +1405,10 @@ export function createAppointmentRoutes(
    *         description: Forbidden
    */
   router.post(
-    "/admin/batch-cancel",
+    '/admin/batch-cancel',
     authorizationMiddleware.requirePermission({
-      resource: "appointment",
-      action: "cancel_all",
+      resource: 'appointment',
+      action: 'cancel_all',
     }),
     appointmentController.batchCancelAppointments.bind(appointmentController)
   );
@@ -1478,7 +1470,7 @@ export function createAppointmentRoutes(
    *         description: Unauthorized
    */
   router.get(
-    "/nearest-current-hour",
+    '/nearest-current-hour',
     realTimeCache,
     appointmentController.getNearestCurrentHour.bind(appointmentController)
   );
@@ -1622,7 +1614,7 @@ export function createAppointmentRoutes(
    *         description: Business not found
    */
   router.get(
-    "/monitor/:businessId",
+    '/monitor/:businessId',
     cache({
       ttl: 15, // 15 seconds cache for real-time data
       keyPrefix: 'monitor',
@@ -1631,11 +1623,15 @@ export function createAppointmentRoutes(
         const date = req.query.date || new Date().toISOString().split('T')[0];
         return `monitor:${businessId}:${date}`;
       },
-      skipCache: (req: Request) => req.query.live === 'true'
+      skipCache: (req: Request) => req.query.live === 'true',
     }),
     requireBusinessOwnershipAccess,
     (req: Request, res: Response, next: NextFunction) => {
-      return appointmentController.getMonitorAppointments(req as BusinessOwnershipRequest, res, next);
+      return appointmentController.getMonitorAppointments(
+        req as BusinessOwnershipRequest,
+        res,
+        next
+      );
     }
   );
 
@@ -1692,7 +1688,7 @@ export function createAppointmentRoutes(
    *         description: Unauthorized
    */
   router.get(
-    "/current-hour",
+    '/current-hour',
     realTimeCache,
     appointmentController.getCurrentHourAppointments.bind(appointmentController)
   );

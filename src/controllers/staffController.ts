@@ -1,23 +1,22 @@
-import { BusinessStaffRole } from "@prisma/client";
-import { Request, Response } from "express";
-import { ERROR_CODES } from "../constants/errorCodes";
-import { BusinessContextRequest } from "../middleware/businessContext";
+import { BusinessStaffRole } from '@prisma/client';
+import { Request, Response } from 'express';
+import { ERROR_CODES } from '../constants/errorCodes';
+import { BusinessContextRequest } from '../middleware/businessContext';
 import {
   InviteStaffRequest,
   StaffService,
   VerifyStaffInvitationRequest,
-} from "../services/domain/staff";
-import { AuthenticatedRequest } from "../types/request";
-import { AppError } from "../types/responseTypes";
-import {
-  createErrorContext,
-  handleRouteError,
-  sendAppErrorResponse,
-  sendSuccessResponse,
-} from "../utils/responseUtils";
+} from '../services/domain/staff';
+import { AuthenticatedRequest } from '../types/request';
+import { AppError } from '../types/responseTypes';
+import { createErrorContext, handleRouteError, sendAppErrorResponse } from '../utils/responseUtils';
+import { ResponseHelper } from '../utils/responseHelper';
 
 export class StaffController {
-  constructor(private staffService: StaffService) {}
+  constructor(
+    private staffService: StaffService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   /**
    * Initiate staff invitation - sends SMS code to staff member's phone
@@ -26,14 +25,7 @@ export class StaffController {
   async inviteStaff(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
-      const {
-        businessId,
-        phoneNumber,
-        role,
-        permissions,
-        firstName,
-        lastName,
-      } = req.body;
+      const { businessId, phoneNumber, role, permissions, firstName, lastName } = req.body;
 
       // Validate required fields
       if (!businessId || !phoneNumber || !role || !firstName || !lastName) {
@@ -48,11 +40,7 @@ export class StaffController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -69,16 +57,16 @@ export class StaffController {
 
       // Validate role
       if (!Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)) {
-        const error = new AppError(
-          'Invalid staff role',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid staff role', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate names
-      if (typeof firstName !== 'string' || firstName.trim().length < 1 || firstName.trim().length > 50) {
+      if (
+        typeof firstName !== 'string' ||
+        firstName.trim().length < 1 ||
+        firstName.trim().length > 50
+      ) {
         const error = new AppError(
           'First name must be between 1 and 50 characters',
           400,
@@ -87,7 +75,11 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      if (typeof lastName !== 'string' || lastName.trim().length < 1 || lastName.trim().length > 50) {
+      if (
+        typeof lastName !== 'string' ||
+        lastName.trim().length < 1 ||
+        lastName.trim().length > 50
+      ) {
         const error = new AppError(
           'Last name must be between 1 and 50 characters',
           400,
@@ -97,7 +89,10 @@ export class StaffController {
       }
 
       // Validate permissions if provided
-      if (permissions && (!Array.isArray(permissions) || !permissions.every((p: string) => typeof p === 'string'))) {
+      if (
+        permissions &&
+        (!Array.isArray(permissions) || !permissions.every((p: string) => typeof p === 'string'))
+      ) {
         const error = new AppError(
           'Permissions must be an array of strings',
           400,
@@ -106,7 +101,7 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      const context = createErrorContext(req, "STAFF_INVITATION");
+      const context = createErrorContext(req, 'STAFF_INVITATION');
 
       const result = await this.staffService.inviteStaff(
         userId,
@@ -121,7 +116,13 @@ export class StaffController {
         context
       );
 
-      await sendSuccessResponse(res, 'success.staff.invited', { success: result.success }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.staff.invited',
+        { success: result.success },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -131,21 +132,11 @@ export class StaffController {
    * Complete staff invitation - verify SMS code and add staff to business
    * POST /api/v1/staff/verify-invitation
    */
-  async verifyStaffInvitation(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async verifyStaffInvitation(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
-      const {
-        businessId,
-        phoneNumber,
-        verificationCode,
-        role,
-        permissions,
-        firstName,
-        lastName,
-      } = req.body;
+      const { businessId, phoneNumber, verificationCode, role, permissions, firstName, lastName } =
+        req.body;
 
       // Validate required fields
       if (!businessId || !phoneNumber || !verificationCode || !role || !firstName || !lastName) {
@@ -160,11 +151,7 @@ export class StaffController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -192,16 +179,16 @@ export class StaffController {
 
       // Validate role
       if (!Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)) {
-        const error = new AppError(
-          'Invalid staff role',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid staff role', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate names
-      if (typeof firstName !== 'string' || firstName.trim().length < 1 || firstName.trim().length > 50) {
+      if (
+        typeof firstName !== 'string' ||
+        firstName.trim().length < 1 ||
+        firstName.trim().length > 50
+      ) {
         const error = new AppError(
           'First name must be between 1 and 50 characters',
           400,
@@ -210,7 +197,11 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      if (typeof lastName !== 'string' || lastName.trim().length < 1 || lastName.trim().length > 50) {
+      if (
+        typeof lastName !== 'string' ||
+        lastName.trim().length < 1 ||
+        lastName.trim().length > 50
+      ) {
         const error = new AppError(
           'Last name must be between 1 and 50 characters',
           400,
@@ -220,7 +211,10 @@ export class StaffController {
       }
 
       // Validate permissions if provided
-      if (permissions && (!Array.isArray(permissions) || !permissions.every((p: string) => typeof p === 'string'))) {
+      if (
+        permissions &&
+        (!Array.isArray(permissions) || !permissions.every((p: string) => typeof p === 'string'))
+      ) {
         const error = new AppError(
           'Permissions must be an array of strings',
           400,
@@ -229,7 +223,7 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      const context = createErrorContext(req, "STAFF_VERIFICATION");
+      const context = createErrorContext(req, 'STAFF_VERIFICATION');
 
       const result = await this.staffService.verifyStaffInvitation(
         userId,
@@ -246,13 +240,9 @@ export class StaffController {
       );
 
       if (result.success) {
-        await sendSuccessResponse(res, 'success.staff.verified', result, 201, req);
+        await this.responseHelper.success(res, 'success.staff.verified', result, 201, req);
       } else {
-        const error = new AppError(
-          result.message,
-          400,
-          ERROR_CODES.INVALID_VERIFICATION_CODE
-        );
+        const error = new AppError(result.message, 400, ERROR_CODES.INVALID_VERIFICATION_CODE);
         sendAppErrorResponse(res, error);
       }
     } catch (error) {
@@ -265,14 +255,11 @@ export class StaffController {
    * GET /api/v1/staff/:businessId
    * Query params: ?includeInactive=true
    */
-  async getBusinessStaff(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getBusinessStaff(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
-      const includeInactive = req.query.includeInactive === "true";
+      const includeInactive = req.query.includeInactive === 'true';
 
       // Validate businessId parameter
       if (!businessId || typeof businessId !== 'string') {
@@ -287,16 +274,16 @@ export class StaffController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate includeInactive query parameter
-      if (req.query.includeInactive && req.query.includeInactive !== 'true' && req.query.includeInactive !== 'false') {
+      if (
+        req.query.includeInactive &&
+        req.query.includeInactive !== 'true' &&
+        req.query.includeInactive !== 'false'
+      ) {
         const error = new AppError(
           'includeInactive must be true or false',
           400,
@@ -305,13 +292,9 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      const staff = await this.staffService.getBusinessStaff(
-        userId,
-        businessId,
-        includeInactive
-      );
+      const staff = await this.staffService.getBusinessStaff(userId, businessId, includeInactive);
 
-      await sendSuccessResponse(res, 'success.staff.retrieved', { staff }, 200, req);
+      await this.responseHelper.success(res, 'success.staff.retrieved', { staff }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -321,47 +304,32 @@ export class StaffController {
    * Get staff member details
    * GET /api/v1/staff/member/:staffId
    */
-  async getStaffMember(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async getStaffMember(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { staffId } = req.params;
 
       // Validate staffId parameter
       if (!staffId || typeof staffId !== 'string') {
-        const error = new AppError(
-          'Staff ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('Staff ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate staffId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(staffId) || staffId.length < 1 || staffId.length > 50) {
-        const error = new AppError(
-          'Invalid staff ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid staff ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const staff = await this.staffService.getStaffById(staffId);
 
       if (!staff) {
-        const error = new AppError(
-          'Staff member not found',
-          404,
-          ERROR_CODES.STAFF_NOT_FOUND
-        );
+        const error = new AppError('Staff member not found', 404, ERROR_CODES.STAFF_NOT_FOUND);
         sendAppErrorResponse(res, error);
         return;
       }
 
-      await sendSuccessResponse(res, 'success.staff.retrievedSingle', { staff }, 200, req);
+      await this.responseHelper.success(res, 'success.staff.retrievedSingle', { staff }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -371,10 +339,7 @@ export class StaffController {
    * Update staff member
    * PUT /api/v1/staff/member/:staffId
    */
-  async updateStaffMember(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async updateStaffMember(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { staffId } = req.params;
@@ -382,22 +347,14 @@ export class StaffController {
 
       // Validate staffId parameter
       if (!staffId || typeof staffId !== 'string') {
-        const error = new AppError(
-          'Staff ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('Staff ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate staffId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(staffId) || staffId.length < 1 || staffId.length > 50) {
-        const error = new AppError(
-          'Invalid staff ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid staff ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -412,7 +369,12 @@ export class StaffController {
       }
 
       // Validate specific fields if provided
-      if (updates.firstName && (typeof updates.firstName !== 'string' || updates.firstName.trim().length < 1 || updates.firstName.trim().length > 50)) {
+      if (
+        updates.firstName &&
+        (typeof updates.firstName !== 'string' ||
+          updates.firstName.trim().length < 1 ||
+          updates.firstName.trim().length > 50)
+      ) {
         const error = new AppError(
           'First name must be between 1 and 50 characters',
           400,
@@ -421,7 +383,12 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      if (updates.lastName && (typeof updates.lastName !== 'string' || updates.lastName.trim().length < 1 || updates.lastName.trim().length > 50)) {
+      if (
+        updates.lastName &&
+        (typeof updates.lastName !== 'string' ||
+          updates.lastName.trim().length < 1 ||
+          updates.lastName.trim().length > 50)
+      ) {
         const error = new AppError(
           'Last name must be between 1 and 50 characters',
           400,
@@ -430,16 +397,19 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      if (updates.role && !Object.values(BusinessStaffRole).includes(updates.role as BusinessStaffRole)) {
-        const error = new AppError(
-          'Invalid staff role',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+      if (
+        updates.role &&
+        !Object.values(BusinessStaffRole).includes(updates.role as BusinessStaffRole)
+      ) {
+        const error = new AppError('Invalid staff role', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
-      if (updates.permissions && (!Array.isArray(updates.permissions) || !updates.permissions.every((p: string) => typeof p === 'string'))) {
+      if (
+        updates.permissions &&
+        (!Array.isArray(updates.permissions) ||
+          !updates.permissions.every((p: string) => typeof p === 'string'))
+      ) {
         const error = new AppError(
           'Permissions must be an array of strings',
           400,
@@ -452,13 +422,9 @@ export class StaffController {
       if (updates.firstName) updates.firstName = updates.firstName.trim();
       if (updates.lastName) updates.lastName = updates.lastName.trim();
 
-      const staff = await this.staffService.updateStaff(
-        userId,
-        staffId,
-        updates
-      );
+      const staff = await this.staffService.updateStaff(userId, staffId, updates);
 
-      await sendSuccessResponse(res, 'success.staff.updated', { staff }, 200, req);
+      await this.responseHelper.success(res, 'success.staff.updated', { staff }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -468,38 +434,27 @@ export class StaffController {
    * Remove staff member (deactivate)
    * DELETE /api/v1/staff/member/:staffId
    */
-  async removeStaffMember(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async removeStaffMember(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { staffId } = req.params;
 
       // Validate staffId parameter
       if (!staffId || typeof staffId !== 'string') {
-        const error = new AppError(
-          'Staff ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('Staff ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate staffId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(staffId) || staffId.length < 1 || staffId.length > 50) {
-        const error = new AppError(
-          'Invalid staff ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid staff ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       await this.staffService.removeStaff(userId, staffId);
 
-      await sendSuccessResponse(res, "success.staff.removed", undefined, 200, req);
+      await this.responseHelper.success(res, 'success.staff.removed', undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -509,10 +464,7 @@ export class StaffController {
    * Get staff statistics for a business
    * GET /api/v1/staff/:businessId/stats
    */
-  async getStaffStats(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getStaffStats(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
@@ -530,17 +482,13 @@ export class StaffController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const stats = await this.staffService.getStaffStats(userId, businessId);
 
-      await sendSuccessResponse(res, 'success.staff.statsRetrieved', { stats }, 200, req);
+      await this.responseHelper.success(res, 'success.staff.statsRetrieved', { stats }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -551,14 +499,11 @@ export class StaffController {
    * GET /api/v1/staff/:businessId/role/:role
    * Query params: ?includeInactive=true
    */
-  async getStaffByRole(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getStaffByRole(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId, role } = req.params;
-      const includeInactive = req.query.includeInactive === "true";
+      const includeInactive = req.query.includeInactive === 'true';
 
       // Validate businessId parameter
       if (!businessId || typeof businessId !== 'string') {
@@ -573,36 +518,28 @@ export class StaffController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate role parameter
       if (!role || typeof role !== 'string') {
-        const error = new AppError(
-          'Role is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('Role is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate role value
       if (!Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)) {
-        const error = new AppError(
-          "Invalid staff role",
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid staff role', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate includeInactive query parameter
-      if (req.query.includeInactive && req.query.includeInactive !== 'true' && req.query.includeInactive !== 'false') {
+      if (
+        req.query.includeInactive &&
+        req.query.includeInactive !== 'true' &&
+        req.query.includeInactive !== 'false'
+      ) {
         const error = new AppError(
           'includeInactive must be true or false',
           400,
@@ -611,14 +548,16 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      const staff = await this.staffService.getBusinessStaff(
-        userId,
-        businessId,
-        includeInactive
-      );
+      const staff = await this.staffService.getBusinessStaff(userId, businessId, includeInactive);
       const filteredStaff = staff.filter((s) => s.role === role);
 
-      await sendSuccessResponse(res, 'success.staff.byRoleRetrieved', { staff: filteredStaff }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.staff.byRoleRetrieved',
+        { staff: filteredStaff },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -628,16 +567,19 @@ export class StaffController {
    * Get current user's staff positions (businesses they work at)
    * GET /api/v1/staff/my-positions
    */
-  async getMyStaffPositions(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async getMyStaffPositions(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
 
       const positions = await this.staffService.getUserStaffPositions(userId);
 
-      await sendSuccessResponse(res, 'success.staff.positionsRetrieved', { positions }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.staff.positionsRetrieved',
+        { positions },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -664,11 +606,7 @@ export class StaffController {
 
       // Validate staffIds array
       if (!Array.isArray(staffIds)) {
-        const error = new AppError(
-          'Staff IDs must be an array',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Staff IDs must be an array', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -693,7 +631,11 @@ export class StaffController {
 
       // Validate business IDs
       const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(fromBusinessId) || fromBusinessId.length < 1 || fromBusinessId.length > 50) {
+      if (
+        !idRegex.test(fromBusinessId) ||
+        fromBusinessId.length < 1 ||
+        fromBusinessId.length > 50
+      ) {
         const error = new AppError(
           'Invalid from business ID format',
           400,
@@ -740,7 +682,7 @@ export class StaffController {
         toBusinessId
       );
 
-      await sendSuccessResponse(res, "success.staff.transferred", undefined, 200, req);
+      await this.responseHelper.success(res, 'success.staff.transferred', undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -750,10 +692,7 @@ export class StaffController {
    * Bulk invite staff members
    * POST /api/v1/staff/bulk-invite
    */
-  async bulkInviteStaff(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async bulkInviteStaff(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const { businessId, invitations } = req.body;
@@ -771,11 +710,7 @@ export class StaffController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -820,7 +755,12 @@ export class StaffController {
           return sendAppErrorResponse(res, error);
         }
 
-        if (!invitation.phoneNumber || !invitation.role || !invitation.firstName || !invitation.lastName) {
+        if (
+          !invitation.phoneNumber ||
+          !invitation.role ||
+          !invitation.firstName ||
+          !invitation.lastName
+        ) {
           const error = new AppError(
             `invitations[${i}] must have phoneNumber, role, firstName, and lastName`,
             400,
@@ -851,7 +791,11 @@ export class StaffController {
         }
 
         // Validate names
-        if (typeof invitation.firstName !== 'string' || invitation.firstName.trim().length < 1 || invitation.firstName.trim().length > 50) {
+        if (
+          typeof invitation.firstName !== 'string' ||
+          invitation.firstName.trim().length < 1 ||
+          invitation.firstName.trim().length > 50
+        ) {
           const error = new AppError(
             `invitations[${i}].firstName must be between 1 and 50 characters`,
             400,
@@ -860,7 +804,11 @@ export class StaffController {
           return sendAppErrorResponse(res, error);
         }
 
-        if (typeof invitation.lastName !== 'string' || invitation.lastName.trim().length < 1 || invitation.lastName.trim().length > 50) {
+        if (
+          typeof invitation.lastName !== 'string' ||
+          invitation.lastName.trim().length < 1 ||
+          invitation.lastName.trim().length > 50
+        ) {
           const error = new AppError(
             `invitations[${i}].lastName must be between 1 and 50 characters`,
             400,
@@ -870,7 +818,11 @@ export class StaffController {
         }
 
         // Validate permissions if provided
-        if (invitation.permissions && (!Array.isArray(invitation.permissions) || !invitation.permissions.every((p: string) => typeof p === 'string'))) {
+        if (
+          invitation.permissions &&
+          (!Array.isArray(invitation.permissions) ||
+            !invitation.permissions.every((p: string) => typeof p === 'string'))
+        ) {
           const error = new AppError(
             `invitations[${i}].permissions must be an array of strings`,
             400,
@@ -881,7 +833,7 @@ export class StaffController {
       }
 
       const results = [];
-      const context = createErrorContext(req, "BULK_STAFF_INVITATION");
+      const context = createErrorContext(req, 'BULK_STAFF_INVITATION');
 
       for (const invitation of invitations) {
         try {
@@ -905,12 +857,12 @@ export class StaffController {
           results.push({
             phoneNumber: invitation.phoneNumber,
             success: false,
-            message: error instanceof Error ? error.message : "Unknown error",
+            message: error instanceof Error ? error.message : 'Unknown error',
           });
         }
       }
 
-      await sendSuccessResponse(res, 'success.staff.bulkInvited', { results }, 200, req);
+      await this.responseHelper.success(res, 'success.staff.bulkInvited', { results }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -920,10 +872,7 @@ export class StaffController {
    * Get available staff roles
    * GET /api/v1/staff/roles
    */
-  async getAvailableRoles(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async getAvailableRoles(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const roles = Object.values(BusinessStaffRole).map((role) => ({
         value: role,
@@ -931,7 +880,7 @@ export class StaffController {
         description: this.getRoleDescription(role),
       }));
 
-      await sendSuccessResponse(res, 'success.staff.rolesRetrieved', { roles }, 200, req);
+      await this.responseHelper.success(res, 'success.staff.rolesRetrieved', { roles }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -939,23 +888,22 @@ export class StaffController {
 
   private getRoleDisplayName(role: BusinessStaffRole): string {
     const roleNames = {
-      [BusinessStaffRole.OWNER]: "Owner",
-      [BusinessStaffRole.MANAGER]: "Manager",
-      [BusinessStaffRole.STAFF]: "Staff Member",
-      [BusinessStaffRole.RECEPTIONIST]: "Receptionist",
+      [BusinessStaffRole.OWNER]: 'Owner',
+      [BusinessStaffRole.MANAGER]: 'Manager',
+      [BusinessStaffRole.STAFF]: 'Staff Member',
+      [BusinessStaffRole.RECEPTIONIST]: 'Receptionist',
     };
     return roleNames[role] || role;
   }
 
   private getRoleDescription(role: BusinessStaffRole): string {
     const roleDescriptions = {
-      [BusinessStaffRole.OWNER]: "Full access to all business features",
-      [BusinessStaffRole.MANAGER]: "Manage staff, services, and appointments",
-      [BusinessStaffRole.STAFF]: "Handle appointments and basic operations",
-      [BusinessStaffRole.RECEPTIONIST]:
-        "Manage appointments and customer interactions",
+      [BusinessStaffRole.OWNER]: 'Full access to all business features',
+      [BusinessStaffRole.MANAGER]: 'Manage staff, services, and appointments',
+      [BusinessStaffRole.STAFF]: 'Handle appointments and basic operations',
+      [BusinessStaffRole.RECEPTIONIST]: 'Manage appointments and customer interactions',
     };
-    return roleDescriptions[role] || "";
+    return roleDescriptions[role] || '';
   }
 
   /**
@@ -979,17 +927,13 @@ export class StaffController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const staff = await this.staffService.getPublicBusinessStaff(businessId);
 
-      await sendSuccessResponse(res, 'success.staff.publicRetrieved', { staff }, 200, req);
+      await this.responseHelper.success(res, 'success.staff.publicRetrieved', { staff }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }

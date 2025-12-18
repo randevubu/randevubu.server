@@ -5,15 +5,11 @@ import { AuthController } from '../../controllers/authController';
 import { UserBehaviorController } from '../../controllers/userBehaviorController';
 import { dynamicCache, semiDynamicCache } from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
-import { invalidateUserCache } from '../../middleware/cacheInvalidation';
 import { AuthMiddleware, rateLimitByUser } from '../../middleware/auth';
 import { validateBody, validateQuery } from '../../middleware/validation';
 import { requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
-import { 
-  updateProfileSchema,
-  changePhoneSchema
-} from '../../schemas/auth.schemas';
+import { updateProfileSchema, changePhoneSchema } from '../../schemas/auth.schemas';
 import {
   customerSearchSchema,
   banCustomerSchema,
@@ -22,23 +18,31 @@ import {
   addStrikeSchema,
   batchCustomerActionSchema,
   updateCustomerProfileSchema,
-  customerDetailQuerySchema
+  customerDetailQuerySchema,
 } from '../../schemas/customer.schemas';
 import prisma from '../../lib/prisma';
+import { ResponseHelper } from '../../utils/responseHelper';
 
 // Initialize dependencies
 const repositories = new RepositoryContainer(prisma);
 const services = new ServiceContainer(repositories, prisma);
+const responseHelper = new ResponseHelper(services.translationService);
 const authController = new AuthController(
   services.authService,
   services.phoneVerificationService,
   services.tokenService,
+  responseHelper,
   services.rbacService
 );
 const userBehaviorController = new UserBehaviorController(
-  services.userBehaviorService
+  services.userBehaviorService,
+  responseHelper
 );
-const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
+const authMiddleware = new AuthMiddleware(
+  repositories,
+  services.tokenService,
+  services.rbacService
+);
 
 export function createUserRoutes(): Router {
   const router = Router();
@@ -118,7 +122,6 @@ export function createUserRoutes(): Router {
    */
   router.patch(
     '/profile',
-    invalidateUserCache,
     authMiddleware.authenticate,
     rateLimitByUser(20, 15 * 60 * 1000),
     validateBody(updateProfileSchema),
@@ -162,7 +165,6 @@ export function createUserRoutes(): Router {
    */
   router.post(
     '/change-phone',
-    invalidateUserCache,
     authMiddleware.authenticate,
     rateLimitByUser(5, 15 * 60 * 1000),
     validateBody(changePhoneSchema),
@@ -194,7 +196,6 @@ export function createUserRoutes(): Router {
    */
   router.delete(
     '/account',
-    invalidateUserCache,
     authMiddleware.authenticate,
     rateLimitByUser(3, 15 * 60 * 1000),
     withAuth(authController.deleteAccount)
@@ -359,7 +360,7 @@ export function createUserRoutes(): Router {
   );
 
   // Customer Management Endpoints
-  
+
   /**
    * @swagger
    * /api/v1/users/customers:
@@ -611,7 +612,6 @@ export function createUserRoutes(): Router {
    */
   router.post(
     '/customers/:customerId/ban',
-    invalidateUserCache,
     authMiddleware.authenticate,
     requirePermission(PermissionName.BAN_USERS),
     validateBody(banCustomerSchema),
@@ -668,7 +668,6 @@ export function createUserRoutes(): Router {
    */
   router.post(
     '/customers/:customerId/unban',
-    invalidateUserCache,
     authMiddleware.authenticate,
     requirePermission(PermissionName.BAN_USERS),
     validateBody(unbanCustomerSchema),
@@ -731,7 +730,6 @@ export function createUserRoutes(): Router {
    */
   router.post(
     '/customers/:customerId/flag',
-    invalidateUserCache,
     authMiddleware.authenticate,
     requireAny([PermissionName.FLAG_USERS, PermissionName.MANAGE_USER_BEHAVIOR]),
     validateBody(flagCustomerSchema),
@@ -911,10 +909,10 @@ export function createUserRoutes(): Router {
     '/customers/batch-action',
     authMiddleware.authenticate,
     requireAny([
-      PermissionName.BAN_USERS, 
-      PermissionName.MANAGE_STRIKES, 
+      PermissionName.BAN_USERS,
+      PermissionName.MANAGE_STRIKES,
       PermissionName.FLAG_USERS,
-      PermissionName.MANAGE_USER_BEHAVIOR
+      PermissionName.MANAGE_USER_BEHAVIOR,
     ]),
     validateBody(batchCustomerActionSchema),
     rateLimitByUser(3, 60 * 1000), // Very limited for batch operations

@@ -1,31 +1,27 @@
-import { Response } from "express";
-import { ReportsService } from "../services/domain/reports";
-import { GuaranteedAuthRequest } from "../types/auth";
-import { BaseError } from "../types/errors";
-import { BusinessContextRequest } from "../types/request";
+import { Response } from 'express';
+import { ReportsService } from '../services/domain/reports';
+import { GuaranteedAuthRequest } from '../types/auth';
+import { BaseError } from '../types/errors';
+import { BusinessContextRequest } from '../types/request';
 
-import {
-  handleRouteError,
-  sendSuccessResponse,
-  createErrorContext,
-  sendAppErrorResponse,
-} from '../utils/responseUtils';
+import { handleRouteError, createErrorContext, sendAppErrorResponse } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
-import logger from "../utils/Logger/logger";
+import logger from '../utils/Logger/logger';
+import { ResponseHelper } from '../utils/responseHelper';
 type ReportsRequest = GuaranteedAuthRequest & BusinessContextRequest;
 
 export class ReportsController {
-  constructor(private reportsService: ReportsService) {}
+  constructor(
+    private reportsService: ReportsService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   /**
    * Get business overview report
    * GET /api/v1/reports/overview
    */
-  getBusinessOverview = async (
-    req: ReportsRequest,
-    res: Response
-  ): Promise<void> => {
+  getBusinessOverview = async (req: ReportsRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
@@ -45,12 +41,12 @@ export class ReportsController {
 
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(resolvedBusinessId) || resolvedBusinessId.length < 1 || resolvedBusinessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+      if (
+        !idRegex.test(resolvedBusinessId) ||
+        resolvedBusinessId.length < 1 ||
+        resolvedBusinessId.length > 50
+      ) {
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -69,20 +65,12 @@ export class ReportsController {
 
       // Validate date formats
       if (startDate && start && isNaN(start.getTime())) {
-        const error = new AppError(
-          'Invalid start date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid start date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       if (endDate && end && isNaN(end.getTime())) {
-        const error = new AppError(
-          'Invalid end date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid end date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -93,7 +81,7 @@ export class ReportsController {
         end
       );
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.report.businessOverviewRetrieved',
         report,
@@ -109,10 +97,7 @@ export class ReportsController {
    * Get revenue report
    * GET /api/v1/reports/revenue
    */
-  getRevenueReport = async (
-    req: ReportsRequest,
-    res: Response
-  ): Promise<void> => {
+  getRevenueReport = async (req: ReportsRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
@@ -132,12 +117,12 @@ export class ReportsController {
 
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(resolvedBusinessId) || resolvedBusinessId.length < 1 || resolvedBusinessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+      if (
+        !idRegex.test(resolvedBusinessId) ||
+        resolvedBusinessId.length < 1 ||
+        resolvedBusinessId.length > 50
+      ) {
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -156,20 +141,12 @@ export class ReportsController {
 
       // Validate date formats
       if (startDate && start && isNaN(start.getTime())) {
-        const error = new AppError(
-          'Invalid start date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid start date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       if (endDate && end && isNaN(end.getTime())) {
-        const error = new AppError(
-          'Invalid end date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid end date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -180,13 +157,7 @@ export class ReportsController {
         end
       );
 
-      await sendSuccessResponse(
-        res,
-        'success.report.revenueRetrieved',
-        report,
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.report.revenueRetrieved', report, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -196,10 +167,7 @@ export class ReportsController {
    * Get appointment report
    * GET /api/v1/reports/appointments
    */
-  getAppointmentReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getAppointmentReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
@@ -217,11 +185,7 @@ export class ReportsController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -240,31 +204,18 @@ export class ReportsController {
 
       // Validate date formats
       if (startDate && start && isNaN(start.getTime())) {
-        const error = new AppError(
-          'Invalid start date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid start date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       if (endDate && end && isNaN(end.getTime())) {
-        const error = new AppError(
-          'Invalid end date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid end date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
-      const report = await this.reportsService.getAppointmentReport(
-        userId,
-        businessId,
-        start,
-        end
-      );
+      const report = await this.reportsService.getAppointmentReport(userId, businessId, start, end);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.report.appointmentRetrieved',
         report,
@@ -280,10 +231,7 @@ export class ReportsController {
    * Get customer report
    * GET /api/v1/reports/customers
    */
-  getCustomerReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getCustomerReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
@@ -301,11 +249,7 @@ export class ReportsController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -324,37 +268,18 @@ export class ReportsController {
 
       // Validate date formats
       if (startDate && start && isNaN(start.getTime())) {
-        const error = new AppError(
-          'Invalid start date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid start date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       if (endDate && end && isNaN(end.getTime())) {
-        const error = new AppError(
-          'Invalid end date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid end date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
-      const report = await this.reportsService.getCustomerReport(
-        userId,
-        businessId,
-        start,
-        end
-      );
+      const report = await this.reportsService.getCustomerReport(userId, businessId, start, end);
 
-      await sendSuccessResponse(
-        res,
-        'success.report.customerRetrieved',
-        report,
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.report.customerRetrieved', report, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -364,10 +289,7 @@ export class ReportsController {
    * Get comprehensive dashboard report (combines multiple reports)
    * GET /api/v1/reports/dashboard
    */
-  getDashboardReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getDashboardReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
@@ -377,35 +299,15 @@ export class ReportsController {
 
       // Get all reports in parallel for better performance
       const [overview, revenue, appointments, customers] = await Promise.all([
-        this.reportsService.getBusinessOverview(
-          userId,
-          businessId as string,
-          start,
-          end
-        ),
-        this.reportsService.getRevenueReport(
-          userId,
-          businessId as string,
-          start,
-          end
-        ),
-        this.reportsService.getAppointmentReport(
-          userId,
-          businessId as string,
-          start,
-          end
-        ),
-        this.reportsService.getCustomerReport(
-          userId,
-          businessId as string,
-          start,
-          end
-        ),
+        this.reportsService.getBusinessOverview(userId, businessId as string, start, end),
+        this.reportsService.getRevenueReport(userId, businessId as string, start, end),
+        this.reportsService.getAppointmentReport(userId, businessId as string, start, end),
+        this.reportsService.getCustomerReport(userId, businessId as string, start, end),
       ]);
 
       res.json({
         success: true,
-        message: "Dashboard report retrieved successfully",
+        message: 'Dashboard report retrieved successfully',
         data: {
           overview,
           revenue,
@@ -427,14 +329,11 @@ export class ReportsController {
    * Export report as CSV
    * GET /api/v1/reports/export/{reportType}
    */
-  exportReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  exportReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { reportType } = req.params;
-      const { businessId, startDate, endDate, format = "json" } = req.query;
+      const { businessId, startDate, endDate, format = 'json' } = req.query;
 
       // Validate reportType parameter
       if (!reportType || typeof reportType !== 'string') {
@@ -446,7 +345,7 @@ export class ReportsController {
         return sendAppErrorResponse(res, error);
       }
 
-      const validReportTypes = ["overview", "revenue", "appointments", "customers"];
+      const validReportTypes = ['overview', 'revenue', 'appointments', 'customers'];
       if (!validReportTypes.includes(reportType)) {
         const error = new AppError(
           'Invalid report type. Must be one of: overview, revenue, appointments, customers',
@@ -469,11 +368,7 @@ export class ReportsController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -502,74 +397,46 @@ export class ReportsController {
 
       // Validate date formats
       if (startDate && start && isNaN(start.getTime())) {
-        const error = new AppError(
-          'Invalid start date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid start date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       if (endDate && end && isNaN(end.getTime())) {
-        const error = new AppError(
-          'Invalid end date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid end date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       let report: any;
       switch (reportType) {
-        case "overview":
-          report = await this.reportsService.getBusinessOverview(
-            userId,
-            businessId,
-            start,
-            end
-          );
+        case 'overview':
+          report = await this.reportsService.getBusinessOverview(userId, businessId, start, end);
           break;
-        case "revenue":
-          report = await this.reportsService.getRevenueReport(
-            userId,
-            businessId,
-            start,
-            end
-          );
+        case 'revenue':
+          report = await this.reportsService.getRevenueReport(userId, businessId, start, end);
           break;
-        case "appointments":
-          report = await this.reportsService.getAppointmentReport(
-            userId,
-            businessId,
-            start,
-            end
-          );
+        case 'appointments':
+          report = await this.reportsService.getAppointmentReport(userId, businessId, start, end);
           break;
-        case "customers":
-          report = await this.reportsService.getCustomerReport(
-            userId,
-            businessId,
-            start,
-            end
-          );
+        case 'customers':
+          report = await this.reportsService.getCustomerReport(userId, businessId, start, end);
           break;
       }
 
-      if (format === "csv") {
+      if (format === 'csv') {
         // Convert to CSV format
         const csv = this.convertToCSV(report, reportType);
 
-        res.setHeader("Content-Type", "text/csv");
+        res.setHeader('Content-Type', 'text/csv');
         res.setHeader(
-          "Content-Disposition",
+          'Content-Disposition',
           `attachment; filename="${reportType}-report-${
-            new Date().toISOString().split("T")[0]
+            new Date().toISOString().split('T')[0]
           }.csv"`
         );
         res.send(csv);
       } else {
         // Return JSON format
-        await sendSuccessResponse(
+        await this.responseHelper.success(
           res,
           'success.report.exported',
           {
@@ -590,10 +457,7 @@ export class ReportsController {
    * Get business comparison report (if user has multiple businesses)
    * GET /api/v1/reports/comparison
    */
-  getBusinessComparison = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getBusinessComparison = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { startDate, endDate } = req.query;
@@ -602,14 +466,14 @@ export class ReportsController {
       const end = endDate ? new Date(endDate as string) : undefined;
 
       // Get all user's businesses
-      const businesses = await this.reportsService["getUserBusinesses"](userId);
+      const businesses = await this.reportsService['getUserBusinesses'](userId);
 
       if (businesses.length < 2) {
         res.status(400).json({
           success: false,
           error: {
-            message: "Need at least 2 businesses for comparison",
-            code: "INSUFFICIENT_BUSINESSES",
+            message: 'Need at least 2 businesses for comparison',
+            code: 'INSUFFICIENT_BUSINESSES',
           },
         });
         return;
@@ -619,18 +483,13 @@ export class ReportsController {
       const comparisons = await Promise.all(
         businesses.map(async (business) => ({
           business,
-          overview: await this.reportsService.getBusinessOverview(
-            userId,
-            business.id,
-            start,
-            end
-          ),
+          overview: await this.reportsService.getBusinessOverview(userId, business.id, start, end),
         }))
       );
 
       res.json({
         success: true,
-        message: "Business comparison report retrieved successfully",
+        message: 'Business comparison report retrieved successfully',
         data: {
           comparisons,
           totalBusinesses: businesses.length,
@@ -647,7 +506,6 @@ export class ReportsController {
 
   // Helper methods
 
-
   private createRequestId(): string {
     return Math.random().toString(36).substring(2, 15);
   }
@@ -655,34 +513,34 @@ export class ReportsController {
   private convertToCSV(data: any, reportType: string): string {
     try {
       switch (reportType) {
-        case "overview":
+        case 'overview':
           return this.overviewToCSV(data);
-        case "revenue":
+        case 'revenue':
           return this.revenueToCSV(data);
-        case "appointments":
+        case 'appointments':
           return this.appointmentsToCSV(data);
-        case "customers":
+        case 'customers':
           return this.customersToCSV(data);
         default:
           return JSON.stringify(data, null, 2);
       }
     } catch (error) {
-      logger.error("CSV conversion error", { error, reportType });
-      return "Error converting to CSV format";
+      logger.error('CSV conversion error', { error, reportType });
+      return 'Error converting to CSV format';
     }
   }
 
   private overviewToCSV(data: any): string {
     const headers = [
-      "Business Name",
-      "Total Appointments",
-      "Completed",
-      "Canceled",
-      "No Show",
-      "Total Revenue",
-      "Average Value",
-      "Completion Rate %",
-      "Total Customers",
+      'Business Name',
+      'Total Appointments',
+      'Completed',
+      'Canceled',
+      'No Show',
+      'Total Revenue',
+      'Average Value',
+      'Completion Rate %',
+      'Total Customers',
     ];
 
     const row = [
@@ -697,44 +555,39 @@ export class ReportsController {
       data.totalCustomers,
     ];
 
-    return [headers.join(","), row.join(",")].join("\n");
+    return [headers.join(','), row.join(',')].join('\n');
   }
 
   private revenueToCSV(data: any): string {
-    const headers = ["Date", "Revenue", "Appointments"];
+    const headers = ['Date', 'Revenue', 'Appointments'];
     const rows = data.revenueByDay.map((day: any) =>
-      [day.date, day.revenue, day.appointments].join(",")
+      [day.date, day.revenue, day.appointments].join(',')
     );
 
-    return [headers.join(","), ...rows].join("\n");
+    return [headers.join(','), ...rows].join('\n');
   }
 
   private appointmentsToCSV(data: any): string {
-    const headers = ["Date", "Total", "Completed", "Canceled", "No Show"];
+    const headers = ['Date', 'Total', 'Completed', 'Canceled', 'No Show'];
     const rows = data.appointmentsByDay.map((day: any) =>
-      [day.date, day.total, day.completed, day.canceled, day.noShow].join(",")
+      [day.date, day.total, day.completed, day.canceled, day.noShow].join(',')
     );
 
-    return [headers.join(","), ...rows].join("\n");
+    return [headers.join(','), ...rows].join('\n');
   }
 
   private customersToCSV(data: any): string {
-    const headers = [
-      "Customer Name",
-      "Total Appointments",
-      "Total Spent",
-      "Reliability Score",
-    ];
+    const headers = ['Customer Name', 'Total Appointments', 'Total Spent', 'Reliability Score'];
     const rows = data.topCustomers.map((customer: any) =>
       [
         customer.customerName,
         customer.totalAppointments,
         customer.totalSpent,
         customer.reliabilityScore,
-      ].join(",")
+      ].join(',')
     );
 
-    return [headers.join(","), ...rows].join("\n");
+    return [headers.join(','), ...rows].join('\n');
   }
 
   // ADVANCED REPORTS
@@ -743,10 +596,7 @@ export class ReportsController {
    * Get financial report with profit/loss analysis
    * GET /api/v1/reports/financial
    */
-  getFinancialReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getFinancialReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
@@ -763,7 +613,7 @@ export class ReportsController {
 
       res.json({
         success: true,
-        message: "Financial report retrieved successfully",
+        message: 'Financial report retrieved successfully',
         data: report,
       });
     } catch (error) {
@@ -775,10 +625,7 @@ export class ReportsController {
    * Get operational efficiency report
    * GET /api/v1/reports/operational
    */
-  getOperationalReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getOperationalReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
@@ -795,7 +642,7 @@ export class ReportsController {
 
       res.json({
         success: true,
-        message: "Operational report retrieved successfully",
+        message: 'Operational report retrieved successfully',
         data: report,
       });
     } catch (error) {
@@ -807,10 +654,7 @@ export class ReportsController {
    * Get customer analytics report
    * GET /api/v1/reports/customer-analytics
    */
-  getCustomerAnalyticsReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getCustomerAnalyticsReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
@@ -827,7 +671,7 @@ export class ReportsController {
 
       res.json({
         success: true,
-        message: "Customer analytics report retrieved successfully",
+        message: 'Customer analytics report retrieved successfully',
         data: report,
       });
     } catch (error) {
@@ -839,13 +683,10 @@ export class ReportsController {
    * Get trends and forecasting report
    * GET /api/v1/reports/trends
    */
-  getTrendsAnalysisReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getTrendsAnalysisReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
-      const { businessId, timeframe = "12months" } = req.query;
+      const { businessId, timeframe = '12months' } = req.query;
 
       const report = await this.reportsService.getTrendsAnalysisReport(
         userId,
@@ -855,7 +696,7 @@ export class ReportsController {
 
       res.json({
         success: true,
-        message: "Trends analysis report retrieved successfully",
+        message: 'Trends analysis report retrieved successfully',
         data: report,
       });
     } catch (error) {
@@ -867,10 +708,7 @@ export class ReportsController {
    * Get quality metrics report
    * GET /api/v1/reports/quality
    */
-  getQualityMetricsReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getQualityMetricsReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
@@ -887,7 +725,7 @@ export class ReportsController {
 
       res.json({
         success: true,
-        message: "Quality metrics report retrieved successfully",
+        message: 'Quality metrics report retrieved successfully',
         data: report,
       });
     } catch (error) {
@@ -899,10 +737,7 @@ export class ReportsController {
    * Get comprehensive executive summary report
    * GET /api/v1/reports/executive-summary
    */
-  getExecutiveSummary = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getExecutiveSummary = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId, startDate, endDate } = req.query;
@@ -919,7 +754,7 @@ export class ReportsController {
 
       res.json({
         success: true,
-        message: "Executive summary retrieved successfully",
+        message: 'Executive summary retrieved successfully',
         data: {
           ...report,
           generatedAt: new Date().toISOString(),
@@ -938,37 +773,20 @@ export class ReportsController {
    * Get real-time dashboard metrics
    * GET /api/v1/reports/realtime
    */
-  getRealtimeMetrics = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getRealtimeMetrics = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const { businessId } = req.query;
 
       // Get today's data
       const today = new Date();
-      const startOfDay = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate()
-      );
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       const endOfDay = new Date(startOfDay);
       endOfDay.setDate(endOfDay.getDate() + 1);
 
       const [overview, revenue] = await Promise.all([
-        this.reportsService.getBusinessOverview(
-          userId,
-          businessId as string,
-          startOfDay,
-          endOfDay
-        ),
-        this.reportsService.getRevenueReport(
-          userId,
-          businessId as string,
-          startOfDay,
-          endOfDay
-        ),
+        this.reportsService.getBusinessOverview(userId, businessId as string, startOfDay, endOfDay),
+        this.reportsService.getRevenueReport(userId, businessId as string, startOfDay, endOfDay),
       ]);
 
       const nextAppointments = await this.reportsService.getUpcomingAppointments(
@@ -993,7 +811,7 @@ export class ReportsController {
 
       res.json({
         success: true,
-        message: "Real-time metrics retrieved successfully",
+        message: 'Real-time metrics retrieved successfully',
         data: metrics,
       });
     } catch (error) {
@@ -1005,10 +823,7 @@ export class ReportsController {
    * Generate custom report with advanced filters
    * POST /api/v1/reports/custom
    */
-  generateCustomReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  generateCustomReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const {
@@ -1018,7 +833,7 @@ export class ReportsController {
         endDate,
         filters,
         metrics,
-        groupBy = "day",
+        groupBy = 'day',
       } = req.body;
 
       // Validate required fields
@@ -1033,12 +848,12 @@ export class ReportsController {
 
       // Validate report type
       const validReportTypes = [
-        "overview",
-        "revenue",
-        "appointments",
-        "customers",
-        "financial",
-        "operational",
+        'overview',
+        'revenue',
+        'appointments',
+        'customers',
+        'financial',
+        'operational',
       ];
       if (!validReportTypes.includes(reportType)) {
         const error = new AppError(
@@ -1052,11 +867,7 @@ export class ReportsController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -1086,49 +897,26 @@ export class ReportsController {
 
       // Validate date formats
       if (startDate && start && isNaN(start.getTime())) {
-        const error = new AppError(
-          'Invalid start date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid start date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       if (endDate && end && isNaN(end.getTime())) {
-        const error = new AppError(
-          'Invalid end date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid end date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Get base report based on type
       let report: any;
       switch (reportType) {
-        case "financial":
-          report = await this.reportsService.getFinancialReport(
-            userId,
-            businessId,
-            start,
-            end
-          );
+        case 'financial':
+          report = await this.reportsService.getFinancialReport(userId, businessId, start, end);
           break;
-        case "operational":
-          report = await this.reportsService.getOperationalReport(
-            userId,
-            businessId,
-            start,
-            end
-          );
+        case 'operational':
+          report = await this.reportsService.getOperationalReport(userId, businessId, start, end);
           break;
         default:
-          report = await this.reportsService.getBusinessOverview(
-            userId,
-            businessId,
-            start,
-            end
-          );
+          report = await this.reportsService.getBusinessOverview(userId, businessId, start, end);
       }
 
       // Apply custom filters and metrics (simplified implementation)
@@ -1146,7 +934,7 @@ export class ReportsController {
         },
       };
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.report.customGenerated',
         customReport,
@@ -1162,50 +950,47 @@ export class ReportsController {
    * Get report templates for the user
    * GET /api/v1/reports/templates
    */
-  getReportTemplates = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  getReportTemplates = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
 
       // Mock templates - in production, these would be stored in database
       const templates = [
         {
-          id: "template_1",
-          name: "Monthly Business Summary",
-          description: "Comprehensive monthly overview with key metrics",
-          reportType: "overview",
+          id: 'template_1',
+          name: 'Monthly Business Summary',
+          description: 'Comprehensive monthly overview with key metrics',
+          reportType: 'overview',
           isDefault: true,
-          createdAt: "2024-01-15T10:00:00Z",
-          lastUsed: "2024-03-10T14:30:00Z",
+          createdAt: '2024-01-15T10:00:00Z',
+          lastUsed: '2024-03-10T14:30:00Z',
           usageCount: 25,
         },
         {
-          id: "template_2",
-          name: "Financial Performance Report",
-          description: "Detailed financial analysis with profit/loss breakdown",
-          reportType: "financial",
+          id: 'template_2',
+          name: 'Financial Performance Report',
+          description: 'Detailed financial analysis with profit/loss breakdown',
+          reportType: 'financial',
           isDefault: false,
-          createdAt: "2024-02-01T09:00:00Z",
-          lastUsed: "2024-03-08T11:15:00Z",
+          createdAt: '2024-02-01T09:00:00Z',
+          lastUsed: '2024-03-08T11:15:00Z',
           usageCount: 12,
         },
         {
-          id: "template_3",
-          name: "Customer Insights Dashboard",
-          description: "Customer behavior and analytics report",
-          reportType: "customers",
+          id: 'template_3',
+          name: 'Customer Insights Dashboard',
+          description: 'Customer behavior and analytics report',
+          reportType: 'customers',
           isDefault: false,
-          createdAt: "2024-02-15T16:00:00Z",
-          lastUsed: "2024-03-05T13:45:00Z",
+          createdAt: '2024-02-15T16:00:00Z',
+          lastUsed: '2024-03-05T13:45:00Z',
           usageCount: 8,
         },
       ];
 
       res.json({
         success: true,
-        message: "Report templates retrieved successfully",
+        message: 'Report templates retrieved successfully',
         data: {
           templates,
           totalTemplates: templates.length,
@@ -1221,10 +1006,7 @@ export class ReportsController {
    * Schedule recurring reports
    * POST /api/v1/reports/schedule
    */
-  scheduleReport = async (
-    req: GuaranteedAuthRequest,
-    res: Response
-  ): Promise<void> => {
+  scheduleReport = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user.id;
       const {
@@ -1234,7 +1016,7 @@ export class ReportsController {
         businessId,
         schedule,
         recipients,
-        format = "pdf",
+        format = 'pdf',
         filters,
       } = req.body;
 
@@ -1250,12 +1032,12 @@ export class ReportsController {
 
       // Validate report type
       const validReportTypes = [
-        "overview",
-        "revenue",
-        "appointments",
-        "customers",
-        "financial",
-        "operational",
+        'overview',
+        'revenue',
+        'appointments',
+        'customers',
+        'financial',
+        'operational',
       ];
       if (!validReportTypes.includes(reportType)) {
         const error = new AppError(
@@ -1339,7 +1121,7 @@ export class ReportsController {
         userId,
         reportType,
         name,
-        description: description || "",
+        description: description || '',
         businessId,
         schedule,
         recipients,
@@ -1351,13 +1133,7 @@ export class ReportsController {
         totalRuns: 0,
       };
 
-      await sendSuccessResponse(
-        res,
-        'success.report.scheduled',
-        scheduledReport,
-        201,
-        req
-      );
+      await this.responseHelper.success(res, 'success.report.scheduled', scheduledReport, 201, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1369,14 +1145,14 @@ export class ReportsController {
     const nextRun = new Date(now);
 
     switch (schedule.frequency) {
-      case "daily":
+      case 'daily':
         nextRun.setDate(nextRun.getDate() + 1);
         break;
-      case "weekly":
+      case 'weekly':
         const daysUntilTarget = (schedule.dayOfWeek - nextRun.getDay() + 7) % 7;
         nextRun.setDate(nextRun.getDate() + (daysUntilTarget || 7));
         break;
-      case "monthly":
+      case 'monthly':
         nextRun.setMonth(nextRun.getMonth() + 1);
         nextRun.setDate(schedule.dayOfMonth);
         break;

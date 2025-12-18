@@ -3,15 +3,11 @@ import { PaymentService, CreatePaymentRequest } from '../services/domain/payment
 import { SubscriptionService } from '../services/domain/subscription/subscriptionService';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { z } from 'zod';
-import {
-  handleRouteError,
-  sendSuccessResponse,
-  createErrorContext,
-  sendAppErrorResponse,
-} from '../utils/responseUtils';
+import { handleRouteError, createErrorContext, sendAppErrorResponse } from '../utils/responseUtils';
+import { ResponseHelper } from '../utils/responseHelper';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
-import logger from "../utils/Logger/logger";
+import logger from '../utils/Logger/logger';
 const createSubscriptionPaymentSchema = z.object({
   planId: z.string(),
   card: z.object({
@@ -19,31 +15,34 @@ const createSubscriptionPaymentSchema = z.object({
     cardNumber: z.string().regex(/^\d{16}$/),
     expireMonth: z.string().regex(/^(0[1-9]|1[0-2])$/),
     expireYear: z.string().regex(/^\d{4}$/),
-    cvc: z.string().regex(/^\d{3,4}$/)
+    cvc: z.string().regex(/^\d{3,4}$/),
   }),
-  buyer: z.object({
-    name: z.string().min(1),
-    surname: z.string().min(1),
-    email: z.string().email(),
-    phone: z.string().optional(),
-    address: z.string().min(1),
-    city: z.string().min(1),
-    country: z.string().min(1),
-    zipCode: z.string().optional()
-  }).optional(),
+  buyer: z
+    .object({
+      name: z.string().min(1),
+      surname: z.string().min(1),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      address: z.string().min(1),
+      city: z.string().min(1),
+      country: z.string().min(1),
+      zipCode: z.string().optional(),
+    })
+    .optional(),
   installment: z.string().default('1'),
-  discountCode: z.string().optional()
+  discountCode: z.string().optional(),
 });
 
 const refundPaymentSchema = z.object({
   amount: z.number().positive().optional(),
-  reason: z.string().optional()
+  reason: z.string().optional(),
 });
 
 export class PaymentController {
   constructor(
     private paymentService: PaymentService,
-    private subscriptionService: SubscriptionService
+    private subscriptionService: SubscriptionService,
+    private responseHelper: ResponseHelper
   ) {}
 
   async createSubscriptionPayment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
@@ -64,11 +63,7 @@ export class PaymentController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -83,22 +78,22 @@ export class PaymentController {
             name: 'Customer',
             surname: 'User',
             email: `user_${userId}@randevubu.com`,
-            gsmNumber: req.user.phoneNumber
+            gsmNumber: req.user.phoneNumber,
           },
           installment: validatedData.installment,
-          discountCode: validatedData.discountCode
+          discountCode: validatedData.discountCode,
         }
       );
 
       if (result.success) {
-        await sendSuccessResponse(
+        await this.responseHelper.success(
           res,
           'success.payment.subscriptionCreated',
           {
             subscriptionId: result.subscriptionId,
             paymentId: result.paymentId,
             message: result.message,
-            discountApplied: result.discountApplied
+            discountApplied: result.discountApplied,
           },
           201,
           req
@@ -113,11 +108,7 @@ export class PaymentController {
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const error = new AppError(
-          'Invalid request data',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid request data', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       } else {
         handleRouteError(error, req, res);
@@ -143,11 +134,7 @@ export class PaymentController {
       // Validate paymentId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(paymentId) || paymentId.length < 1 || paymentId.length > 50) {
-        const error = new AppError(
-          'Invalid payment ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid payment ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -160,12 +147,12 @@ export class PaymentController {
       );
 
       if (result.success) {
-        await sendSuccessResponse(
+        await this.responseHelper.success(
           res,
           'success.payment.refunded',
           {
             refundId: result.refundId,
-            message: result.message
+            message: result.message,
           },
           200,
           req
@@ -180,11 +167,7 @@ export class PaymentController {
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const error = new AppError(
-          'Invalid request data',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid request data', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       } else {
         handleRouteError(error, req, res);
@@ -211,11 +194,7 @@ export class PaymentController {
       // Validate paymentId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(paymentId) || paymentId.length < 1 || paymentId.length > 50) {
-        const error = new AppError(
-          'Invalid payment ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid payment ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -232,13 +211,7 @@ export class PaymentController {
       const result = await this.paymentService.cancelPayment(paymentId, reason);
 
       if (result.success) {
-        await sendSuccessResponse(
-          res,
-          'success.payment.cancelled',
-          undefined,
-          200,
-          req
-        );
+        await this.responseHelper.success(res, 'success.payment.cancelled', undefined, 200, req);
       } else {
         const error = new AppError(
           result.error || 'Payment cancellation failed',
@@ -270,18 +243,14 @@ export class PaymentController {
       // Validate paymentId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(paymentId) || paymentId.length < 1 || paymentId.length > 50) {
-        const error = new AppError(
-          'Invalid payment ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid payment ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const result = await this.paymentService.retrievePayment(paymentId);
 
       if (result.success) {
-        await sendSuccessResponse(
+        await this.responseHelper.success(
           res,
           'success.payment.retrieved',
           result.payment,
@@ -319,18 +288,14 @@ export class PaymentController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const result = await this.paymentService.getSubscriptionWithPayments(businessId);
 
       if (result.success) {
-        await sendSuccessResponse(
+        await this.responseHelper.success(
           res,
           'success.payment.historyRetrieved',
           result.subscription
@@ -352,7 +317,7 @@ export class PaymentController {
     try {
       const testCards = this.paymentService.getTestCards();
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.payment.testCardsRetrieved',
         {
@@ -360,8 +325,8 @@ export class PaymentController {
           usage: {
             success: 'Use success card for successful test payments',
             failure: 'Use failure card to test payment failures',
-            threeDsSuccess: 'Use for 3DS authentication test'
-          }
+            threeDsSuccess: 'Use for 3DS authentication test',
+          },
         },
         200,
         req
@@ -375,12 +340,12 @@ export class PaymentController {
     try {
       const plans = await this.subscriptionService.getAllPlans();
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-          'success.payment.subscriptionPlansRetrieved',
-          plans,
-          200,
-          req
+        'success.payment.subscriptionPlansRetrieved',
+        plans,
+        200,
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
@@ -393,17 +358,13 @@ export class PaymentController {
 
       // Validate webhook data
       if (!iyzicoData || typeof iyzicoData !== 'object') {
-        const error = new AppError(
-          'Invalid webhook data',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid webhook data', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       if (iyzicoData.status === 'success') {
         const paymentId = iyzicoData.paymentId;
-        
+
         if (!paymentId) {
           const error = new AppError(
             'Payment ID is required in webhook data',
@@ -412,9 +373,9 @@ export class PaymentController {
           );
           return sendAppErrorResponse(res, error);
         }
-        
+
         const payment = await this.paymentService.retrievePayment(paymentId);
-        
+
         if (payment.success) {
           // Process successful payment webhook
           // Add your webhook processing logic here
@@ -424,12 +385,12 @@ export class PaymentController {
         }
       }
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-          'success.payment.webhookProcessed',
-          { status: 'success' },
-          200,
-          req
+        'success.payment.webhookProcessed',
+        { status: 'success' },
+        200,
+        req
       );
     } catch (error) {
       logger.error('Webhook processing error:', error);

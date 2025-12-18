@@ -1,6 +1,7 @@
-import { cacheManager } from '../../lib/redis/redis';
-  import { CacheStampedeProtection } from '../../lib/cache/cacheStampede';
-import Logger from '../../utils/Logger/logger';
+import type { CacheManager } from '../../lib/redis/redis';
+import type { ILogger } from '../../utils/Logger/types';
+import client from 'prom-client';
+import { register } from '../../utils/metrics';
 /**
  * Production-Ready Cache Service (Netflix/Airbnb/Twitter Pattern)
  *
@@ -10,7 +11,49 @@ import Logger from '../../utils/Logger/logger';
  * - Shared cache keys (high hit rate)
  * - Proper TTL values based on data volatility
  * - Cache metrics and monitoring
+ * - Dependency injection for testability
+ * - Prometheus metrics integration
  */
+
+// ============================================================================
+// Prometheus Metrics
+// ============================================================================
+
+const cacheHitCounter = new client.Counter({
+  name: 'randevubu_cache_hits_total',
+  help: 'Total number of cache hits',
+  labelNames: ['prefix'],
+  registers: [register],
+});
+
+const cacheMissCounter = new client.Counter({
+  name: 'randevubu_cache_misses_total',
+  help: 'Total number of cache misses',
+  labelNames: ['prefix'],
+  registers: [register],
+});
+
+const cacheErrorCounter = new client.Counter({
+  name: 'randevubu_cache_errors_total',
+  help: 'Total number of cache errors',
+  labelNames: ['operation', 'prefix'],
+  registers: [register],
+});
+
+const cacheOperationDuration = new client.Histogram({
+  name: 'randevubu_cache_operation_duration_seconds',
+  help: 'Duration of cache operations in seconds',
+  labelNames: ['operation', 'prefix'],
+  buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
+  registers: [register],
+});
+
+const cacheInvalidationCounter = new client.Counter({
+  name: 'randevubu_cache_invalidations_total',
+  help: 'Total number of cache invalidations',
+  labelNames: ['type'],
+  registers: [register],
+});
 
 // Cache version - increment when schema changes
 const CACHE_VERSION = 'v2';
@@ -18,27 +61,27 @@ const CACHE_VERSION = 'v2';
 // TTL Constants (Netflix-style, based on data volatility)
 export const CacheTTL = {
   // Static data (changes rarely)
-  STATIC: 24 * 60 * 60,           // 24 hours - business types, categories
+  STATIC: 24 * 60 * 60, // 24 hours - business types, categories
 
   // Semi-static data (changes occasionally)
-  SEMI_STATIC: 60 * 60,           // 1 hour - services, business info
+  SEMI_STATIC: 60 * 60, // 1 hour - services, business info
 
   // Dynamic data (changes frequently)
-  DYNAMIC: 5 * 60,                // 5 minutes - appointments (READ operations)
-  DYNAMIC_SHORT: 60,              // 1 minute - appointments (after WRITE)
+  DYNAMIC: 5 * 60, // 5 minutes - appointments (READ operations)
+  DYNAMIC_SHORT: 60, // 1 minute - appointments (after WRITE)
 
   // Real-time data (changes constantly)
-  REALTIME: 30,                   // 30 seconds - monitor displays
-  REALTIME_SHORT: 10,             // 10 seconds - live queues
+  REALTIME: 30, // 30 seconds - monitor displays
+  REALTIME_SHORT: 10, // 10 seconds - live queues
 
   // User session data
-  SESSION: 15 * 60,               // 15 minutes
+  SESSION: 15 * 60, // 15 minutes
 
   // Search results
-  SEARCH: 10 * 60,                // 10 minutes
+  SEARCH: 10 * 60, // 10 minutes
 
   // Analytics/Stats
-  STATS: 30 * 60,                 // 30 minutes
+  STATS: 30 * 60, // 30 minutes
 } as const;
 
 // Cache key prefixes
@@ -58,10 +101,25 @@ export interface CacheOptions {
   ttl?: number;
   stampedeProtection?: boolean;
   staleWhileRevalidate?: boolean;
-  shared?: boolean;  // If true, don't include userId in key
+  shared?: boolean; // If true, don't include userId in key
 }
 
 export class CacheService {
+  constructor(
+    private readonly cacheManager: CacheManager,
+    private readonly logger: ILogger,
+    private readonly stampedeProtection: typeof import('../../lib/cache/cacheStampede').CacheStampedeProtection
+  ) {}
+
+  /**
+   * Add jitter to TTL to prevent thundering herd
+   * (Google/Facebook pattern)
+   */
+  private addJitter(ttl: number, jitterPercent: number = 10): number {
+    const jitter = ttl * (jitterPercent / 100);
+    return Math.floor(ttl + Math.random() * jitter - jitter / 2);
+  }
+
   /**
    * Sanitize cache key component to prevent injection attacks
    * Removes dangerous characters and limits length
@@ -99,13 +157,13 @@ export class CacheService {
       /\.\./, // Path traversal attempts
     ];
 
-    return !suspiciousPatterns.some(pattern => pattern.test(value));
+    return !suspiciousPatterns.some((pattern) => pattern.test(value));
   }
 
   /**
    * Generate versioned cache key with input validation
    * Format: v{version}:{prefix}:{scope}:{identifier}:{queryHash}
-   * 
+   *
    * All inputs are validated and sanitized to prevent cache key injection attacks
    */
   generateKey(
@@ -120,23 +178,23 @@ export class CacheService {
   ): string {
     // Validate and sanitize prefix
     if (!prefix || typeof prefix !== 'string') {
-      Logger.warn('Invalid prefix provided to generateKey, using fallback');
+      this.logger.warn('Invalid prefix provided to generateKey, using fallback');
       prefix = 'unknown';
     }
     prefix = this.sanitizeKeyComponent(prefix, 50);
     if (!this.validateKeyComponent(prefix)) {
-      Logger.warn('Suspicious prefix detected in generateKey, using fallback');
+      this.logger.warn('Suspicious prefix detected in generateKey, using fallback');
       prefix = 'unknown';
     }
 
     // Validate and sanitize identifier
     if (!identifier || typeof identifier !== 'string') {
-      Logger.warn('Invalid identifier provided to generateKey');
+      this.logger.warn('Invalid identifier provided to generateKey');
       identifier = 'unknown';
     }
     identifier = this.sanitizeKeyComponent(identifier, 255);
     if (!this.validateKeyComponent(identifier)) {
-      Logger.warn('Suspicious identifier detected in generateKey');
+      this.logger.warn('Suspicious identifier detected in generateKey');
       identifier = 'unknown';
     }
 
@@ -148,7 +206,7 @@ export class CacheService {
       if (sanitizedUserId && this.validateKeyComponent(sanitizedUserId)) {
         parts.push(`user:${sanitizedUserId}`);
       } else {
-        Logger.warn('Invalid or suspicious userId in generateKey, skipping user scope');
+        this.logger.warn('Invalid or suspicious userId in generateKey, skipping user scope');
       }
     }
 
@@ -157,7 +215,9 @@ export class CacheService {
       if (sanitizedBusinessId && this.validateKeyComponent(sanitizedBusinessId)) {
         parts.push(`biz:${sanitizedBusinessId}`);
       } else {
-        Logger.warn('Invalid or suspicious businessId in generateKey, skipping business scope');
+        this.logger.warn(
+          'Invalid or suspicious businessId in generateKey, skipping business scope'
+        );
       }
     }
 
@@ -169,7 +229,7 @@ export class CacheService {
       if (sanitizedHash && /^[a-f0-9]+$/i.test(sanitizedHash)) {
         parts.push(sanitizedHash);
       } else {
-        Logger.warn('Invalid queryHash format in generateKey, skipping');
+        this.logger.warn('Invalid queryHash format in generateKey, skipping');
       }
     }
 
@@ -177,7 +237,7 @@ export class CacheService {
   }
 
   /**
-   * Get from cache with stampede protection
+   * Get from cache with stampede protection and metrics
    */
   async get<T>(
     key: string,
@@ -190,38 +250,66 @@ export class CacheService {
       staleWhileRevalidate = false,
     } = options;
 
-    if (stampedeProtection) {
-      return await CacheStampedeProtection.get(
-        key,
-        fetchFunction,
-        ttl,
-        { staleWhileRevalidate }
-      );
-    }
+    // Extract prefix from key for metrics
+    const prefix = key.split(':')[1] || 'unknown';
+    const end = cacheOperationDuration.startTimer({ operation: 'get', prefix });
 
-    // Simple cache without stampede protection
-    const cached = await cacheManager.get<T>(key);
-    if (cached) {
-      return cached;
-    }
+    try {
+      if (stampedeProtection) {
+        const result = await this.stampedeProtection.get(key, fetchFunction, ttl, {
+          staleWhileRevalidate,
+        });
 
-    const data = await fetchFunction();
-    await cacheManager.set(key, data, ttl);
-    return data;
+        if (result !== null) {
+          cacheHitCounter.inc({ prefix });
+        } else {
+          cacheMissCounter.inc({ prefix });
+        }
+
+        end();
+        return result;
+      }
+
+      // Simple cache without stampede protection
+      const cached = await this.cacheManager.get<T>(key);
+      if (cached) {
+        cacheHitCounter.inc({ prefix });
+        end();
+        return cached;
+      }
+
+      cacheMissCounter.inc({ prefix });
+      const data = await fetchFunction();
+      await this.set(key, data, ttl, prefix);
+      end();
+      return data;
+    } catch (error) {
+      cacheErrorCounter.inc({ operation: 'get', prefix });
+      this.logger.error(`Cache get error for key ${key}:`, error);
+      end();
+      throw error;
+    }
   }
 
   /**
-   * Set cache value
+   * Set cache value with TTL jitter
    */
   async set<T>(
     key: string,
     value: T,
-    ttl: number = CacheTTL.DYNAMIC
+    ttl: number = CacheTTL.DYNAMIC,
+    prefix: string = 'unknown'
   ): Promise<boolean> {
+    const end = cacheOperationDuration.startTimer({ operation: 'set', prefix });
     try {
-      return await cacheManager.set(key, value, ttl);
+      const ttlWithJitter = this.addJitter(ttl);
+      const result = await this.cacheManager.set(key, value, ttlWithJitter);
+      end();
+      return result;
     } catch (error) {
-      Logger.error(`Cache set error for key ${key}:`, error);
+      cacheErrorCounter.inc({ operation: 'set', prefix });
+      this.logger.error(`Cache set error for key ${key}:`, error);
+      end();
       return false;
     }
   }
@@ -231,9 +319,9 @@ export class CacheService {
    */
   async delete(key: string): Promise<boolean> {
     try {
-      return await cacheManager.del(key);
+      return await this.cacheManager.del(key);
     } catch (error) {
-      Logger.error(`Cache delete error for key ${key}:`, error);
+      this.logger.error(`Cache delete error for key ${key}:`, error);
       return false;
     }
   }
@@ -243,23 +331,21 @@ export class CacheService {
    */
   async deletePattern(pattern: string): Promise<number> {
     try {
-      return await cacheManager.delPattern(pattern);
+      return await this.cacheManager.delPattern(pattern);
     } catch (error) {
-      Logger.error(`Cache delete pattern error for ${pattern}:`, error);
+      this.logger.error(`Cache delete pattern error for ${pattern}:`, error);
       return 0;
     }
   }
 
   /**
    * Invalidate business cache (all related data)
+   * @param businessId - Required business ID
+   * @param userId - Optional user ID for logging context
    */
-  async invalidateBusiness(businessId?: string, userId?: string): Promise<number> {
-    if (!businessId) {
-      Logger.warn('invalidateBusiness called without businessId');
-      return 0;
-    }
-
-    Logger.info(`Invalidating cache for business: ${businessId}`);
+  async invalidateBusiness(businessId: string, userId?: string): Promise<number> {
+    this.logger.info(`Invalidating cache for business: ${businessId}`);
+    cacheInvalidationCounter.inc({ type: 'business' });
 
     try {
       // Delete all business-related cache
@@ -272,63 +358,93 @@ export class CacheService {
       ]);
 
       const total = totalDeleted.reduce((sum, count) => sum + count, 0);
-      Logger.info(`Invalidated ${total} business cache entries`, { businessId, userId });
+      this.logger.info(`Invalidated ${total} business cache entries`, { businessId, userId });
       return total;
     } catch (error) {
-      Logger.error('Failed to invalidate business cache:', error);
+      this.logger.error('Failed to invalidate business cache:', error);
       return 0;
     }
   }
 
   /**
    * Invalidate service cache
+   * @param serviceId - Required service ID
+   * @param businessId - Optional business ID for broader invalidation
+   * @param userId - Optional user ID for logging context
    */
-  async invalidateService(serviceId?: string, businessId?: string, userId?: string): Promise<number> {
-    Logger.info(`Invalidating cache for service: ${serviceId}`, { businessId });
+  async invalidateService(
+    serviceId: string,
+    businessId?: string,
+    userId?: string
+  ): Promise<number> {
+    this.logger.info(`Invalidating cache for service: ${serviceId}`, { businessId });
+    cacheInvalidationCounter.inc({ type: 'service' });
 
     try {
       let totalDeleted = 0;
 
-      if (serviceId) {
-        totalDeleted += await this.deletePattern(`${CACHE_VERSION}:${CachePrefix.SERVICE}:*${serviceId}*`);
-      }
+      totalDeleted += await this.deletePattern(
+        `${CACHE_VERSION}:${CachePrefix.SERVICE}:*${serviceId}*`
+      );
 
       // Also invalidate business services cache
       if (businessId) {
-        totalDeleted += await this.deletePattern(`${CACHE_VERSION}:${CachePrefix.SERVICE}:*biz:${businessId}*`);
+        totalDeleted += await this.deletePattern(
+          `${CACHE_VERSION}:${CachePrefix.SERVICE}:*biz:${businessId}*`
+        );
       }
 
-      Logger.info(`Invalidated ${totalDeleted} service cache entries`, { serviceId, businessId, userId });
+      this.logger.info(`Invalidated ${totalDeleted} service cache entries`, {
+        serviceId,
+        businessId,
+        userId,
+      });
       return totalDeleted;
     } catch (error) {
-      Logger.error('Failed to invalidate service cache:', error);
+      this.logger.error('Failed to invalidate service cache:', error);
       return 0;
     }
   }
 
   /**
    * Invalidate appointment cache
+   * @param appointmentId - Required appointment ID
+   * @param businessId - Optional business ID for broader invalidation
+   * @param userId - Optional user ID for logging context
    */
-  async invalidateAppointment(appointmentId?: string, businessId?: string, userId?: string): Promise<number> {
-    Logger.info(`Invalidating cache for appointment: ${appointmentId}`, { businessId });
+  async invalidateAppointment(
+    appointmentId: string,
+    businessId?: string,
+    userId?: string
+  ): Promise<number> {
+    this.logger.info(`Invalidating cache for appointment: ${appointmentId}`, { businessId });
+    cacheInvalidationCounter.inc({ type: 'appointment' });
 
     try {
       let totalDeleted = 0;
 
-      if (appointmentId) {
-        totalDeleted += await this.deletePattern(`${CACHE_VERSION}:${CachePrefix.APPOINTMENT}:*${appointmentId}*`);
-      }
+      totalDeleted += await this.deletePattern(
+        `${CACHE_VERSION}:${CachePrefix.APPOINTMENT}:*${appointmentId}*`
+      );
 
       // Invalidate business appointments cache
       if (businessId) {
-        totalDeleted += await this.deletePattern(`${CACHE_VERSION}:${CachePrefix.APPOINTMENT}:*biz:${businessId}*`);
-        totalDeleted += await this.deletePattern(`${CACHE_VERSION}:${CachePrefix.MONITOR}:*${businessId}*`);
+        totalDeleted += await this.deletePattern(
+          `${CACHE_VERSION}:${CachePrefix.APPOINTMENT}:*biz:${businessId}*`
+        );
+        totalDeleted += await this.deletePattern(
+          `${CACHE_VERSION}:${CachePrefix.MONITOR}:*${businessId}*`
+        );
       }
 
-      Logger.info(`Invalidated ${totalDeleted} appointment cache entries`, { appointmentId, businessId, userId });
+      this.logger.info(`Invalidated ${totalDeleted} appointment cache entries`, {
+        appointmentId,
+        businessId,
+        userId,
+      });
       return totalDeleted;
     } catch (error) {
-      Logger.error('Failed to invalidate appointment cache:', error);
+      this.logger.error('Failed to invalidate appointment cache:', error);
       return 0;
     }
   }
@@ -337,14 +453,15 @@ export class CacheService {
    * Invalidate user cache
    */
   async invalidateUser(userId: string): Promise<number> {
-    Logger.info(`Invalidating cache for user: ${userId}`);
+    this.logger.info(`Invalidating cache for user: ${userId}`);
+    cacheInvalidationCounter.inc({ type: 'user' });
 
     try {
       const totalDeleted = await this.deletePattern(`${CACHE_VERSION}:*user:${userId}*`);
-      Logger.info(`Invalidated ${totalDeleted} user cache entries`, { userId });
+      this.logger.info(`Invalidated ${totalDeleted} user cache entries`, { userId });
       return totalDeleted;
     } catch (error) {
-      Logger.error('Failed to invalidate user cache:', error);
+      this.logger.error('Failed to invalidate user cache:', error);
       return 0;
     }
   }
@@ -353,14 +470,14 @@ export class CacheService {
    * Clear all cache (DANGEROUS!)
    */
   async clearAll(): Promise<number> {
-    Logger.warn('⚠️ Clearing ALL cache - this is destructive!');
+    this.logger.warn('⚠️ Clearing ALL cache - this is destructive!');
 
     try {
       const deleted = await this.deletePattern(`${CACHE_VERSION}:*`);
-      Logger.warn(`Cleared ${deleted} cache entries`);
+      this.logger.warn(`Cleared ${deleted} cache entries`);
       return deleted;
     } catch (error) {
-      Logger.error('Failed to clear all cache:', error);
+      this.logger.error('Failed to clear all cache:', error);
       return 0;
     }
   }
@@ -374,7 +491,7 @@ export class CacheService {
     popularServices?: unknown[];
     featuredBusinesses?: unknown[];
   }): Promise<void> {
-    Logger.info('Warming cache with frequently accessed data');
+    this.logger.info('Warming cache with frequently accessed data');
 
     const promises: Promise<boolean>[] = [];
 
@@ -394,7 +511,7 @@ export class CacheService {
     }
 
     await Promise.all(promises);
-    Logger.info('Cache warming completed');
+    this.logger.info('Cache warming completed');
   }
 
   /**
@@ -415,12 +532,13 @@ export class CacheService {
       keys: string[];
     };
   }> {
-    const redisStats = await cacheManager.getStats();
-    const lockStats = await CacheStampedeProtection.getLockStats();
+    const redisStats = await this.cacheManager.getStats();
+    const lockStats = await this.stampedeProtection.getLockStats();
 
-    const hitRate = redisStats.hits + redisStats.misses > 0
-      ? (redisStats.hits / (redisStats.hits + redisStats.misses)) * 100
-      : 0;
+    const hitRate =
+      redisStats.hits + redisStats.misses > 0
+        ? (redisStats.hits / (redisStats.hits + redisStats.misses)) * 100
+        : 0;
 
     return {
       redis: {
@@ -439,9 +557,9 @@ export class CacheService {
    */
   async getStats() {
     try {
-      return await cacheManager.getStats();
+      return await this.cacheManager.getStats();
     } catch (error) {
-      Logger.error('Failed to get cache stats:', error);
+      this.logger.error('Failed to get cache stats:', error);
       return {
         connected: false,
         memory: 'unknown',
@@ -459,9 +577,9 @@ export class CacheService {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      return await cacheManager.healthCheck();
+      return await this.cacheManager.healthCheck();
     } catch (error) {
-      Logger.error('Cache health check failed:', error);
+      this.logger.error('Cache health check failed:', error);
       return false;
     }
   }
@@ -486,5 +604,4 @@ export class CacheService {
   }
 }
 
-// Export singleton instance
-export const cacheService = new CacheService();
+// No singleton export - use ServiceContainer for instantiation

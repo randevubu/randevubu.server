@@ -1,14 +1,19 @@
 import { Router } from 'express';
 import { BusinessController } from '../../controllers/businessController';
 import { SubscriptionController } from '../../controllers/subscriptionController';
-import { semiDynamicCache, dynamicCache, staticCache, businessCache } from '../../middleware/cacheMiddleware';
+import {
+  semiDynamicCache,
+  dynamicCache,
+  staticCache,
+  businessCache,
+} from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
-import { invalidateBusinessCache, invalidateServiceCache } from '../../middleware/cacheInvalidation';
+import { initializeCacheInvalidationMiddleware } from '../../middleware/cacheInvalidation';
 import {
   allowEmptyBusinessContext,
   attachBusinessContext,
   requireBusinessAccess,
-  requireSpecificBusinessAccess
+  requireSpecificBusinessAccess,
 } from '../../middleware/attachBusinessContext';
 import { requireAny, requireAuth, requirePermission, withAuth } from '../../middleware/authUtils';
 import { handleMulterError, uploadSingleImage } from '../../middleware/multer';
@@ -22,17 +27,21 @@ import {
   updateBusinessReservationSettingsSchema,
   updateBusinessStaffPrivacySettingsSchema,
   updateBusinessCancellationPolicySchema,
-  updateBusinessCustomerManagementSchema
+  updateBusinessCustomerManagementSchema,
 } from '../../schemas/business.schemas';
 import {
   getBusinessStaffQuerySchema,
   inviteStaffSchema,
-  verifyStaffInvitationSchema
+  verifyStaffInvitationSchema,
 } from '../../schemas/staff.schemas';
 import { PermissionName } from '../../types/auth';
 import { AuthenticatedRequest } from '../../types/request';
-import logger from "../../utils/Logger/logger";
-export function createBusinessRoutes(businessController: BusinessController, subscriptionController: SubscriptionController): Router {
+import logger from '../../utils/Logger/logger';
+export function createBusinessRoutes(
+  businessController: BusinessController,
+  subscriptionController: SubscriptionController,
+  cacheInvalidation?: any
+): Router {
   const router = Router();
 
   // Apply cache monitoring to all routes
@@ -174,8 +183,12 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *                   type: string
    *                   example: "Failed to retrieve businesses"
    */
-  router.get('/', semiDynamicCache, businessController.getAllBusinessesMinimalDetails.bind(businessController));
-  
+  router.get(
+    '/',
+    semiDynamicCache,
+    businessController.getAllBusinessesMinimalDetails.bind(businessController)
+  );
+
   /**
    * @swagger
    * /api/v1/businesses/search:
@@ -186,7 +199,11 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       200:
    *         description: Search results
    */
-  router.get('/search', semiDynamicCache, businessController.searchBusinesses.bind(businessController));
+  router.get(
+    '/search',
+    semiDynamicCache,
+    businessController.searchBusinesses.bind(businessController)
+  );
   /**
    * @swagger
    * /api/v1/businesses/nearby:
@@ -197,7 +214,11 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       200:
    *         description: Nearby businesses
    */
-  router.get('/nearby', semiDynamicCache, businessController.getNearbyBusinesses.bind(businessController));
+  router.get(
+    '/nearby',
+    semiDynamicCache,
+    businessController.getNearbyBusinesses.bind(businessController)
+  );
   /**
    * @swagger
    * /api/v1/businesses/slug/{slug}:
@@ -216,7 +237,11 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       404:
    *         description: Not found
    */
-  router.get('/slug/:slug', semiDynamicCache, businessController.getBusinessBySlug.bind(businessController));
+  router.get(
+    '/slug/:slug',
+    semiDynamicCache,
+    businessController.getBusinessBySlug.bind(businessController)
+  );
   /**
    * @swagger
    * /api/v1/businesses/types/{businessTypeId}:
@@ -233,7 +258,11 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       200:
    *         description: List of businesses
    */
-  router.get('/types/:businessTypeId', semiDynamicCache, businessController.getBusinessesByType.bind(businessController));
+  router.get(
+    '/types/:businessTypeId',
+    semiDynamicCache,
+    businessController.getBusinessesByType.bind(businessController)
+  );
   /**
    * @swagger
    * /api/v1/businesses/slug-availability/{slug}:
@@ -250,7 +279,11 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       200:
    *         description: Availability status
    */
-  router.get('/slug-availability/:slug', staticCache, businessController.checkSlugAvailability.bind(businessController));
+  router.get(
+    '/slug-availability/:slug',
+    staticCache,
+    businessController.checkSlugAvailability.bind(businessController)
+  );
 
   // Protected routes (authentication required) - MUST come before catch-all route
   router.use(requireAuth);
@@ -264,7 +297,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
           method: req.method,
           path: req.path,
           params: req.params,
-          originalUrl: req.originalUrl
+          originalUrl: req.originalUrl,
         });
       }
       next();
@@ -322,7 +355,12 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *                       type: string
    *                       example: "BUSINESS_ACCESS_DENIED"
    */
-  router.get('/my-business', dynamicCache, requireBusinessAccess, businessController.getMyBusiness.bind(businessController));
+  router.get(
+    '/my-business',
+    dynamicCache,
+    requireBusinessAccess,
+    businessController.getMyBusiness.bind(businessController)
+  );
 
   /**
    * @swagger
@@ -364,7 +402,12 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       404:
    *         description: Business not found
    */
-  router.put('/my-business', invalidateBusinessCache, requireBusinessAccess, businessController.updateMyBusiness.bind(businessController));
+  router.put(
+    '/my-business',
+    cacheInvalidation.invalidateBusinessCache,
+    requireBusinessAccess,
+    businessController.updateMyBusiness.bind(businessController)
+  );
 
   /**
    * @swagger
@@ -393,7 +436,11 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       404:
    *         description: Business not found
    */
-  router.patch('/my-business', requireBusinessAccess, businessController.updateMyBusiness.bind(businessController));
+  router.patch(
+    '/my-business',
+    requireBusinessAccess,
+    businessController.updateMyBusiness.bind(businessController)
+  );
 
   /**
    * @swagger
@@ -429,14 +476,16 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.get('/my-business/price-settings',
+  router.get(
+    '/my-business/price-settings',
     dynamicCache,
     requireBusinessAccess,
     businessController.getPriceSettings.bind(businessController)
   );
-  
-  router.put('/my-business/price-settings',
-    invalidateBusinessCache,
+
+  router.put(
+    '/my-business/price-settings',
+    cacheInvalidation.invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessPriceSettingsSchema),
     businessController.updatePriceSettings.bind(businessController)
@@ -492,7 +541,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.get('/my-business/staff-privacy-settings',
+  router.get(
+    '/my-business/staff-privacy-settings',
     dynamicCache,
     requireBusinessAccess,
     businessController.getStaffPrivacySettings.bind(businessController)
@@ -553,8 +603,9 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.put('/my-business/staff-privacy-settings',
-    invalidateBusinessCache,
+  router.put(
+    '/my-business/staff-privacy-settings',
+    cacheInvalidation.invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessStaffPrivacySettingsSchema),
     businessController.updateStaffPrivacySettings.bind(businessController)
@@ -666,7 +717,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.get('/my-business/notification-settings',
+  router.get(
+    '/my-business/notification-settings',
     dynamicCache,
     requireBusinessAccess,
     businessController.getNotificationSettings.bind(businessController)
@@ -770,8 +822,9 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.put('/my-business/notification-settings',
-    invalidateBusinessCache,
+  router.put(
+    '/my-business/notification-settings',
+    cacheInvalidation.invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessNotificationSettingsSchema),
     validateNotificationSettings,
@@ -818,8 +871,9 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.post('/my-business/test-reminder',
-    invalidateBusinessCache,
+  router.post(
+    '/my-business/test-reminder',
+    cacheInvalidation.invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(testReminderSchema),
     businessController.testReminder.bind(businessController)
@@ -869,7 +923,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.get('/my-business/reservation-settings',
+  router.get(
+    '/my-business/reservation-settings',
     dynamicCache,
     requireBusinessAccess,
     businessController.getReservationSettings.bind(businessController)
@@ -916,8 +971,9 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.put('/my-business/reservation-settings',
-    invalidateBusinessCache,
+  router.put(
+    '/my-business/reservation-settings',
+    cacheInvalidation.invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessReservationSettingsSchema),
     businessController.updateReservationSettings.bind(businessController)
@@ -1003,7 +1059,12 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *                       type: string
    *                       example: "BUSINESS_ACCESS_DENIED"
    */
-  router.get('/my-services', dynamicCache, requireBusinessAccess, businessController.getMyServices.bind(businessController));
+  router.get(
+    '/my-services',
+    dynamicCache,
+    requireBusinessAccess,
+    businessController.getMyServices.bind(businessController)
+  );
 
   // Business CRUD operations
   /**
@@ -1113,7 +1174,10 @@ export function createBusinessRoutes(businessController: BusinessController, sub
       logger.info('🔍 ROUTE DEBUG: Request method:', req.method);
       logger.info('🔍 ROUTE DEBUG: Request path:', req.path);
       logger.info('🔍 ROUTE DEBUG: User:', req.user?.id);
-      logger.info('🔍 ROUTE DEBUG: Business controller method:', typeof businessController.createBusiness);
+      logger.info(
+        '🔍 ROUTE DEBUG: Business controller method:',
+        typeof businessController.createBusiness
+      );
       next();
     },
     businessController.createBusiness.bind(businessController)
@@ -1127,59 +1191,68 @@ export function createBusinessRoutes(businessController: BusinessController, sub
       try {
         const userId = req.user!.id;
         logger.info('🧪 TEST: Creating business and fetching it immediately');
-        
+
         // Step 1: Create business
         const testData = {
           name: 'Test Business for Fetch',
           businessTypeId: 'beauty_salon',
-          description: 'Test business for immediate fetch test'
+          description: 'Test business for immediate fetch test',
         };
-        
+
         logger.info('🧪 TEST: Creating business...');
-        const business = await businessController['businessService'].createBusiness(userId, testData);
+        const business = await businessController['businessService'].createBusiness(
+          userId,
+          testData
+        );
         logger.info('🧪 TEST: Business created:', business.id);
-        
+
         // Step 2: Clear RBAC cache
         logger.info('🧪 TEST: Clearing RBAC cache...');
         businessController['rbacService']?.clearUserCache(userId);
-        
+
         // Step 3: Wait a moment for database consistency
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         // Step 4: Try to fetch the business
         logger.info('🧪 TEST: Fetching businesses...');
         const businesses = await businessController['businessService'].getMyBusinesses(userId);
         logger.info('🧪 TEST: Fetched businesses:', businesses.length);
-        
+
         // Step 5: Test business context middleware
         logger.info('🧪 TEST: Testing business context...');
-        const freshUserRoles = await businessController['businessService']['repositories'].roleRepository.getUserRoles(userId);
-        
+        const freshUserRoles =
+          await businessController['businessService']['repositories'].roleRepository.getUserRoles(
+            userId
+          );
+
         const userRoles = freshUserRoles;
         const isOwner = userRoles.some((role: { name: string }) => role.name === 'OWNER');
-        
-        logger.info('🧪 TEST: User roles after business creation:', userRoles.map((r: { name: string }) => r.name));
+
+        logger.info(
+          '🧪 TEST: User roles after business creation:',
+          userRoles.map((r: { name: string }) => r.name)
+        );
         logger.info('🧪 TEST: Is owner:', isOwner);
-        
+
         res.json({
           success: true,
           message: 'Test completed',
           data: {
             createdBusiness: {
               id: business.id,
-              name: business.name
+              name: business.name,
             },
-            fetchedBusinesses: businesses.map(b => ({ id: b.id, name: b.name })),
+            fetchedBusinesses: businesses.map((b) => ({ id: b.id, name: b.name })),
             userRoles: userRoles.map((r: { name: string }) => r.name),
             isOwner,
-            businessCount: businesses.length
-          }
+            businessCount: businesses.length,
+          },
         });
       } catch (error) {
         logger.error('🧪 TEST ERROR:', error);
         res.status(500).json({
           success: false,
-          error: error instanceof Error ? error.message : 'Test failed'
+          error: error instanceof Error ? error.message : 'Test failed',
         });
       }
     }
@@ -1215,7 +1288,6 @@ export function createBusinessRoutes(businessController: BusinessController, sub
     requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
     businessController.getBusinessById.bind(businessController)
   );
-
 
   /**
    * @swagger
@@ -2497,7 +2569,7 @@ export function createBusinessRoutes(businessController: BusinessController, sub
   );
 
   // Image Management Routes
-  
+
   /**
    * @swagger
    * /api/v1/businesses/{businessId}/images/upload:
@@ -2780,71 +2852,70 @@ export function createBusinessRoutes(businessController: BusinessController, sub
 
   // Add a catch-all route that tries slug first, then ID if slug doesn't work
   // MUST be last to avoid conflicting with specific routes
-  router.get(
-    '/:slugOrId',
-    semiDynamicCache,
-    async (req, res, next) => {
-      try {
-        const slugOrId = req.params.slugOrId;
-        logger.info('🔍 Catch-all route hit with slugOrId:', slugOrId);
+  router.get('/:slugOrId', semiDynamicCache, async (req, res, next) => {
+    try {
+      const slugOrId = req.params.slugOrId;
+      logger.info('🔍 Catch-all route hit with slugOrId:', slugOrId);
 
-        // First try as a slug (public access) - includes services
-        const business = await businessController['businessService'].getBusinessBySlugWithServices(slugOrId);
-        if (business) {
-          logger.info('✅ Found business by slug:', business.id);
-          return res.json({
-            success: true,
-            data: business
-          });
-        }
-
-        logger.info('❌ Not found as slug, trying as ID...');
-        logger.info('🔍 User authenticated:', !!(req as AuthenticatedRequest).user);
-
-        // If slug doesn't work and user is authenticated, try as ID
-        if ((req as AuthenticatedRequest).user) {
-          const authReq = req as AuthenticatedRequest;
-          const userId = authReq.user!.id;
-          const { includeDetails, includeSubscription } = req.query;
-
-          logger.info('🔍 Fetching business by ID:', slugOrId, 'for user:', userId);
-
-          // Call service directly instead of going through controller
-          let businessById;
-          if (includeSubscription === 'true') {
-            businessById = await businessController['businessService'].getBusinessByIdWithSubscription(userId, slugOrId);
-          } else {
-            businessById = await businessController['businessService'].getBusinessById(
-              userId,
-              slugOrId,
-              includeDetails === 'true'
-            );
-          }
-
-          if (!businessById) {
-            return res.status(404).json({
-              success: false,
-              error: 'Business not found'
-            });
-          }
-
-          return res.json({
-            success: true,
-            data: businessById
-          });
-        }
-
-        // Not found
-        return res.status(404).json({
-          success: false,
-          error: 'Business not found'
+      // First try as a slug (public access) - includes services
+      const business =
+        await businessController['businessService'].getBusinessBySlugWithServices(slugOrId);
+      if (business) {
+        logger.info('✅ Found business by slug:', business.id);
+        return res.json({
+          success: true,
+          data: business,
         });
-      } catch (error) {
-        logger.error('❌ Catch-all route error:', error);
-        return next(error);
       }
+
+      logger.info('❌ Not found as slug, trying as ID...');
+      logger.info('🔍 User authenticated:', !!(req as AuthenticatedRequest).user);
+
+      // If slug doesn't work and user is authenticated, try as ID
+      if ((req as AuthenticatedRequest).user) {
+        const authReq = req as AuthenticatedRequest;
+        const userId = authReq.user!.id;
+        const { includeDetails, includeSubscription } = req.query;
+
+        logger.info('🔍 Fetching business by ID:', slugOrId, 'for user:', userId);
+
+        // Call service directly instead of going through controller
+        let businessById;
+        if (includeSubscription === 'true') {
+          businessById = await businessController[
+            'businessService'
+          ].getBusinessByIdWithSubscription(userId, slugOrId);
+        } else {
+          businessById = await businessController['businessService'].getBusinessById(
+            userId,
+            slugOrId,
+            includeDetails === 'true'
+          );
+        }
+
+        if (!businessById) {
+          return res.status(404).json({
+            success: false,
+            error: 'Business not found',
+          });
+        }
+
+        return res.json({
+          success: true,
+          data: businessById,
+        });
+      }
+
+      // Not found
+      return res.status(404).json({
+        success: false,
+        error: 'Business not found',
+      });
+    } catch (error) {
+      logger.error('❌ Catch-all route error:', error);
+      return next(error);
     }
-  );
+  });
 
   /**
    * @swagger
@@ -2909,7 +2980,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.get('/my-business/cancellation-policies',
+  router.get(
+    '/my-business/cancellation-policies',
     requireBusinessAccess,
     businessController.getCancellationPolicies.bind(businessController)
   );
@@ -2983,7 +3055,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.put('/my-business/cancellation-policies',
+  router.put(
+    '/my-business/cancellation-policies',
     requireBusinessAccess,
     validateBody(updateBusinessCancellationPolicySchema),
     businessController.updateCancellationPolicies.bind(businessController)
@@ -3075,7 +3148,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.get('/my-business/customer-policy-status/:customerId',
+  router.get(
+    '/my-business/customer-policy-status/:customerId',
     requireBusinessAccess,
     businessController.getCustomerPolicyStatus.bind(businessController)
   );
@@ -3202,7 +3276,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.get('/my-business/customer-management-settings',
+  router.get(
+    '/my-business/customer-management-settings',
     requireBusinessAccess,
     businessController.getCustomerManagementSettings.bind(businessController)
   );
@@ -3372,7 +3447,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.put('/my-business/customer-management-settings',
+  router.put(
+    '/my-business/customer-management-settings',
     requireBusinessAccess,
     validateBody(updateBusinessCustomerManagementSchema),
     businessController.updateCustomerManagementSettings.bind(businessController)
@@ -3410,7 +3486,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.get('/my-business/customers/:customerId/notes',
+  router.get(
+    '/my-business/customers/:customerId/notes',
     requireBusinessAccess,
     businessController.getCustomerNotes.bind(businessController)
   );
@@ -3466,7 +3543,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.post('/my-business/customers/:customerId/notes',
+  router.post(
+    '/my-business/customers/:customerId/notes',
     requireBusinessAccess,
     businessController.addCustomerNote.bind(businessController)
   );
@@ -3497,7 +3575,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.get('/my-business/customers/:customerId/loyalty-status',
+  router.get(
+    '/my-business/customers/:customerId/loyalty-status',
     requireBusinessAccess,
     businessController.getCustomerLoyaltyStatus.bind(businessController)
   );
@@ -3530,7 +3609,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.get('/my-business/appointments/:appointmentId/evaluation',
+  router.get(
+    '/my-business/appointments/:appointmentId/evaluation',
     requireBusinessAccess,
     businessController.getCustomerEvaluation.bind(businessController)
   );
@@ -3610,7 +3690,8 @@ export function createBusinessRoutes(businessController: BusinessController, sub
    *       500:
    *         description: Internal server error
    */
-  router.post('/my-business/appointments/:appointmentId/evaluation',
+  router.post(
+    '/my-business/appointments/:appointmentId/evaluation',
     requireBusinessAccess,
     businessController.submitCustomerEvaluation.bind(businessController)
   );

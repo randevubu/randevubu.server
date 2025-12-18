@@ -1,16 +1,12 @@
-import { Response } from "express";
-import { z } from "zod";
-import { BusinessContextRequest } from "../middleware/businessContext";
-import { UsageService } from "../services/domain/usage";
-import { AuthenticatedRequest } from "../types/request";
-import {
-  createErrorContext,
-  handleRouteError,
-  sendAppErrorResponse,
-  sendSuccessResponse,
-} from "../utils/responseUtils";
-import { AppError } from "../types/responseTypes";
-import { ERROR_CODES } from "../constants/errorCodes";
+import { Response } from 'express';
+import { z } from 'zod';
+import { BusinessContextRequest } from '../middleware/businessContext';
+import { UsageService } from '../services/domain/usage';
+import { AuthenticatedRequest } from '../types/request';
+import { createErrorContext, handleRouteError, sendAppErrorResponse } from '../utils/responseUtils';
+import { AppError } from '../types/responseTypes';
+import { ERROR_CODES } from '../constants/errorCodes';
+import { ResponseHelper } from '../utils/responseHelper';
 
 const usageQuerySchema = z.object({
   days: z.coerce.number().min(1).max(365).optional().default(30),
@@ -18,16 +14,16 @@ const usageQuerySchema = z.object({
 });
 
 export class UsageController {
-  constructor(private usageService: UsageService) {}
+  constructor(
+    private usageService: UsageService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   /**
    * Get business usage summary including current/previous month and quotas
    * GET /api/v1/businesses/:businessId/usage/summary
    */
-  async getUsageSummary(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getUsageSummary(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const businessId = req.params.businessId;
@@ -45,29 +41,18 @@ export class UsageController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
-      const summary = await this.usageService.getBusinessUsageSummary(
-        userId,
-        businessId
-      );
+      const summary = await this.usageService.getBusinessUsageSummary(userId, businessId);
 
       if (!summary) {
-        const error = new AppError(
-          'Business not found',
-          404,
-          ERROR_CODES.BUSINESS_NOT_FOUND
-        );
+        const error = new AppError('Business not found', 404, ERROR_CODES.BUSINESS_NOT_FOUND);
         return sendAppErrorResponse(res, error);
       }
 
-      await sendSuccessResponse(res, "success.usage.summaryRetrieved", summary, 200, req);
+      await this.responseHelper.success(res, 'success.usage.summaryRetrieved', summary, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -77,10 +62,7 @@ export class UsageController {
    * Get usage alerts for the business
    * GET /api/v1/businesses/:businessId/usage/alerts
    */
-  async getUsageAlerts(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getUsageAlerts(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const businessId = req.params.businessId;
@@ -98,26 +80,18 @@ export class UsageController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const alerts = await this.usageService.getUsageAlerts(userId, businessId);
 
       if (!alerts) {
-        const error = new AppError(
-          'Business not found',
-          404,
-          ERROR_CODES.BUSINESS_NOT_FOUND
-        );
+        const error = new AppError('Business not found', 404, ERROR_CODES.BUSINESS_NOT_FOUND);
         return sendAppErrorResponse(res, error);
       }
 
-      await sendSuccessResponse(res, "success.usage.alertsRetrieved", alerts, 200, req);
+      await this.responseHelper.success(res, 'success.usage.alertsRetrieved', alerts, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -128,10 +102,7 @@ export class UsageController {
    * GET /api/v1/businesses/:businessId/usage/sms-daily
    * Query params: ?days=30 (default: 30, max: 365)
    */
-  async getDailySmsUsage(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getDailySmsUsage(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const businessId = req.params.businessId;
@@ -149,39 +120,22 @@ export class UsageController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const queryResult = usageQuerySchema.safeParse(req.query);
       if (!queryResult.success) {
-        const error = new AppError(
-          'Invalid query parameters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid query parameters', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const { days } = queryResult.data;
-      const usage = await this.usageService.getDailyUsageChart(
-        userId,
-        businessId,
-        days
-      );
+      const usage = await this.usageService.getDailyUsageChart(userId, businessId, days);
 
-      await sendSuccessResponse(
-        res,
-        "success.usage.dailySmsRetrieved",
-        usage,
-        200,
-        req,
-        { days }
-      );
+      await this.responseHelper.success(res, 'success.usage.dailySmsRetrieved', usage, 200, req, {
+        days,
+      });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -192,10 +146,7 @@ export class UsageController {
    * GET /api/v1/businesses/:businessId/usage/monthly-history
    * Query params: ?months=12 (default: 12, max: 24)
    */
-  async getMonthlyUsageHistory(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async getMonthlyUsageHistory(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
       const businessId = req.params.businessId;
@@ -213,34 +164,22 @@ export class UsageController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const queryResult = usageQuerySchema.safeParse(req.query);
       if (!queryResult.success) {
-        const error = new AppError(
-          'Invalid query parameters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid query parameters', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const { months } = queryResult.data;
-      const history = await this.usageService.getMonthlyUsageHistory(
-        userId,
-        businessId,
-        months
-      );
+      const history = await this.usageService.getMonthlyUsageHistory(userId, businessId, months);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        "success.usage.monthlyHistoryRetrieved",
+        'success.usage.monthlyHistoryRetrieved',
         history,
         200,
         req,
@@ -273,25 +212,20 @@ export class UsageController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
-      const [smsCheck, staffCheck, serviceCheck, customerCheck] =
-        await Promise.all([
-          this.usageService.canSendSms(businessId),
-          this.usageService.canAddStaffMember(businessId),
-          this.usageService.canAddService(businessId),
-          this.usageService.canAddCustomer(businessId),
-        ]);
+      const [smsCheck, staffCheck, serviceCheck, customerCheck] = await Promise.all([
+        this.usageService.canSendSms(businessId),
+        this.usageService.canAddStaffMember(businessId),
+        this.usageService.canAddService(businessId),
+        this.usageService.canAddCustomer(businessId),
+      ]);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        "success.usage.limitsChecked",
+        'success.usage.limitsChecked',
         {
           sms: smsCheck,
           staff: staffCheck,
@@ -306,10 +240,7 @@ export class UsageController {
     }
   }
 
-  async refreshUsageCounters(
-    req: AuthenticatedRequest,
-    res: Response
-  ): Promise<void> {
+  async refreshUsageCounters(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const businessId = req.params.businessId;
 
@@ -326,11 +257,7 @@ export class UsageController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -340,11 +267,11 @@ export class UsageController {
         this.usageService.updateServiceUsage(businessId),
       ]);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        "success.usage.dataRefreshed",
+        'success.usage.dataRefreshed',
         {
-          refreshedCounters: ["staff", "services"],
+          refreshedCounters: ['staff', 'services'],
           updatedAt: new Date().toISOString(),
         },
         200,

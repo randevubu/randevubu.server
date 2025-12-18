@@ -9,7 +9,7 @@ import { attachBusinessContext } from '../../middleware/attachBusinessContext';
 import { PermissionName } from '../../types/auth';
 import { staticCache, dynamicCache, semiDynamicCache } from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
-import { invalidateBusinessCache } from '../../middleware/cacheInvalidation';
+import { initializeCacheInvalidationMiddleware } from '../../middleware/cacheInvalidation';
 import {
   inviteStaffSchema,
   verifyStaffInvitationSchema,
@@ -20,22 +20,27 @@ import {
   getStaffByRoleQuerySchema,
   businessIdParamSchema,
   staffIdParamSchema,
-  staffRoleAndBusinessParamSchema
+  staffRoleAndBusinessParamSchema,
 } from '../../schemas/staff.schemas';
 import prisma from '../../lib/prisma';
 
 // Initialize dependencies
 const repositories = new RepositoryContainer(prisma);
 const services = new ServiceContainer(repositories, prisma);
+const cacheInvalidation = initializeCacheInvalidationMiddleware(services.cacheService);
 const controllers = new ControllerContainer(repositories, services);
-const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
+const authMiddleware = new AuthMiddleware(
+  repositories,
+  services.tokenService,
+  services.rbacService
+);
 
 export function createStaffRoutes(): Router {
   const router = Router();
 
   // Apply cache monitoring to all routes
   router.use(trackCachePerformance);
-  
+
   // All staff routes require authentication
   router.use(requireAuth);
 
@@ -89,8 +94,9 @@ export function createStaffRoutes(): Router {
    *       403:
    *         description: Insufficient permissions
    */
-  router.post('/invite',
-    invalidateBusinessCache,
+  router.post(
+    '/invite',
+    cacheInvalidation.invalidateBusinessCache,
     rateLimitByUser(5, 60),
     validateBody(inviteStaffSchema),
     controllers.staffController.inviteStaff.bind(controllers.staffController)
@@ -142,8 +148,9 @@ export function createStaffRoutes(): Router {
    *       400:
    *         description: Invalid verification code or input
    */
-  router.post('/verify-invitation',
-    invalidateBusinessCache,
+  router.post(
+    '/verify-invitation',
+    cacheInvalidation.invalidateBusinessCache,
     rateLimitByUser(3, 60),
     validateBody(verifyStaffInvitationSchema),
     controllers.staffController.verifyStaffInvitation.bind(controllers.staffController)
@@ -175,7 +182,8 @@ export function createStaffRoutes(): Router {
    *       404:
    *         description: Business not found
    */
-  router.get('/:businessId',
+  router.get(
+    '/:businessId',
     dynamicCache,
     attachBusinessContext,
     validateParams(businessIdParamSchema),
@@ -202,7 +210,8 @@ export function createStaffRoutes(): Router {
    *       200:
    *         description: Staff statistics retrieved successfully
    */
-  router.get('/:businessId/stats',
+  router.get(
+    '/:businessId/stats',
     dynamicCache,
     attachBusinessContext,
     validateParams(businessIdParamSchema),
@@ -238,7 +247,8 @@ export function createStaffRoutes(): Router {
    *       200:
    *         description: Staff members retrieved successfully
    */
-  router.get('/:businessId/role/:role',
+  router.get(
+    '/:businessId/role/:role',
     dynamicCache,
     attachBusinessContext,
     validateParams(staffRoleAndBusinessParamSchema),
@@ -266,7 +276,8 @@ export function createStaffRoutes(): Router {
    *       404:
    *         description: Staff member not found
    */
-  router.get('/member/:staffId',
+  router.get(
+    '/member/:staffId',
     dynamicCache,
     validateParams(staffIdParamSchema),
     controllers.staffController.getStaffMember.bind(controllers.staffController)
@@ -307,8 +318,9 @@ export function createStaffRoutes(): Router {
    *       404:
    *         description: Staff member not found
    */
-  router.put('/member/:staffId',
-    invalidateBusinessCache,
+  router.put(
+    '/member/:staffId',
+    cacheInvalidation.invalidateBusinessCache,
     validateParams(staffIdParamSchema),
     validateBody(updateStaffSchema),
     controllers.staffController.updateStaffMember.bind(controllers.staffController)
@@ -335,8 +347,9 @@ export function createStaffRoutes(): Router {
    *       404:
    *         description: Staff member not found
    */
-  router.delete('/member/:staffId',
-    invalidateBusinessCache,
+  router.delete(
+    '/member/:staffId',
+    cacheInvalidation.invalidateBusinessCache,
     validateParams(staffIdParamSchema),
     controllers.staffController.removeStaffMember.bind(controllers.staffController)
   );
@@ -354,7 +367,8 @@ export function createStaffRoutes(): Router {
    *       200:
    *         description: Staff positions retrieved successfully
    */
-  router.get('/my-positions',
+  router.get(
+    '/my-positions',
     dynamicCache,
     controllers.staffController.getMyStaffPositions.bind(controllers.staffController)
   );
@@ -403,7 +417,8 @@ export function createStaffRoutes(): Router {
    *       200:
    *         description: Bulk invitations processed
    */
-  router.post('/bulk-invite',
+  router.post(
+    '/bulk-invite',
     rateLimitByUser(2, 300), // 2 requests per 5 minutes for bulk operations
     validateBody(bulkInviteStaffSchema),
     controllers.staffController.bulkInviteStaff.bind(controllers.staffController)
@@ -441,7 +456,8 @@ export function createStaffRoutes(): Router {
    *       200:
    *         description: Staff transferred successfully
    */
-  router.post('/transfer',
+  router.post(
+    '/transfer',
     validateBody(transferStaffSchema),
     controllers.staffController.transferStaff.bind(controllers.staffController)
   );
@@ -459,7 +475,8 @@ export function createStaffRoutes(): Router {
    *       200:
    *         description: Available roles retrieved successfully
    */
-  router.get('/roles',
+  router.get(
+    '/roles',
     staticCache,
     controllers.staffController.getAvailableRoles.bind(controllers.staffController)
   );

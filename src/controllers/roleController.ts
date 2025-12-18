@@ -1,5 +1,5 @@
-import { NextFunction, Request, Response } from "express";
-import { RoleService } from "../services/domain/staff";
+import { NextFunction, Request, Response } from 'express';
+import { RoleService } from '../services/domain/staff';
 import {
   AssignRoleRequest,
   CreatePermissionRequest,
@@ -7,20 +7,19 @@ import {
   GuaranteedAuthRequest,
   UpdatePermissionRequest,
   UpdateRoleRequest,
-} from "../types/auth";
+} from '../types/auth';
 
-import {
-  handleRouteError,
-  sendSuccessResponse,
-  createErrorContext,
-  sendAppErrorResponse,
-} from '../utils/responseUtils';
+import { handleRouteError, createErrorContext, sendAppErrorResponse } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
-import logger from "../utils/Logger/logger";
-export class RoleController {
-  constructor(private roleService: RoleService) {}
+import logger from '../utils/Logger/logger';
+import { ResponseHelper } from '../utils/responseHelper';
 
+export class RoleController {
+  constructor(
+    private roleService: RoleService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   // Role management endpoints
   createRole = async (
@@ -53,7 +52,11 @@ export class RoleController {
       }
 
       // Validate display name format
-      if (typeof data.displayName !== 'string' || data.displayName.length < 2 || data.displayName.length > 100) {
+      if (
+        typeof data.displayName !== 'string' ||
+        data.displayName.length < 2 ||
+        data.displayName.length > 100
+      ) {
         const error = new AppError(
           'Display name must be between 2 and 100 characters',
           400,
@@ -73,7 +76,10 @@ export class RoleController {
       }
 
       // Validate description if provided
-      if (data.description && (typeof data.description !== 'string' || data.description.length > 500)) {
+      if (
+        data.description &&
+        (typeof data.description !== 'string' || data.description.length > 500)
+      ) {
         const error = new AppError(
           'Description must be less than 500 characters',
           400,
@@ -82,20 +88,16 @@ export class RoleController {
         return sendAppErrorResponse(res, error);
       }
 
-      const role = await this.roleService.createRole(
-        data,
-        req.user.id,
-        context
-      );
+      const role = await this.roleService.createRole(data, req.user.id, context);
 
-      logger.info("Role created via API", {
+      logger.info('Role created via API', {
         roleId: role.id,
         roleName: role.name,
         createdBy: req.user.id,
         ip: req.ip,
       });
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.role.created',
         {
@@ -124,9 +126,12 @@ export class RoleController {
   ): Promise<void> => {
     try {
       // Validate includeInactive parameter
-      const includeInactive = req.query.includeInactive === "true";
-      
-      if (req.query.includeInactive && !['true', 'false'].includes(req.query.includeInactive as string)) {
+      const includeInactive = req.query.includeInactive === 'true';
+
+      if (
+        req.query.includeInactive &&
+        !['true', 'false'].includes(req.query.includeInactive as string)
+      ) {
         const error = new AppError(
           'includeInactive must be true or false',
           400,
@@ -137,7 +142,7 @@ export class RoleController {
 
       const roles = await this.roleService.getAllRoles(includeInactive);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.role.retrievedList',
         {
@@ -168,31 +173,26 @@ export class RoleController {
   ): Promise<void> => {
     try {
       const { id } = req.params;
-      const includePermissions = req.query.includePermissions === "true";
+      const includePermissions = req.query.includePermissions === 'true';
 
       // Validate ID parameter
       if (!id || typeof id !== 'string') {
-        const error = new AppError(
-          'Role ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('Role ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate ID format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid role ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid role ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate includePermissions parameter
-      if (req.query.includePermissions && !['true', 'false'].includes(req.query.includePermissions as string)) {
+      if (
+        req.query.includePermissions &&
+        !['true', 'false'].includes(req.query.includePermissions as string)
+      ) {
         const error = new AppError(
           'includePermissions must be true or false',
           400,
@@ -203,13 +203,7 @@ export class RoleController {
 
       const role = await this.roleService.getRoleById(id, includePermissions);
 
-      await sendSuccessResponse(
-        res,
-        'success.role.retrieved',
-        { role },
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.role.retrieved', { role }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -227,22 +221,14 @@ export class RoleController {
 
       // Validate ID parameter
       if (!id || typeof id !== 'string') {
-        const error = new AppError(
-          'Role ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('Role ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate ID format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid role ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid role ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -257,7 +243,12 @@ export class RoleController {
       }
 
       // Validate displayName if provided
-      if (data.displayName && (typeof data.displayName !== 'string' || data.displayName.length < 2 || data.displayName.length > 100)) {
+      if (
+        data.displayName &&
+        (typeof data.displayName !== 'string' ||
+          data.displayName.length < 2 ||
+          data.displayName.length > 100)
+      ) {
         const error = new AppError(
           'Display name must be between 2 and 100 characters',
           400,
@@ -277,7 +268,10 @@ export class RoleController {
       }
 
       // Validate description if provided
-      if (data.description && (typeof data.description !== 'string' || data.description.length > 500)) {
+      if (
+        data.description &&
+        (typeof data.description !== 'string' || data.description.length > 500)
+      ) {
         const error = new AppError(
           'Description must be less than 500 characters',
           400,
@@ -286,27 +280,16 @@ export class RoleController {
         return sendAppErrorResponse(res, error);
       }
 
-      const role = await this.roleService.updateRole(
-        id,
-        data,
-        req.user.id,
-        context
-      );
+      const role = await this.roleService.updateRole(id, data, req.user.id, context);
 
-      logger.info("Role updated via API", {
+      logger.info('Role updated via API', {
         roleId: id,
         updatedBy: req.user.id,
         changes: Object.keys(data),
         ip: req.ip,
       });
 
-      await sendSuccessResponse(
-        res,
-        'success.role.updated',
-        { role },
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.role.updated', { role }, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -323,40 +306,26 @@ export class RoleController {
 
       // Validate ID parameter
       if (!id || typeof id !== 'string') {
-        const error = new AppError(
-          'Role ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('Role ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate ID format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid role ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid role ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       await this.roleService.deleteRole(id, req.user.id, context);
 
-      logger.info("Role deleted via API", {
+      logger.info('Role deleted via API', {
         roleId: id,
         deletedBy: req.user.id,
         ip: req.ip,
       });
 
-      await sendSuccessResponse(
-        res,
-        'success.role.deleted',
-        undefined,
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.role.deleted', undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -392,7 +361,11 @@ export class RoleController {
       }
 
       // Validate resource format
-      if (typeof data.resource !== 'string' || data.resource.length < 2 || data.resource.length > 50) {
+      if (
+        typeof data.resource !== 'string' ||
+        data.resource.length < 2 ||
+        data.resource.length > 50
+      ) {
         const error = new AppError(
           'Resource must be between 2 and 50 characters',
           400,
@@ -402,7 +375,10 @@ export class RoleController {
       }
 
       // Validate action if provided
-      if (data.action && (typeof data.action !== 'string' || data.action.length < 2 || data.action.length > 50)) {
+      if (
+        data.action &&
+        (typeof data.action !== 'string' || data.action.length < 2 || data.action.length > 50)
+      ) {
         const error = new AppError(
           'Action must be between 2 and 50 characters',
           400,
@@ -412,7 +388,10 @@ export class RoleController {
       }
 
       // Validate description if provided
-      if (data.description && (typeof data.description !== 'string' || data.description.length > 500)) {
+      if (
+        data.description &&
+        (typeof data.description !== 'string' || data.description.length > 500)
+      ) {
         const error = new AppError(
           'Description must be less than 500 characters',
           400,
@@ -423,14 +402,14 @@ export class RoleController {
 
       const permission = await this.roleService.createPermission(data);
 
-      logger.info("Permission created via API", {
+      logger.info('Permission created via API', {
         permissionId: permission.id,
         permissionName: permission.name,
         createdBy: req.user.id,
         ip: req.ip,
       });
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.role.permissionCreated',
         { permission },
@@ -456,7 +435,7 @@ export class RoleController {
 
       res.json({
         success: true,
-        message: "Permissions retrieved successfully",
+        message: 'Permissions retrieved successfully',
         data: { permissions },
       });
     } catch (error) {
@@ -475,7 +454,7 @@ export class RoleController {
 
       res.json({
         success: true,
-        message: "Permission retrieved successfully",
+        message: 'Permission retrieved successfully',
         data: { permission },
       });
     } catch (error) {
@@ -494,7 +473,7 @@ export class RoleController {
 
       const permission = await this.roleService.updatePermission(id, data);
 
-      logger.info("Permission updated via API", {
+      logger.info('Permission updated via API', {
         permissionId: id,
         updatedBy: req.user.id,
         changes: Object.keys(data),
@@ -503,7 +482,7 @@ export class RoleController {
 
       res.json({
         success: true,
-        message: "Permission updated successfully",
+        message: 'Permission updated successfully',
         data: { permission },
       });
     } catch (error) {
@@ -524,22 +503,14 @@ export class RoleController {
 
       // Validate roleId parameter
       if (!roleId || typeof roleId !== 'string') {
-        const error = new AppError(
-          'Role ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('Role ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate roleId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(roleId) || roleId.length < 1 || roleId.length > 50) {
-        const error = new AppError(
-          'Invalid role ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid role ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -555,7 +526,12 @@ export class RoleController {
 
       // Validate each permission ID
       for (const permissionId of permissionIds) {
-        if (typeof permissionId !== 'string' || !idRegex.test(permissionId) || permissionId.length < 1 || permissionId.length > 50) {
+        if (
+          typeof permissionId !== 'string' ||
+          !idRegex.test(permissionId) ||
+          permissionId.length < 1 ||
+          permissionId.length > 50
+        ) {
           const error = new AppError(
             'Invalid permission ID format',
             400,
@@ -575,21 +551,16 @@ export class RoleController {
         return sendAppErrorResponse(res, error);
       }
 
-      await this.roleService.assignPermissionsToRole(
-        roleId,
-        permissionIds,
-        req.user.id,
-        context
-      );
+      await this.roleService.assignPermissionsToRole(roleId, permissionIds, req.user.id, context);
 
-      logger.info("Permissions assigned to role via API", {
+      logger.info('Permissions assigned to role via API', {
         roleId,
         permissionCount: permissionIds.length,
         grantedBy: req.user.id,
         ip: req.ip,
       });
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.role.permissionsAssigned',
         undefined,
@@ -610,13 +581,9 @@ export class RoleController {
       const { roleId, permissionId } = req.params;
       const context = createErrorContext(req, req.user.id);
 
-      await this.roleService.revokePermissionFromRole(
-        roleId,
-        permissionId,
-        context
-      );
+      await this.roleService.revokePermissionFromRole(roleId, permissionId, context);
 
-      logger.info("Permission revoked from role via API", {
+      logger.info('Permission revoked from role via API', {
         roleId,
         permissionId,
         revokedBy: req.user.id,
@@ -625,7 +592,7 @@ export class RoleController {
 
       res.json({
         success: true,
-        message: "Permission revoked from role successfully",
+        message: 'Permission revoked from role successfully',
       });
     } catch (error) {
       next(error);
@@ -643,7 +610,7 @@ export class RoleController {
 
       res.json({
         success: true,
-        message: "Role permissions retrieved successfully",
+        message: 'Role permissions retrieved successfully',
         data: { permissions },
       });
     } catch (error) {
@@ -673,46 +640,37 @@ export class RoleController {
 
       // Validate userId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (typeof assignmentData.userId !== 'string' || !idRegex.test(assignmentData.userId) || assignmentData.userId.length < 1 || assignmentData.userId.length > 50) {
-        const error = new AppError(
-          'Invalid user ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+      if (
+        typeof assignmentData.userId !== 'string' ||
+        !idRegex.test(assignmentData.userId) ||
+        assignmentData.userId.length < 1 ||
+        assignmentData.userId.length > 50
+      ) {
+        const error = new AppError('Invalid user ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate roleId format
-      if (typeof assignmentData.roleId !== 'string' || !idRegex.test(assignmentData.roleId) || assignmentData.roleId.length < 1 || assignmentData.roleId.length > 50) {
-        const error = new AppError(
-          'Invalid role ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+      if (
+        typeof assignmentData.roleId !== 'string' ||
+        !idRegex.test(assignmentData.roleId) ||
+        assignmentData.roleId.length < 1 ||
+        assignmentData.roleId.length > 50
+      ) {
+        const error = new AppError('Invalid role ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
+      await this.roleService.assignRoleToUser(assignmentData, req.user.id, context);
 
-      await this.roleService.assignRoleToUser(
-        assignmentData,
-        req.user.id,
-        context
-      );
-
-      logger.info("Role assigned to user via API", {
+      logger.info('Role assigned to user via API', {
         userId: assignmentData.userId,
         roleId: assignmentData.roleId,
         grantedBy: req.user.id,
         ip: req.ip,
       });
 
-      await sendSuccessResponse(
-        res,
-        'success.role.assignedToUser',
-        undefined,
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.role.assignedToUser', undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -729,7 +687,7 @@ export class RoleController {
 
       await this.roleService.revokeRoleFromUser(userId, roleId, context);
 
-      logger.info("Role revoked from user via API", {
+      logger.info('Role revoked from user via API', {
         userId,
         roleId,
         revokedBy: req.user.id,
@@ -738,7 +696,7 @@ export class RoleController {
 
       res.json({
         success: true,
-        message: "Role revoked from user successfully",
+        message: 'Role revoked from user successfully',
       });
     } catch (error) {
       next(error);
@@ -759,13 +717,11 @@ export class RoleController {
         // For now, we'll allow it for simplicity
       }
 
-      const permissions = await this.roleService.getUserPermissionSummary(
-        userId
-      );
+      const permissions = await this.roleService.getUserPermissionSummary(userId);
 
       res.json({
         success: true,
-        message: "User permissions retrieved successfully",
+        message: 'User permissions retrieved successfully',
         data: { permissions },
       });
     } catch (error) {
@@ -780,13 +736,11 @@ export class RoleController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const permissions = await this.roleService.getUserPermissionSummary(
-        req.user.id
-      );
+      const permissions = await this.roleService.getUserPermissionSummary(req.user.id);
 
       res.json({
         success: true,
-        message: "Your permissions retrieved successfully",
+        message: 'Your permissions retrieved successfully',
         data: { permissions },
       });
     } catch (error) {
@@ -805,7 +759,7 @@ export class RoleController {
 
       res.json({
         success: true,
-        message: "Role statistics retrieved successfully",
+        message: 'Role statistics retrieved successfully',
         data: { statistics },
       });
     } catch (error) {

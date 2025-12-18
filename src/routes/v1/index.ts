@@ -14,7 +14,7 @@ import { createBusinessClosureRoutes } from './closures';
 import { createSubscriptionRoutes } from './subscriptions';
 import { createUserRoutes } from './users';
 import { createReportsRoutes } from './reports';
-import paymentRoutes from './payments';
+import { createPaymentRoutes } from './payments';
 import { createDiscountCodeRoutes } from './discountCodes';
 import { createUsageRoutes } from './usage';
 import { createStaffRoutes } from './staff';
@@ -22,13 +22,22 @@ import { createPublicRoutes } from './public';
 import { createPushNotificationRoutes } from './pushNotifications';
 import { createCacheRoutes } from './cache';
 import testingRouter from './testing';
-import ratingRoutes from './ratings';
+import { createRatingRoutes } from './ratings';
 import { createDailyNotebookRoutes } from './dailyNotebook';
 import { createPaymentMethodRoutes } from './paymentMethods';
 import { createContactRoutes } from './contact';
+import { initializeCacheInvalidationMiddleware } from '../../middleware/cacheInvalidation';
+import { createCacheInvalidation } from '../../middleware/cacheMiddleware';
 
-export function createV1Routes(controllers: ControllerContainer, services: ServiceContainer): Router {
+export function createV1Routes(
+  controllers: ControllerContainer,
+  services: ServiceContainer
+): Router {
   const router = Router();
+
+  // Initialize cache middleware with cacheService
+  const cacheInvalidation = initializeCacheInvalidationMiddleware(services.cacheService);
+  const invalidateCache = createCacheInvalidation(services.cacheService);
 
   // Apply cache monitoring to all v1 routes
   router.use(trackCachePerformance);
@@ -79,28 +88,41 @@ export function createV1Routes(controllers: ControllerContainer, services: Servi
   router.use('/auth', authRoutes);
   router.use('/users', createUserRoutes());
   router.use('/roles', createRoleRoutes(controllers.roleController));
-  router.use('/businesses', createBusinessRoutes(controllers.businessController, controllers.subscriptionController));
+  router.use(
+    '/businesses',
+    createBusinessRoutes(
+      controllers.businessController,
+      controllers.subscriptionController,
+      cacheInvalidation
+    )
+  );
   router.use('/business-types', createBusinessTypeRoutes(controllers.businessTypeController));
-  router.use('/services', createServiceRoutes(controllers.serviceController));
+  router.use('/services', createServiceRoutes(controllers.serviceController, cacheInvalidation));
   router.use('/appointments', createAppointmentRoutes(controllers.appointmentController));
   router.use('/user-behavior', createUserBehaviorRoutes(controllers.userBehaviorController));
   router.use('/closures', createBusinessClosureRoutes(controllers.businessClosureController));
   router.use('/subscriptions', createSubscriptionRoutes(controllers.subscriptionController));
-  router.use('/discount-codes', createDiscountCodeRoutes(controllers.discountCodeController, services.rbacService));
+  router.use(
+    '/discount-codes',
+    createDiscountCodeRoutes(controllers.discountCodeController, services.rbacService)
+  );
   router.use('/staff', createStaffRoutes());
   router.use('/reports', createReportsRoutes());
   router.use('/businesses', createUsageRoutes(controllers.usageController));
-  router.use('/notifications/push', createPushNotificationRoutes(controllers.pushNotificationController));
-  router.use('/cache', createCacheRoutes());
-  router.use('/', paymentRoutes);
-  router.use('/', ratingRoutes);
+  router.use(
+    '/notifications/push',
+    createPushNotificationRoutes(controllers.pushNotificationController)
+  );
+  router.use('/cache', createCacheRoutes(services));
+  router.use('/', createPaymentRoutes(controllers.paymentController));
+  router.use('/', createRatingRoutes(controllers.ratingController));
   router.use('/', createDailyNotebookRoutes(controllers.dailyNotebookController));
   router.use('/payment-methods', createPaymentMethodRoutes(controllers.paymentMethodController));
   router.use('/contact', createContactRoutes(controllers.contactController));
-  
-  // Public routes (no authentication required) 
+
+  // Public routes (no authentication required)
   router.use('/public', createPublicRoutes());
-  
+
   // Testing routes (development only)
   router.use('/testing', testingRouter);
 

@@ -12,20 +12,27 @@ import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import {
   logoutSchema,
   sendVerificationSchema,
-  verifyLoginSchema
+  verifyLoginSchema,
 } from '../../schemas/auth.schemas';
 import { ServiceContainer } from '../../services';
+import { ResponseHelper } from '../../utils/responseHelper';
 
 // Initialize dependencies
 const repositories = new RepositoryContainer(prisma);
 const services = new ServiceContainer(repositories, prisma);
+const responseHelper = new ResponseHelper(services.translationService);
 const authController = new AuthController(
   services.authService,
   services.phoneVerificationService,
   services.tokenService,
+  responseHelper,
   services.rbacService
 );
-const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
+const authMiddleware = new AuthMiddleware(
+  repositories,
+  services.tokenService,
+  services.rbacService
+);
 
 const router = Router();
 
@@ -250,11 +257,5 @@ router.post(
     return authController.logout(req, res).catch(next);
   })
 );
-
-
-
-
-
-
 
 export default router;

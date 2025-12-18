@@ -1,15 +1,15 @@
 import { Response } from 'express';
 import { DailyNotebookService } from '../services/domain/dailyNotebook';
 import { AuthenticatedRequest } from '../types/request';
-import {
-  handleRouteError,
-  sendSuccessResponse,
-  sendAppErrorResponse
-} from '../utils/responseUtils';
+import { handleRouteError, sendAppErrorResponse } from '../utils/responseUtils';
 import { ERROR_CODES } from '../constants/errorCodes';
+import { ResponseHelper } from '../utils/responseHelper';
 
 export class DailyNotebookController {
-  constructor(private dailyNotebookService: DailyNotebookService) {}
+  constructor(
+    private dailyNotebookService: DailyNotebookService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   /**
    * Get or create daily notebook for a specific month
@@ -24,7 +24,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Business ID, year, and month are required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -36,7 +36,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Year and month must be valid numbers',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -48,7 +48,13 @@ export class DailyNotebookController {
         userId
       );
 
-      await sendSuccessResponse(res, 'success.dailyNotebook.retrieved', { notebook }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.dailyNotebook.retrieved',
+        { notebook },
+        200,
+        req
+      );
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -68,7 +74,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Business ID, year, and month are required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -77,7 +83,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Entries object is required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -89,7 +95,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Year and month must be valid numbers',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -102,7 +108,13 @@ export class DailyNotebookController {
         userId
       );
 
-      await sendSuccessResponse(res, 'success.dailyNotebook.entriesUpdated', { notebook }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.dailyNotebook.entriesUpdated',
+        { notebook },
+        200,
+        req
+      );
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -122,7 +134,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Business ID, year, and month are required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -131,7 +143,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Day, columnId, and amount are required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -145,7 +157,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Year, month, day, and amount must be valid numbers',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -158,7 +170,13 @@ export class DailyNotebookController {
         userId
       );
 
-      await sendSuccessResponse(res, 'success.dailyNotebook.entryUpdated', { notebook }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.dailyNotebook.entryUpdated',
+        { notebook },
+        200,
+        req
+      );
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -177,14 +195,20 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Business ID is required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
 
       const columns = await this.dailyNotebookService.getColumns(businessId, userId);
 
-      await sendSuccessResponse(res, 'success.dailyNotebook.revenueColumnsRetrieved', { columns }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.dailyNotebook.revenueColumnsRetrieved',
+        { columns },
+        200,
+        req
+      );
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -204,7 +228,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Business ID is required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -213,7 +237,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Name and type are required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -223,7 +247,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Cannot create system columns manually',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -235,7 +259,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Type must be either INCOME or EXPENSE',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -251,7 +275,13 @@ export class DailyNotebookController {
         userId
       );
 
-      await sendSuccessResponse(res, 'success.dailyNotebook.revenueColumnCreated', { column }, 201, req);
+      await this.responseHelper.success(
+        res,
+        'success.dailyNotebook.revenueColumnCreated',
+        { column },
+        201,
+        req
+      );
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -271,7 +301,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Business ID and column ID are required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -283,7 +313,7 @@ export class DailyNotebookController {
           sendAppErrorResponse(res, {
             code: ERROR_CODES.VALIDATION_ERROR,
             message: 'Type must be either INCOME or EXPENSE',
-            statusCode: 400
+            statusCode: 400,
           });
           return;
         }
@@ -301,7 +331,13 @@ export class DailyNotebookController {
         userId
       );
 
-      await sendSuccessResponse(res, 'success.dailyNotebook.revenueColumnUpdated', { column }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.dailyNotebook.revenueColumnUpdated',
+        { column },
+        200,
+        req
+      );
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -320,14 +356,20 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Business ID and column ID are required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
 
       await this.dailyNotebookService.deleteColumn(businessId, columnId, userId);
 
-      await sendSuccessResponse(res, 'success.dailyNotebook.revenueColumnDeleted', null, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.dailyNotebook.revenueColumnDeleted',
+        null,
+        200,
+        req
+      );
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -346,7 +388,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Business ID, year, and month are required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -358,7 +400,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Year and month must be valid numbers',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -370,7 +412,13 @@ export class DailyNotebookController {
         userId
       );
 
-      await sendSuccessResponse(res, 'success.dailyNotebook.appointmentRevenueRetrieved', { appointmentRevenue }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.dailyNotebook.appointmentRevenueRetrieved',
+        { appointmentRevenue },
+        200,
+        req
+      );
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
@@ -390,7 +438,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Business ID is required',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -404,7 +452,7 @@ export class DailyNotebookController {
         sendAppErrorResponse(res, {
           code: ERROR_CODES.VALIDATION_ERROR,
           message: 'Year and month must be valid numbers',
-          statusCode: 400
+          statusCode: 400,
         });
         return;
       }
@@ -421,7 +469,7 @@ export class DailyNotebookController {
         period: {
           year: yearNum,
           month: monthNum,
-          monthName: new Date(yearNum, monthNum - 1).toLocaleString('default', { month: 'long' })
+          monthName: new Date(yearNum, monthNum - 1).toLocaleString('default', { month: 'long' }),
         },
         totals: {
           totalRevenue: notebook.totals.incomeTotal,
@@ -429,34 +477,39 @@ export class DailyNotebookController {
           netProfit: notebook.totals.grandTotal,
           averageDaily: notebook.totals.averageDaily,
           averageIncome: notebook.totals.averageIncome,
-          averageExpense: notebook.totals.averageExpense
+          averageExpense: notebook.totals.averageExpense,
         },
         incomeBreakdown: notebook.columns
-          .filter(col => col.type === 'INCOME' && col.visible)
-          .map(col => ({
+          .filter((col) => col.type === 'INCOME' && col.visible)
+          .map((col) => ({
             columnId: col.id,
             columnName: col.name,
             amount: notebook.totals.columnTotals[col.id] || 0,
-            isSystem: col.isSystem
+            isSystem: col.isSystem,
           }))
           .sort((a, b) => b.amount - a.amount),
         expenseBreakdown: notebook.columns
-          .filter(col => col.type === 'EXPENSE' && col.visible)
-          .map(col => ({
+          .filter((col) => col.type === 'EXPENSE' && col.visible)
+          .map((col) => ({
             columnId: col.id,
             columnName: col.name,
             amount: notebook.totals.columnTotals[col.id] || 0,
-            isSystem: col.isSystem
+            isSystem: col.isSystem,
           }))
           .sort((a, b) => b.amount - a.amount),
         daysWithData: Object.keys(notebook.monthlyData).length,
-        lastUpdated: notebook.updatedAt
+        lastUpdated: notebook.updatedAt,
       };
 
-      await sendSuccessResponse(res, 'success.dailyNotebook.financialSummaryRetrieved', { summary }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.dailyNotebook.financialSummaryRetrieved',
+        { summary },
+        200,
+        req
+      );
     } catch (error: any) {
       handleRouteError(error, req, res);
     }
   }
 }
-

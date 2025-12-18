@@ -8,12 +8,17 @@ import {
   ErrorContext,
   InternalServerError,
   createSecureErrorResponse,
-} from "../types/errors";
-import { getTranslationKey, ErrorCode as ErrorCodeString, ErrorTranslationKey } from "../constants/errorCodes";
-import { translateMessage } from "../utils/translationUtils";
-import { AuthenticatedRequest } from "../types/request";
-import { ErrorResponse, StandardError } from "../types/responseTypes";
-import logger from "../utils/Logger/logger";
+} from '../types/errors';
+import {
+  getTranslationKey,
+  ErrorCode as ErrorCodeString,
+  ErrorTranslationKey,
+} from '../constants/errorCodes';
+import { TranslationService } from '../services/core/translationService';
+import { translateMessage } from '../utils/translationUtils';
+import { AuthenticatedRequest } from '../types/request';
+import { ErrorResponse, StandardError } from '../types/responseTypes';
+import logger from '../utils/Logger/logger';
 /**
  * Validate if language code is supported
  */
@@ -21,7 +26,7 @@ function isValidLanguage(
   lang: string | null | undefined,
   supportedLanguages: readonly string[]
 ): boolean {
-  if (!lang || typeof lang !== "string") {
+  if (!lang || typeof lang !== 'string') {
     return false;
   }
   return supportedLanguages.includes(lang.toLowerCase());
@@ -29,21 +34,11 @@ function isValidLanguage(
 
 class RouteNotFoundError extends BaseError {
   constructor(url: string, context?: ErrorContext) {
-    super(
-      `Route ${url} not found`,
-      404,
-      ErrorCode.ROUTE_NOT_FOUND,
-      true,
-      context
-    );
+    super(`Route ${url} not found`, 404, ErrorCode.ROUTE_NOT_FOUND, true, context);
   }
 }
 
-export const notFoundHandler = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
+export const notFoundHandler = (req: Request, res: Response, next: NextFunction): void => {
   const context: ErrorContext = {
     ipAddress: req.ip,
     userAgent: req.get('user-agent'),
@@ -81,14 +76,14 @@ export const errorHandler = async (
   } else {
     // Convert unknown errors to InternalServerError
     error = new InternalServerError(
-      config.NODE_ENV === "development" ? err.message : "Internal server error",
+      config.NODE_ENV === 'development' ? err.message : 'Internal server error',
       err,
       context
     );
   }
 
   // Log the error with appropriate level
-  const logLevel = error.statusCode >= 500 ? "error" : "warn";
+  const logLevel = error.statusCode >= 500 ? 'error' : 'warn';
   const logData = {
     requestId: error.context?.requestId || context.requestId,
     statusCode: error.statusCode,
@@ -96,18 +91,21 @@ export const errorHandler = async (
     url: req.url,
     method: req.method,
     ip: req.ip,
-    userAgent: req.get("user-agent"),
+    userAgent: req.get('user-agent'),
     userId: (req as AuthenticatedRequest).user?.id,
     // Include error details only for operational errors in development
-    ...(config.NODE_ENV === 'development' && error.isOperational && error.details && {
-      details: error.details,
-    }),
+    ...(config.NODE_ENV === 'development' &&
+      error.isOperational &&
+      error.details && {
+        details: error.details,
+      }),
     // Always include stack trace for 500 errors in development
     ...(config.NODE_ENV === 'development' && error.statusCode >= 500 && { stack: err.stack }),
     // For production, only log minimal info about original error
-    ...(config.NODE_ENV === 'production' && error.statusCode >= 500 && {
-      errorType: err.constructor.name,
-    }),
+    ...(config.NODE_ENV === 'production' &&
+      error.statusCode >= 500 && {
+        errorType: err.constructor.name,
+      }),
   };
 
   logger[logLevel](`[${logData.requestId}] ${error.message}`, logData);
@@ -142,15 +140,23 @@ export const errorHandler = async (
   if (error.details) {
     // Only include safe fields that can be used in translations
     if (error.details.field) translationParams.field = error.details.field;
-    if (error.details.attemptCount !== undefined) translationParams.attemptCount = error.details.attemptCount;
-    if (error.details.maxAttempts !== undefined) translationParams.maxAttempts = error.details.maxAttempts;
-    if (error.details.retryAfter !== undefined) translationParams.retryAfter = error.details.retryAfter;
+    if (error.details.attemptCount !== undefined)
+      translationParams.attemptCount = error.details.attemptCount;
+    if (error.details.maxAttempts !== undefined)
+      translationParams.maxAttempts = error.details.maxAttempts;
+    if (error.details.retryAfter !== undefined)
+      translationParams.retryAfter = error.details.retryAfter;
   }
 
   // Try to translate the message (non-blocking - falls back to original message)
   let translatedMessage = error.message;
   try {
+    // Create translation service instance for error translation
+    // TODO: Consider passing this via middleware initialization or service container
+    const translationService = new TranslationService();
+
     translatedMessage = await translateMessage(
+      translationService,
       translationKey,
       translationParams,
       language,

@@ -1,5 +1,9 @@
 import { Request, Response } from 'express';
-import { SecureNotificationService, SecureNotificationRequest, BroadcastNotificationRequest } from '../services/domain/notification';
+import {
+  SecureNotificationService,
+  SecureNotificationRequest,
+  BroadcastNotificationRequest,
+} from '../services/domain/notification';
 import { AuthenticatedRequest } from '../types/request';
 import { NotificationChannel } from '../types/business';
 import {
@@ -10,9 +14,13 @@ import {
 } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
+import { ResponseHelper } from '../utils/responseHelper';
 
 export class SecureNotificationController {
-  constructor(private secureNotificationService: SecureNotificationService) {}
+  constructor(
+    private secureNotificationService: SecureNotificationService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   /**
    * Send secure notification to specific customers
@@ -35,11 +43,7 @@ export class SecureNotificationController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -74,7 +78,10 @@ export class SecureNotificationController {
       }
 
       // Validate channels if provided
-      if (channels && (!Array.isArray(channels) || !channels.every(ch => ['PUSH', 'SMS', 'EMAIL'].includes(ch)))) {
+      if (
+        channels &&
+        (!Array.isArray(channels) || !channels.every((ch) => ['PUSH', 'SMS', 'EMAIL'].includes(ch)))
+      ) {
         const error = new AppError(
           'Channels must be an array of valid notification channels (PUSH, SMS, EMAIL)',
           400,
@@ -106,13 +113,13 @@ export class SecureNotificationController {
         data: req.body.data || {},
         metadata: {
           ipAddress: req.ip,
-          userAgent: req.get('User-Agent')
-        }
+          userAgent: req.get('User-Agent'),
+        },
       };
 
       const result = await this.secureNotificationService.sendSecureNotification(request);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         result.success ? 'success.notification.sent' : 'success.notification.sendingFailed',
         {
@@ -122,13 +129,12 @@ export class SecureNotificationController {
           validRecipients: result.totalRecipients - result.invalidRecipients,
           invalidRecipients: result.invalidRecipients,
           rateLimitInfo: undefined,
-          errors: result.errors
+          errors: result.errors,
         },
         200,
         req,
         result.success ? { sentCount: result.sentCount } : undefined
       );
-
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -155,11 +161,7 @@ export class SecureNotificationController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -194,7 +196,10 @@ export class SecureNotificationController {
       }
 
       // Validate channels if provided
-      if (channels && (!Array.isArray(channels) || !channels.every(ch => ['PUSH', 'SMS', 'EMAIL'].includes(ch)))) {
+      if (
+        channels &&
+        (!Array.isArray(channels) || !channels.every((ch) => ['PUSH', 'SMS', 'EMAIL'].includes(ch)))
+      ) {
         const error = new AppError(
           'Channels must be an array of valid notification channels (PUSH, SMS, EMAIL)',
           400,
@@ -213,13 +218,13 @@ export class SecureNotificationController {
         data: req.body.data || {},
         metadata: {
           ipAddress: req.ip,
-          userAgent: req.get('User-Agent')
-        }
+          userAgent: req.get('User-Agent'),
+        },
       };
 
       const result = await this.secureNotificationService.sendBroadcastNotification(request);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         result.success ? 'success.notification.sent' : 'success.notification.broadcastFailed',
         {
@@ -228,13 +233,12 @@ export class SecureNotificationController {
           totalRecipients: result.totalRecipients,
           validRecipients: result.totalRecipients - result.invalidRecipients,
           invalidRecipients: result.invalidRecipients,
-          errors: result.errors
+          errors: result.errors,
         },
         200,
         req,
         result.success ? { sentCount: result.sentCount } : undefined
       );
-
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -272,20 +276,12 @@ export class SecureNotificationController {
       // Validate ID formats
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       if (!idRegex.test(closureId) || closureId.length < 1 || closureId.length > 50) {
-        const error = new AppError(
-          'Invalid closure ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid closure ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -310,7 +306,7 @@ export class SecureNotificationController {
       }
 
       // Validate channels
-      if (!channels.every(ch => ['PUSH', 'SMS', 'EMAIL'].includes(ch))) {
+      if (!channels.every((ch) => ['PUSH', 'SMS', 'EMAIL'].includes(ch))) {
         const error = new AppError(
           'Channels must be valid notification channels (PUSH, SMS, EMAIL)',
           400,
@@ -327,11 +323,11 @@ export class SecureNotificationController {
         channels as NotificationChannel[],
         {
           ipAddress: req.ip,
-          userAgent: req.get('User-Agent')
+          userAgent: req.get('User-Agent'),
         }
       );
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         result.success ? 'success.notification.sent' : 'success.notification.closureFailed',
         {
@@ -340,13 +336,12 @@ export class SecureNotificationController {
           totalRecipients: result.totalRecipients,
           validRecipients: result.totalRecipients - result.invalidRecipients,
           invalidRecipients: result.invalidRecipients,
-          errors: result.errors
+          errors: result.errors,
         },
         200,
         req,
         result.success ? { sentCount: result.sentCount } : undefined
       );
-
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -374,11 +369,7 @@ export class SecureNotificationController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -388,11 +379,7 @@ export class SecureNotificationController {
       if (startDate) {
         start = new Date(startDate as string);
         if (isNaN(start.getTime())) {
-          const error = new AppError(
-            'Invalid startDate format',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
+          const error = new AppError('Invalid startDate format', 400, ERROR_CODES.VALIDATION_ERROR);
           return sendAppErrorResponse(res, error);
         }
       }
@@ -400,11 +387,7 @@ export class SecureNotificationController {
       if (endDate) {
         end = new Date(endDate as string);
         if (isNaN(end.getTime())) {
-          const error = new AppError(
-            'Invalid endDate format',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
+          const error = new AppError('Invalid endDate format', 400, ERROR_CODES.VALIDATION_ERROR);
           return sendAppErrorResponse(res, error);
         }
       }
@@ -426,14 +409,13 @@ export class SecureNotificationController {
         end
       );
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.notification.statsRetrieved',
         stats,
         200,
         req
       );
-
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -461,11 +443,7 @@ export class SecureNotificationController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -485,18 +463,17 @@ export class SecureNotificationController {
         hoursParam
       );
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.notification.securityAlertsRetrieved',
         {
           alerts,
           period: `${hoursParam} hours`,
-          totalAlerts: alerts.length
+          totalAlerts: alerts.length,
         },
         200,
         req
       );
-
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -523,11 +500,7 @@ export class SecureNotificationController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -552,7 +525,10 @@ export class SecureNotificationController {
       }
 
       // Validate channels if provided
-      if (channels && (!Array.isArray(channels) || !channels.every(ch => ['PUSH', 'SMS', 'EMAIL'].includes(ch)))) {
+      if (
+        channels &&
+        (!Array.isArray(channels) || !channels.every((ch) => ['PUSH', 'SMS', 'EMAIL'].includes(ch)))
+      ) {
         const error = new AppError(
           'Channels must be an array of valid notification channels (PUSH, SMS, EMAIL)',
           400,
@@ -575,23 +551,22 @@ export class SecureNotificationController {
         data: { isTest: true },
         metadata: {
           ipAddress: req.ip,
-          userAgent: req.get('User-Agent')
-        }
+          userAgent: req.get('User-Agent'),
+        },
       });
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         result.success ? 'success.notification.sent' : 'success.notification.testFailed',
         {
           sentCount: result.sentCount,
           failedCount: result.failedCount,
-          errors: result.errors
+          errors: result.errors,
         },
         200,
         req,
         result.success ? { sentCount: result.sentCount } : undefined
       );
-
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -604,18 +579,17 @@ export class SecureNotificationController {
   getSystemHealth = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const health = this.secureNotificationService.getSystemHealth();
-      
-      await sendSuccessResponse(
+
+      await this.responseHelper.success(
         res,
         'success.notification.systemHealthRetrieved',
         {
           ...health,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         },
         200,
         req
       );
-
     } catch (error) {
       handleRouteError(error, req, res);
     }

@@ -1,17 +1,20 @@
-import { Request, Response } from "express";
-import { BusinessTypeService } from "../services/domain/offering";
+import { Request, Response } from 'express';
+import { BusinessTypeService } from '../services/domain/offering';
+import { ResponseHelper } from '../utils/responseHelper';
 import {
   handleRouteError,
   sendSuccessResponse,
   createErrorContext,
   sendAppErrorResponse,
-} from "../utils/responseUtils";
-import { AppError } from "../types/responseTypes";
-import { ERROR_CODES } from "../constants/errorCodes";
+} from '../utils/responseUtils';
+import { AppError } from '../types/responseTypes';
+import { ERROR_CODES } from '../constants/errorCodes';
 
 export class BusinessTypeController {
-  constructor(private businessTypeService: BusinessTypeService) {}
-
+  constructor(
+    private businessTypeService: BusinessTypeService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   /**
    * Get all active business types
@@ -19,11 +22,10 @@ export class BusinessTypeController {
    */
   async getAllActiveBusinessTypes(req: Request, res: Response): Promise<void> {
     try {
-      const businessTypes =
-        await this.businessTypeService.getAllActiveBusinessTypes();
-      await sendSuccessResponse(
+      const businessTypes = await this.businessTypeService.getAllActiveBusinessTypes();
+      await this.responseHelper.success(
         res,
-        "success.businessType.retrieved",
+        'success.businessType.retrieved',
         businessTypes,
         200,
         req
@@ -39,11 +41,10 @@ export class BusinessTypeController {
    */
   async getAllBusinessTypes(req: Request, res: Response): Promise<void> {
     try {
-      const businessTypes =
-        await this.businessTypeService.getAllBusinessTypes();
-      await sendSuccessResponse(
+      const businessTypes = await this.businessTypeService.getAllBusinessTypes();
+      await this.responseHelper.success(
         res,
-        "success.businessType.allRetrieved",
+        'success.businessType.allRetrieved',
         businessTypes,
         200,
         req
@@ -94,7 +95,7 @@ export class BusinessTypeController {
         return sendAppErrorResponse(res, error);
       }
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.businessType.byCategoryRetrieved',
         businessTypes,
@@ -136,22 +137,16 @@ export class BusinessTypeController {
         return sendAppErrorResponse(res, error);
       }
 
-      const businessType = await this.businessTypeService.getBusinessTypeById(
-        id
-      );
+      const businessType = await this.businessTypeService.getBusinessTypeById(id);
 
       if (!businessType) {
-        const error = new AppError(
-          "Business type not found",
-          404,
-          ERROR_CODES.BUSINESS_NOT_FOUND
-        );
+        const error = new AppError('Business type not found', 404, ERROR_CODES.BUSINESS_NOT_FOUND);
         return sendAppErrorResponse(res, error);
       }
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        "success.businessType.retrievedSingle",
+        'success.businessType.retrievedSingle',
         businessType,
         200,
         req
@@ -167,12 +162,11 @@ export class BusinessTypeController {
    */
   async getBusinessTypesWithCount(req: Request, res: Response): Promise<void> {
     try {
-      const businessTypes =
-        await this.businessTypeService.getBusinessTypesWithCount();
+      const businessTypes = await this.businessTypeService.getBusinessTypesWithCount();
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        "success.businessType.withCountRetrieved",
+        'success.businessType.withCountRetrieved',
         businessTypes,
         200,
         req
@@ -190,9 +184,9 @@ export class BusinessTypeController {
     try {
       const categories = await this.businessTypeService.getCategories();
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        "success.businessType.categoriesRetrieved",
+        'success.businessType.categoriesRetrieved',
         categories,
         200,
         req
@@ -206,17 +200,14 @@ export class BusinessTypeController {
    * Get business types grouped by category
    * GET /api/v1/business-types/grouped
    */
-  async getBusinessTypesGroupedByCategory(
-    req: Request,
-    res: Response
-  ): Promise<void> {
+  async getBusinessTypesGroupedByCategory(req: Request, res: Response): Promise<void> {
     try {
       const groupedBusinessTypes =
         await this.businessTypeService.getBusinessTypesGroupedByCategory();
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        "success.businessType.groupedRetrieved",
+        'success.businessType.groupedRetrieved',
         groupedBusinessTypes,
         200,
         req

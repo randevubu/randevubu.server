@@ -1,49 +1,48 @@
 // Load environment variables first
-import { config, validateConfig } from "./config/environment";
+import { config, validateConfig } from './config/environment';
 // Initialize telemetry early (no-op unless OTEL_ENABLED=true)
-import "./telemetry/opentelemetry";
+import './telemetry/opentelemetry';
 
-import compression from "compression";
-import cookieParser from "cookie-parser";
-import cors from "cors";
-import express, { Express, NextFunction, Request, Response } from "express";
-import rateLimit from "express-rate-limit";
-import helmet from "helmet";
-import morgan from "morgan";
-import swaggerUi from "swagger-ui-express";
-import { getMetrics, metricsMiddleware } from "./utils/metrics";
-import { swaggerSpec, swaggerUiOptions } from "./config/swagger";
-import { ControllerContainer } from "./controllers";
-import prisma from "./lib/prisma";
-import { initializeBusinessContextMiddleware } from "./middleware/attachBusinessContext";
-import { AuthMiddleware } from "./middleware/auth";
-import { AuthorizationMiddleware } from "./middleware/authorization";
-import { initializeAuthMiddleware } from "./middleware/authUtils";
-import { csrfMiddleware } from "./middleware/csrf";
-import { errorHandler, notFoundHandler } from "./middleware/error";
-import { languageMiddleware } from "./middleware/language";
-import { requestIdMiddleware } from "./middleware/requestId";
-import { sanitizeBody, sanitizeQuery } from "./middleware/sanitization";
-import { RepositoryContainer } from "./repositories";
-import { createRoutes } from "./routes";
-import { ServiceContainer } from "./services";
+import compression from 'compression';
+import cookieParser from 'cookie-parser';
+import cors from 'cors';
+import express, { Express, NextFunction, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import swaggerUi from 'swagger-ui-express';
+import { getMetrics, metricsMiddleware } from './utils/metrics';
+import { swaggerSpec, swaggerUiOptions } from './config/swagger';
+import { ControllerContainer } from './controllers';
+import prisma from './lib/prisma';
+import { initializeBusinessContextMiddleware } from './middleware/attachBusinessContext';
+import { AuthMiddleware } from './middleware/auth';
+import { AuthorizationMiddleware } from './middleware/authorization';
+import { initializeAuthMiddleware } from './middleware/authUtils';
+import { csrfMiddleware } from './middleware/csrf';
+import { errorHandler, notFoundHandler } from './middleware/error';
+import { languageMiddleware } from './middleware/language';
+import { requestIdMiddleware } from './middleware/requestId';
+import { sanitizeBody, sanitizeQuery } from './middleware/sanitization';
+import { RepositoryContainer } from './repositories';
+import { createRoutes } from './routes';
+import { ServiceContainer } from './services';
 
 import {
   gracefulShutdown,
   setServicesForShutdown,
   isReadyForShutdown,
-} from "./utils/gracefulShutdown";
+} from './utils/gracefulShutdown';
 import {
   requestLogger,
   performanceMonitor,
   securityMonitor,
   errorMonitor,
   createHealthCheck,
-} from "./utils/monitoring";
-import { cacheManager } from "./lib/redis/redis";
-import { CacheMonitoring } from "./middleware/cacheMonitoring";
-import { cacheService } from "./services/core/cacheService";
-import logger from "./utils/Logger/logger";
+} from './utils/monitoring';
+import { cacheManager } from './lib/redis/redis';
+import { CacheMonitoring } from './middleware/cacheMonitoring';
+import logger from './utils/Logger/logger';
 // Validate configuration on startup
 try {
   validateConfig();
@@ -61,22 +60,22 @@ const app: Express = express();
 const PORT = config.PORT;
 
 // Trust proxy headers when running behind reverse proxy (e.g., Render, Heroku, etc.)
-app.set("trust proxy", 1);
+app.set('trust proxy', 1);
 
 // HTTPS enforcement in production (can be disabled via DISABLE_HTTPS_ENFORCEMENT env var)
-if (config.NODE_ENV === "production" && process.env.DISABLE_HTTPS_ENFORCEMENT !== "true") {
+if (config.NODE_ENV === 'production' && process.env.DISABLE_HTTPS_ENFORCEMENT !== 'true') {
   app.use((req, res, next) => {
     // Check if request is already HTTPS
-    const protocol = req.header("x-forwarded-proto") || req.protocol;
+    const protocol = req.header('x-forwarded-proto') || req.protocol;
 
-    if (protocol !== "https") {
+    if (protocol !== 'https') {
       // Redirect to HTTPS
-      logger.warn("HTTP request redirected to HTTPS", {
+      logger.warn('HTTP request redirected to HTTPS', {
         ip: req.ip,
         path: req.path,
-        userAgent: req.get("user-agent"),
+        userAgent: req.get('user-agent'),
       });
-      return res.redirect(301, `https://${req.header("host")}${req.url}`);
+      return res.redirect(301, `https://${req.header('host')}${req.url}`);
     }
     next();
   });
@@ -84,16 +83,16 @@ if (config.NODE_ENV === "production" && process.env.DISABLE_HTTPS_ENFORCEMENT !=
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: config.NODE_ENV === "development" ? 1000 : 100, // Much higher limit in dev
+  max: config.NODE_ENV === 'development' ? 1000 : 100, // Much higher limit in dev
   message: {
-    error: "Too many requests from this IP, please try again later.",
-    retryAfter: "15 minutes",
+    error: 'Too many requests from this IP, please try again later.',
+    retryAfter: '15 minutes',
   },
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
     // Skip rate limiting for OPTIONS requests (CORS preflight)
-    return req.method === "OPTIONS";
+    return req.method === 'OPTIONS';
   },
 });
 
@@ -108,7 +107,7 @@ app.use(
 
       // Normalize origin (remove trailing slash, convert to lowercase for comparison)
       const normalizedOrigin = origin.toLowerCase().replace(/\/$/, '');
-      const normalizedAllowed = config.CORS_ORIGINS.map(o => o.toLowerCase().replace(/\/$/, ''));
+      const normalizedAllowed = config.CORS_ORIGINS.map((o) => o.toLowerCase().replace(/\/$/, ''));
 
       // Check if origin is in allowed list (case-insensitive)
       if (normalizedAllowed.includes(normalizedOrigin)) {
@@ -116,23 +115,23 @@ app.use(
       }
 
       // Log blocked origin for security monitoring
-      logger.warn("CORS blocked origin", { origin });
-      return callback(new Error("Not allowed by CORS"));
+      logger.warn('CORS blocked origin', { origin });
+      return callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "x-role-update",
-      "X-CSRF-Token",
-      "Accept",
-      "Accept-Language",
-      "Cache-Control",
-      "Pragma",
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'x-role-update',
+      'X-CSRF-Token',
+      'Accept',
+      'Accept-Language',
+      'Cache-Control',
+      'Pragma',
     ],
-    exposedHeaders: ["X-CSRF-Token"],
+    exposedHeaders: ['X-CSRF-Token'],
     preflightContinue: false,
     optionsSuccessStatus: 204,
     maxAge: 86400, // Cache preflight for 24 hours
@@ -147,9 +146,9 @@ app.use(
         defaultSrc: ["'self'"],
         styleSrc: ["'self'"],
         scriptSrc: ["'self'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        fontSrc: ["'self'", "https:", "data:"],
-        connectSrc: ["'self'", "http://localhost:3000", "http://localhost:3001"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        fontSrc: ["'self'", 'https:', 'data:'],
+        connectSrc: ["'self'", 'http://localhost:3000', 'http://localhost:3001'],
         frameSrc: ["'none'"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
@@ -157,7 +156,7 @@ app.use(
       },
     },
     crossOriginResourcePolicy: {
-      policy: "cross-origin", // Allow cross-origin requests for CORS
+      policy: 'cross-origin', // Allow cross-origin requests for CORS
     },
     hsts: {
       maxAge: 31536000,
@@ -165,11 +164,11 @@ app.use(
       preload: true,
     },
     frameguard: {
-      action: "deny",
+      action: 'deny',
     },
     xContentTypeOptions: false,
     referrerPolicy: {
-      policy: "strict-origin-when-cross-origin",
+      policy: 'strict-origin-when-cross-origin',
     },
   })
 );
@@ -178,12 +177,12 @@ app.use(compression());
 app.use(cookieParser()); // Parse cookies for authentication
 app.use(limiter);
 app.use(
-  morgan("combined", {
+  morgan('combined', {
     stream: { write: (message: string) => logger.info(message.trim()) },
   })
 );
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request ID middleware (should be early in the chain)
 app.use(requestIdMiddleware);
@@ -237,14 +236,14 @@ app.use(securityMonitor);
  *                   type: string
  *                   example: "5ms"
  */
-app.get("/", (req: Request, res: Response) => {
+app.get('/', (req: Request, res: Response) => {
   // Calculate response time if startTime was set by monitoring middleware
   const startTime = (req as Request & { startTime?: number }).startTime;
   const responseTime = startTime ? Date.now() - startTime : 0;
 
   res.json({
-    message: "Welcome to RandevuBu Server!",
-    status: "running",
+    message: 'Welcome to RandevuBu Server!',
+    status: 'running',
     version: config.API_VERSION,
     environment: config.NODE_ENV,
     timestamp: new Date().toISOString(),
@@ -273,9 +272,9 @@ app.get("/", (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/HealthCheckResponse'
  */
-app.get("/health", async (req: Request, res: Response) => {
+app.get('/health', async (req: Request, res: Response) => {
   const startTime = Date.now();
-  let status = "healthy";
+  let status = 'healthy';
   let httpStatus = 200;
   const checks: Record<string, unknown> = {};
 
@@ -284,16 +283,16 @@ app.get("/health", async (req: Request, res: Response) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
       checks.database = {
-        status: "healthy",
-        responseTime: Date.now() - startTime + "ms",
+        status: 'healthy',
+        responseTime: Date.now() - startTime + 'ms',
       };
     } catch (error) {
       checks.database = {
-        status: "unhealthy",
-        error: "Database connection failed",
-        responseTime: Date.now() - startTime + "ms",
+        status: 'unhealthy',
+        error: 'Database connection failed',
+        responseTime: Date.now() - startTime + 'ms',
       };
-      status = "unhealthy";
+      status = 'unhealthy';
       httpStatus = 503;
     }
 
@@ -302,24 +301,24 @@ app.get("/health", async (req: Request, res: Response) => {
       const redisHealthy = await cacheManager.healthCheck();
       const redisStats = await cacheManager.getStats();
       checks.redis = {
-        status: redisHealthy ? "healthy" : "unhealthy",
+        status: redisHealthy ? 'healthy' : 'unhealthy',
         connected: redisStats.connected,
         memory: redisStats.memory,
         keyspace: redisStats.keyspace,
         uptime: redisStats.uptime,
-        responseTime: Date.now() - startTime + "ms",
+        responseTime: Date.now() - startTime + 'ms',
       };
       if (!redisHealthy) {
-        status = "unhealthy";
+        status = 'unhealthy';
         httpStatus = 503;
       }
     } catch (error) {
       checks.redis = {
-        status: "unhealthy",
-        error: "Redis connection failed",
-        responseTime: Date.now() - startTime + "ms",
+        status: 'unhealthy',
+        error: 'Redis connection failed',
+        responseTime: Date.now() - startTime + 'ms',
       };
-      status = "unhealthy";
+      status = 'unhealthy';
       httpStatus = 503;
     }
 
@@ -334,28 +333,22 @@ app.get("/health", async (req: Request, res: Response) => {
       },
       uptime: Math.floor(process.uptime()),
       version: process.version,
-      environment: process.env.NODE_ENV || "development",
+      environment: process.env.NODE_ENV || 'development',
     };
 
     // Service availability checks
     checks.services = {
-      subscriptionScheduler: services.subscriptionSchedulerService
-        ? "available"
-        : "unavailable",
-      jobScheduler: services.jobScheduler
-        ? "available"
-        : "unavailable",
-      jobSchedulerRunning: services.jobScheduler?.hasRunningJobs()
-        ? "running"
-        : "stopped",
+      subscriptionScheduler: services.subscriptionSchedulerService ? 'available' : 'unavailable',
+      jobScheduler: services.jobScheduler ? 'available' : 'unavailable',
+      jobSchedulerRunning: services.jobScheduler?.hasRunningJobs() ? 'running' : 'stopped',
 
-      notification: services.notificationService ? "available" : "unavailable",
-      payment: services.paymentService ? "available" : "unavailable",
+      notification: services.notificationService ? 'available' : 'unavailable',
+      payment: services.paymentService ? 'available' : 'unavailable',
     };
 
     // Shutdown readiness check
     checks.shutdown = {
-      status: isReadyForShutdown() ? "ready" : "shutting_down",
+      status: isReadyForShutdown() ? 'ready' : 'shutting_down',
       ready: isReadyForShutdown(),
     };
 
@@ -365,7 +358,7 @@ app.get("/health", async (req: Request, res: Response) => {
       timestamp: new Date().toISOString(),
       version: config.API_VERSION,
       environment: config.NODE_ENV,
-      responseTime: Date.now() - startTime + "ms",
+      responseTime: Date.now() - startTime + 'ms',
       system: systemHealth,
       checks,
     };
@@ -373,13 +366,13 @@ app.get("/health", async (req: Request, res: Response) => {
     res.status(httpStatus).json(healthData);
   } catch (error) {
     const healthData = {
-      status: "unhealthy",
+      status: 'unhealthy',
       uptime: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
       version: config.API_VERSION,
       environment: config.NODE_ENV,
-      responseTime: Date.now() - startTime + "ms",
-      error: "Health check failed",
+      responseTime: Date.now() - startTime + 'ms',
+      error: 'Health check failed',
       checks,
     };
 
@@ -403,18 +396,14 @@ app.get("/health", async (req: Request, res: Response) => {
  *               type: string
  */
 app.use(metricsMiddleware);
-app.get("/metrics", getMetrics);
+app.get('/metrics', getMetrics);
 
 // API Documentation
-app.use(
-  "/api-docs",
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec, swaggerUiOptions)
-);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
 
 // API JSON specification
-app.get("/api-docs.json", (req: Request, res: Response) => {
-  res.setHeader("Content-Type", "application/json");
+app.get('/api-docs.json', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
 });
 
@@ -423,10 +412,15 @@ const repositories = new RepositoryContainer(prisma);
 const services = new ServiceContainer(repositories, prisma);
 const controllers = new ControllerContainer(repositories, services);
 
-// Cache services are handled by the middleware
+// Initialize cache monitoring with cacheService
+CacheMonitoring.initialize(services.cacheService);
 
 // Initialize authentication middleware with dependency injection
-const authMiddleware = new AuthMiddleware(repositories, services.tokenService, services.rbacService);
+const authMiddleware = new AuthMiddleware(
+  repositories,
+  services.tokenService,
+  services.rbacService
+);
 const authorizationMiddleware = new AuthorizationMiddleware(services.rbacService);
 initializeAuthMiddleware(authMiddleware, authorizationMiddleware);
 
@@ -437,7 +431,7 @@ initializeBusinessContextMiddleware(repositories);
 setServicesForShutdown(services);
 
 // Mount API routes
-app.use("/api", createRoutes(controllers, services));
+app.use('/api', createRoutes(controllers, services));
 
 app.use(notFoundHandler);
 app.use(errorMonitor); // Add error monitoring before error handler
@@ -459,7 +453,7 @@ const server = app.listen(PORT, async () => {
     // Fetch frequently accessed data to warm cache
     const businessTypes = await repositories.businessTypeRepository.findAllActive();
 
-    await cacheService.warmCache({
+    await services.cacheService.warmCache({
       businessTypes: businessTypes || [],
     });
     logger.info('✅ Cache warmed with frequently accessed data');
@@ -476,30 +470,22 @@ const server = app.listen(PORT, async () => {
   logger.info(`📊 API Version: ${config.API_VERSION}`);
 
   // Start subscription scheduler
-  if (config.NODE_ENV === "production" || config.NODE_ENV === "staging") {
+  if (config.NODE_ENV === 'production' || config.NODE_ENV === 'staging') {
     services.subscriptionSchedulerService.start();
     logger.info(`📅 Subscription scheduler started in ${config.NODE_ENV} mode`);
-  } else if (config.NODE_ENV === "development") {
+  } else if (config.NODE_ENV === 'development') {
     // Enable scheduler in development with accelerated testing schedules
     services.subscriptionSchedulerService.start();
-    logger.info(
-      `📅 Subscription scheduler started in DEVELOPMENT mode with accelerated schedules`
-    );
+    logger.info(`📅 Subscription scheduler started in DEVELOPMENT mode with accelerated schedules`);
   } else {
-    logger.info(
-      `📅 Subscription scheduler disabled in ${config.NODE_ENV} mode`
-    );
+    logger.info(`📅 Subscription scheduler disabled in ${config.NODE_ENV} mode`);
   }
 
   // Start background jobs (new job scheduler)
-  if (config.NODE_ENV !== "test") {
+  if (config.NODE_ENV !== 'test') {
     services.jobScheduler.start();
-    logger.info(
-      `📅 Background jobs started in ${config.NODE_ENV} mode`
-    );
+    logger.info(`📅 Background jobs started in ${config.NODE_ENV} mode`);
   }
-
-
 });
 
 // Graceful shutdown handlers
@@ -510,7 +496,7 @@ const shutdownHandler = async () => {
   await gracefulShutdown(server);
 };
 
-process.on("SIGTERM", shutdownHandler);
-process.on("SIGINT", shutdownHandler);
+process.on('SIGTERM', shutdownHandler);
+process.on('SIGINT', shutdownHandler);
 
 export default app;

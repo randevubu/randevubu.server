@@ -1,16 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
-import { cacheService } from '../services/core/cacheService';
+import type { CacheService } from '../services/core/cacheService';
 import { cacheManager } from '../lib/redis/redis';
 import { CachedRequest, CacheConfig, CacheResponse } from '../types/cache';
 import { CacheKeyGenerator } from '../utils/cacheKeyGenerator';
 import { CacheUtils } from '../utils/cacheUtils';
-import logger from "../utils/Logger/logger";
+import logger from '../utils/Logger/logger';
 // Cache categories with different TTLs
 export const CACHE_CATEGORIES = {
-  STATIC: { ttl: 3600, keyPrefix: 'static' },      // 1 hour
-  SEMI_DYNAMIC: { ttl: 300, keyPrefix: 'semi' },   // 5 minutes  
-  DYNAMIC: { ttl: 60, keyPrefix: 'dynamic' },      // 1 minute
-  REAL_TIME: { ttl: 0, keyPrefix: 'realtime' }     // No cache
+  STATIC: { ttl: 3600, keyPrefix: 'static' }, // 1 hour
+  SEMI_DYNAMIC: { ttl: 300, keyPrefix: 'semi' }, // 5 minutes
+  DYNAMIC: { ttl: 60, keyPrefix: 'dynamic' }, // 1 minute
+  REAL_TIME: { ttl: 0, keyPrefix: 'realtime' }, // No cache
 } as const;
 
 /**
@@ -24,7 +24,7 @@ function generateCacheKey(req: CachedRequest, config: CacheConfig): string {
   const prefix = config.keyPrefix || 'api';
   const userId = CacheUtils.getUserId(req);
   const businessId = CacheUtils.getBusinessId(req);
-  
+
   // Use secure key generation
   const cacheKey = CacheKeyGenerator.generateCacheKey(
     prefix,
@@ -33,17 +33,17 @@ function generateCacheKey(req: CachedRequest, config: CacheConfig): string {
     req.path,
     req.query
   );
-  
+
   // Validate key for security
   if (!CacheKeyGenerator.validateCacheKey(cacheKey)) {
-    logger.warn('Invalid cache key generated, using fallback', { 
-      path: req.path, 
-      userId, 
-      businessId 
+    logger.warn('Invalid cache key generated, using fallback', {
+      path: req.path,
+      userId,
+      businessId,
     });
     return `${prefix}:${userId}:${businessId}:${req.path.replace(/\/$/, '')}`;
   }
-  
+
   return cacheKey;
 }
 
@@ -71,12 +71,12 @@ export const cache = (config: CacheConfig = {}) => {
 
     try {
       const cacheKey = generateCacheKey(req, config);
-      
+
       // Try to get from cache with circuit breaker
       const cached = await cacheManager.get(cacheKey);
       if (cached) {
         logger.info(`Cache hit for ${req.path}`, { cacheKey, ttl: config.ttl });
-        
+
         // Add cache headers
         res.set('X-Cache-Status', 'HIT');
         res.set('X-Cache-Key', cacheKey);
@@ -84,14 +84,14 @@ export const cache = (config: CacheConfig = {}) => {
         // Prevent browser caching - only use server-side cache
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
         res.set('Pragma', 'no-cache');
-        
+
         return res.json({
           ...cached,
           _cache: {
             hit: true,
             key: cacheKey,
-            ttl: config.ttl
-          }
+            ttl: config.ttl,
+          },
         });
       }
 
@@ -99,7 +99,7 @@ export const cache = (config: CacheConfig = {}) => {
 
       // Store original res.json
       const originalJson = res.json.bind(res);
-      
+
       // Override res.json to cache the response with error handling
       res.json = (body: CacheResponse) => {
         // Only cache successful responses
@@ -107,19 +107,21 @@ export const cache = (config: CacheConfig = {}) => {
           // Cache asynchronously without blocking the response
           setImmediate(() => {
             // Use Promise.resolve to avoid blocking
-            Promise.resolve().then(async () => {
-              try {
-                await cacheService.set(cacheKey, body, config.ttl || 300);
-              } catch (cacheError) {
-                // Log cache error but don't fail the request
-                logger.error(`Failed to cache response for ${req.path}:`, cacheError);
-              }
-            }).catch(() => {
-              // Silently handle any promise rejection
-            });
+            Promise.resolve()
+              .then(async () => {
+                try {
+                  await cacheManager.set(cacheKey, body, config.ttl || 300);
+                } catch (cacheError) {
+                  // Log cache error but don't fail the request
+                  logger.error(`Failed to cache response for ${req.path}:`, cacheError);
+                }
+              })
+              .catch(() => {
+                // Silently handle any promise rejection
+              });
           });
         }
-        
+
         // Add cache headers
         res.set('X-Cache-Status', 'MISS');
         res.set('X-Cache-Key', cacheKey);
@@ -127,7 +129,7 @@ export const cache = (config: CacheConfig = {}) => {
         // Prevent browser caching - only use server-side cache
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
         res.set('Pragma', 'no-cache');
-        
+
         return originalJson(body);
       };
 
@@ -135,11 +137,11 @@ export const cache = (config: CacheConfig = {}) => {
     } catch (error) {
       // Circuit breaker: Continue without caching if Redis fails
       logger.error(`Cache middleware error for ${req.path}:`, error);
-      
+
       // Add error headers to indicate cache is unavailable
       res.set('X-Cache-Status', 'ERROR');
       res.set('X-Cache-Error', 'Cache unavailable');
-      
+
       next(); // Continue without caching
     }
   };
@@ -150,21 +152,21 @@ export const cache = (config: CacheConfig = {}) => {
  */
 export const staticCache = cache({
   ...CACHE_CATEGORIES.STATIC,
-  skipCache: (req) => req.query.refresh === 'true'
+  skipCache: (req) => req.query.refresh === 'true',
 });
 
 export const semiDynamicCache = cache({
   ...CACHE_CATEGORIES.SEMI_DYNAMIC,
-  skipCache: (req) => req.query.realtime === 'true'
+  skipCache: (req) => req.query.realtime === 'true',
 });
 
 export const dynamicCache = cache({
   ...CACHE_CATEGORIES.DYNAMIC,
-  skipCache: (req) => req.query.live === 'true' || req.query.realtime === 'true'
+  skipCache: (req) => req.query.live === 'true' || req.query.realtime === 'true',
 });
 
 export const realTimeCache = cache({
-  ...CACHE_CATEGORIES.REAL_TIME
+  ...CACHE_CATEGORIES.REAL_TIME,
 });
 
 /**
@@ -178,7 +180,7 @@ export const businessCache = cache({
     const businessId = req.params.id || 'list';
     return CacheKeyGenerator.generateCacheKey('business', userId, businessId, req.path, req.query);
   },
-  skipCache: (req: CachedRequest) => req.query.refresh === 'true'
+  skipCache: (req: CachedRequest) => req.query.refresh === 'true',
 });
 
 export const serviceCache = cache({
@@ -189,7 +191,7 @@ export const serviceCache = cache({
     const businessId = req.params.businessId || CacheUtils.getBusinessId(req);
     return CacheKeyGenerator.generateCacheKey('service', userId, businessId, req.path, req.query);
   },
-  skipCache: (req: CachedRequest) => req.query.refresh === 'true'
+  skipCache: (req: CachedRequest) => req.query.refresh === 'true',
 });
 
 export const appointmentCache = cache({
@@ -198,9 +200,15 @@ export const appointmentCache = cache({
   keyGenerator: (req: CachedRequest) => {
     const userId = CacheUtils.getUserId(req);
     const businessId = req.params.businessId || CacheUtils.getBusinessId(req);
-    return CacheKeyGenerator.generateCacheKey('appointment', userId, businessId, req.path, req.query);
+    return CacheKeyGenerator.generateCacheKey(
+      'appointment',
+      userId,
+      businessId,
+      req.path,
+      req.query
+    );
   },
-  skipCache: (req: CachedRequest) => req.query.live === 'true' || req.query.realtime === 'true'
+  skipCache: (req: CachedRequest) => req.query.live === 'true' || req.query.realtime === 'true',
 });
 
 export const userCache = cache({
@@ -210,7 +218,7 @@ export const userCache = cache({
     const userId = CacheUtils.getUserId(req);
     return CacheKeyGenerator.generateCacheKey('user', userId, 'global', req.path, req.query);
   },
-  skipCache: (req: CachedRequest) => req.query.refresh === 'true'
+  skipCache: (req: CachedRequest) => req.query.refresh === 'true',
 });
 
 export const reportsCache = cache({
@@ -221,29 +229,27 @@ export const reportsCache = cache({
     const businessId = CacheUtils.getBusinessId(req);
     return CacheKeyGenerator.generateCacheKey('reports', userId, businessId, req.path, req.query);
   },
-  skipCache: (req: CachedRequest) => req.query.refresh === 'true'
+  skipCache: (req: CachedRequest) => req.query.refresh === 'true',
 });
 
 /**
- * Cache invalidation helpers
+ * Cache invalidation helpers factory
+ * @param cacheService - Injected CacheService instance
  */
-export const invalidateCache = {
-  business: (businessId?: string, userId?: string) => 
+export const createCacheInvalidation = (cacheService: CacheService) => ({
+  business: (businessId: string, userId?: string) =>
     cacheService.invalidateBusiness(businessId, userId),
 
-  service: (serviceId?: string, businessId?: string, userId?: string) => 
+  service: (serviceId: string, businessId?: string, userId?: string) =>
     cacheService.invalidateService(serviceId, businessId, userId),
 
-  appointment: (appointmentId?: string, businessId?: string, userId?: string) => 
+  appointment: (appointmentId: string, businessId?: string, userId?: string) =>
     cacheService.invalidateAppointment(appointmentId, businessId, userId),
 
   user: (userId: string) => cacheService.invalidateUser(userId),
 
-  all: () => cacheService.clearAll()
-};
+  all: () => cacheService.clearAll(),
+});
 
 // Note: cacheMetrics has been replaced by trackCachePerformance in cacheMonitoring.ts
 // This provides better performance tracking and eliminates redundancy
-
-// Export the cache service for direct use in controllers
-export { cacheService };

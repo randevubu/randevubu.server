@@ -1,23 +1,19 @@
 import { Request, Response } from 'express';
 import { OfferingService } from '../services/domain/offering';
-import {
-  createServiceSchema,
-  updateServiceSchema
-} from '../schemas/business.schemas';
+import { ResponseHelper } from '../utils/responseHelper';
+import { createServiceSchema, updateServiceSchema } from '../schemas/business.schemas';
 import { AuthenticatedRequest, GuaranteedAuthRequest } from '../types/request';
-import {
-  handleRouteError,
-  sendSuccessResponse,
-  createErrorContext,
-  sendAppErrorResponse,
-} from '../utils/responseUtils';
+import { handleRouteError, createErrorContext, sendAppErrorResponse } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
 import { ZodError } from 'zod';
 // Cache invalidation handled by routes, not controllers
 
 export class ServiceController {
-  constructor(private offeringService: OfferingService) {}
+  constructor(
+    private offeringService: OfferingService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   async createService(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
@@ -37,11 +33,7 @@ export class ServiceController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -52,7 +44,7 @@ export class ServiceController {
       } catch (zodError) {
         if (zodError instanceof ZodError) {
           const error = new AppError(
-            `Invalid service data: ${zodError.errors.map(e => e.message).join(', ')}`,
+            `Invalid service data: ${zodError.errors.map((e) => e.message).join(', ')}`,
             400,
             ERROR_CODES.VALIDATION_ERROR
           );
@@ -63,13 +55,7 @@ export class ServiceController {
 
       const service = await this.offeringService.createService(userId, businessId, validatedData);
 
-      await sendSuccessResponse(
-        res,
-        'success.service.created',
-        service,
-        201,
-        req
-      );
+      await this.responseHelper.success(res, 'success.service.created', service, 201, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -93,32 +79,18 @@ export class ServiceController {
       // Validate service ID format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid service ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid service ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const service = await this.offeringService.getServiceById(userId, id);
 
       if (!service) {
-        const error = new AppError(
-          'Service not found',
-          404,
-          ERROR_CODES.SERVICE_NOT_FOUND
-        );
+        const error = new AppError('Service not found', 404, ERROR_CODES.SERVICE_NOT_FOUND);
         return sendAppErrorResponse(res, error);
       }
 
-      await sendSuccessResponse(
-        res,
-        'success.service.retrieved',
-        service,
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.service.retrieved', service, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -143,11 +115,7 @@ export class ServiceController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -168,14 +136,14 @@ export class ServiceController {
         activeOnlyBool
       );
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.service.businessRetrieved',
         {
           services,
           total: services.length,
           businessId,
-          activeOnly: activeOnlyBool
+          activeOnly: activeOnlyBool,
         },
         200,
         req
@@ -202,23 +170,19 @@ export class ServiceController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const services = await this.offeringService.getPublicServicesByBusinessId(businessId);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.service.publicRetrieved',
         {
           services,
           total: services.length,
-          businessId
+          businessId,
         },
         200,
         req
@@ -246,11 +210,7 @@ export class ServiceController {
       // Validate service ID format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid service ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid service ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -261,7 +221,7 @@ export class ServiceController {
       } catch (zodError) {
         if (zodError instanceof ZodError) {
           const error = new AppError(
-            `Invalid service update data: ${zodError.errors.map(e => e.message).join(', ')}`,
+            `Invalid service update data: ${zodError.errors.map((e) => e.message).join(', ')}`,
             400,
             ERROR_CODES.VALIDATION_ERROR
           );
@@ -272,13 +232,7 @@ export class ServiceController {
 
       const service = await this.offeringService.updateService(userId, id, validatedData);
 
-      await sendSuccessResponse(
-        res,
-        'success.service.updated',
-        service,
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.service.updated', service, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -302,23 +256,13 @@ export class ServiceController {
       // Validate service ID format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid service ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid service ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       await this.offeringService.deleteService(userId, id);
 
-      await sendSuccessResponse(
-        res,
-        'success.service.deleted',
-        undefined,
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.service.deleted', undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -343,11 +287,7 @@ export class ServiceController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -424,18 +364,11 @@ export class ServiceController {
 
       await this.offeringService.reorderServices(userId, businessId, serviceOrders);
 
-      await sendSuccessResponse(
-        res,
-        'success.service.reordered',
-        undefined,
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.service.reordered', undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
-
 
   async getServiceStats(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
@@ -455,23 +388,13 @@ export class ServiceController {
       // Validate service ID format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid service ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid service ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const stats = await this.offeringService.getServiceStats(userId, id);
 
-      await sendSuccessResponse(
-        res,
-        'success.service.statsRetrieved',
-        stats,
-        200,
-        req
-      );
+      await this.responseHelper.success(res, 'success.service.statsRetrieved', stats, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -496,11 +419,7 @@ export class ServiceController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -535,14 +454,9 @@ export class ServiceController {
 
       await this.offeringService.bulkUpdatePrices(userId, businessId, priceMultiplier);
 
-      await sendSuccessResponse(
-        res,
-        'success.service.pricesUpdated',
-        undefined,
-        200,
-        req,
-        { multiplier: priceMultiplier }
-      );
+      await this.responseHelper.success(res, 'success.service.pricesUpdated', undefined, 200, req, {
+        multiplier: priceMultiplier,
+      });
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -567,11 +481,7 @@ export class ServiceController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -591,13 +501,13 @@ export class ServiceController {
 
       const services = await this.offeringService.getPopularServices(userId, businessId, limitNum);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.service.popularRetrieved',
         {
           services,
           businessId,
-          limit: limitNum
+          limit: limitNum,
         },
         200,
         req
@@ -625,11 +535,7 @@ export class ServiceController {
       // Validate service ID format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid service ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid service ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -646,33 +552,21 @@ export class ServiceController {
       // Validate date format
       const appointmentDate = new Date(date as string);
       if (isNaN(appointmentDate.getTime())) {
-        const error = new AppError(
-          'Invalid date format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid date format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate time format
       const appointmentStartTime = new Date(`${date}T${startTime}`);
       if (isNaN(appointmentStartTime.getTime())) {
-        const error = new AppError(
-          'Invalid time format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid time format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate date is not in the past
       const now = new Date();
       if (appointmentDate < now) {
-        const error = new AppError(
-          'Date cannot be in the past',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Date cannot be in the past', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -682,7 +576,7 @@ export class ServiceController {
         appointmentStartTime
       );
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.service.availabilityChecked',
         {
@@ -690,7 +584,7 @@ export class ServiceController {
           date: date as string,
           startTime: startTime as string,
           isAvailable: result.isAvailable,
-          service: result.service
+          service: result.service,
         },
         200,
         req
@@ -719,27 +613,19 @@ export class ServiceController {
       // Validate service ID format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid service ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid service ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       // Validate isActive parameter
       if (typeof isActive !== 'boolean') {
-        const error = new AppError(
-          'isActive must be a boolean',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('isActive must be a boolean', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       const service = await this.offeringService.toggleServiceStatus(userId, id, isActive);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         isActive ? 'success.service.activated' : 'success.service.deactivated',
         service,
@@ -770,11 +656,7 @@ export class ServiceController {
       // Validate service ID format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid service ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid service ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -800,13 +682,7 @@ export class ServiceController {
 
       const service = await this.offeringService.duplicateService(userId, id, trimmedName);
 
-      await sendSuccessResponse(
-        res,
-        'success.service.duplicated',
-        service,
-        201,
-        req
-      );
+      await this.responseHelper.success(res, 'success.service.duplicated', service, 201, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -832,11 +708,7 @@ export class ServiceController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -893,17 +765,13 @@ export class ServiceController {
 
       // Validate isActive parameter
       if (typeof isActive !== 'boolean') {
-        const error = new AppError(
-          'isActive must be a boolean',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('isActive must be a boolean', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
       await this.offeringService.batchToggleServices(userId, businessId, serviceIds, isActive);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         isActive ? 'success.service.batchActivated' : 'success.service.batchDeactivated',
         undefined,
@@ -935,11 +803,7 @@ export class ServiceController {
       // Validate businessId format
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 
@@ -996,17 +860,11 @@ export class ServiceController {
 
       await this.offeringService.batchDeleteServices(userId, businessId, serviceIds);
 
-      await sendSuccessResponse(
-        res,
-        'success.service.batchDeleted',
-        undefined,
-        200,
-        req,
-        { count: serviceIds.length }
-      );
+      await this.responseHelper.success(res, 'success.service.batchDeleted', undefined, 200, req, {
+        count: serviceIds.length,
+      });
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
-
 }

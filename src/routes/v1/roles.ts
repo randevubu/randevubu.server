@@ -1,18 +1,24 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { RoleController } from '../../controllers/roleController';
-import { requireAuth, requirePermission, requireRole, requireAny, withAuth } from '../../middleware/authUtils';
+import {
+  requireAuth,
+  requirePermission,
+  requireRole,
+  requireAny,
+  withAuth,
+} from '../../middleware/authUtils';
 import { validateBody } from '../../middleware/validation';
 import { staticCache } from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
-import { invalidateAllCache } from '../../middleware/cacheInvalidation';
-import { 
+import { initializeCacheInvalidationMiddleware } from '../../middleware/cacheInvalidation';
+import {
   createRoleSchema,
   updateRoleSchema,
   assignRoleSchema,
   createPermissionSchema,
   updatePermissionSchema,
-  assignPermissionsToRoleSchema
+  assignPermissionsToRoleSchema,
 } from '../../schemas/role.schemas';
 import { PermissionName, RoleName } from '../../types/auth';
 
@@ -51,7 +57,7 @@ export function createRoleRoutes(roleController: RoleController): Router {
   // Apply authentication to all routes
   router.use(requireAuth);
   router.use(roleManagementRateLimit);
-  
+
   // Apply cache monitoring to all routes
   router.use(trackCachePerformance);
 
@@ -200,7 +206,7 @@ export function createRoleRoutes(roleController: RoleController): Router {
    * @swagger
    * /api/v1/roles/my-permissions:
    *   get:
-   *     tags: [Role Management] 
+   *     tags: [Role Management]
    *     summary: Get my permissions
    *     description: Get permissions for the currently authenticated user
    *     security:

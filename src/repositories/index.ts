@@ -20,6 +20,7 @@ import { NotificationRepository } from './notificationRepository';
 import { DailyNotebookRepository } from './dailyNotebookRepository';
 import { WorkingHoursRepository } from './workingHoursRepository';
 import { RescheduleSuggestionRepository } from './rescheduleSuggestionRepository';
+import { RatingRepository } from './ratingRepository';
 
 // Repository container for dependency injection
 export class RepositoryContainer {
@@ -44,6 +45,7 @@ export class RepositoryContainer {
   public readonly dailyNotebookRepository: DailyNotebookRepository;
   public readonly workingHoursRepository: WorkingHoursRepository;
   public readonly rescheduleSuggestionRepository: RescheduleSuggestionRepository;
+  public readonly ratingRepository: RatingRepository;
 
   constructor(private prisma: PrismaClient) {
     this.userRepository = new PrismaUserRepository(prisma);
@@ -62,11 +64,14 @@ export class RepositoryContainer {
     this.usageRepository = new UsageRepository(prisma);
     this.staffRepository = new StaffRepository(prisma);
     this.paymentRepository = new PaymentRepository(prisma);
-    this.businessNotificationSettingsRepository = new BusinessNotificationSettingsRepository(prisma);
+    this.businessNotificationSettingsRepository = new BusinessNotificationSettingsRepository(
+      prisma
+    );
     this.notificationRepository = new NotificationRepository(prisma);
     this.dailyNotebookRepository = new DailyNotebookRepository(prisma);
     this.workingHoursRepository = new WorkingHoursRepository(prisma);
     this.rescheduleSuggestionRepository = new RescheduleSuggestionRepository(prisma);
+    this.ratingRepository = new RatingRepository(prisma);
   }
 
   get prismaClient(): PrismaClient {
@@ -96,7 +101,8 @@ export {
   NotificationRepository,
   DailyNotebookRepository,
   WorkingHoursRepository,
-  RescheduleSuggestionRepository
+  RescheduleSuggestionRepository,
+  RatingRepository,
 };
 
 // Export interfaces for testing/mocking
@@ -104,5 +110,5 @@ export type {
   UserRepository,
   PhoneVerificationRepository,
   RefreshTokenRepository,
-  AuditLogRepository
+  AuditLogRepository,
 } from '../types/auth';

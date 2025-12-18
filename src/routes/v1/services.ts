@@ -2,10 +2,13 @@ import { Router } from 'express';
 import { ServiceController } from '../../controllers/serviceController';
 import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
-import { attachBusinessContext, requireSpecificBusinessAccess } from '../../middleware/attachBusinessContext';
+import {
+  attachBusinessContext,
+  requireSpecificBusinessAccess,
+} from '../../middleware/attachBusinessContext';
 import { semiDynamicCache, dynamicCache, serviceCache } from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
-import { invalidateServiceCache } from '../../middleware/cacheInvalidation';
+import { initializeCacheInvalidationMiddleware } from '../../middleware/cacheInvalidation';
 import prisma from '../../lib/prisma';
 import { RepositoryContainer } from '../../repositories';
 
@@ -14,7 +17,7 @@ const repositories = new RepositoryContainer(prisma);
 import { initializeBusinessContextMiddleware } from '../../middleware/attachBusinessContext';
 initializeBusinessContextMiddleware(repositories);
 
-export function createServiceRoutes(serviceController: ServiceController): Router {
+export function createServiceRoutes(serviceController: any, cacheInvalidation?: any): Router {
   const router = Router();
 
   // Apply cache monitoring to all routes
@@ -37,7 +40,11 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *       200:
    *         description: List of public services
    */
-  router.get('/business/:businessId/public', semiDynamicCache, serviceController.getPublicBusinessServices.bind(serviceController));
+  router.get(
+    '/business/:businessId/public',
+    semiDynamicCache,
+    serviceController.getPublicBusinessServices.bind(serviceController)
+  );
   /**
    * @swagger
    * /api/v1/services/{id}/availability:
@@ -54,7 +61,11 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *       200:
    *         description: Availability information
    */
-  router.get('/:id/availability', dynamicCache, serviceController.checkServiceAvailability.bind(serviceController));
+  router.get(
+    '/:id/availability',
+    dynamicCache,
+    serviceController.checkServiceAvailability.bind(serviceController)
+  );
 
   // Protected routes
   router.use(requireAuth);
@@ -137,7 +148,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.post(
     '/business/:businessId',
-    invalidateServiceCache,
+    cacheInvalidation.invalidateServiceCache,
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
@@ -346,7 +357,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.put(
     '/:id',
-    invalidateServiceCache,
+    cacheInvalidation.invalidateServiceCache,
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     serviceController.updateService.bind(serviceController)
   );
@@ -360,7 +371,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    *     description: |
    *       Delete a service from your business. This performs a soft delete by setting isActive to false.
    *       Requires MANAGE_ALL_SERVICES or MANAGE_OWN_SERVICES permission. Only business owners or staff can delete services for their business.
-   *       
+   *
    *       **Important Notes:**
    *       - This is a soft delete - the service becomes inactive but data is preserved
    *       - Existing appointments with this service are not affected
@@ -484,7 +495,7 @@ export function createServiceRoutes(serviceController: ServiceController): Route
    */
   router.delete(
     '/:id',
-    invalidateServiceCache,
+    cacheInvalidation.invalidateServiceCache,
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     serviceController.deleteService.bind(serviceController)
   );
@@ -550,7 +561,6 @@ export function createServiceRoutes(serviceController: ServiceController): Route
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     serviceController.reorderServices.bind(serviceController)
   );
-
 
   /**
    * @swagger
@@ -759,7 +769,6 @@ export function createServiceRoutes(serviceController: ServiceController): Route
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
     serviceController.batchDeleteServices.bind(serviceController)
   );
-
 
   return router;
 }

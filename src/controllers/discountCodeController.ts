@@ -11,9 +11,13 @@ import {
 } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
+import { ResponseHelper } from '../utils/responseHelper';
 
 export class DiscountCodeController {
-  constructor(private discountCodeService: DiscountCodeService) {}
+  constructor(
+    private discountCodeService: DiscountCodeService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   /**
    * @swagger
@@ -121,7 +125,7 @@ export class DiscountCodeController {
   async createDiscountCode(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const userId = requireAuthenticatedUser(req).id;
-      
+
       // Validate required fields
       const { discountType, discountValue } = req.body;
       if (!discountType || !discountValue) {
@@ -164,8 +168,8 @@ export class DiscountCodeController {
       }
 
       const discountCode = await this.discountCodeService.createDiscountCode(userId, req.body);
-      
-      await sendSuccessResponse(
+
+      await this.responseHelper.success(
         res,
         'success.discountCode.created',
         discountCode,
@@ -229,7 +233,7 @@ export class DiscountCodeController {
     try {
       const userId = requireAuthenticatedUser(req).id;
       const { page, limit, isActive } = req.query;
-      
+
       // Validate and sanitize query parameters
       const pageNum = page ? parseInt(page as string, 10) : 1;
       const limitNum = limit ? parseInt(limit as string, 10) : 20;
@@ -257,12 +261,12 @@ export class DiscountCodeController {
       const params = {
         page: pageNum,
         limit: limitNum,
-        isActive: isActiveFilter
+        isActive: isActiveFilter,
       };
 
       const result = await this.discountCodeService.getAllDiscountCodes(userId, params);
-      
-      await sendSuccessResponse(
+
+      await this.responseHelper.success(
         res,
         'success.discountCode.retrievedList',
         result,
@@ -308,7 +312,7 @@ export class DiscountCodeController {
     try {
       const userId = requireAuthenticatedUser(req).id;
       const { id } = req.params;
-      
+
       // Validate ID parameter
       if (!id || typeof id !== 'string') {
         const error = new AppError(
@@ -329,10 +333,10 @@ export class DiscountCodeController {
         );
         return sendAppErrorResponse(res, error);
       }
-      
+
       const discountCode = await this.discountCodeService.getDiscountCode(userId, id);
-      
-      await sendSuccessResponse(
+
+      await this.responseHelper.success(
         res,
         'success.discountCode.retrieved',
         discountCode,
@@ -375,7 +379,7 @@ export class DiscountCodeController {
     try {
       const userId = requireAuthenticatedUser(req).id;
       const { id } = req.params;
-      
+
       // Validate ID parameter
       if (!id || typeof id !== 'string') {
         const error = new AppError(
@@ -408,7 +412,10 @@ export class DiscountCodeController {
         return sendAppErrorResponse(res, error);
       }
 
-      if (discountValue !== undefined && (typeof discountValue !== 'number' || discountValue <= 0)) {
+      if (
+        discountValue !== undefined &&
+        (typeof discountValue !== 'number' || discountValue <= 0)
+      ) {
         const error = new AppError(
           'Discount value must be a positive number',
           400,
@@ -425,10 +432,10 @@ export class DiscountCodeController {
         );
         return sendAppErrorResponse(res, error);
       }
-      
+
       const discountCode = await this.discountCodeService.updateDiscountCode(userId, id, req.body);
-      
-      await sendSuccessResponse(
+
+      await this.responseHelper.success(
         res,
         'success.discountCode.updated',
         discountCode,
@@ -465,7 +472,7 @@ export class DiscountCodeController {
     try {
       const userId = requireAuthenticatedUser(req).id;
       const { id } = req.params;
-      
+
       // Validate ID parameter
       if (!id || typeof id !== 'string') {
         const error = new AppError(
@@ -486,19 +493,15 @@ export class DiscountCodeController {
         );
         return sendAppErrorResponse(res, error);
       }
-      
+
       const success = await this.discountCodeService.deactivateDiscountCode(userId, id);
-      
+
       if (!success) {
-        const error = new AppError(
-          'Discount code not found',
-          404,
-          ERROR_CODES.BUSINESS_NOT_FOUND
-        );
+        const error = new AppError('Discount code not found', 404, ERROR_CODES.BUSINESS_NOT_FOUND);
         return sendAppErrorResponse(res, error);
       }
-      
-      await sendSuccessResponse(
+
+      await this.responseHelper.success(
         res,
         'success.discountCode.deactivated',
         undefined,
@@ -537,7 +540,7 @@ export class DiscountCodeController {
     try {
       const userId = requireAuthenticatedUser(req).id;
       const { id } = req.params;
-      
+
       // Validate ID parameter
       if (!id || typeof id !== 'string') {
         const error = new AppError(
@@ -558,25 +561,15 @@ export class DiscountCodeController {
         );
         return sendAppErrorResponse(res, error);
       }
-      
+
       const success = await this.discountCodeService.deleteDiscountCode(userId, id);
-      
+
       if (!success) {
-        const error = new AppError(
-          'Discount code not found',
-          404,
-          ERROR_CODES.BUSINESS_NOT_FOUND
-        );
+        const error = new AppError('Discount code not found', 404, ERROR_CODES.BUSINESS_NOT_FOUND);
         return sendAppErrorResponse(res, error);
       }
-      
-      await sendSuccessResponse(
-        res,
-        'success.discountCode.deleted',
-        undefined,
-        200,
-        req
-      );
+
+      await this.responseHelper.success(res, 'success.discountCode.deleted', undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -589,8 +582,8 @@ export class DiscountCodeController {
    *     tags: [Discount Codes]
    *     summary: Validate discount code
    *     description: Validate a discount code for a specific plan and amount
-  *     security:
-  *       - bearerAuth: []
+   *     security:
+   *       - bearerAuth: []
    *     requestBody:
    *       required: true
    *       content:
@@ -636,7 +629,7 @@ export class DiscountCodeController {
     try {
       const { code, planId, amount } = req.body;
       const userId = (req as GuaranteedAuthRequest).user?.id; // Optional for validation
-      
+
       // Validate required fields
       if (!code || !planId || !amount) {
         const error = new AppError(
@@ -680,10 +673,15 @@ export class DiscountCodeController {
       // Sanitize inputs
       const sanitizedCode = code.trim().toUpperCase();
       const sanitizedPlanId = planId.trim();
-      
-      const validation = await this.discountCodeService.validateDiscountCode(sanitizedCode, sanitizedPlanId, amount, userId);
-      
-      await sendSuccessResponse(
+
+      const validation = await this.discountCodeService.validateDiscountCode(
+        sanitizedCode,
+        sanitizedPlanId,
+        amount,
+        userId
+      );
+
+      await this.responseHelper.success(
         res,
         'success.discountCode.validated',
         {
@@ -691,7 +689,7 @@ export class DiscountCodeController {
           discountAmount: validation.calculatedDiscount?.discountAmount,
           originalAmount: validation.calculatedDiscount?.originalAmount,
           finalAmount: validation.calculatedDiscount?.finalAmount,
-          errorMessage: validation.errorMessage
+          errorMessage: validation.errorMessage,
         },
         200,
         req
@@ -735,7 +733,7 @@ export class DiscountCodeController {
       const userId = requireAuthenticatedUser(req).id;
       const { id } = req.params;
       const { page, limit } = req.query;
-      
+
       // Validate ID parameter
       if (!id || typeof id !== 'string') {
         const error = new AppError(
@@ -778,15 +776,15 @@ export class DiscountCodeController {
         );
         return sendAppErrorResponse(res, error);
       }
-      
+
       const params = {
         page: pageNum,
-        limit: limitNum
+        limit: limitNum,
       };
-      
+
       const result = await this.discountCodeService.getDiscountCodeUsageHistory(userId, id, params);
-      
-      await sendSuccessResponse(
+
+      await this.responseHelper.success(
         res,
         'success.discountCode.usageRetrieved',
         result,
@@ -835,8 +833,8 @@ export class DiscountCodeController {
     try {
       const userId = requireAuthenticatedUser(req).id;
       const statistics = await this.discountCodeService.getDiscountCodeStatistics(userId);
-      
-      await sendSuccessResponse(
+
+      await this.responseHelper.success(
         res,
         'success.discountCode.statsRetrieved',
         statistics,
@@ -900,7 +898,7 @@ export class DiscountCodeController {
   async generateBulkDiscountCodes(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const userId = requireAuthenticatedUser(req).id;
-      
+
       // Validate required fields
       const { count, discountType, discountValue } = req.body;
       if (!count || !discountType || !discountValue) {
@@ -953,13 +951,13 @@ export class DiscountCodeController {
       }
 
       const codes = await this.discountCodeService.generateBulkDiscountCodes(userId, req.body);
-      
-      await sendSuccessResponse(
+
+      await this.responseHelper.success(
         res,
         'success.discountCode.generated',
         {
           codes,
-          count: codes.length
+          count: codes.length,
         },
         201,
         req,

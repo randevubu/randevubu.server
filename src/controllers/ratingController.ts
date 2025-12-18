@@ -1,20 +1,15 @@
 import { Request, Response } from 'express';
-import { AuthenticatedRequest } from '../types/request';
+import { getRatingsQuerySchema, submitRatingSchema } from '../schemas/rating.schemas';
 import { RatingService } from '../services/domain/rating/ratingService';
-import {
-  submitRatingSchema,
-  getRatingsQuerySchema
-} from '../schemas/rating.schemas';
-import {
-  handleRouteError,
-  sendSuccessResponse,
-  sendAppErrorResponse
-} from '../utils/responseUtils';
-import { AppError } from '../types/responseTypes';
-import { ERROR_CODES } from '../constants/errorCodes';
+import { AuthenticatedRequest } from '../types/request';
+import { handleRouteError } from '../utils/responseUtils';
+import { ResponseHelper } from '../utils/responseHelper';
 
 export class RatingController {
-  constructor(private ratingService: RatingService) {}
+  constructor(
+    private ratingService: RatingService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   /**
    * Submit a rating for a business
@@ -26,19 +21,9 @@ export class RatingController {
       const userId = req.user!.id;
       const validatedData = submitRatingSchema.parse(req.body);
 
-      const rating = await this.ratingService.submitRating(
-        userId,
-        businessId,
-        validatedData
-      );
+      const rating = await this.ratingService.submitRating(userId, businessId, validatedData);
 
-      await sendSuccessResponse(
-        res,
-        'success.rating.submitted',
-        { rating },
-        201,
-        req
-      );
+      await this.responseHelper.success(res, 'success.rating.submitted', { rating }, 201, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -53,26 +38,29 @@ export class RatingController {
       const { businessId } = req.params;
       const validatedQuery = getRatingsQuerySchema.parse(req.query);
 
-      const result = await this.ratingService.getBusinessRatings(
-        businessId,
-        {
-          page: validatedQuery.page,
-          limit: validatedQuery.limit,
-          minRating: validatedQuery.minRating
-        }
-      );
+      const result = await this.ratingService.getBusinessRatings(businessId, {
+        page: validatedQuery.page,
+        limit: validatedQuery.limit,
+        minRating: validatedQuery.minRating,
+      });
 
-      await sendSuccessResponse(res, 'success.rating.retrieved', {
-        ratings: result.ratings,
-        pagination: {
-          page: validatedQuery.page,
-          limit: validatedQuery.limit,
-          total: result.total,
-          totalPages: result.totalPages
+      await this.responseHelper.success(
+        res,
+        'success.rating.retrieved',
+        {
+          ratings: result.ratings,
+          pagination: {
+            page: validatedQuery.page,
+            limit: validatedQuery.limit,
+            total: result.total,
+            totalPages: result.totalPages,
+          },
+          averageRating: result.averageRating,
+          totalRatings: result.totalRatings,
         },
-        averageRating: result.averageRating,
-        totalRatings: result.totalRatings
-      }, 200, req);
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -87,13 +75,9 @@ export class RatingController {
       const { businessId, appointmentId } = req.params;
       const userId = req.user!.id;
 
-      const result = await this.ratingService.canUserRate(
-        userId,
-        businessId,
-        appointmentId
-      );
+      const result = await this.ratingService.canUserRate(userId, businessId, appointmentId);
 
-      await sendSuccessResponse(res, 'success.rating.eligibilityChecked', result, 200, req);
+      await this.responseHelper.success(res, 'success.rating.eligibilityChecked', result, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -108,16 +92,25 @@ export class RatingController {
       const { appointmentId } = req.params;
       const userId = req.user!.id;
 
-      const rating = await this.ratingService.getUserRatingForAppointment(
-        userId,
-        appointmentId
-      );
+      const rating = await this.ratingService.getUserRatingForAppointment(userId, appointmentId);
 
       if (!rating) {
-        return await sendSuccessResponse(res, 'success.rating.notFound', { rating: null }, 200, req);
+        return await this.responseHelper.success(
+          res,
+          'success.rating.notFound',
+          { rating: null },
+          200,
+          req
+        );
       }
 
-      await sendSuccessResponse(res, 'success.rating.retrievedSingle', { rating }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.rating.retrievedSingle',
+        { rating },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -133,7 +126,7 @@ export class RatingController {
 
       const result = await this.ratingService.refreshRatingCache(businessId);
 
-      await sendSuccessResponse(res, 'success.rating.cacheRefreshed', result, 200, req);
+      await this.responseHelper.success(res, 'success.rating.cacheRefreshed', result, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }

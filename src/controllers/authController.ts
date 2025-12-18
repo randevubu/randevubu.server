@@ -6,13 +6,9 @@ import {
   logoutSchema,
   sendVerificationSchema,
   updateProfileSchema,
-  verifyLoginSchema
+  verifyLoginSchema,
 } from '../schemas/auth.schemas';
-import {
-  AuthService,
-  PhoneVerificationService,
-  TokenService
-} from '../services';
+import { AuthService, PhoneVerificationService, TokenService } from '../services';
 import { RBACService } from '../services/domain/rbac';
 import {
   ApiResponse,
@@ -21,7 +17,7 @@ import {
   LogoutRequest,
   SendVerificationRequest,
   UpdateProfileRequest,
-  VerifyLoginRequest
+  VerifyLoginRequest,
 } from '../types/auth';
 import {
   BaseError,
@@ -31,49 +27,51 @@ import {
   UserNotFoundError,
   UnauthorizedError,
   InvalidTokenError,
-  TokenExpiredError
+  TokenExpiredError,
 } from '../types/errors';
 
 import { extractDeviceInfo, createErrorContext } from '../utils/requestUtils';
-import { sendSuccessResponse, sendBaseErrorResponse } from '../utils/responseUtils';
-import logger from "../utils/Logger/logger";
+import { sendBaseErrorResponse } from '../utils/responseUtils';
+import { ResponseHelper } from '../utils/responseHelper';
+import logger from '../utils/Logger/logger';
 export class AuthController {
   constructor(
     private authService: AuthService,
     private phoneVerificationService: PhoneVerificationService,
     private tokenService: TokenService,
+    private responseHelper: ResponseHelper,
     private rbacService?: RBACService
   ) {}
 
-
   private clearAuthCookies(res: Response, context: ErrorContext, req?: Request): void {
-    const cookieDomain = process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost';
+    const cookieDomain =
+      process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN || undefined : 'localhost';
     const isSecureProduction = process.env.NODE_ENV === 'production' && req?.secure;
-    
+
     // Must match ALL options used when setting the cookies, including httpOnly
     const baseCookieOptions = {
       path: '/',
       domain: cookieDomain,
       secure: isSecureProduction,
-      sameSite: (isSecureProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict'
+      sameSite: (isSecureProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict',
     };
-    
+
     // Clear refreshToken cookie (was set with httpOnly: true)
     res.clearCookie('refreshToken', {
       ...baseCookieOptions,
-      httpOnly: true
+      httpOnly: true,
     });
-    
+
     // Clear hasAuth cookie (was set with httpOnly: false)
     res.clearCookie('hasAuth', {
       ...baseCookieOptions,
-      httpOnly: false
+      httpOnly: false,
     });
-    
+
     // Clear CSRF token cookie (was set with httpOnly: true)
     res.clearCookie('csrf-token', {
       ...baseCookieOptions,
-      httpOnly: true
+      httpOnly: true,
     });
 
     logger.info('Cleared authentication cookies', {
@@ -98,7 +96,7 @@ export class AuthController {
       // Auto-detect purpose: check if user exists in database
       const { isValidPhoneNumber, parsePhoneNumber } = require('libphonenumber-js');
       let purpose: 'LOGIN' | 'REGISTRATION' = 'REGISTRATION';
-      
+
       if (isValidPhoneNumber(body.phoneNumber)) {
         try {
           const parsed = parsePhoneNumber(body.phoneNumber);
@@ -140,12 +138,17 @@ export class AuthController {
         return;
       }
 
-      await sendSuccessResponse(res, 'success.auth.verificationCodeSent', {
-        phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
-        expiresIn: 600, // 10 minutes
-        purpose: purpose,
-      }, 200, req);
-
+      await this.responseHelper.success(
+        res,
+        'success.auth.verificationCodeSent',
+        {
+          phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
+          expiresIn: 600, // 10 minutes
+          purpose: purpose,
+        },
+        200,
+        req
+      );
     } catch (error) {
       logger.error('Send verification code error', {
         error: error instanceof Error ? error.message : String(error),
@@ -204,26 +207,32 @@ export class AuthController {
       if (!isMobileClient) {
         // Web: Set refresh token as HttpOnly cookie (browser-managed)
         res.cookie('refreshToken', result.tokens.refreshToken, {
-          httpOnly: true,           // JavaScript cannot access (XSS protection)
+          httpOnly: true, // JavaScript cannot access (XSS protection)
           secure: isSecureProduction,
           sameSite: isSecureProduction ? 'none' : 'lax',
           maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost',
-          path: '/'
+          domain:
+            process.env.NODE_ENV === 'production'
+              ? process.env.COOKIE_DOMAIN || undefined
+              : 'localhost',
+          path: '/',
         });
 
         // Set hasAuth cookie for frontend auth state detection
         res.cookie('hasAuth', '1', {
-          httpOnly: false,          // Frontend can read this
+          httpOnly: false, // Frontend can read this
           secure: isSecureProduction,
           sameSite: isSecureProduction ? 'none' : 'lax',
           maxAge: 30 * 24 * 60 * 60 * 1000,
-          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost',
-          path: '/'
+          domain:
+            process.env.NODE_ENV === 'production'
+              ? process.env.COOKIE_DOMAIN || undefined
+              : 'localhost',
+          path: '/',
         });
       }
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         result.isNewUser ? 'success.auth.registered' : 'success.auth.login',
         {
@@ -245,14 +254,13 @@ export class AuthController {
             accessToken: result.tokens.accessToken,
             refreshToken: isMobileClient ? result.tokens.refreshToken : undefined, // Only for mobile
             expiresIn: result.tokens.expiresIn,
-            refreshExpiresIn: isMobileClient ? result.tokens.refreshExpiresIn : undefined
+            refreshExpiresIn: isMobileClient ? result.tokens.refreshExpiresIn : undefined,
           },
           isNewUser: result.isNewUser,
         },
         result.isNewUser ? 201 : 200,
         req
       );
-
     } catch (error) {
       logger.error('Verify login error', {
         error: error instanceof Error ? error.message : String(error),
@@ -280,11 +288,11 @@ export class AuthController {
   refreshToken = async (req: Request, res: Response): Promise<void> => {
     // Detect client type: mobile apps send token in body, web apps use cookies
     const isMobileClient = req.headers['x-client-type'] === 'mobile' || !!req.body?.refreshToken;
-    
+
     // Get refresh token from appropriate source
     const cookieRefreshToken = req.cookies?.refreshToken;
     const bodyRefreshToken = req.body?.refreshToken;
-    const refreshToken = isMobileClient ? bodyRefreshToken : (cookieRefreshToken || bodyRefreshToken);
+    const refreshToken = isMobileClient ? bodyRefreshToken : cookieRefreshToken || bodyRefreshToken;
 
     const deviceInfo = extractDeviceInfo(req);
     const context = createErrorContext(req);
@@ -304,8 +312,8 @@ export class AuthController {
         success: false,
         error: {
           message: 'Refresh token is required. Provide it in cookie or request body.',
-          code: 'REFRESH_TOKEN_MISSING'
-        }
+          code: 'REFRESH_TOKEN_MISSING',
+        },
       });
       return;
     }
@@ -321,8 +329,8 @@ export class AuthController {
         success: false,
         error: {
           message: 'Invalid refresh token format',
-          code: 'INVALID_REFRESH_TOKEN_FORMAT'
-        }
+          code: 'INVALID_REFRESH_TOKEN_FORMAT',
+        },
       });
       return;
     }
@@ -340,18 +348,14 @@ export class AuthController {
         success: false,
         error: {
           message: 'Invalid refresh token format',
-          code: 'INVALID_REFRESH_TOKEN_STRUCTURE'
-        }
+          code: 'INVALID_REFRESH_TOKEN_STRUCTURE',
+        },
       });
       return;
     }
 
     try {
-      const tokens = await this.tokenService.refreshAccessToken(
-        refreshToken,
-        deviceInfo,
-        context
-      );
+      const tokens = await this.tokenService.refreshAccessToken(refreshToken, deviceInfo, context);
 
       // Handle response based on client type
       if (isMobileClient) {
@@ -361,25 +365,34 @@ export class AuthController {
           requestId: context.requestId,
         });
 
-        await sendSuccessResponse(res, 'success.auth.tokenRefreshed', {
-          tokens: {
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken, // Mobile apps need this for secure storage
-            expiresIn: tokens.expiresIn,
-            refreshExpiresIn: tokens.refreshExpiresIn
-          }
-        }, 200, req);
+        await this.responseHelper.success(
+          res,
+          'success.auth.tokenRefreshed',
+          {
+            tokens: {
+              accessToken: tokens.accessToken,
+              refreshToken: tokens.refreshToken, // Mobile apps need this for secure storage
+              expiresIn: tokens.expiresIn,
+              refreshExpiresIn: tokens.refreshExpiresIn,
+            },
+          },
+          200,
+          req
+        );
       } else {
         // Web: Set refresh token as HttpOnly cookie (browser-managed)
         const isSecureProduction = process.env.NODE_ENV === 'production' && req.secure;
 
         res.cookie('refreshToken', tokens.refreshToken, {
-          httpOnly: true,          // JavaScript cannot access (XSS protection)
+          httpOnly: true, // JavaScript cannot access (XSS protection)
           secure: isSecureProduction,
           sameSite: isSecureProduction ? 'none' : 'lax',
           maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost',
-          path: '/'
+          domain:
+            process.env.NODE_ENV === 'production'
+              ? process.env.COOKIE_DOMAIN || undefined
+              : 'localhost',
+          path: '/',
         });
 
         // Renew hasAuth cookie for frontend auth state detection
@@ -388,8 +401,11 @@ export class AuthController {
           secure: isSecureProduction,
           sameSite: isSecureProduction ? 'none' : 'lax',
           maxAge: 30 * 24 * 60 * 60 * 1000,
-          domain: process.env.NODE_ENV === 'production' ? (process.env.COOKIE_DOMAIN || undefined) : 'localhost',
-          path: '/'
+          domain:
+            process.env.NODE_ENV === 'production'
+              ? process.env.COOKIE_DOMAIN || undefined
+              : 'localhost',
+          path: '/',
         });
 
         logger.info('Token refreshed for web client', {
@@ -397,15 +413,20 @@ export class AuthController {
           requestId: context.requestId,
         });
 
-        await sendSuccessResponse(res, 'success.auth.tokenRefreshed', {
-          tokens: {
-            accessToken: tokens.accessToken,
-            expiresIn: tokens.expiresIn
-            // ❌ No refreshToken in body for web (it's in HttpOnly cookie)
-          }
-        }, 200, req);
+        await this.responseHelper.success(
+          res,
+          'success.auth.tokenRefreshed',
+          {
+            tokens: {
+              accessToken: tokens.accessToken,
+              expiresIn: tokens.expiresIn,
+              // ❌ No refreshToken in body for web (it's in HttpOnly cookie)
+            },
+          },
+          200,
+          req
+        );
       }
-
     } catch (error) {
       logger.error('Refresh token error', {
         error: error instanceof Error ? error.message : String(error),
@@ -423,9 +444,11 @@ export class AuthController {
       // Handle specific token error types with appropriate status codes
       if (error instanceof BaseError) {
         // For revoked/invalid/expired tokens, return 401 to trigger re-authentication
-        if (error instanceof UnauthorizedError || 
-            error instanceof InvalidTokenError || 
-            error instanceof TokenExpiredError) {
+        if (
+          error instanceof UnauthorizedError ||
+          error instanceof InvalidTokenError ||
+          error instanceof TokenExpiredError
+        ) {
           res.status(401).json({
             success: false,
             message: 'Authentication required. Please login again.',
@@ -438,7 +461,7 @@ export class AuthController {
           });
           return;
         }
-        
+
         sendBaseErrorResponse(res, error);
       } else {
         const internalError = new InternalServerError(
@@ -467,7 +490,9 @@ export class AuthController {
       // Get refresh token from appropriate source (same pattern as refresh endpoint)
       const cookieRefreshToken = req.cookies?.refreshToken;
       const bodyRefreshToken = body.refreshToken;
-      const refreshToken = isMobileClient ? bodyRefreshToken : (cookieRefreshToken || bodyRefreshToken);
+      const refreshToken = isMobileClient
+        ? bodyRefreshToken
+        : cookieRefreshToken || bodyRefreshToken;
 
       await this.authService.logout(
         requireAuthenticatedUser(req).id,
@@ -485,8 +510,7 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      await sendSuccessResponse(res, 'success.auth.logout', undefined, 200, req);
-
+      await this.responseHelper.success(res, 'success.auth.logout', undefined, 200, req);
     } catch (error) {
       logger.error('Logout error', {
         error: error instanceof Error ? error.message : String(error),
@@ -524,18 +548,26 @@ export class AuthController {
 
       let profile;
       if (includeBusinessSummary) {
-        profile = await this.authService.getUserProfileWithBusinessSummary(requireAuthenticatedUser(req).id, context);
+        profile = await this.authService.getUserProfileWithBusinessSummary(
+          requireAuthenticatedUser(req).id,
+          context
+        );
       } else {
         profile = await this.authService.getUserProfile(requireAuthenticatedUser(req).id, context);
       }
 
-      await sendSuccessResponse(res, 'success.auth.profileRetrieved', { 
-        user: profile,
-        meta: {
-          includesBusinessSummary: includeBusinessSummary
-        }
-      }, 200, req);
-
+      await this.responseHelper.success(
+        res,
+        'success.auth.profileRetrieved',
+        {
+          user: profile,
+          meta: {
+            includesBusinessSummary: includeBusinessSummary,
+          },
+        },
+        200,
+        req
+      );
     } catch (error) {
       logger.error('Get profile error', {
         error: error instanceof Error ? error.message : String(error),
@@ -580,8 +612,13 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      await sendSuccessResponse(res, 'success.auth.profileUpdated', { user: profile }, 200, req);
-
+      await this.responseHelper.success(
+        res,
+        'success.auth.profileUpdated',
+        { user: profile },
+        200,
+        req
+      );
     } catch (error) {
       logger.error('Update profile error', {
         error: error instanceof Error ? error.message : String(error),
@@ -628,14 +665,7 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      await sendSuccessResponse(
-        res,
-        'success.auth.phoneChanged',
-        undefined,
-        200,
-        req
-      );
-
+      await this.responseHelper.success(res, 'success.auth.phoneChanged', undefined, 200, req);
     } catch (error) {
       logger.error('Change phone error', {
         error: error instanceof Error ? error.message : String(error),
@@ -674,8 +704,13 @@ export class AuthController {
         requestId: context.requestId,
       });
 
-      await sendSuccessResponse(res, 'success.auth.accountDeactivated', undefined, 200, req);
-
+      await this.responseHelper.success(
+        res,
+        'success.auth.accountDeactivated',
+        undefined,
+        200,
+        req
+      );
     } catch (error) {
       logger.error('Account deactivation error', {
         error: error instanceof Error ? error.message : String(error),
@@ -706,18 +741,27 @@ export class AuthController {
       const { search, page, limit, status, sortBy, sortOrder } = req.query;
 
       const allowedStatus = new Set(['all', 'banned', 'flagged', 'active']);
-      const allowedSortBy = new Set(['createdAt', 'updatedAt', 'firstName', 'lastName', 'lastLoginAt']);
+      const allowedSortBy = new Set([
+        'createdAt',
+        'updatedAt',
+        'firstName',
+        'lastName',
+        'lastLoginAt',
+      ]);
       const allowedSortOrder = new Set(['asc', 'desc']);
 
-      const parsedStatus = typeof status === 'string' && allowedStatus.has(status)
-        ? (status as 'all' | 'banned' | 'flagged' | 'active')
-        : undefined;
-      const parsedSortBy = typeof sortBy === 'string' && allowedSortBy.has(sortBy)
-        ? (sortBy as 'createdAt' | 'updatedAt' | 'firstName' | 'lastLoginAt' | 'lastName')
-        : undefined;
-      const parsedSortOrder = typeof sortOrder === 'string' && allowedSortOrder.has(sortOrder)
-        ? (sortOrder as 'asc' | 'desc')
-        : undefined;
+      const parsedStatus =
+        typeof status === 'string' && allowedStatus.has(status)
+          ? (status as 'all' | 'banned' | 'flagged' | 'active')
+          : undefined;
+      const parsedSortBy =
+        typeof sortBy === 'string' && allowedSortBy.has(sortBy)
+          ? (sortBy as 'createdAt' | 'updatedAt' | 'firstName' | 'lastLoginAt' | 'lastName')
+          : undefined;
+      const parsedSortOrder =
+        typeof sortOrder === 'string' && allowedSortOrder.has(sortOrder)
+          ? (sortOrder as 'asc' | 'desc')
+          : undefined;
 
       const filters = {
         search: (search as string) || undefined,
@@ -725,13 +769,12 @@ export class AuthController {
         limit: limit ? parseInt(limit as string) : undefined,
         status: parsedStatus,
         sortBy: parsedSortBy,
-        sortOrder: parsedSortOrder
+        sortOrder: parsedSortOrder,
       };
 
       const result = await this.authService.getMyCustomers(userId, filters);
 
-      await sendSuccessResponse(res, 'success.auth.customersRetrieved', result, 200, req);
-
+      await this.responseHelper.success(res, 'success.auth.customersRetrieved', result, 200, req);
     } catch (error) {
       logger.error('Get my customers error', {
         error: error instanceof Error ? error.message : String(error),
@@ -772,8 +815,13 @@ export class AuthController {
 
       const customerDetails = await this.authService.getCustomerDetails(userId, customerId);
 
-      await sendSuccessResponse(res, 'success.auth.customerDetailsRetrieved', customerDetails, 200, req);
-
+      await this.responseHelper.success(
+        res,
+        'success.auth.customerDetailsRetrieved',
+        customerDetails,
+        200,
+        req
+      );
     } catch (error) {
       logger.error('Get customer details error', {
         error: error instanceof Error ? error.message : String(error),
@@ -817,8 +865,7 @@ export class AuthController {
 
       const stats = await this.authService.getUserStats(context);
 
-      await sendSuccessResponse(res, 'success.auth.statsRetrieved', { stats }, 200, req);
-
+      await this.responseHelper.success(res, 'success.auth.statsRetrieved', { stats }, 200, req);
     } catch (error) {
       logger.error('Get stats error', {
         error: error instanceof Error ? error.message : String(error),

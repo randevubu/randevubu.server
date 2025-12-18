@@ -8,27 +8,28 @@ import {
   updateBusinessStaffPrivacySettingsSchema,
   imageUploadSchema,
   deleteImageSchema,
-  deleteGalleryImageSchema
+  deleteGalleryImageSchema,
 } from '../schemas/business.schemas';
 import { updateGoogleIntegrationSchema } from '../schemas/rating.schemas';
 import { BusinessService } from '../services/domain/business';
 import { RBACService } from '../services/domain/rbac';
 import { TokenService } from '../services/domain/token';
 import { StaffService } from '../services/domain/staff';
+import { NotificationService } from '../services/domain/notification';
 import { AuthenticatedRequest, AuthenticatedRequestWithFile } from '../types/request';
 import { AppointmentStatus, BusinessData, BusinessSubscriptionData } from '../types/business';
 import { TokenPair } from '../types/auth';
 // Cache invalidation handled by routes, not controllers
 import {
   handleRouteError,
-  sendSuccessResponse,
   createErrorContext,
   sendAppErrorResponse,
-  BusinessErrors
+  BusinessErrors,
 } from '../utils/responseUtils';
+import { ResponseHelper } from '../utils/responseHelper';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
-import logger from "../utils/Logger/logger";
+import logger from '../utils/Logger/logger';
 
 interface BusinessCreationResponse {
   success: boolean;
@@ -58,36 +59,39 @@ interface GoogleIntegrationResponse {
 }
 
 type BusinessWithSubscriptionResponse = BusinessData & {
-  subscription?: (BusinessSubscriptionData & {
-    plan?: {
-      id: string;
-      name: string;
-      displayName: string;
-      description: string | null;
-      price: number;
-      currency: string;
-      billingInterval: string;
-      maxBusinesses: number;
-      maxStaffPerBusiness: number;
-      maxAppointmentsPerDay: number;
-      features: string[];
-      isPopular: boolean;
-      limits?: {
-        maxBusinesses: number;
-        maxStaffPerBusiness: number;
-        maxAppointmentsPerDay: number;
-      };
-    } | null;
-  }) | null;
+  subscription?:
+    | (BusinessSubscriptionData & {
+        plan?: {
+          id: string;
+          name: string;
+          displayName: string;
+          description: string | null;
+          price: number;
+          currency: string;
+          billingInterval: string;
+          maxBusinesses: number;
+          maxStaffPerBusiness: number;
+          maxAppointmentsPerDay: number;
+          features: string[];
+          isPopular: boolean;
+          limits?: {
+            maxBusinesses: number;
+            maxStaffPerBusiness: number;
+            maxAppointmentsPerDay: number;
+          };
+        } | null;
+      })
+    | null;
 };
 export class BusinessController {
   constructor(
     private businessService: BusinessService,
+    private responseHelper: ResponseHelper,
     private tokenService?: TokenService,
     private rbacService?: RBACService,
-    private staffService?: StaffService
-  ) {
-  }
+    private staffService?: StaffService,
+    private notificationService?: NotificationService
+  ) {}
 
   /**
    * Get user's business(es) based on their role
@@ -98,8 +102,7 @@ export class BusinessController {
     try {
       const userId = req.user!.id;
       const includeSubscription = req.query.includeSubscription === 'true';
-      
-      
+
       if (!req.businessContext || req.businessContext.businessIds.length === 0) {
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.set('Pragma', 'no-cache');
@@ -107,12 +110,12 @@ export class BusinessController {
         res.json({
           success: true,
           message: 'No businesses found',
-          data: { 
+          data: {
             businesses: [],
             hasBusinesses: false,
             isFirstTimeUser: true,
-            canCreateBusiness: true
-          }
+            canCreateBusiness: true,
+          },
         });
         return;
       }
@@ -130,8 +133,8 @@ export class BusinessController {
       res.json({
         success: true,
         message: 'Business data retrieved successfully',
-        data: { 
-          businesses: businesses.map(business => {
+        data: {
+          businesses: businesses.map((business) => {
             const baseData = {
               id: business.id,
               name: business.name,
@@ -150,23 +153,25 @@ export class BusinessController {
               logoUrl: business.logoUrl,
               businessHours: business.businessHours,
               createdAt: business.createdAt,
-              businessType: business.businessType ? {
-                id: business.businessType.id,
-                name: business.businessType.name,
-                displayName: business.businessType.displayName,
-                icon: business.businessType.icon,
-                category: business.businessType.category
-              } : null,
+              businessType: business.businessType
+                ? {
+                    id: business.businessType.id,
+                    name: business.businessType.name,
+                    displayName: business.businessType.displayName,
+                    icon: business.businessType.icon,
+                    category: business.businessType.category,
+                  }
+                : null,
               averageRating: business.averageRating ?? null,
               totalRatings: business.totalRatings ?? 0,
-              lastRatingAt: business.lastRatingAt ?? null
+              lastRatingAt: business.lastRatingAt ?? null,
             };
 
             // Add subscription info if requested and available
             if (includeSubscription && 'subscription' in business && business.subscription) {
               const sub = business.subscription as Record<string, unknown>;
               const plan = sub.plan as Record<string, unknown> | undefined;
-              
+
               return {
                 ...baseData,
                 subscription: {
@@ -175,22 +180,24 @@ export class BusinessController {
                   currentPeriodStart: sub.currentPeriodStart,
                   currentPeriodEnd: sub.currentPeriodEnd,
                   cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
-                  plan: plan ? {
-                    id: plan.id,
-                    name: plan.name,
-                    displayName: plan.displayName,
-                    description: plan.description,
-                    price: plan.price,
-                    currency: plan.currency,
-                    billingInterval: plan.billingInterval,
-                    features: plan.features,
-                    limits: {
-                      maxBusinesses: plan.maxBusinesses,
-                      maxStaffPerBusiness: plan.maxStaffPerBusiness
-                    },
-                    isPopular: plan.isPopular
-                  } : undefined
-                }
+                  plan: plan
+                    ? {
+                        id: plan.id,
+                        name: plan.name,
+                        displayName: plan.displayName,
+                        description: plan.description,
+                        price: plan.price,
+                        currency: plan.currency,
+                        billingInterval: plan.billingInterval,
+                        features: plan.features,
+                        limits: {
+                          maxBusinesses: plan.maxBusinesses,
+                          maxStaffPerBusiness: plan.maxStaffPerBusiness,
+                        },
+                        isPopular: plan.isPopular,
+                      }
+                    : undefined,
+                },
               };
             }
 
@@ -202,11 +209,10 @@ export class BusinessController {
           context: {
             primaryBusinessId: req.businessContext.primaryBusinessId,
             totalBusinesses: req.businessContext.businessIds.length,
-            includesSubscriptionInfo: includeSubscription
-          }
-        }
+            includesSubscriptionInfo: includeSubscription,
+          },
+        },
       });
-
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -219,10 +225,13 @@ export class BusinessController {
   async getMyServices(req: BusinessContextRequest, res: Response): Promise<void> {
     try {
       const userId = req.user!.id;
-      
+
       // Allow users with OWNER role to proceed even without businesses
       // This enables them to create their first business
-      if (!req.businessContext || (req.businessContext.businessIds.length === 0 && !req.businessContext.isOwner)) {
+      if (
+        !req.businessContext ||
+        (req.businessContext.businessIds.length === 0 && !req.businessContext.isOwner)
+      ) {
         const context = createErrorContext(req, userId);
         const error = new AppError('Access denied', 403, BusinessErrors.noAccess);
         return sendAppErrorResponse(res, error);
@@ -230,12 +239,18 @@ export class BusinessController {
 
       // If user has no businesses yet, return empty services array
       if (req.businessContext.businessIds.length === 0) {
-        return await sendSuccessResponse(res, 'success.business.noServicesFound', {
-          services: [],
-          total: 0,
-          page: 1,
-          totalPages: 0
-        }, 200, req);
+        return await this.responseHelper.success(
+          res,
+          'success.business.noServicesFound',
+          {
+            services: [],
+            total: 0,
+            page: 1,
+            totalPages: 0,
+          },
+          200,
+          req
+        );
       }
 
       const { businessId, active, page = '1', limit = '50' } = req.query;
@@ -246,11 +261,16 @@ export class BusinessController {
         businessId: businessId as string,
         active: active ? active === 'true' : undefined,
         page: pageNum,
-        limit: limitNum
+        limit: limitNum,
       });
 
-      await sendSuccessResponse(res, 'success.business.servicesRetrieved', services, 200, req);
-
+      await this.responseHelper.success(
+        res,
+        'success.business.servicesRetrieved',
+        services,
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -261,7 +281,7 @@ export class BusinessController {
       const validatedData = createBusinessSchema.parse(req.body);
       const userId = req.user!.id;
       // Get user's roles before business creation
-      const userRolesBefore = req.user?.roles?.map(role => role.name) || [];
+      const userRolesBefore = req.user?.roles?.map((role) => role.name) || [];
 
       // Create business (transaction will be committed inside the service)
       const business = await this.businessService.createBusiness(userId, validatedData);
@@ -271,56 +291,54 @@ export class BusinessController {
       if (this.rbacService && this.tokenService) {
         // Aggressively clear all cache entries for this user (primary cache clear)
         this.rbacService.forceInvalidateUser(userId);
-        
+
         // Wait for database consistency + replication delay (enterprise pattern)
         const DB_CONSISTENCY_DELAY_MS = 100; // Increased from 50ms to 100ms
-        await new Promise(resolve => setTimeout(resolve, DB_CONSISTENCY_DELAY_MS));
-        
+        await new Promise((resolve) => setTimeout(resolve, DB_CONSISTENCY_DELAY_MS));
+
         // Get fresh user permissions after role assignment (bypass cache)
         const userPermissionsAfter = await this.rbacService.getUserPermissions(userId, false);
-        const userRolesAfter = userPermissionsAfter.roles.map(role => role.name);
-        
+        const userRolesAfter = userPermissionsAfter.roles.map((role) => role.name);
+
         // Validate role assignment was successful
-        const ownerWasAdded = !userRolesBefore.includes('OWNER') && userRolesAfter.includes('OWNER');
-        
+        const ownerWasAdded =
+          !userRolesBefore.includes('OWNER') && userRolesAfter.includes('OWNER');
+
         if (!ownerWasAdded) {
           // Retry with additional cache clearing (handles distributed cache scenarios)
           this.rbacService.forceInvalidateUser(userId);
           const RETRY_DELAY_MS = 150; // Increased from 100ms to 150ms
-          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-          
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+
           const retryPermissions = await this.rbacService.getUserPermissions(userId, false);
-          const retryRoles = retryPermissions.roles.map(role => role.name);
-          
+          const retryRoles = retryPermissions.roles.map((role) => role.name);
+
           if (!retryRoles.includes('OWNER')) {
             throw new Error('Role assignment failed: OWNER role not found after business creation');
           }
         }
-        
+
         // Final cache clear before token generation to ensure subsequent requests get fresh data
         this.rbacService.forceInvalidateUser(userId);
-        
+
         // Generate new tokens with updated roles
         // These tokens will be fresh (iat timestamp will be current)
         // Auth middleware will bypass cache for tokens < 5 seconds old
-        const tokenPair = await this.tokenService.generateTokenPair(
-          userId,
-          req.user!.phoneNumber
-        );
-        
+        const tokenPair = await this.tokenService.generateTokenPair(userId, req.user!.phoneNumber);
+
         tokens = {
           accessToken: tokenPair.accessToken,
           refreshToken: tokenPair.refreshToken,
           expiresIn: tokenPair.expiresIn,
-          refreshExpiresIn: tokenPair.refreshExpiresIn
+          refreshExpiresIn: tokenPair.refreshExpiresIn,
         };
-        
+
         if (process.env.NODE_ENV === 'development') {
           logger.info('✅ ROLE UPDATE: OWNER role verified and new tokens generated', {
             userId,
             rolesBefore: userRolesBefore,
             rolesAfter: userRolesAfter,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
           });
         }
       }
@@ -328,14 +346,15 @@ export class BusinessController {
       const response: BusinessCreationResponse = {
         success: true,
         data: business,
-        message: 'Business created successfully'
+        message: 'Business created successfully',
       };
 
       // Always include new tokens since we guaranteed role assignment
       if (tokens) {
         response.tokens = tokens;
-        response.message = 'Business created successfully. You have been upgraded to business owner.';
-        
+        response.message =
+          'Business created successfully. You have been upgraded to business owner.';
+
         // Set cache control headers to prevent stale profile responses
         res.set('X-Role-Update', 'true');
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -358,8 +377,8 @@ export class BusinessController {
         business = await this.businessService.getBusinessByIdWithSubscription(userId, id);
       } else {
         business = await this.businessService.getBusinessById(
-          userId, 
-          id, 
+          userId,
+          id,
           includeDetails === 'true'
         );
       }
@@ -367,7 +386,7 @@ export class BusinessController {
       if (!business) {
         res.status(404).json({
           success: false,
-          error: 'Business not found'
+          error: 'Business not found',
         });
         return;
       }
@@ -390,12 +409,12 @@ export class BusinessController {
                       limits: {
                         maxBusinesses: plan.maxBusinesses,
                         maxStaffPerBusiness: plan.maxStaffPerBusiness,
-                        maxAppointmentsPerDay: plan.maxAppointmentsPerDay
-                      }
+                        maxAppointmentsPerDay: plan.maxAppointmentsPerDay,
+                      },
                     }
-                  : undefined
+                  : undefined,
               }
-            : null
+            : null,
         };
       }
 
@@ -403,8 +422,8 @@ export class BusinessController {
         success: true,
         data: responseData,
         meta: {
-          includesSubscriptionInfo: includeSubscription === 'true'
-        }
+          includesSubscriptionInfo: includeSubscription === 'true',
+        },
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -420,19 +439,19 @@ export class BusinessController {
       if (!business) {
         res.status(404).json({
           success: false,
-          error: 'Business not found'
+          error: 'Business not found',
         });
         return;
       }
 
       res.json({
         success: true,
-        data: business
+        data: business,
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
   }
@@ -449,13 +468,13 @@ export class BusinessController {
         success: true,
         data: businesses,
         meta: {
-          total: businesses.length
-        }
+          total: businesses.length,
+        },
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
+        error: error instanceof Error ? error.message : 'Access denied',
       });
     }
   }
@@ -471,7 +490,7 @@ export class BusinessController {
       res.json({
         success: true,
         data: business,
-        message: 'Business updated successfully'
+        message: 'Business updated successfully',
       });
     } catch (error) {
       if (error instanceof Error && error.message.includes('not found')) {
@@ -479,24 +498,24 @@ export class BusinessController {
           success: false,
           error: {
             message: error.message,
-            code: 'BUSINESS_NOT_FOUND'
-          }
+            code: 'BUSINESS_NOT_FOUND',
+          },
         });
       } else if (error instanceof Error && error.message.includes('Access denied')) {
         res.status(403).json({
           success: false,
           error: {
             message: error.message,
-            code: 'ACCESS_DENIED'
-          }
+            code: 'ACCESS_DENIED',
+          },
         });
       } else {
         res.status(400).json({
           success: false,
           error: {
             message: error instanceof Error ? error.message : 'Failed to update business',
-            code: 'UPDATE_FAILED'
-          }
+            code: 'UPDATE_FAILED',
+          },
         });
       }
     }
@@ -512,21 +531,22 @@ export class BusinessController {
           success: false,
           error: {
             message: 'No business found to update',
-            code: 'BUSINESS_NOT_FOUND'
-          }
+            code: 'BUSINESS_NOT_FOUND',
+          },
         });
         return;
       }
 
       // Use the primary business ID or the first business if no primary is set
-      const businessId = req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
-      
+      const businessId =
+        req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
+
       const business = await this.businessService.updateBusiness(userId, businessId, validatedData);
 
       res.json({
         success: true,
         data: business,
-        message: 'Business updated successfully'
+        message: 'Business updated successfully',
       });
     } catch (error) {
       if (error instanceof Error && error.message.includes('not found')) {
@@ -534,24 +554,24 @@ export class BusinessController {
           success: false,
           error: {
             message: error.message,
-            code: 'BUSINESS_NOT_FOUND'
-          }
+            code: 'BUSINESS_NOT_FOUND',
+          },
         });
       } else if (error instanceof Error && error.message.includes('Access denied')) {
         res.status(403).json({
           success: false,
           error: {
             message: error.message,
-            code: 'ACCESS_DENIED'
-          }
+            code: 'ACCESS_DENIED',
+          },
         });
       } else {
         res.status(400).json({
           success: false,
           error: {
             message: error instanceof Error ? error.message : 'Failed to update business',
-            code: 'UPDATE_FAILED'
-          }
+            code: 'UPDATE_FAILED',
+          },
         });
       }
     }
@@ -567,21 +587,26 @@ export class BusinessController {
           success: false,
           error: {
             message: 'No business found to update',
-            code: 'BUSINESS_NOT_FOUND'
-          }
+            code: 'BUSINESS_NOT_FOUND',
+          },
         });
         return;
       }
 
       // Use the primary business ID or the first business if no primary is set
-      const businessId = req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
-      
-      const updatedBusiness = await this.businessService.updateBusinessPriceSettings(userId, businessId, validatedData);
+      const businessId =
+        req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
+
+      const updatedBusiness = await this.businessService.updateBusinessPriceSettings(
+        userId,
+        businessId,
+        validatedData
+      );
 
       res.json({
         success: true,
         data: updatedBusiness,
-        message: 'Price settings updated successfully'
+        message: 'Price settings updated successfully',
       });
     } catch (error) {
       if (error instanceof Error && error.message.includes('not found')) {
@@ -589,24 +614,24 @@ export class BusinessController {
           success: false,
           error: {
             message: error.message,
-            code: 'BUSINESS_NOT_FOUND'
-          }
+            code: 'BUSINESS_NOT_FOUND',
+          },
         });
       } else if (error instanceof Error && error.message.includes('Access denied')) {
         res.status(403).json({
           success: false,
           error: {
             message: error.message,
-            code: 'ACCESS_DENIED'
-          }
+            code: 'ACCESS_DENIED',
+          },
         });
       } else {
         res.status(400).json({
           success: false,
           error: {
             message: error instanceof Error ? error.message : 'Failed to update price settings',
-            code: 'UPDATE_FAILED'
-          }
+            code: 'UPDATE_FAILED',
+          },
         });
       }
     }
@@ -621,21 +646,22 @@ export class BusinessController {
           success: false,
           error: {
             message: 'No business found',
-            code: 'BUSINESS_NOT_FOUND'
-          }
+            code: 'BUSINESS_NOT_FOUND',
+          },
         });
         return;
       }
 
       // Use the primary business ID or the first business if no primary is set
-      const businessId = req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
-      
+      const businessId =
+        req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
+
       const priceSettings = await this.businessService.getBusinessPriceSettings(userId, businessId);
 
       res.json({
         success: true,
         data: priceSettings,
-        message: 'Price settings retrieved successfully'
+        message: 'Price settings retrieved successfully',
       });
     } catch (error) {
       if (error instanceof Error && error.message.includes('not found')) {
@@ -643,24 +669,24 @@ export class BusinessController {
           success: false,
           error: {
             message: error.message,
-            code: 'BUSINESS_NOT_FOUND'
-          }
+            code: 'BUSINESS_NOT_FOUND',
+          },
         });
       } else if (error instanceof Error && error.message.includes('Access denied')) {
         res.status(403).json({
           success: false,
           error: {
             message: error.message,
-            code: 'ACCESS_DENIED'
-          }
+            code: 'ACCESS_DENIED',
+          },
         });
       } else {
         res.status(500).json({
           success: false,
           error: {
             message: error instanceof Error ? error.message : 'Failed to retrieve price settings',
-            code: 'RETRIEVAL_FAILED'
-          }
+            code: 'RETRIEVAL_FAILED',
+          },
         });
       }
     }
@@ -675,12 +701,12 @@ export class BusinessController {
 
       res.json({
         success: true,
-        message: 'Business deleted successfully'
+        message: 'Business deleted successfully',
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete business'
+        error: error instanceof Error ? error.message : 'Failed to delete business',
       });
     }
   }
@@ -690,11 +716,7 @@ export class BusinessController {
       const validatedQuery = businessSearchSchema.parse(req.query);
       const userId = (req as AuthenticatedRequest).user?.id;
 
-      const {
-        page = 1,
-        limit = 20,
-        ...filters
-      } = validatedQuery;
+      const { page = 1, limit = 20, ...filters } = validatedQuery;
 
       const result = await this.businessService.searchBusinesses(
         userId || '',
@@ -710,8 +732,8 @@ export class BusinessController {
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
-          limit
-        }
+          limit,
+        },
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -770,14 +792,20 @@ export class BusinessController {
 
       const businesses = await this.businessService.findNearbyBusinesses(lat, lng, rad, lmt);
 
-      await sendSuccessResponse(res, 'success.business.nearbyRetrieved', {
-        businesses,
-        meta: {
-          total: businesses.length,
-          radius: rad,
-          limit: lmt
-        }
-      }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.business.nearbyRetrieved',
+        {
+          businesses,
+          meta: {
+            total: businesses.length,
+            radius: rad,
+            limit: lmt,
+          },
+        },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -793,7 +821,7 @@ export class BusinessController {
       res.json({
         success: true,
         data: business,
-        message: 'Business verified successfully'
+        message: 'Business verified successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -810,7 +838,7 @@ export class BusinessController {
       res.json({
         success: true,
         data: business,
-        message: 'Business verification removed successfully'
+        message: 'Business verification removed successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -833,7 +861,7 @@ export class BusinessController {
       res.json({
         success: true,
         data: business,
-        message: 'Business closed successfully'
+        message: 'Business closed successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -850,7 +878,7 @@ export class BusinessController {
       res.json({
         success: true,
         data: business,
-        message: 'Business reopened successfully'
+        message: 'Business reopened successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -866,7 +894,7 @@ export class BusinessController {
       const businessId = id === 'my' ? undefined : id;
       const stats = await this.businessService.getMyBusinessStats(userId, businessId);
 
-      await sendSuccessResponse(res, 'success.business.statsRetrieved', stats, 200, req);
+      await this.responseHelper.success(res, 'success.business.statsRetrieved', stats, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -881,7 +909,7 @@ export class BusinessController {
       if (!businessHours || typeof businessHours !== 'object') {
         res.status(400).json({
           success: false,
-          error: 'Invalid business hours format'
+          error: 'Invalid business hours format',
         });
         return;
       }
@@ -891,12 +919,12 @@ export class BusinessController {
       res.json({
         success: true,
         data: business,
-        message: 'Business hours updated successfully'
+        message: 'Business hours updated successfully',
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to update business hours'
+        error: error instanceof Error ? error.message : 'Failed to update business hours',
       });
     }
   }
@@ -917,12 +945,12 @@ export class BusinessController {
       res.json({
         success: true,
         data: result,
-        message: 'Business hours retrieved successfully'
+        message: 'Business hours retrieved successfully',
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve business hours'
+        error: error instanceof Error ? error.message : 'Failed to retrieve business hours',
       });
     }
   }
@@ -945,12 +973,12 @@ export class BusinessController {
       res.json({
         success: true,
         data: result,
-        message: 'Business hours status retrieved successfully'
+        message: 'Business hours status retrieved successfully',
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve business hours status'
+        error: error instanceof Error ? error.message : 'Failed to retrieve business hours status',
       });
     }
   }
@@ -974,12 +1002,12 @@ export class BusinessController {
       res.status(201).json({
         success: true,
         data: result,
-        message: 'Business hours override created successfully'
+        message: 'Business hours override created successfully',
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to create business hours override'
+        error: error instanceof Error ? error.message : 'Failed to create business hours override',
       });
     }
   }
@@ -1004,12 +1032,12 @@ export class BusinessController {
       res.json({
         success: true,
         data: result,
-        message: 'Business hours override updated successfully'
+        message: 'Business hours override updated successfully',
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to update business hours override'
+        error: error instanceof Error ? error.message : 'Failed to update business hours override',
       });
     }
   }
@@ -1027,12 +1055,12 @@ export class BusinessController {
 
       res.json({
         success: true,
-        message: 'Business hours override deleted successfully'
+        message: 'Business hours override deleted successfully',
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete business hours override'
+        error: error instanceof Error ? error.message : 'Failed to delete business hours override',
       });
     }
   }
@@ -1057,12 +1085,13 @@ export class BusinessController {
       res.json({
         success: true,
         data: result,
-        message: 'Business hours overrides retrieved successfully'
+        message: 'Business hours overrides retrieved successfully',
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve business hours overrides'
+        error:
+          error instanceof Error ? error.message : 'Failed to retrieve business hours overrides',
       });
     }
   }
@@ -1074,11 +1103,7 @@ export class BusinessController {
 
       // Validate slug format
       if (!slug || typeof slug !== 'string') {
-        const error = new AppError(
-          'Slug is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('Slug is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
@@ -1108,10 +1133,16 @@ export class BusinessController {
         excludeId as string
       );
 
-      await sendSuccessResponse(res, 'success.business.slugChecked', {
-        slug,
-        available: isAvailable
-      }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.business.slugChecked',
+        {
+          slug,
+          available: isAvailable,
+        },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1133,13 +1164,13 @@ export class BusinessController {
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
-          limit
-        }
+          limit,
+        },
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Access denied'
+        error: error instanceof Error ? error.message : 'Access denied',
       });
     }
   }
@@ -1155,13 +1186,13 @@ export class BusinessController {
         data: businesses,
         meta: {
           total: businesses.length,
-          businessTypeId
-        }
+          businessTypeId,
+        },
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
   }
@@ -1174,7 +1205,7 @@ export class BusinessController {
       if (!Array.isArray(businessIds) || businessIds.length === 0) {
         res.status(400).json({
           success: false,
-          error: 'businessIds array is required'
+          error: 'businessIds array is required',
         });
         return;
       }
@@ -1183,12 +1214,12 @@ export class BusinessController {
 
       res.json({
         success: true,
-        message: `${businessIds.length} businesses verified successfully`
+        message: `${businessIds.length} businesses verified successfully`,
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to verify businesses'
+        error: error instanceof Error ? error.message : 'Failed to verify businesses',
       });
     }
   }
@@ -1201,7 +1232,7 @@ export class BusinessController {
       if (!Array.isArray(businessIds) || businessIds.length === 0) {
         res.status(400).json({
           success: false,
-          error: 'businessIds array is required'
+          error: 'businessIds array is required',
         });
         return;
       }
@@ -1209,7 +1240,7 @@ export class BusinessController {
       if (!reason || reason.trim().length < 5) {
         res.status(400).json({
           success: false,
-          error: 'Reason must be at least 5 characters long'
+          error: 'Reason must be at least 5 characters long',
         });
         return;
       }
@@ -1218,12 +1249,12 @@ export class BusinessController {
 
       res.json({
         success: true,
-        message: `${businessIds.length} businesses closed successfully`
+        message: `${businessIds.length} businesses closed successfully`,
       });
     } catch (error) {
       res.status(403).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to close businesses'
+        error: error instanceof Error ? error.message : 'Failed to close businesses',
       });
     }
   }
@@ -1242,13 +1273,13 @@ export class BusinessController {
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
-          limit
-        }
+          limit,
+        },
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve businesses'
+        error: error instanceof Error ? error.message : 'Failed to retrieve businesses',
       });
     }
   }
@@ -1267,13 +1298,15 @@ export class BusinessController {
         throw new Error('Staff service not available');
       }
 
-      const staff = await this.staffService.getBusinessStaff(
-        userId,
-        businessId,
-        includeInactive
-      );
+      const staff = await this.staffService.getBusinessStaff(userId, businessId, includeInactive);
 
-      await sendSuccessResponse(res, 'success.business.staffRetrieved', { staff }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.business.staffRetrieved',
+        { staff },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1308,7 +1341,7 @@ export class BusinessController {
         context
       );
 
-      await sendSuccessResponse(res, 'success.business.staffAdded', result, 201, req);
+      await this.responseHelper.success(res, 'success.business.staffAdded', result, 201, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1322,14 +1355,7 @@ export class BusinessController {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
-      const {
-        phoneNumber,
-        verificationCode,
-        role,
-        permissions,
-        firstName,
-        lastName,
-      } = req.body;
+      const { phoneNumber, verificationCode, role, permissions, firstName, lastName } = req.body;
 
       if (!this.staffService) {
         throw new Error('Staff service not available');
@@ -1352,13 +1378,9 @@ export class BusinessController {
       );
 
       if (result.success) {
-        await sendSuccessResponse(res, 'success.business.staffVerified', result, 201, req);
+        await this.responseHelper.success(res, 'success.business.staffVerified', result, 201, req);
       } else {
-        const error = new AppError(
-          result.message,
-          400,
-          ERROR_CODES.INVALID_VERIFICATION_CODE
-        );
+        const error = new AppError(result.message, 400, ERROR_CODES.INVALID_VERIFICATION_CODE);
         sendAppErrorResponse(res, error);
       }
     } catch (error) {
@@ -1374,17 +1396,13 @@ export class BusinessController {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
-      
+
       // Validate request body
       const validatedData = imageUploadSchema.parse(req.body);
-      
+
       // Check if file was uploaded
       if (!req.file) {
-        const error = new AppError(
-          'No image file provided',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('No image file provided', 400, ERROR_CODES.VALIDATION_ERROR);
         sendAppErrorResponse(res, error);
         return;
       }
@@ -1401,10 +1419,17 @@ export class BusinessController {
         file.mimetype
       );
 
-      await sendSuccessResponse(res, 'success.business.imageUploaded', {
-        imageUrl: result.imageUrl,
-        business: result.business
-      }, 200, req, { imageType });
+      await this.responseHelper.success(
+        res,
+        'success.business.imageUploaded',
+        {
+          imageUrl: result.imageUrl,
+          business: result.business,
+        },
+        200,
+        req,
+        { imageType }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1418,7 +1443,7 @@ export class BusinessController {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
-      
+
       // Validate image type
       const validatedData = deleteImageSchema.parse(req.params);
       const { imageType } = validatedData;
@@ -1429,9 +1454,16 @@ export class BusinessController {
         imageType
       );
 
-      await sendSuccessResponse(res, 'success.business.imageDeleted', {
-        business
-      }, 200, req, { imageType });
+      await this.responseHelper.success(
+        res,
+        'success.business.imageDeleted',
+        {
+          business,
+        },
+        200,
+        req,
+        { imageType }
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1445,20 +1477,22 @@ export class BusinessController {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
-      
+
       // Validate request body
       const validatedData = deleteGalleryImageSchema.parse(req.body);
       const { imageUrl } = validatedData;
 
-      const business = await this.businessService.deleteGalleryImage(
-        userId,
-        businessId,
-        imageUrl
-      );
+      const business = await this.businessService.deleteGalleryImage(userId, businessId, imageUrl);
 
-      await sendSuccessResponse(res, 'success.business.galleryImageDeleted', {
-        business
-      }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.business.galleryImageDeleted',
+        {
+          business,
+        },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1475,9 +1509,15 @@ export class BusinessController {
 
       const images = await this.businessService.getBusinessImages(userId, businessId);
 
-      await sendSuccessResponse(res, 'success.business.imagesRetrieved', {
-        images
-      }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.business.imagesRetrieved',
+        {
+          images,
+        },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1494,11 +1534,7 @@ export class BusinessController {
       const { imageUrls } = req.body;
 
       if (!Array.isArray(imageUrls)) {
-        const error = new AppError(
-          'imageUrls must be an array',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('imageUrls must be an array', 400, ERROR_CODES.VALIDATION_ERROR);
         sendAppErrorResponse(res, error);
         return;
       }
@@ -1509,9 +1545,15 @@ export class BusinessController {
         imageUrls
       );
 
-      await sendSuccessResponse(res, 'success.business.galleryUpdated', {
-        business
-      }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.business.galleryUpdated',
+        {
+          business,
+        },
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -1527,12 +1569,15 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
 
-      const settings = await this.businessService.getBusinessNotificationSettings(userId, businessId);
+      const settings = await this.businessService.getBusinessNotificationSettings(
+        userId,
+        businessId
+      );
 
       if (!settings) {
         // Return default settings if none exist
@@ -1549,9 +1594,9 @@ export class BusinessController {
             emailEnabled: false,
             timezone: 'Europe/Istanbul',
             createdAt: new Date(),
-            updatedAt: new Date()
+            updatedAt: new Date(),
           },
-          message: 'Default notification settings (not yet configured)'
+          message: 'Default notification settings (not yet configured)',
         });
         return;
       }
@@ -1559,7 +1604,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: settings,
-        message: 'Notification settings retrieved successfully'
+        message: 'Notification settings retrieved successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1574,7 +1619,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -1588,7 +1633,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: settings,
-        message: 'Notification settings updated successfully'
+        message: 'Notification settings updated successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1603,26 +1648,24 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
 
-      // Import the services dynamically to avoid circular dependencies
-      const { NotificationService } = await import('../services/domain/notification/notificationService');
-      
       if (!this.rbacService) {
         throw new Error('RBAC service not available');
       }
-      
-      // Use existing usage service from business service
-      const usageService = this.businessService['usageService'];
-      const notificationService = new NotificationService(this.businessService['repositories'], usageService);
+
+      if (!this.notificationService) {
+        throw new Error('Notification service not available');
+      }
 
       const testData = req.body || {};
 
       // Get business notification settings
-      const businessSettings = await this.businessService.getOrCreateBusinessNotificationSettings(businessId);
+      const businessSettings =
+        await this.businessService.getOrCreateBusinessNotificationSettings(businessId);
 
       // Create a mock appointment for testing
       const now = new Date();
@@ -1639,19 +1682,19 @@ export class BusinessController {
         service: {
           id: 'test-service',
           name: 'Test Service',
-          duration: 60
+          duration: 60,
         },
         business: {
           id: businessId,
           name: 'Test Business',
-          timezone: businessSettings.timezone
+          timezone: businessSettings.timezone,
         },
         customer: {
           id: userId,
           firstName: 'Test',
           lastName: 'User',
-          phoneNumber: req.user!.phoneNumber
-        }
+          phoneNumber: req.user!.phoneNumber,
+        },
       };
 
       // Determine channels to test
@@ -1660,7 +1703,7 @@ export class BusinessController {
 
       // Test push notification if enabled and requested
       if (channelsToTest.includes('PUSH') && businessSettings.pushEnabled) {
-        const pushResults = await notificationService.sendAppointmentReminder(testAppointment);
+        const pushResults = await this.notificationService.sendAppointmentReminder(testAppointment);
         results.push(...pushResults);
       }
 
@@ -1668,19 +1711,28 @@ export class BusinessController {
       if (channelsToTest.includes('SMS') && businessSettings.smsEnabled) {
         // Check SMS rate limiting (5 minutes between SMS tests per user)
         const SMS_RATE_LIMIT_MINUTES = 5;
-        const recentSmsTests = await this.businessService.findRecentAuditEvents(userId, 'SMS_TEST', SMS_RATE_LIMIT_MINUTES);
+        const recentSmsTests = await this.businessService.findRecentAuditEvents(
+          userId,
+          'SMS_TEST',
+          SMS_RATE_LIMIT_MINUTES
+        );
         const lastSmsTest = recentSmsTests.length > 0 ? recentSmsTests[0] : null;
 
         if (lastSmsTest) {
-          const timeRemaining = Math.ceil((lastSmsTest.createdAt.getTime() + SMS_RATE_LIMIT_MINUTES * 60 * 1000 - Date.now()) / 1000 / 60);
+          const timeRemaining = Math.ceil(
+            (lastSmsTest.createdAt.getTime() + SMS_RATE_LIMIT_MINUTES * 60 * 1000 - Date.now()) /
+              1000 /
+              60
+          );
           results.push({
             success: false,
             error: `SMS test rate limited. Please wait ${timeRemaining} more minute(s) before testing SMS again.`,
             channel: 'SMS',
-            status: 'RATE_LIMITED'
+            status: 'RATE_LIMITED',
           });
         } else {
-          const smsResults = await notificationService.sendSMSAppointmentReminder(testAppointment);
+          const smsResults =
+            await this.notificationService.sendSMSAppointmentReminder(testAppointment);
           results.push(...smsResults);
 
           // Log SMS test activity for rate limiting
@@ -1689,7 +1741,7 @@ export class BusinessController {
             action: 'SMS_TEST',
             entity: 'NOTIFICATION',
             entityId: testAppointment.id,
-            details: { businessId, testId: testAppointment.id }
+            details: { businessId, testId: testAppointment.id },
           });
         }
       }
@@ -1700,12 +1752,12 @@ export class BusinessController {
           success: true,
           messageId: `test-email-${Date.now()}`,
           channel: 'EMAIL',
-          status: 'SENT'
+          status: 'SENT',
         });
       }
 
-      const successCount = results.filter(r => r.success).length;
-      const failureCount = results.filter(r => !r.success).length;
+      const successCount = results.filter((r) => r.success).length;
+      const failureCount = results.filter((r) => !r.success).length;
 
       res.status(200).json({
         success: true,
@@ -1716,10 +1768,10 @@ export class BusinessController {
             successful: successCount,
             failed: failureCount,
             channels: channelsToTest,
-            testMessage: testData.customMessage || 'Test reminder sent'
-          }
+            testMessage: testData.customMessage || 'Test reminder sent',
+          },
         },
-        message: `Test reminder completed: ${successCount} successful, ${failureCount} failed`
+        message: `Test reminder completed: ${successCount} successful, ${failureCount} failed`,
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1734,7 +1786,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -1744,7 +1796,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: settings,
-        message: 'Staff privacy settings retrieved successfully'
+        message: 'Staff privacy settings retrieved successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1759,13 +1811,13 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
 
       const validatedData = updateBusinessStaffPrivacySettingsSchema.parse(req.body);
-      
+
       const settings = await this.businessService.updateStaffPrivacySettings(
         userId,
         businessId,
@@ -1775,7 +1827,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: settings,
-        message: 'Staff privacy settings updated successfully'
+        message: 'Staff privacy settings updated successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1794,7 +1846,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business ID is required'
+          error: 'Business ID is required',
         });
         return;
       }
@@ -1805,7 +1857,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: paymentMethods,
-        message: 'Payment methods retrieved successfully'
+        message: 'Payment methods retrieved successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1824,7 +1876,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business ID is required'
+          error: 'Business ID is required',
         });
         return;
       }
@@ -1839,7 +1891,7 @@ export class BusinessController {
       res.status(201).json({
         success: true,
         data: paymentMethod,
-        message: 'Payment method added successfully'
+        message: 'Payment method added successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1856,12 +1908,15 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
 
-      const settings = await this.businessService.getBusinessReservationSettings(userId, businessId);
+      const settings = await this.businessService.getBusinessReservationSettings(
+        userId,
+        businessId
+      );
 
       if (!settings) {
         // Return default settings if none exist
@@ -1873,9 +1928,9 @@ export class BusinessController {
             minNotificationHours: 2,
             maxDailyAppointments: 50,
             createdAt: new Date(),
-            updatedAt: new Date()
+            updatedAt: new Date(),
           },
-          message: 'Default reservation settings (not yet configured)'
+          message: 'Default reservation settings (not yet configured)',
         });
         return;
       }
@@ -1883,7 +1938,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: settings,
-        message: 'Reservation settings retrieved successfully'
+        message: 'Reservation settings retrieved successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1898,7 +1953,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -1913,7 +1968,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: updatedSettings,
-        message: 'Reservation settings updated successfully'
+        message: 'Reservation settings updated successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1930,17 +1985,20 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
 
-      const policies = await this.businessService.getBusinessCancellationPolicies(userId, businessId);
+      const policies = await this.businessService.getBusinessCancellationPolicies(
+        userId,
+        businessId
+      );
 
       res.status(200).json({
         success: true,
         data: policies,
-        message: 'Cancellation policies retrieved successfully'
+        message: 'Cancellation policies retrieved successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1955,7 +2013,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -1970,7 +2028,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: updatedPolicies,
-        message: 'Cancellation policies updated successfully'
+        message: 'Cancellation policies updated successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -1986,7 +2044,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -1994,7 +2052,7 @@ export class BusinessController {
       if (!customerId) {
         res.status(400).json({
           success: false,
-          error: 'Customer ID is required'
+          error: 'Customer ID is required',
         });
         return;
       }
@@ -2008,7 +2066,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: customerStatus,
-        message: 'Customer policy status retrieved successfully'
+        message: 'Customer policy status retrieved successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -2025,24 +2083,30 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
 
-      const settings = await this.businessService.getBusinessCustomerManagementSettings(userId, businessId);
+      const settings = await this.businessService.getBusinessCustomerManagementSettings(
+        userId,
+        businessId
+      );
 
       res.status(200).json({
         success: true,
         data: settings,
-        message: 'Customer management settings retrieved successfully'
+        message: 'Customer management settings retrieved successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  async updateCustomerManagementSettings(req: BusinessContextRequest, res: Response): Promise<void> {
+  async updateCustomerManagementSettings(
+    req: BusinessContextRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
       const businessId = req.businessContext?.primaryBusinessId;
@@ -2050,7 +2114,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -2065,7 +2129,7 @@ export class BusinessController {
       res.status(200).json({
         success: true,
         data: updatedSettings,
-        message: 'Customer management settings updated successfully'
+        message: 'Customer management settings updated successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -2082,7 +2146,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -2090,17 +2154,22 @@ export class BusinessController {
       if (!customerId) {
         res.status(400).json({
           success: false,
-          error: 'Customer ID is required'
+          error: 'Customer ID is required',
         });
         return;
       }
 
-      const notes = await this.businessService.getCustomerNotes(userId, businessId, customerId, noteType);
+      const notes = await this.businessService.getCustomerNotes(
+        userId,
+        businessId,
+        customerId,
+        noteType
+      );
 
       res.status(200).json({
         success: true,
         data: notes,
-        message: 'Customer notes retrieved successfully'
+        message: 'Customer notes retrieved successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -2116,7 +2185,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -2124,18 +2193,23 @@ export class BusinessController {
       if (!customerId) {
         res.status(400).json({
           success: false,
-          error: 'Customer ID is required'
+          error: 'Customer ID is required',
         });
         return;
       }
 
       const noteData = req.body;
-      const note = await this.businessService.addCustomerNote(userId, businessId, customerId, noteData);
+      const note = await this.businessService.addCustomerNote(
+        userId,
+        businessId,
+        customerId,
+        noteData
+      );
 
       res.status(201).json({
         success: true,
         data: note,
-        message: 'Customer note added successfully'
+        message: 'Customer note added successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -2151,7 +2225,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -2159,17 +2233,21 @@ export class BusinessController {
       if (!customerId) {
         res.status(400).json({
           success: false,
-          error: 'Customer ID is required'
+          error: 'Customer ID is required',
         });
         return;
       }
 
-      const loyaltyStatus = await this.businessService.getCustomerLoyaltyStatus(userId, businessId, customerId);
+      const loyaltyStatus = await this.businessService.getCustomerLoyaltyStatus(
+        userId,
+        businessId,
+        customerId
+      );
 
       res.status(200).json({
         success: true,
         data: loyaltyStatus,
-        message: 'Customer loyalty status retrieved successfully'
+        message: 'Customer loyalty status retrieved successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -2185,7 +2263,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -2193,17 +2271,21 @@ export class BusinessController {
       if (!appointmentId) {
         res.status(400).json({
           success: false,
-          error: 'Appointment ID is required'
+          error: 'Appointment ID is required',
         });
         return;
       }
 
-      const evaluation = await this.businessService.getCustomerEvaluation(userId, businessId, appointmentId);
+      const evaluation = await this.businessService.getCustomerEvaluation(
+        userId,
+        businessId,
+        appointmentId
+      );
 
       res.status(200).json({
         success: true,
         data: evaluation,
-        message: 'Customer evaluation retrieved successfully'
+        message: 'Customer evaluation retrieved successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -2219,7 +2301,7 @@ export class BusinessController {
       if (!businessId) {
         res.status(400).json({
           success: false,
-          error: 'Business context is required'
+          error: 'Business context is required',
         });
         return;
       }
@@ -2227,7 +2309,7 @@ export class BusinessController {
       if (!appointmentId) {
         res.status(400).json({
           success: false,
-          error: 'Appointment ID is required'
+          error: 'Appointment ID is required',
         });
         return;
       }
@@ -2243,7 +2325,7 @@ export class BusinessController {
       res.status(201).json({
         success: true,
         data: evaluation,
-        message: 'Customer evaluation submitted successfully'
+        message: 'Customer evaluation submitted successfully',
       });
     } catch (error) {
       handleRouteError(error, req, res);
@@ -2254,24 +2336,25 @@ export class BusinessController {
    * Update Google integration settings
    * PUT /api/v1/businesses/:id/google-integration
    */
-  async updateGoogleIntegration(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
+  async updateGoogleIntegration(req: BusinessContextRequest, res: Response): Promise<void> {
     logger.info('✅ [CONTROLLER] updateGoogleIntegration - ENTRY POINT REACHED');
     try {
       logger.info('🔍 [GOOGLE INTEGRATION PUT] Starting...', {
         params: req.params,
         body: req.body,
         userId: req.user?.id,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       const { id } = req.params;
       const userId = req.user!.id;
       const validatedData = updateGoogleIntegrationSchema.parse(req.body);
 
-      logger.info('🔍 [GOOGLE INTEGRATION PUT] Calling service...', { userId, businessId: id, data: validatedData });
+      logger.info('🔍 [GOOGLE INTEGRATION PUT] Calling service...', {
+        userId,
+        businessId: id,
+        data: validatedData,
+      });
 
       const business = await this.businessService.updateGoogleIntegration(
         userId,
@@ -2281,7 +2364,7 @@ export class BusinessController {
 
       logger.info('🔍 [GOOGLE INTEGRATION PUT] Business updated:', business.id);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.business.googleIntegrationUpdated',
         { business },
@@ -2300,15 +2383,12 @@ export class BusinessController {
    * GET /api/v1/businesses/:id/google-integration
    * No authentication required - anyone can view Google integration info
    */
-  async getGoogleIntegration(
-    req: Request,
-    res: Response
-  ): Promise<void> {
+  async getGoogleIntegration(req: Request, res: Response): Promise<void> {
     logger.info('✅ [CONTROLLER] getGoogleIntegration - ENTRY POINT REACHED');
     try {
       logger.info('🔍 [GOOGLE INTEGRATION GET] Starting...', {
         params: req.params,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       const { id } = req.params;
@@ -2327,7 +2407,7 @@ export class BusinessController {
         longitude: settings.longitude,
         averageRating: settings.averageRating,
         totalRatings: settings.totalRatings,
-        lastRatingAt: settings.lastRatingAt
+        lastRatingAt: settings.lastRatingAt,
       });
 
       // Generate URLs if enabled and linked
@@ -2339,7 +2419,7 @@ export class BusinessController {
           const originalUrl = settings.googleOriginalUrl;
 
           logger.info('✅ [GOOGLE INTEGRATION GET] Using ORIGINAL URL (best option):', {
-            originalUrl
+            originalUrl,
           });
 
           urls = {
@@ -2348,9 +2428,10 @@ export class BusinessController {
             reviews: originalUrl,
             writeReview: originalUrl,
             // For embed, use coordinates if available, otherwise try to convert the URL
-            embed: settings.latitude && settings.longitude
-              ? `https://maps.google.com/maps?q=${settings.latitude},${settings.longitude}&output=embed&z=17`
-              : originalUrl
+            embed:
+              settings.latitude && settings.longitude
+                ? `https://maps.google.com/maps?q=${settings.latitude},${settings.longitude}&output=embed&z=17`
+                : originalUrl,
           };
 
           logger.info('✅ [GOOGLE INTEGRATION GET] Generated URLs from original URL:', urls);
@@ -2362,7 +2443,7 @@ export class BusinessController {
 
           logger.info('✅ [GOOGLE INTEGRATION GET] Using COORDINATES (exact pin location):', {
             lat,
-            lng
+            lng,
           });
 
           // Generate URLs based on what we have
@@ -2370,23 +2451,23 @@ export class BusinessController {
           let mapsUrl: string;
           let reviewsUrl: string;
           let writeReviewUrl: string;
-          
+
           if (settings.googlePlaceId) {
             const googleId = settings.googlePlaceId;
             const isCIDFormat = googleId.includes(':') && googleId.includes('0x');
-            
+
             if (isCIDFormat) {
               // Convert hex CID to decimal
               const cidParts = googleId.split(':');
               const hexCid = cidParts[1].replace('0x', '');
               const decimalCid = parseInt(hexCid, 16);
-              
+
               // USE CID for business profile (shows reviews, name, etc.)
               embedUrl = `https://maps.google.com/maps?cid=${decimalCid}&output=embed`;
               mapsUrl = `https://www.google.com/maps?cid=${decimalCid}`;
               reviewsUrl = `https://www.google.com/maps?cid=${decimalCid}`;
               writeReviewUrl = `https://www.google.com/maps?cid=${decimalCid}`;
-              
+
               logger.info('✅ Using CID for business profile:', decimalCid);
             } else {
               // PlaceID format - use coordinates as fallback
@@ -2407,25 +2488,24 @@ export class BusinessController {
             maps: mapsUrl,
             reviews: reviewsUrl,
             writeReview: writeReviewUrl,
-            embed: embedUrl
+            embed: embedUrl,
           };
 
           logger.info('✅ [GOOGLE INTEGRATION GET] Generated coordinate-based URLs:', urls);
-        } 
+        }
         // FALLBACK: Use Place ID or CID if coordinates not available
         else if (settings.googlePlaceId) {
           const googleId = settings.googlePlaceId;
 
           // Detect format: CID (0x...:0x...) vs Place ID (ChIJ..., EI..., GhIJ...)
           const isCIDFormat = googleId.includes(':') && googleId.includes('0x');
-          const isPlaceIDFormat = googleId.startsWith('ChIJ') ||
-                                 googleId.startsWith('EI') ||
-                                 googleId.startsWith('GhIJ');
+          const isPlaceIDFormat =
+            googleId.startsWith('ChIJ') || googleId.startsWith('EI') || googleId.startsWith('GhIJ');
 
           logger.info('⚠️ [GOOGLE INTEGRATION GET] No coordinates - falling back to Google ID:', {
             googleId,
             isCIDFormat,
-            isPlaceIDFormat
+            isPlaceIDFormat,
           });
 
           if (isCIDFormat) {
@@ -2437,7 +2517,7 @@ export class BusinessController {
 
             logger.info('🔍 [GOOGLE INTEGRATION GET] CID conversion:', {
               hexCid,
-              decimalCid
+              decimalCid,
             });
 
             urls = {
@@ -2449,7 +2529,7 @@ export class BusinessController {
               writeReview: `https://www.google.com/maps?cid=${decimalCid}`,
 
               // Embed URL using CID (may show general area instead of exact pin)
-              embed: `https://maps.google.com/maps?cid=${decimalCid}&output=embed`
+              embed: `https://maps.google.com/maps?cid=${decimalCid}&output=embed`,
             };
           } else if (isPlaceIDFormat) {
             // Handle Place ID format (e.g., ChIJN1t_tDeuEmsRUsoyG83frY4)
@@ -2464,7 +2544,7 @@ export class BusinessController {
               writeReview: `https://search.google.com/local/writereview?placeid=${googleId}`,
 
               // Embed URL
-              embed: `https://maps.google.com/maps?q=place_id:${googleId}&output=embed`
+              embed: `https://maps.google.com/maps?q=place_id:${googleId}&output=embed`,
             };
           } else {
             // Unknown format - try to use it as-is
@@ -2473,7 +2553,7 @@ export class BusinessController {
               maps: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleId)}`,
               reviews: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleId)}`,
               writeReview: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(googleId)}`,
-              embed: `https://maps.google.com/maps?q=${encodeURIComponent(googleId)}&output=embed`
+              embed: `https://maps.google.com/maps?q=${encodeURIComponent(googleId)}&output=embed`,
             };
           }
 
@@ -2501,14 +2581,14 @@ export class BusinessController {
         internalRatings: {
           averageRating: settings.averageRating,
           totalRatings: settings.totalRatings,
-          lastRatingAt: settings.lastRatingAt
+          lastRatingAt: settings.lastRatingAt,
         },
 
         // URLs for maps embed and links
-        urls
+        urls,
       };
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.business.googleIntegrationRetrieved',
         responseData,

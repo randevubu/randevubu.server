@@ -1,20 +1,22 @@
 import { Request, Response } from 'express';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { AppError } from '../types/responseTypes';
-import { sendSuccessResponse, sendAppErrorResponse } from '../utils/responseUtils';
+import { sendAppErrorResponse } from '../utils/responseUtils';
 import { PaymentService } from '../services/domain/payment/paymentService';
 import { SubscriptionService } from '../services/domain/subscription/subscriptionService';
 import { RBACService } from '../services/domain/rbac/rbacService';
 import { PermissionName } from '../types/auth';
 import { z } from 'zod';
-import logger from "../utils/Logger/logger";
+import logger from '../utils/Logger/logger';
+import { ResponseHelper } from '../utils/responseHelper';
+
 const updatePaymentMethodSchema = z.object({
   card: z.object({
     cardNumber: z.string().min(13).max(19),
     expireMonth: z.string().min(1).max(2),
     expireYear: z.string().min(4).max(4),
     cvc: z.string().min(3).max(4),
-    cardHolderName: z.string().min(2).max(100)
+    cardHolderName: z.string().min(2).max(100),
   }),
   buyer: z.object({
     id: z.string(),
@@ -25,15 +27,16 @@ const updatePaymentMethodSchema = z.object({
     identityNumber: z.string().min(11).max(11),
     address: z.string().min(10).max(500),
     city: z.string().min(2).max(100),
-    country: z.string().min(2).max(100)
-  })
+    country: z.string().min(2).max(100),
+  }),
 });
 
 export class PaymentMethodController {
   constructor(
     private paymentService: PaymentService,
     private subscriptionService: SubscriptionService,
-    private rbacService: RBACService
+    private rbacService: RBACService,
+    private responseHelper: ResponseHelper
   ) {}
 
   /**
@@ -54,14 +57,15 @@ export class PaymentMethodController {
       const { card, buyer } = validationResult.data;
 
       // Check permissions
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SUBSCRIPTION,
-        { businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SUBSCRIPTION, {
+        businessId,
+      });
 
       // Get subscription
-      const subscription = await this.subscriptionService.getBusinessSubscription(userId, businessId);
+      const subscription = await this.subscriptionService.getBusinessSubscription(
+        userId,
+        businessId
+      );
       if (!subscription) {
         return sendAppErrorResponse(res, new AppError('Subscription not found', 404));
       }
@@ -80,18 +84,24 @@ export class PaymentMethodController {
         paymentMethodId
       );
 
-      await sendSuccessResponse(res, 'success.paymentMethod.updated', {
-        paymentMethodId,
-        lastFourDigits,
-        cardBrand,
-        subscriptionId: result.id
-      }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.paymentMethod.updated',
+        {
+          paymentMethodId,
+          lastFourDigits,
+          cardBrand,
+          subscriptionId: result.id,
+        },
+        200,
+        req
+      );
     } catch (error) {
       logger.error('Update payment method error:', error);
-      sendAppErrorResponse(res, new AppError(
-        error instanceof Error ? error.message : 'Internal server error',
-        500
-      ));
+      sendAppErrorResponse(
+        res,
+        new AppError(error instanceof Error ? error.message : 'Internal server error', 500)
+      );
     }
   }
 
@@ -114,30 +124,37 @@ export class PaymentMethodController {
       const userId = req.user.id;
 
       // Check permissions
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SUBSCRIPTION,
-        { businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SUBSCRIPTION, {
+        businessId,
+      });
 
       // Get subscription with payment method
-      const autoRenewalStatus = await this.subscriptionService.getAutoRenewalStatus(userId, businessId);
-      
+      const autoRenewalStatus = await this.subscriptionService.getAutoRenewalStatus(
+        userId,
+        businessId
+      );
+
       if (!autoRenewalStatus.paymentMethod) {
         return sendAppErrorResponse(res, new AppError('No payment method found', 404));
       }
 
-      await sendSuccessResponse(res, 'success.paymentMethod.retrieved', {
-        paymentMethod: autoRenewalStatus.paymentMethod,
-        autoRenewal: autoRenewalStatus.autoRenewal,
-        nextBillingDate: autoRenewalStatus.nextBillingDate
-      }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.paymentMethod.retrieved',
+        {
+          paymentMethod: autoRenewalStatus.paymentMethod,
+          autoRenewal: autoRenewalStatus.autoRenewal,
+          nextBillingDate: autoRenewalStatus.nextBillingDate,
+        },
+        200,
+        req
+      );
     } catch (error) {
       logger.error('Get payment method error:', error);
-      sendAppErrorResponse(res, new AppError(
-        error instanceof Error ? error.message : 'Internal server error',
-        500
-      ));
+      sendAppErrorResponse(
+        res,
+        new AppError(error instanceof Error ? error.message : 'Internal server error', 500)
+      );
     }
   }
 
@@ -151,14 +168,15 @@ export class PaymentMethodController {
       const userId = req.user.id;
 
       // Check permissions
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SUBSCRIPTION,
-        { businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SUBSCRIPTION, {
+        businessId,
+      });
 
       // Get subscription
-      const subscription = await this.subscriptionService.getBusinessSubscription(userId, businessId);
+      const subscription = await this.subscriptionService.getBusinessSubscription(
+        userId,
+        businessId
+      );
       if (!subscription) {
         return sendAppErrorResponse(res, new AppError('Subscription not found', 404));
       }
@@ -170,17 +188,22 @@ export class PaymentMethodController {
 
       // Retry payment - this would trigger the payment retry service
       // For now, return success (actual implementation would use payment retry service)
-      await sendSuccessResponse(res, 'success.paymentMethod.retryInitiated', {
-        subscriptionId: subscription.id,
-        status: 'PENDING_RETRY'
-      }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.paymentMethod.retryInitiated',
+        {
+          subscriptionId: subscription.id,
+          status: 'PENDING_RETRY',
+        },
+        200,
+        req
+      );
     } catch (error) {
       logger.error('Retry payment error:', error);
-      sendAppErrorResponse(res, new AppError(
-        error instanceof Error ? error.message : 'Internal server error',
-        500
-      ));
+      sendAppErrorResponse(
+        res,
+        new AppError(error instanceof Error ? error.message : 'Internal server error', 500)
+      );
     }
   }
-
 }

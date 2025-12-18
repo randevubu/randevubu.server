@@ -9,7 +9,7 @@ import * as webpush from 'web-push';
 import { UsageService } from '../usage/usageService';
 import { RepositoryContainer } from '../../../repositories';
 import { NotificationDataConfig } from '../../../repositories/notificationRepository';
-import { 
+import {
   NotificationChannel,
   PushSubscriptionData,
   PushSubscriptionRequest,
@@ -17,29 +17,33 @@ import {
   NotificationPreferenceRequest,
   SendPushNotificationRequest,
   UpcomingAppointment,
-  PushNotificationData
+  PushNotificationData,
 } from '../../../types/business';
-import { NotificationResult, EnhancedClosureData, NotificationPayload, NotificationStatus } from '../../../types/notification';
+import {
+  NotificationResult,
+  EnhancedClosureData,
+  NotificationPayload,
+  NotificationStatus,
+} from '../../../types/notification';
 import { TranslationService, TranslationParams } from '../../core/translationService';
 import { TimeSlot, RescheduleSuggestion } from '../../../types/appointment';
 import { getEmailService } from '../../../lib/aws/email';
-import logger from "../../../utils/Logger/logger";
+import logger from '../../../utils/Logger/logger';
 import { PushDeliveryWorker } from './pushDeliveryWorker';
 import { ValidationError } from '../../../types/errors';
 import { ERROR_CODES } from '../../../constants/errorCodes';
 import pLimit from 'p-limit';
 export class NotificationService {
-  private translationService: TranslationService;
   private emailService = getEmailService();
   private pushDeliveryWorker: PushDeliveryWorker;
   private pushEnabled: boolean;
 
   constructor(
     private repositories: RepositoryContainer,
+    private translationService: TranslationService,
     private usageService?: UsageService,
     pushDeliveryWorker?: PushDeliveryWorker
   ) {
-    this.translationService = new TranslationService();
     this.pushDeliveryWorker =
       pushDeliveryWorker ?? new PushDeliveryWorker(this.repositories.notificationRepository);
     // Configure web-push if VAPID keys are available
@@ -48,7 +52,7 @@ export class NotificationService {
     const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:admin@randevubu.com';
 
     this.pushEnabled = Boolean(vapidPublicKey && vapidPrivateKey);
-    
+
     if (this.pushEnabled) {
       webpush.setVapidDetails(vapidSubject, vapidPublicKey!, vapidPrivateKey!);
     } else {
@@ -83,7 +87,7 @@ export class NotificationService {
               success: false,
               error: `Unsupported notification channel: ${channel}`,
               channel,
-              status: NotificationStatus.FAILED
+              status: NotificationStatus.FAILED,
             };
         }
 
@@ -92,7 +96,7 @@ export class NotificationService {
           closureData.id,
           customerId,
           channel,
-          closureData.message || await this.generateClosureMessage(closureData, language),
+          closureData.message || (await this.generateClosureMessage(closureData, language)),
           result
         );
 
@@ -102,14 +106,14 @@ export class NotificationService {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
           channel,
-          status: NotificationStatus.FAILED
+          status: NotificationStatus.FAILED,
         };
 
         await this.logNotification(
           closureData.id,
           customerId,
           channel,
-          closureData.message || await this.generateClosureMessage(closureData, language),
+          closureData.message || (await this.generateClosureMessage(closureData, language)),
           failedResult
         );
 
@@ -127,35 +131,42 @@ export class NotificationService {
   ): Promise<NotificationResult[]> {
     try {
       // Get user's notification preferences for this business
-      const availabilityAlert = await this.repositories.notificationRepository.findAvailabilityAlertByCustomerAndBusiness(
-        customerId,
-        businessId
-      );
+      const availabilityAlert =
+        await this.repositories.notificationRepository.findAvailabilityAlertByCustomerAndBusiness(
+          customerId,
+          businessId
+        );
 
       if (!availabilityAlert) {
-        return [{
-          success: false,
-          error: 'No active availability alert found',
-          channel: NotificationChannel.EMAIL,
-          status: NotificationStatus.FAILED
-        }];
+        return [
+          {
+            success: false,
+            error: 'No active availability alert found',
+            channel: NotificationChannel.EMAIL,
+            status: NotificationStatus.FAILED,
+          },
+        ];
       }
 
       // Fetch business details
       const business = await this.repositories.businessRepository.findById(businessId);
       if (!business) {
-        return [{
-          success: false,
-          error: 'Business not found',
-          channel: NotificationChannel.EMAIL,
-          status: NotificationStatus.FAILED
-        }];
+        return [
+          {
+            success: false,
+            error: 'Business not found',
+            channel: NotificationChannel.EMAIL,
+            status: NotificationStatus.FAILED,
+          },
+        ];
       }
 
       // Fetch service details if serviceId is provided
       let serviceName: string | undefined;
       if (availabilityAlert.serviceId) {
-        const service = await this.repositories.serviceRepository.findById(availabilityAlert.serviceId);
+        const service = await this.repositories.serviceRepository.findById(
+          availabilityAlert.serviceId
+        );
         serviceName = service?.name;
       }
 
@@ -163,7 +174,7 @@ export class NotificationService {
         channels: PrismaNotificationChannel[];
       };
 
-      const preferredChannels = preferences.channels.map(channel =>
+      const preferredChannels = preferences.channels.map((channel) =>
         this.mapFromPrismaNotificationChannel(channel)
       );
 
@@ -189,12 +200,14 @@ export class NotificationService {
 
       return results;
     } catch (error) {
-      return [{
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to send availability alert',
-        channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.FAILED
-      }];
+      return [
+        {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to send availability alert',
+          channel: NotificationChannel.EMAIL,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
   }
 
@@ -203,14 +216,15 @@ export class NotificationService {
     suggestions: RescheduleSuggestion[]
   ): Promise<NotificationResult> {
     try {
-      const appointment = await this.repositories.appointmentRepository.findByIdWithDetails(appointmentId);
+      const appointment =
+        await this.repositories.appointmentRepository.findByIdWithDetails(appointmentId);
 
       if (!appointment) {
         return {
           success: false,
           error: 'Appointment not found',
           channel: NotificationChannel.EMAIL,
-          status: NotificationStatus.FAILED
+          status: NotificationStatus.FAILED,
         };
       }
 
@@ -236,15 +250,14 @@ export class NotificationService {
         affectedAppointments: 1,
         rescheduledAppointments: 0,
         cancelledAppointments: 0,
-        totalRevenueImpact: 0
+        totalRevenueImpact: 0,
       });
-
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to send reschedule notification',
         channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -262,12 +275,11 @@ export class NotificationService {
           success: false,
           error: 'Customer email not found',
           channel: NotificationChannel.EMAIL,
-          status: NotificationStatus.FAILED
+          status: NotificationStatus.FAILED,
         };
       }
 
-      const message =
-        closureData.message || (await this.generateClosureMessage(closureData, 'tr'));
+      const message = closureData.message || (await this.generateClosureMessage(closureData, 'tr'));
 
       const { subject, html, text } = this.buildClosureEmailPayload(
         customer.firstName,
@@ -279,7 +291,7 @@ export class NotificationService {
         to: customerEmail,
         subject,
         html,
-        text
+        text,
       });
 
       if (!response.success) {
@@ -287,7 +299,7 @@ export class NotificationService {
           success: false,
           error: response.error || 'Failed to send email notification',
           channel: NotificationChannel.EMAIL,
-          status: NotificationStatus.FAILED
+          status: NotificationStatus.FAILED,
         };
       }
 
@@ -295,15 +307,19 @@ export class NotificationService {
         success: true,
         messageId: response.messageId,
         channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.SENT
+        status: NotificationStatus.SENT,
       };
     } catch (error) {
-      logger.error('Error sending closure email notification', { error, customerId, closureId: closureData.id });
+      logger.error('Error sending closure email notification', {
+        error,
+        customerId,
+        closureId: closureData.id,
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to send email notification',
         channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -325,34 +341,34 @@ export class NotificationService {
       // Simple SMS with phone number and message
       const phoneNumber = customerIdOrPhone;
       const message = closureDataOrMessage;
-      
+
       try {
         const { SMSService } = await import('../sms/smsService');
         const smsService = new SMSService();
-        
+
         const result = await smsService.sendSMS({
           phoneNumber,
           message,
-          context: { requestId: `notification-${Date.now()}` }
+          context: { requestId: `notification-${Date.now()}` },
         });
-        
+
         return {
           success: result.success,
           messageId: result.messageId,
           error: result.error,
           channel: NotificationChannel.SMS,
-          status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED
+          status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED,
         };
       } catch (error) {
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to send SMS',
           channel: NotificationChannel.SMS,
-          status: NotificationStatus.FAILED
+          status: NotificationStatus.FAILED,
         };
       }
     }
-    
+
     // Original implementation with customerId and closureData
     const customerId = customerIdOrPhone;
     const closureData = closureDataOrMessage as EnhancedClosureData;
@@ -365,7 +381,7 @@ export class NotificationService {
             success: false,
             error: `SMS quota exceeded: ${canSendSms.reason}`,
             channel: NotificationChannel.SMS,
-            status: NotificationStatus.FAILED
+            status: NotificationStatus.FAILED,
           };
         }
       }
@@ -378,7 +394,7 @@ export class NotificationService {
           success: false,
           error: 'Customer phone number not found',
           channel: NotificationChannel.SMS,
-          status: NotificationStatus.FAILED
+          status: NotificationStatus.FAILED,
         };
       }
 
@@ -388,7 +404,7 @@ export class NotificationService {
       const endDateStr = closureData.endDate
         ? closureData.endDate.toLocaleDateString('tr-TR')
         : undefined;
-      
+
       const message = SMSMessageTemplates.business.closureNotification({
         businessName: closureData.businessName,
         reason: closureData.reason,
@@ -404,7 +420,7 @@ export class NotificationService {
       const result = await smsService.sendSMS({
         phoneNumber: customer.phoneNumber,
         message,
-        context: { requestId: `closure-${closureData.id}` }
+        context: { requestId: `closure-${closureData.id}` },
       });
 
       // Record SMS usage after successful sending
@@ -417,27 +433,27 @@ export class NotificationService {
         messageId: result.messageId,
         error: result.error,
         channel: NotificationChannel.SMS,
-        status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED
+        status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to send SMS notification',
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
-  }  // End of sendSMSNotification overloaded method
-
+  } // End of sendSMSNotification overloaded method
 
   private async sendClosurePushNotification(
     customerId: string,
     closureData: EnhancedClosureData,
     language: string = 'tr'
   ): Promise<NotificationResult> {
-    const message = closureData.message || await this.generateClosureMessage(closureData, language);
+    const message =
+      closureData.message || (await this.generateClosureMessage(closureData, language));
     const title = language === 'tr' ? 'İş Yeri Kapanış Bildirimi' : 'Business Closure Notice';
-    
+
     const results = await this.sendPushNotification({
       userId: customerId,
       appointmentId: undefined,
@@ -453,17 +469,19 @@ export class NotificationService {
         startDate: closureData.startDate.toISOString(),
         endDate: closureData.endDate?.toISOString(),
         reason: closureData.reason,
-        type: closureData.type
+        type: closureData.type,
       },
-      url: `/business/${closureData.businessId}`
+      url: `/business/${closureData.businessId}`,
     });
 
-    return results[0] || {
-      success: false,
-      error: 'No push subscriptions found',
-      channel: NotificationChannel.PUSH,
-      status: NotificationStatus.FAILED
-    };
+    return (
+      results[0] || {
+        success: false,
+        error: 'No push subscriptions found',
+        channel: NotificationChannel.PUSH,
+        status: NotificationStatus.FAILED,
+      }
+    );
   }
 
   private async sendAvailabilityNotification(
@@ -475,12 +493,12 @@ export class NotificationService {
   ): Promise<NotificationResult> {
     // TODO: Implement based on channel type
     logger.info(`Sending ${channel} availability notification to customer ${customerId}`);
-    
+
     return {
       success: true,
       messageId: `availability-${channel}-${Date.now()}`,
       channel,
-      status: NotificationStatus.SENT
+      status: NotificationStatus.SENT,
     };
   }
 
@@ -492,8 +510,7 @@ export class NotificationService {
     result: NotificationResult
   ): Promise<void> {
     const prismaStatus =
-      this.mapToPrismaNotificationStatus(result.status) ??
-      PrismaNotificationStatus.PENDING;
+      this.mapToPrismaNotificationStatus(result.status) ?? PrismaNotificationStatus.PENDING;
     const prismaChannel = this.mapToPrismaNotificationChannel(channel);
 
     await this.repositories.notificationRepository.createClosureNotification({
@@ -501,23 +518,30 @@ export class NotificationService {
       customerId,
       channel: prismaChannel,
       message,
-      status: prismaStatus
+      status: prismaStatus,
     });
   }
 
-  private async generateClosureMessage(closureData: EnhancedClosureData, language: string = 'tr'): Promise<string> {
+  private async generateClosureMessage(
+    closureData: EnhancedClosureData,
+    language: string = 'tr'
+  ): Promise<string> {
     const translationParams: TranslationParams = {
       businessName: closureData.businessName,
       startDate: this.formatDateForLanguage(closureData.startDate, language),
-      reason: closureData.reason
+      reason: closureData.reason,
     };
 
     // Add endDate only if it exists
     if (closureData.endDate) {
       translationParams.endDate = this.formatDateForLanguage(closureData.endDate, language);
     }
-    
-    return await this.translationService.translate('notifications.businessClosureNotice', translationParams, language);
+
+    return await this.translationService.translate(
+      'notifications.businessClosureNotice',
+      translationParams,
+      language
+    );
   }
 
   private async generateAvailabilityMessage(
@@ -528,15 +552,19 @@ export class NotificationService {
   ): Promise<string> {
     const translationParams: TranslationParams = {
       businessName,
-      slotCount: slots.length
+      slotCount: slots.length,
     };
 
     // Add serviceName only if it exists
     if (serviceName) {
       translationParams.serviceName = serviceName;
     }
-    
-    return await this.translationService.translate('notifications.availabilityAlert', translationParams, language);
+
+    return await this.translationService.translate(
+      'notifications.availabilityAlert',
+      translationParams,
+      language
+    );
   }
 
   private async generateRescheduleMessage(
@@ -550,10 +578,14 @@ export class NotificationService {
       businessName,
       serviceName,
       originalTime: this.formatDateTimeForLanguage(originalTime, language),
-      suggestionCount: suggestions.length
+      suggestionCount: suggestions.length,
     };
-    
-    return await this.translationService.translate('notifications.rescheduleNotification', translationParams, language);
+
+    return await this.translationService.translate(
+      'notifications.rescheduleNotification',
+      translationParams,
+      language
+    );
   }
 
   // Helper methods for date/time formatting
@@ -562,7 +594,7 @@ export class NotificationService {
       return date.toLocaleDateString('tr-TR', {
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric'
+        year: 'numeric',
       });
     }
     return date.toLocaleDateString('en-US');
@@ -572,12 +604,12 @@ export class NotificationService {
     if (language === 'tr') {
       return date.toLocaleTimeString('tr-TR', {
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
       });
     }
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   }
 
@@ -588,7 +620,7 @@ export class NotificationService {
         month: '2-digit',
         year: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
       });
     }
     return date.toLocaleString('en-US', {
@@ -596,7 +628,7 @@ export class NotificationService {
       day: 'numeric',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   }
 
@@ -607,19 +639,20 @@ export class NotificationService {
     pending: number;
     byChannel: Record<NotificationChannel, number>;
   }> {
-    const notifications = await this.repositories.notificationRepository.findClosureNotificationsByClosure(closureId);
+    const notifications =
+      await this.repositories.notificationRepository.findClosureNotificationsByClosure(closureId);
 
     const stats = {
       total: notifications.length,
-      sent: notifications.filter(n => n.status === NotificationStatus.SENT).length,
-      failed: notifications.filter(n => n.status === NotificationStatus.FAILED).length,
-      pending: notifications.filter(n => n.status === NotificationStatus.PENDING).length,
-      byChannel: {} as Record<NotificationChannel, number>
+      sent: notifications.filter((n) => n.status === NotificationStatus.SENT).length,
+      failed: notifications.filter((n) => n.status === NotificationStatus.FAILED).length,
+      pending: notifications.filter((n) => n.status === NotificationStatus.PENDING).length,
+      byChannel: {} as Record<NotificationChannel, number>,
     };
 
     // Initialize channel counts
-    Object.values(NotificationChannel).forEach(channel => {
-      stats.byChannel[channel] = notifications.filter(n => n.channel === channel).length;
+    Object.values(NotificationChannel).forEach((channel) => {
+      stats.byChannel[channel] = notifications.filter((n) => n.channel === channel).length;
     });
 
     return stats;
@@ -640,12 +673,12 @@ export class NotificationService {
       serviceId: serviceId ?? undefined,
       preferredDates: {
         startDate: (preferredDates[0]?.startDate || new Date()).toISOString(),
-        endDate: (preferredDates[0]?.endDate || new Date()).toISOString()
+        endDate: (preferredDates[0]?.endDate || new Date()).toISOString(),
       },
-      notificationPreferences: { 
+      notificationPreferences: {
         channels: this.mapToPrismaNotificationChannels(notificationChannels),
-        timing: [60, 24 * 60]
-      }
+        timing: [60, 24 * 60],
+      },
     });
 
     return alertId;
@@ -666,26 +699,30 @@ export class NotificationService {
     const translationParams: TranslationParams = {
       businessName,
       planName,
-      nextBillingDate: this.formatDateForLanguage(nextBillingDate, language)
+      nextBillingDate: this.formatDateForLanguage(nextBillingDate, language),
     };
-    
-    const message = await this.translationService.translate('notifications.subscriptionRenewalConfirmation', translationParams, language);
-    
+
+    const message = await this.translationService.translate(
+      'notifications.subscriptionRenewalConfirmation',
+      translationParams,
+      language
+    );
+
     try {
       // For now, just log the notification - implement actual SMS sending later
       logger.info(`SMS to ${phoneNumber}: ${message}`);
-      
+
       return {
         success: true,
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.SENT
+        status: NotificationStatus.SENT,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -700,26 +737,30 @@ export class NotificationService {
     const translationParams: TranslationParams = {
       businessName,
       planName,
-      expiryDate: this.formatDateForLanguage(expiryDate, language)
+      expiryDate: this.formatDateForLanguage(expiryDate, language),
     };
-    
-    const message = await this.translationService.translate('notifications.subscriptionRenewalReminder', translationParams, language);
-    
+
+    const message = await this.translationService.translate(
+      'notifications.subscriptionRenewalReminder',
+      translationParams,
+      language
+    );
+
     try {
       // For now, just log the notification - implement actual SMS sending later
       logger.info(`SMS to ${phoneNumber}: ${message}`);
-      
+
       return {
         success: true,
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.SENT
+        status: NotificationStatus.SENT,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -734,26 +775,30 @@ export class NotificationService {
     const translationParams: TranslationParams = {
       businessName,
       failedPaymentCount,
-      expiryDate: this.formatDateForLanguage(expiryDate, language)
+      expiryDate: this.formatDateForLanguage(expiryDate, language),
     };
-    
-    const message = await this.translationService.translate('notifications.paymentFailureNotification', translationParams, language);
-    
+
+    const message = await this.translationService.translate(
+      'notifications.paymentFailureNotification',
+      translationParams,
+      language
+    );
+
     try {
       // For now, just log the notification - implement actual SMS sending later
       logger.info(`SMS to ${phoneNumber}: ${message}`);
-      
+
       return {
         success: true,
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.SENT
+        status: NotificationStatus.SENT,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -773,25 +818,29 @@ export class NotificationService {
       businessName,
       retryCount,
       maxRetries,
-      nextRetryDate: this.formatDateForLanguage(nextRetryDate, language)
+      nextRetryDate: this.formatDateForLanguage(nextRetryDate, language),
     };
-    
-    const message = await this.translationService.translate('notifications.paymentRetryFailure', translationParams, language);
-    
+
+    const message = await this.translationService.translate(
+      'notifications.paymentRetryFailure',
+      translationParams,
+      language
+    );
+
     try {
       logger.info(`SMS to ${phoneNumber}: ${message}`);
-      
+
       return {
         success: true,
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.SENT
+        status: NotificationStatus.SENT,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -811,29 +860,33 @@ export class NotificationService {
       businessName,
       planName,
       failureCount,
-      expiryDate: this.formatDateForLanguage(expiryDate, language)
+      expiryDate: this.formatDateForLanguage(expiryDate, language),
     };
-    
-    const message = await this.translationService.translate('notifications.paymentEscalation', translationParams, language);
-    
+
+    const message = await this.translationService.translate(
+      'notifications.paymentEscalation',
+      translationParams,
+      language
+    );
+
     try {
       // Send to support team (could be email, Slack, etc.)
       logger.info(`🚨 ESCALATION - SMS to ${phoneNumber}: ${message}`);
-      
+
       // Also log for support team monitoring
       logger.warn(`Payment escalation for business ${businessName}: ${failureCount} failures`);
-      
+
       return {
         success: true,
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.SENT
+        status: NotificationStatus.SENT,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -851,25 +904,29 @@ export class NotificationService {
     const translationParams: TranslationParams = {
       businessName,
       planName,
-      failureCount
+      failureCount,
     };
-    
-    const message = await this.translationService.translate('notifications.subscriptionCancellation', translationParams, language);
-    
+
+    const message = await this.translationService.translate(
+      'notifications.subscriptionCancellation',
+      translationParams,
+      language
+    );
+
     try {
       logger.info(`SMS to ${phoneNumber}: ${message}`);
-      
+
       return {
         success: true,
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.SENT
+        status: NotificationStatus.SENT,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -887,25 +944,29 @@ export class NotificationService {
     const translationParams: TranslationParams = {
       businessName,
       planName,
-      daysRemaining
+      daysRemaining,
     };
-    
-    const message = await this.translationService.translate('notifications.gracePeriodWarning', translationParams, language);
-    
+
+    const message = await this.translationService.translate(
+      'notifications.gracePeriodWarning',
+      translationParams,
+      language
+    );
+
     try {
       logger.info(`SMS to ${phoneNumber}: ${message}`);
-      
+
       return {
         success: true,
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.SENT
+        status: NotificationStatus.SENT,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -918,14 +979,18 @@ export class NotificationService {
     phoneNumber: string,
     email: string,
     message: string,
-    channels: NotificationChannel[] = [NotificationChannel.SMS, NotificationChannel.EMAIL, NotificationChannel.PUSH]
+    channels: NotificationChannel[] = [
+      NotificationChannel.SMS,
+      NotificationChannel.EMAIL,
+      NotificationChannel.PUSH,
+    ]
   ): Promise<NotificationResult[]> {
     const results: NotificationResult[] = [];
 
     for (const channel of channels) {
       try {
         let result: NotificationResult;
-        
+
         switch (channel) {
           case NotificationChannel.SMS:
             result = await this.sendSMSNotification(phoneNumber, message);
@@ -941,17 +1006,17 @@ export class NotificationService {
               success: false,
               error: 'Unsupported channel',
               channel,
-              status: NotificationStatus.FAILED
+              status: NotificationStatus.FAILED,
             };
         }
-        
+
         results.push(result);
       } catch (error) {
         results.push({
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
           channel,
-          status: NotificationStatus.FAILED
+          status: NotificationStatus.FAILED,
         });
       }
     }
@@ -966,18 +1031,18 @@ export class NotificationService {
     try {
       // TODO: Implement actual email sending
       logger.info(`Email to ${email}: ${subject} - ${message}`);
-      
+
       return {
         success: true,
         channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.SENT
+        status: NotificationStatus.SENT,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -985,35 +1050,42 @@ export class NotificationService {
   /**
    * Send push notification (placeholder for future implementation)
    */
-  async sendPushNotificationSimple(userId: string, title: string, message: string): Promise<NotificationResult> {
+  async sendPushNotificationSimple(
+    userId: string,
+    title: string,
+    message: string
+  ): Promise<NotificationResult> {
     try {
       // TODO: Implement actual push notification sending
       logger.info(`Push to user ${userId}: ${title} - ${message}`);
-      
+
       return {
         success: true,
         channel: NotificationChannel.PUSH,
-        status: NotificationStatus.SENT
+        status: NotificationStatus.SENT,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         channel: NotificationChannel.PUSH,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
 
   // Push Notification Methods
 
-  async subscribeToPush(userId: string, subscriptionData: PushSubscriptionRequest): Promise<PushSubscriptionData> {
+  async subscribeToPush(
+    userId: string,
+    subscriptionData: PushSubscriptionRequest
+  ): Promise<PushSubscriptionData> {
     const subscriptionId = `push_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     logger.info('Creating/updating push subscription:', {
       userId,
       endpoint: subscriptionData.endpoint,
-      subscriptionId
+      subscriptionId,
     });
 
     const subscription = await this.repositories.notificationRepository.upsertPushSubscription({
@@ -1023,15 +1095,24 @@ export class NotificationService {
       auth: subscriptionData.keys.auth,
       userAgent: subscriptionData.userAgent,
       deviceName: subscriptionData.deviceName,
-      deviceType: subscriptionData.deviceType || 'web'
+      deviceType: subscriptionData.deviceType || 'web',
     });
 
     return subscription as PushSubscriptionData;
   }
 
-  async unsubscribeFromPush(userId: string, endpoint?: string, subscriptionId?: string): Promise<boolean> {
+  async unsubscribeFromPush(
+    userId: string,
+    endpoint?: string,
+    subscriptionId?: string
+  ): Promise<boolean> {
     if (!subscriptionId && !endpoint) {
-      throw new ValidationError('Either endpoint or subscriptionId must be provided', undefined, undefined, undefined);
+      throw new ValidationError(
+        'Either endpoint or subscriptionId must be provided',
+        undefined,
+        undefined,
+        undefined
+      );
     }
 
     return await this.repositories.notificationRepository.deactivatePushSubscription(
@@ -1041,17 +1122,21 @@ export class NotificationService {
     );
   }
 
-  async getUserPushSubscriptions(userId: string, activeOnly = true): Promise<PushSubscriptionData[]> {
-    const subscriptions = await this.repositories.notificationRepository.findPushSubscriptionsByUser(userId);
+  async getUserPushSubscriptions(
+    userId: string,
+    activeOnly = true
+  ): Promise<PushSubscriptionData[]> {
+    const subscriptions =
+      await this.repositories.notificationRepository.findPushSubscriptionsByUser(userId);
     const filteredSubscriptions = activeOnly
-      ? subscriptions.filter(sub => sub.isActive)
+      ? subscriptions.filter((sub) => sub.isActive)
       : subscriptions;
     // Map repository type to business type, converting null to undefined
-    return filteredSubscriptions.map(sub => ({
+    return filteredSubscriptions.map((sub) => ({
       ...sub,
       deviceName: sub.deviceName ?? undefined,
       deviceType: sub.deviceType ?? undefined,
-      userAgent: sub.userAgent ?? undefined
+      userAgent: sub.userAgent ?? undefined,
     }));
   }
 
@@ -1063,49 +1148,47 @@ export class NotificationService {
 
     const prismaPreferredChannels = preferences.preferredChannels
       ? {
-          channels: this.mapToPrismaNotificationChannels(
-            preferences.preferredChannels.channels
-          ),
+          channels: this.mapToPrismaNotificationChannels(preferences.preferredChannels.channels),
         }
       : undefined;
 
-    const result =
-      await this.repositories.notificationRepository.upsertUserNotificationPreference(
-        userId,
-        {
-          ...preferences,
-          preferredChannels: prismaPreferredChannels,
-          quietHours: preferences.quietHours
-            ? {
-                enabled: true,
-                startTime: preferences.quietHours.start,
-                endTime: preferences.quietHours.end,
-                days: [1, 2, 3, 4, 5, 6, 7],
-                timezone: preferences.quietHours.timezone,
-              }
-            : null,
-        }
-      );
+    const result = await this.repositories.notificationRepository.upsertUserNotificationPreference(
+      userId,
+      {
+        ...preferences,
+        preferredChannels: prismaPreferredChannels,
+        quietHours: preferences.quietHours
+          ? {
+              enabled: true,
+              startTime: preferences.quietHours.start,
+              endTime: preferences.quietHours.end,
+              days: [1, 2, 3, 4, 5, 6, 7],
+              timezone: preferences.quietHours.timezone,
+            }
+          : null,
+      }
+    );
     // Map repository type to business type
     return {
       ...result,
       preferredChannels: {
-        channels: result.preferredChannels.channels.map(channel =>
-          this.mapFromPrismaNotificationChannel(
-            channel as unknown as PrismaNotificationChannel
-          )
-        )
+        channels: result.preferredChannels.channels.map((channel) =>
+          this.mapFromPrismaNotificationChannel(channel as unknown as PrismaNotificationChannel)
+        ),
       },
-      quietHours: result.quietHours ? {
-        start: result.quietHours.startTime,
-        end: result.quietHours.endTime,
-        timezone: result.quietHours.timezone
-      } : undefined
+      quietHours: result.quietHours
+        ? {
+            start: result.quietHours.startTime,
+            end: result.quietHours.endTime,
+            timezone: result.quietHours.timezone,
+          }
+        : undefined,
     };
   }
 
   async getNotificationPreferences(userId: string): Promise<NotificationPreferenceData | null> {
-    const preferences = await this.repositories.notificationRepository.findNotificationPreference(userId);
+    const preferences =
+      await this.repositories.notificationRepository.findNotificationPreference(userId);
 
     if (!preferences) return null;
 
@@ -1113,54 +1196,63 @@ export class NotificationService {
     return {
       ...preferences,
       preferredChannels: {
-        channels: preferences.preferredChannels.channels.map(channel =>
-          this.mapFromPrismaNotificationChannel(
-            channel as unknown as PrismaNotificationChannel
-          )
-        )
+        channels: preferences.preferredChannels.channels.map((channel) =>
+          this.mapFromPrismaNotificationChannel(channel as unknown as PrismaNotificationChannel)
+        ),
       },
-      quietHours: preferences.quietHours ? {
-        start: preferences.quietHours.startTime,
-        end: preferences.quietHours.endTime,
-        timezone: preferences.quietHours.timezone
-      } : undefined
+      quietHours: preferences.quietHours
+        ? {
+            start: preferences.quietHours.startTime,
+            end: preferences.quietHours.endTime,
+            timezone: preferences.quietHours.timezone,
+          }
+        : undefined,
     };
   }
 
   getPushServiceHealth() {
     return {
       enabled: this.pushEnabled,
-      queueDepth: this.pushDeliveryWorker.getCurrentDepth()
+      queueDepth: this.pushDeliveryWorker.getCurrentDepth(),
     };
   }
 
   async sendPushNotification(request: SendPushNotificationRequest): Promise<NotificationResult[]> {
     if (!this.pushEnabled) {
-      return [{
-        success: false,
-        error: 'Push notifications are disabled: missing VAPID configuration',
-        channel: NotificationChannel.PUSH,
-        status: NotificationStatus.FAILED
-      }];
+      return [
+        {
+          success: false,
+          error: 'Push notifications are disabled: missing VAPID configuration',
+          channel: NotificationChannel.PUSH,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
 
     const subscriptions = await this.getUserPushSubscriptions(request.userId, true);
 
-    logger.info(`Found ${subscriptions.length} active push subscriptions for user ${request.userId}:`,
-      subscriptions.map(s => ({ id: s.id, endpoint: s.endpoint.substring(0, 50) + '...', isActive: s.isActive }))
+    logger.info(
+      `Found ${subscriptions.length} active push subscriptions for user ${request.userId}:`,
+      subscriptions.map((s) => ({
+        id: s.id,
+        endpoint: s.endpoint.substring(0, 50) + '...',
+        isActive: s.isActive,
+      }))
     );
 
     if (subscriptions.length === 0) {
-      return [{
-        success: false,
-        error: 'No active push subscriptions found for user',
-        channel: NotificationChannel.PUSH,
-        status: NotificationStatus.FAILED
-      }];
+      return [
+        {
+          success: false,
+          error: 'No active push subscriptions found for user',
+          channel: NotificationChannel.PUSH,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
 
     const results: NotificationResult[] = [];
-    
+
     for (const subscription of subscriptions) {
       try {
         // Create push notification record
@@ -1178,7 +1270,7 @@ export class NotificationService {
           icon: request.icon,
           badge: request.badge,
           data: notificationData ?? null,
-          status: PrismaNotificationStatus.PENDING
+          status: PrismaNotificationStatus.PENDING,
         });
 
         const notificationId = notification.id;
@@ -1197,7 +1289,7 @@ export class NotificationService {
           body: request.body,
           icon: request.icon,
           badge: request.badge,
-          data: pushPayloadData
+          data: pushPayloadData,
         });
 
         this.pushDeliveryWorker.enqueue({
@@ -1211,9 +1303,8 @@ export class NotificationService {
           success: true,
           messageId: notificationId,
           channel: NotificationChannel.PUSH,
-          status: NotificationStatus.PENDING
+          status: NotificationStatus.PENDING,
         });
-
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
@@ -1221,14 +1312,14 @@ export class NotificationService {
           subscriptionId: subscription.id,
           endpoint: subscription.endpoint,
           error: errorMessage,
-          errorObject: error
+          errorObject: error,
         });
 
         results.push({
           success: false,
           error: errorMessage,
           channel: NotificationChannel.PUSH,
-          status: NotificationStatus.FAILED
+          status: NotificationStatus.FAILED,
         });
       }
     }
@@ -1239,39 +1330,50 @@ export class NotificationService {
   async sendAppointmentReminder(appointment: UpcomingAppointment): Promise<NotificationResult[]> {
     // Check user's notification preferences
     const preferences = await this.getNotificationPreferences(appointment.customerId);
-    
+
     if (preferences && !preferences.enableAppointmentReminders) {
-      return [{
-        success: false,
-        error: 'User has disabled appointment reminders',
-        channel: NotificationChannel.PUSH,
-        status: NotificationStatus.FAILED
-      }];
+      return [
+        {
+          success: false,
+          error: 'User has disabled appointment reminders',
+          channel: NotificationChannel.PUSH,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
 
     // Check quiet hours
-    if (preferences?.quietHours && this.isInQuietHours(new Date(), preferences.quietHours, preferences.timezone)) {
-      return [{
-        success: false,
-        error: 'Current time is within user quiet hours',
-        channel: NotificationChannel.PUSH,
-        status: NotificationStatus.FAILED
-      }];
+    if (
+      preferences?.quietHours &&
+      this.isInQuietHours(new Date(), preferences.quietHours, preferences.timezone)
+    ) {
+      return [
+        {
+          success: false,
+          error: 'Current time is within user quiet hours',
+          channel: NotificationChannel.PUSH,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
 
     // Get user's language preference (default to Turkish)
     const userLanguage = preferences?.timezone?.includes('Istanbul') ? 'tr' : 'en';
-    
+
     // Generate translated notification
     const translationParams: TranslationParams = {
       serviceName: appointment.service.name,
       businessName: appointment.business.name,
-      time: this.formatTimeForLanguage(appointment.startTime, userLanguage)
+      time: this.formatTimeForLanguage(appointment.startTime, userLanguage),
     };
-    
+
     const title = userLanguage === 'tr' ? 'Randevu Hatırlatması' : 'Appointment Reminder';
-    const body = await this.translationService.translate('notifications.appointmentReminder', translationParams, userLanguage);
-    
+    const body = await this.translationService.translate(
+      'notifications.appointmentReminder',
+      translationParams,
+      userLanguage
+    );
+
     const appointmentData = {
       appointmentId: appointment.id,
       businessId: appointment.businessId,
@@ -1289,31 +1391,40 @@ export class NotificationService {
       icon: undefined,
       badge: undefined,
       data: appointmentData,
-      url: `/appointments/${appointment.id}`
+      url: `/appointments/${appointment.id}`,
     });
   }
 
-  async sendSMSAppointmentReminder(appointment: UpcomingAppointment): Promise<NotificationResult[]> {
+  async sendSMSAppointmentReminder(
+    appointment: UpcomingAppointment
+  ): Promise<NotificationResult[]> {
     // Check user's notification preferences
     const preferences = await this.getNotificationPreferences(appointment.customerId);
 
     if (preferences && !preferences.enableAppointmentReminders) {
-      return [{
-        success: false,
-        error: 'User has disabled appointment reminders',
-        channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
-      }];
+      return [
+        {
+          success: false,
+          error: 'User has disabled appointment reminders',
+          channel: NotificationChannel.SMS,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
 
     // Check quiet hours
-    if (preferences?.quietHours && this.isInQuietHours(new Date(), preferences.quietHours, preferences.timezone)) {
-      return [{
-        success: false,
-        error: 'Current time is within user quiet hours',
-        channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
-      }];
+    if (
+      preferences?.quietHours &&
+      this.isInQuietHours(new Date(), preferences.quietHours, preferences.timezone)
+    ) {
+      return [
+        {
+          success: false,
+          error: 'Current time is within user quiet hours',
+          channel: NotificationChannel.SMS,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
 
     // Format the SMS message
@@ -1321,13 +1432,13 @@ export class NotificationService {
       timeZone: appointment.business.timezone,
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
     });
 
     const appointmentTime = appointment.startTime.toLocaleTimeString('tr-TR', {
       timeZone: appointment.business.timezone,
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
 
     // Format appointment reminder message using centralized template
@@ -1345,12 +1456,14 @@ export class NotificationService {
       if (this.usageService) {
         const canSendSms = await this.usageService.canSendSms(appointment.businessId);
         if (!canSendSms.allowed) {
-          return [{
-            success: false,
-            error: `SMS quota exceeded: ${canSendSms.reason}`,
-            channel: NotificationChannel.SMS,
-            status: NotificationStatus.FAILED
-          }];
+          return [
+            {
+              success: false,
+              error: `SMS quota exceeded: ${canSendSms.reason}`,
+              channel: NotificationChannel.SMS,
+              status: NotificationStatus.FAILED,
+            },
+          ];
         }
       }
 
@@ -1361,7 +1474,7 @@ export class NotificationService {
       const result = await smsService.sendSMS({
         phoneNumber: appointment.customer.phoneNumber,
         message,
-        context: { requestId: `reminder-${appointment.id}` }
+        context: { requestId: `reminder-${appointment.id}` },
       });
 
       // Record SMS usage after successful sending
@@ -1369,53 +1482,67 @@ export class NotificationService {
         await this.usageService.recordSmsUsage(appointment.businessId, 1);
       }
 
-      return [{
-        success: result.success,
-        messageId: result.messageId,
-        error: result.error,
-        channel: NotificationChannel.SMS,
-        status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED
-      }];
-
+      return [
+        {
+          success: result.success,
+          messageId: result.messageId,
+          error: result.error,
+          channel: NotificationChannel.SMS,
+          status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED,
+        },
+      ];
     } catch (error) {
-      return [{
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to send SMS reminder',
-        channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
-      }];
+      return [
+        {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to send SMS reminder',
+          channel: NotificationChannel.SMS,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
   }
 
-  async sendEmailAppointmentReminder(appointment: UpcomingAppointment): Promise<NotificationResult[]> {
+  async sendEmailAppointmentReminder(
+    appointment: UpcomingAppointment
+  ): Promise<NotificationResult[]> {
     const preferences = await this.getNotificationPreferences(appointment.customerId);
 
     if (preferences && !preferences.enableAppointmentReminders) {
-      return [{
-        success: false,
-        error: 'User has disabled appointment reminders',
-        channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.FAILED
-      }];
+      return [
+        {
+          success: false,
+          error: 'User has disabled appointment reminders',
+          channel: NotificationChannel.EMAIL,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
 
-    if (preferences?.quietHours && this.isInQuietHours(new Date(), preferences.quietHours, preferences.timezone)) {
-      return [{
-        success: false,
-        error: 'Current time is within user quiet hours',
-        channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.FAILED
-      }];
+    if (
+      preferences?.quietHours &&
+      this.isInQuietHours(new Date(), preferences.quietHours, preferences.timezone)
+    ) {
+      return [
+        {
+          success: false,
+          error: 'Current time is within user quiet hours',
+          channel: NotificationChannel.EMAIL,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
 
     const customerEmail = (appointment.customer as { email?: string | null })?.email ?? undefined;
     if (!customerEmail) {
-      return [{
-        success: false,
-        error: 'Customer email not found',
-        channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.FAILED
-      }];
+      return [
+        {
+          success: false,
+          error: 'Customer email not found',
+          channel: NotificationChannel.EMAIL,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
 
     const locale = preferences?.timezone?.includes('Istanbul') ? 'tr-TR' : 'en-US';
@@ -1426,35 +1553,45 @@ export class NotificationService {
       { dateStyle: 'full', timeStyle: 'short' }
     );
 
-    const subject = locale === 'tr-TR'
-      ? `Randevu Hatırlatması - ${appointment.business.name}`
-      : `Appointment Reminder - ${appointment.business.name}`;
+    const subject =
+      locale === 'tr-TR'
+        ? `Randevu Hatırlatması - ${appointment.business.name}`
+        : `Appointment Reminder - ${appointment.business.name}`;
 
     const greetingName = appointment.customer.firstName || appointment.customer.lastName || '';
     const greeting = greetingName
-      ? (locale === 'tr-TR' ? `Merhaba ${greetingName},` : `Hello ${greetingName},`)
-      : locale === 'tr-TR' ? 'Merhaba,' : 'Hello,';
+      ? locale === 'tr-TR'
+        ? `Merhaba ${greetingName},`
+        : `Hello ${greetingName},`
+      : locale === 'tr-TR'
+        ? 'Merhaba,'
+        : 'Hello,';
 
-    const textBody = locale === 'tr-TR'
-      ? `${greeting}\n\n${appointment.business.name} işletmesindeki ${appointment.service.name} randevunuz ${appointmentDate} tarihinde gerçekleşecek.\n\nDeğişiklik yapmak isterseniz lütfen bizimle iletişime geçin.`
-      : `${greeting}\n\nYour ${appointment.service.name} appointment at ${appointment.business.name} is scheduled for ${appointmentDate}.\n\nPlease contact us if you need to make any changes.`;
+    const textBody =
+      locale === 'tr-TR'
+        ? `${greeting}\n\n${appointment.business.name} işletmesindeki ${appointment.service.name} randevunuz ${appointmentDate} tarihinde gerçekleşecek.\n\nDeğişiklik yapmak isterseniz lütfen bizimle iletişime geçin.`
+        : `${greeting}\n\nYour ${appointment.service.name} appointment at ${appointment.business.name} is scheduled for ${appointmentDate}.\n\nPlease contact us if you need to make any changes.`;
 
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
         <p>${greeting}</p>
-        <p>${locale === 'tr-TR'
-          ? `Bu, ${appointment.business.name} işletmesindeki ${appointment.service.name} randevunuz için bir hatırlatmadır.`
-          : `This is a reminder for your ${appointment.service.name} appointment at ${appointment.business.name}.`}</p>
+        <p>${
+          locale === 'tr-TR'
+            ? `Bu, ${appointment.business.name} işletmesindeki ${appointment.service.name} randevunuz için bir hatırlatmadır.`
+            : `This is a reminder for your ${appointment.service.name} appointment at ${appointment.business.name}.`
+        }</p>
         <div style="margin:16px 0;padding:16px;background-color:#f9fafb;border-left:4px solid #6366f1;">
           <p style="margin:0;"><strong>${locale === 'tr-TR' ? 'Tarih ve Saat:' : 'Date & Time:'}</strong> ${appointmentDate}</p>
           <p style="margin:4px 0;"><strong>${locale === 'tr-TR' ? 'Hizmet:' : 'Service:'}</strong> ${appointment.service.name}</p>
         </div>
-        <p>${locale === 'tr-TR'
-          ? 'Değişiklik yapmak isterseniz lütfen bizimle iletişime geçin veya uygulama üzerinden randevunuzu güncelleyin.'
-          : 'If you need to make changes, please contact us or update your appointment in the app.'}</p>
-        <p style="margin-top:24px;color:#6b7280;">${locale === 'tr-TR'
-          ? 'RandevuBu üzerinden gönderilmiştir.'
-          : 'Sent via RandevuBu.'}</p>
+        <p>${
+          locale === 'tr-TR'
+            ? 'Değişiklik yapmak isterseniz lütfen bizimle iletişime geçin veya uygulama üzerinden randevunuzu güncelleyin.'
+            : 'If you need to make changes, please contact us or update your appointment in the app.'
+        }</p>
+        <p style="margin-top:24px;color:#6b7280;">${
+          locale === 'tr-TR' ? 'RandevuBu üzerinden gönderilmiştir.' : 'Sent via RandevuBu.'
+        }</p>
       </div>
     `;
 
@@ -1463,36 +1600,48 @@ export class NotificationService {
         to: customerEmail,
         subject,
         html: htmlBody,
-        text: textBody
+        text: textBody,
       });
 
       if (!response.success) {
-        return [{
-          success: false,
-          error: response.error || 'Failed to send email reminder',
-          channel: NotificationChannel.EMAIL,
-          status: NotificationStatus.FAILED
-        }];
+        return [
+          {
+            success: false,
+            error: response.error || 'Failed to send email reminder',
+            channel: NotificationChannel.EMAIL,
+            status: NotificationStatus.FAILED,
+          },
+        ];
       }
 
-      return [{
-        success: true,
-        messageId: response.messageId,
-        channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.SENT
-      }];
+      return [
+        {
+          success: true,
+          messageId: response.messageId,
+          channel: NotificationChannel.EMAIL,
+          status: NotificationStatus.SENT,
+        },
+      ];
     } catch (error) {
-      logger.error('Error sending email appointment reminder', { error, appointmentId: appointment.id });
-      return [{
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to send email reminder',
-        channel: NotificationChannel.EMAIL,
-        status: NotificationStatus.FAILED
-      }];
+      logger.error('Error sending email appointment reminder', {
+        error,
+        appointmentId: appointment.id,
+      });
+      return [
+        {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to send email reminder',
+          channel: NotificationChannel.EMAIL,
+          status: NotificationStatus.FAILED,
+        },
+      ];
     }
   }
 
-  async sendBatchPushNotifications(userIds: string[], notification: Omit<SendPushNotificationRequest, 'userId'>): Promise<{
+  async sendBatchPushNotifications(
+    userIds: string[],
+    notification: Omit<SendPushNotificationRequest, 'userId'>
+  ): Promise<{
     successful: number;
     failed: number;
     results: NotificationResult[];
@@ -1510,27 +1659,27 @@ export class NotificationService {
 
       const limit = pLimit(MAX_CONCURRENT);
       // Process batch with concurrency control
-      const batchPromises = batch.map(userId =>
+      const batchPromises = batch.map((userId) =>
         limit(() =>
           this.sendPushNotification({
             userId,
-            ...notification
+            ...notification,
           })
         )
       );
 
       // Use Promise.allSettled to handle individual failures
       const batchResults = await Promise.allSettled(batchPromises);
-      
+
       // Process results
       batchResults.forEach((result, index) => {
         if (result.status === 'fulfilled') {
           const notificationResults = result.value;
           allResults.push(...notificationResults);
-          
-          const successCount = notificationResults.filter(r => r.success).length;
-          const failCount = notificationResults.filter(r => !r.success).length;
-          
+
+          const successCount = notificationResults.filter((r) => r.success).length;
+          const failCount = notificationResults.filter((r) => !r.success).length;
+
           successful += successCount;
           failed += failCount;
         } else {
@@ -1539,37 +1688,41 @@ export class NotificationService {
             success: false,
             error: result.reason instanceof Error ? result.reason.message : 'Unknown error',
             channel: NotificationChannel.PUSH,
-            status: NotificationStatus.FAILED
+            status: NotificationStatus.FAILED,
           });
         }
       });
 
       // Add small delay between batches to prevent overwhelming external services
       if (i + BATCH_SIZE < userIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
 
     return {
       successful,
       failed,
-      results: allResults
+      results: allResults,
     };
   }
 
-  private isInQuietHours(currentTime: Date, quietHours: { start: string; end: string; timezone: string }, timezone: string): boolean {
+  private isInQuietHours(
+    currentTime: Date,
+    quietHours: { start: string; end: string; timezone: string },
+    timezone: string
+  ): boolean {
     try {
-      const currentTimeStr = currentTime.toLocaleTimeString('en-GB', { 
-        hour12: false, 
+      const currentTimeStr = currentTime.toLocaleTimeString('en-GB', {
+        hour12: false,
         timeZone: timezone,
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
       });
-      
+
       const current = this.timeStringToMinutes(currentTimeStr);
       const start = this.timeStringToMinutes(quietHours.start);
       const end = this.timeStringToMinutes(quietHours.end);
-      
+
       // Handle overnight quiet hours (e.g., 22:00 - 06:00)
       if (start > end) {
         return current >= start || current <= end;
@@ -1639,7 +1792,7 @@ Randevunuz etkileniyorsa, yeni bir tarih için bizimle iletişime geçebilirsini
         dateStyle: 'medium',
         timeStyle: 'short',
         timeZone: timezone,
-        ...(options || {})
+        ...(options || {}),
       }).format(value);
     } catch (error) {
       logger.error('Failed to format date for email', { error });
@@ -1673,15 +1826,15 @@ Randevunuz etkileniyorsa, yeni bir tarih için bizimle iletişime geçebilirsini
         limit,
         status: this.mapToPrismaNotificationStatus(options?.status),
         startDate: options?.from,
-        endDate: options?.to
+        endDate: options?.to,
       }),
       this.repositories.notificationRepository.countPushNotificationsByUser(userId, {
-        status: this.mapToPrismaNotificationStatus(options?.status)
-      })
+        status: this.mapToPrismaNotificationStatus(options?.status),
+      }),
     ]);
 
     const normalizedNotifications = notifications
-      .filter(notification => {
+      .filter((notification) => {
         if (options?.appointmentId && notification.appointmentId !== options.appointmentId) {
           return false;
         }
@@ -1717,7 +1870,7 @@ Randevunuz etkileniyorsa, yeni bir tarih için bizimle iletişime geçebilirsini
       notifications: normalizedNotifications,
       total,
       page,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -1732,14 +1885,7 @@ Randevunuz etkileniyorsa, yeni bir tarih için bizimle iletişime geçebilirsini
       return undefined;
     }
 
-    const {
-      type,
-      appointmentId,
-      businessId,
-      actionUrl,
-      metadata,
-      ...rest
-    } = data;
+    const { type, appointmentId, businessId, actionUrl, metadata, ...rest } = data;
 
     const mergedMetadata: Record<string, unknown> = {
       ...(metadata as Record<string, unknown> | undefined),
@@ -1751,8 +1897,7 @@ Randevunuz etkileniyorsa, yeni bir tarih için bizimle iletişime geçebilirsini
       appointmentId: typeof appointmentId === 'string' ? appointmentId : undefined,
       businessId: typeof businessId === 'string' ? businessId : undefined,
       actionUrl: typeof actionUrl === 'string' ? actionUrl : undefined,
-      metadata:
-        Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
+      metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
     };
   }
 
@@ -1797,9 +1942,7 @@ Randevunuz etkileniyorsa, yeni bir tarih için bizimle iletişime geçebilirsini
     }
   }
 
-  private mapFromPrismaNotificationStatus(
-    status: PrismaNotificationStatus
-  ): NotificationStatus {
+  private mapFromPrismaNotificationStatus(status: PrismaNotificationStatus): NotificationStatus {
     switch (status) {
       case PrismaNotificationStatus.PENDING:
         return NotificationStatus.PENDING;
@@ -1820,9 +1963,7 @@ Randevunuz etkileniyorsa, yeni bir tarih için bizimle iletişime geçebilirsini
     return channels.map((channel) => this.mapToPrismaNotificationChannel(channel));
   }
 
-  private mapToPrismaNotificationChannel(
-    channel: NotificationChannel
-  ): PrismaNotificationChannel {
+  private mapToPrismaNotificationChannel(channel: NotificationChannel): PrismaNotificationChannel {
     switch (channel) {
       case NotificationChannel.EMAIL:
         return PrismaNotificationChannel.EMAIL;

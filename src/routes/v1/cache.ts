@@ -1,10 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth, requirePermission } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
-import { cacheService } from '../../services/core/cacheService';
-import { getCacheMetrics, getCacheHealth, getCachePerformanceReport, resetCacheMetrics } from '../../middleware/cacheMonitoring';
-import logger from "../../utils/Logger/logger";
-export function createCacheRoutes(): Router {
+
+import {
+  getCacheMetrics,
+  getCacheHealth,
+  getCachePerformanceReport,
+  resetCacheMetrics,
+} from '../../middleware/cacheMonitoring';
+import logger from '../../utils/Logger/logger';
+export function createCacheRoutes(services: any): Router {
   const router = Router();
 
   // All cache management routes require authentication
@@ -55,17 +60,17 @@ export function createCacheRoutes(): Router {
    */
   router.get('/stats', async (req: Request, res: Response): Promise<void> => {
     try {
-      const stats = await cacheService.getStats();
+      const stats = await services.cacheService.getStats();
 
       res.json({
         success: true,
-        data: stats
+        data: stats,
       });
     } catch (error) {
       logger.error('Failed to get cache stats:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to retrieve cache statistics'
+        error: 'Failed to retrieve cache statistics',
       });
     }
   });
@@ -107,7 +112,7 @@ export function createCacheRoutes(): Router {
    */
   router.get('/health', async (req: Request, res: Response): Promise<void> => {
     try {
-      const isHealthy = await cacheService.healthCheck();
+      const isHealthy = await services.cacheService.healthCheck();
 
       if (isHealthy) {
         res.json({
@@ -115,8 +120,8 @@ export function createCacheRoutes(): Router {
           data: {
             healthy: true,
             responseTime: 0,
-            timestamp: new Date().toISOString()
-          }
+            timestamp: new Date().toISOString(),
+          },
         });
       } else {
         res.status(500).json({
@@ -124,15 +129,15 @@ export function createCacheRoutes(): Router {
           data: {
             healthy: false,
             responseTime: -1,
-            timestamp: new Date().toISOString()
-          }
+            timestamp: new Date().toISOString(),
+          },
         });
       }
     } catch (error) {
       logger.error('Cache health check failed:', error);
       res.status(500).json({
         success: false,
-        error: 'Cache health check failed'
+        error: 'Cache health check failed',
       });
     }
   });
@@ -202,7 +207,8 @@ export function createCacheRoutes(): Router {
    *       500:
    *         description: Internal server error
    */
-  router.post('/invalidate', 
+  router.post(
+    '/invalidate',
     requirePermission(PermissionName.MANAGE_ROLES),
     async (req: Request, res: Response): Promise<void> => {
       try {
@@ -214,56 +220,60 @@ export function createCacheRoutes(): Router {
             if (!pattern) {
               res.status(400).json({
                 success: false,
-                error: 'Pattern is required for pattern invalidation'
+                error: 'Pattern is required for pattern invalidation',
               });
               return;
             }
-            deleted = await cacheService.deletePattern(pattern);
+            deleted = await services.cacheService.deletePattern(pattern);
             break;
 
           case 'tags':
             if (!tags || !Array.isArray(tags)) {
               res.status(400).json({
                 success: false,
-                error: 'Tags array is required for tag invalidation'
+                error: 'Tags array is required for tag invalidation',
               });
               return;
             }
             // For now, just clear all cache when tags are specified
-            deleted = await cacheService.clearAll();
+            deleted = await services.cacheService.clearAll();
             break;
 
           case 'business':
-            deleted = await cacheService.invalidateBusiness(businessId, userId);
+            deleted = await services.cacheService.invalidateBusiness(businessId, userId);
             break;
 
           case 'service':
-            deleted = await cacheService.invalidateService(serviceId, businessId, userId);
+            deleted = await services.cacheService.invalidateService(serviceId, businessId, userId);
             break;
 
           case 'appointment':
-            deleted = await cacheService.invalidateAppointment(appointmentId, businessId, userId);
+            deleted = await services.cacheService.invalidateAppointment(
+              appointmentId,
+              businessId,
+              userId
+            );
             break;
 
           case 'user':
             if (!userId) {
               res.status(400).json({
                 success: false,
-                error: 'UserId is required for user invalidation'
+                error: 'UserId is required for user invalidation',
               });
               return;
             }
-            deleted = await cacheService.invalidateUser(userId);
+            deleted = await services.cacheService.invalidateUser(userId);
             break;
 
           case 'all':
-            deleted = await cacheService.clearAll();
+            deleted = await services.cacheService.clearAll();
             break;
 
           default:
             res.status(400).json({
               success: false,
-              error: 'Invalid invalidation type'
+              error: 'Invalid invalidation type',
             });
             return;
         }
@@ -277,21 +287,21 @@ export function createCacheRoutes(): Router {
           appointmentId,
           userId,
           deleted,
-          requestedBy: (req as any).user?.id
+          requestedBy: (req as any).user?.id,
         });
 
         res.json({
           success: true,
           data: {
             deleted,
-            type
-          }
+            type,
+          },
         });
       } catch (error) {
         logger.error('Failed to invalidate cache:', error);
         res.status(500).json({
           success: false,
-          error: 'Failed to invalidate cache'
+          error: 'Failed to invalidate cache',
         });
       }
     }
@@ -348,12 +358,13 @@ export function createCacheRoutes(): Router {
    *       500:
    *         description: Internal server error
    */
-  router.get('/keys',
+  router.get(
+    '/keys',
     requirePermission(PermissionName.MANAGE_ROLES),
     async (req: Request, res: Response): Promise<void> => {
       try {
-        const pattern = req.query.pattern as string || '*';
-        const limit = Math.min(parseInt(req.query.limit as string || '100'), 1000);
+        const pattern = (req.query.pattern as string) || '*';
+        const limit = Math.min(parseInt((req.query.limit as string) || '100'), 1000);
 
         // For now, return empty keys list - this is an advanced feature
         const keys: string[] = [];
@@ -364,14 +375,14 @@ export function createCacheRoutes(): Router {
           data: {
             keys: limitedKeys,
             count: limitedKeys.length,
-            total: keys.length
-          }
+            total: keys.length,
+          },
         });
       } catch (error) {
         logger.error('Failed to list cache keys:', error);
         res.status(500).json({
           success: false,
-          error: 'Failed to list cache keys'
+          error: 'Failed to list cache keys',
         });
       }
     }
@@ -408,28 +419,29 @@ export function createCacheRoutes(): Router {
    *       500:
    *         description: Internal server error
    */
-  router.post('/clear',
+  router.post(
+    '/clear',
     requirePermission(PermissionName.MANAGE_ROLES),
     async (req: Request, res: Response): Promise<void> => {
       try {
-        const deleted = await cacheService.clearAll();
+        const deleted = await services.cacheService.clearAll();
 
         logger.warn('All cache cleared via API', {
           deleted,
-          requestedBy: (req as any).user?.id
+          requestedBy: (req as any).user?.id,
         });
 
         res.json({
           success: true,
           data: {
-            deleted
-          }
+            deleted,
+          },
         });
       } catch (error) {
         logger.error('Failed to clear cache:', error);
         res.status(500).json({
           success: false,
-          error: 'Failed to clear cache'
+          error: 'Failed to clear cache',
         });
       }
     }
@@ -480,21 +492,21 @@ export function createCacheRoutes(): Router {
   router.get('/metrics', async (req: Request, res: Response): Promise<void> => {
     try {
       const metrics = getCacheMetrics();
-      const redisMetrics = await cacheService.getMetrics();
+      const redisMetrics = await services.cacheService.getMetrics();
 
       res.json({
         success: true,
         data: {
           ...metrics,
           redis: redisMetrics.redis,
-          locks: redisMetrics.locks
-        }
+          locks: redisMetrics.locks,
+        },
       });
     } catch (error) {
       logger.error('Failed to get cache metrics:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to get cache metrics'
+        error: 'Failed to get cache metrics',
       });
     }
   });
@@ -549,16 +561,16 @@ export function createCacheRoutes(): Router {
   router.get('/performance', async (req: Request, res: Response): Promise<void> => {
     try {
       const report = getCachePerformanceReport();
-      
+
       res.json({
         success: true,
-        data: report
+        data: report,
       });
     } catch (error) {
       logger.error('Failed to get cache performance report:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to get cache performance report'
+        error: 'Failed to get cache performance report',
       });
     }
   });
@@ -590,16 +602,16 @@ export function createCacheRoutes(): Router {
   router.post('/metrics/reset', async (req: Request, res: Response): Promise<void> => {
     try {
       resetCacheMetrics();
-      
+
       res.json({
         success: true,
-        message: 'Cache metrics reset successfully'
+        message: 'Cache metrics reset successfully',
       });
     } catch (error) {
       logger.error('Failed to reset cache metrics:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to reset cache metrics'
+        error: 'Failed to reset cache metrics',
       });
     }
   });

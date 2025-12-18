@@ -1,26 +1,28 @@
-import logger from "./Logger/logger";
+import logger from './Logger/logger';
 /**
  * Response Utility Functions
  *
  * Standardized response handling for consistent API responses across all controllers.
  */
 
-import { Request, Response } from "express";
-import { ErrorResponse, SuccessResponse } from "../types/responseTypes";
-import { BaseError } from "../types/errors";
-import { translateMessage } from "./translationUtils";
-import { getLanguageFromRequest } from "../middleware/language";
+import { Request, Response } from 'express';
+import { ErrorResponse, SuccessResponse } from '../types/responseTypes';
+import { BaseError } from '../types/errors';
+import { TranslationService } from '../services/core/translationService';
+import { translateMessage } from './translationUtils';
+import { getLanguageFromRequest } from '../middleware/language';
 
 /**
  * Send a standardized success response
  * Automatically translates messages if they are translation keys (start with "success.")
- * 
+ *
  * @param res - Express response object
  * @param message - Success message or translation key (e.g., "success.appointment.created")
  * @param data - Optional response data
  * @param statusCode - HTTP status code (default: 200)
  * @param req - Optional request object for language detection
  * @param params - Optional parameters for message translation (e.g., {count: 5})
+ * @param translationService - Optional TranslationService instance for translation
  */
 export async function sendSuccessResponse<T>(
   res: Response,
@@ -28,22 +30,24 @@ export async function sendSuccessResponse<T>(
   data?: T,
   statusCode: number = 200,
   req?: Request,
-  params?: Record<string, string | number | boolean | Date>
+  params?: Record<string, string | number | boolean | Date>,
+  translationService?: TranslationService
 ): Promise<void> {
   // Check if message is a translation key (starts with "success.")
   const isTranslationKey = message.startsWith('success.');
-  
+
   let translatedMessage = message;
   let translationKey: string | undefined = undefined;
-  
-  if (isTranslationKey && req) {
+
+  if (isTranslationKey && req && translationService) {
     translationKey = message;
     try {
       // Get language from request
       const language = getLanguageFromRequest(req);
-      
+
       // Translate the message
       translatedMessage = await translateMessage(
+        translationService,
         message,
         params || {},
         language,
@@ -57,7 +61,7 @@ export async function sendSuccessResponse<T>(
       }
     }
   }
-  
+
   const response: SuccessResponse<T> = {
     success: true,
     statusCode,
@@ -78,9 +82,9 @@ export function sendErrorResponse(
   error?: any
 ): void {
   // Determine error code and key based on error type
-  let errorCode = "INTERNAL_SERVER_ERROR";
-  let errorKey = "errors.system.internalError";
-  
+  let errorCode = 'INTERNAL_SERVER_ERROR';
+  let errorKey = 'errors.system.internalError';
+
   if (error?.name) {
     // Use the error class name as code
     errorCode = error.name;
@@ -99,7 +103,7 @@ export function sendErrorResponse(
       key: errorKey,
       details: message,
       // Include additional data if available
-      ...(error?.data && { data: error.data })
+      ...(error?.data && { data: error.data }),
     },
   };
   res.status(statusCode).json(response);
@@ -135,19 +139,21 @@ export async function sendPaginatedResponse<T>(
   limit: number,
   statusCode: number = 200,
   req?: Request,
-  params?: Record<string, string | number | boolean | Date>
+  params?: Record<string, string | number | boolean | Date>,
+  translationService?: TranslationService
 ): Promise<void> {
   // Check if message is a translation key (starts with "success.")
   const isTranslationKey = message.startsWith('success.');
-  
+
   let translatedMessage = message;
   let translationKey: string | undefined = undefined;
-  
-  if (isTranslationKey && req) {
+
+  if (isTranslationKey && req && translationService) {
     translationKey = message;
     try {
       const language = getLanguageFromRequest(req);
       translatedMessage = await translateMessage(
+        translationService,
         message,
         params || {},
         language,
@@ -159,7 +165,7 @@ export async function sendPaginatedResponse<T>(
       }
     }
   }
-  
+
   const response: SuccessResponse<{
     items: T[];
     pagination: {
@@ -197,19 +203,21 @@ export async function sendSuccessWithMeta<T>(
   meta: Record<string, unknown>,
   statusCode: number = 200,
   req?: Request,
-  params?: Record<string, string | number | boolean | Date>
+  params?: Record<string, string | number | boolean | Date>,
+  translationService?: TranslationService
 ): Promise<void> {
   // Check if message is a translation key (starts with "success.")
   const isTranslationKey = message.startsWith('success.');
-  
+
   let translatedMessage = message;
   let translationKey: string | undefined = undefined;
-  
-  if (isTranslationKey && req) {
+
+  if (isTranslationKey && req && translationService) {
     translationKey = message;
     try {
       const language = getLanguageFromRequest(req);
       translatedMessage = await translateMessage(
+        translationService,
         message,
         params || {},
         language,
@@ -221,7 +229,7 @@ export async function sendSuccessWithMeta<T>(
       }
     }
   }
-  
+
   const response: SuccessResponse<T> = {
     success: true,
     statusCode,
@@ -236,17 +244,12 @@ export async function sendSuccessWithMeta<T>(
 /**
  * Handle route errors with standardized error response
  */
-export function handleRouteError(
-  error: any,
-  req: any,
-  res: Response,
-  next?: any
-): void {
+export function handleRouteError(error: any, req: any, res: Response, next?: any): void {
   logger.error('Route error:', error);
-  
+
   const statusCode = error.statusCode || error.status || 500;
   const message = error.message || 'Internal server error';
-  
+
   const errorResponse: ErrorResponse = {
     success: false,
     statusCode,
@@ -257,7 +260,7 @@ export function handleRouteError(
       details: error.details || undefined,
     },
   };
-  
+
   res.status(statusCode).json(errorResponse);
 }
 
@@ -314,19 +317,16 @@ export async function sendStandardSuccessResponse<T>(
   data?: T,
   statusCode: number = 200,
   req?: Request,
-  params?: Record<string, string | number | boolean | Date>
+  params?: Record<string, string | number | boolean | Date>,
+  translationService?: TranslationService
 ): Promise<void> {
-  await sendSuccessResponse(res, message, data, statusCode, req, params);
+  await sendSuccessResponse(res, message, data, statusCode, req, params, translationService);
 }
 
 /**
  * Send app error response
  */
-export function sendAppErrorResponse(
-  res: Response,
-  error: any,
-  statusCode: number = 500
-): void {
+export function sendAppErrorResponse(res: Response, error: any, statusCode: number = 500): void {
   const message = getErrorMessage(error);
   sendErrorResponse(res, message, statusCode);
 }

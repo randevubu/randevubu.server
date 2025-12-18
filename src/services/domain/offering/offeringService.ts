@@ -2,14 +2,14 @@ import {
   ServiceData,
   PublicServiceData,
   CreateServiceRequest,
-  UpdateServiceRequest
+  UpdateServiceRequest,
 } from '../../../types/business';
 import { ServiceRepository } from '../../../repositories/serviceRepository';
 import { BusinessRepository } from '../../../repositories/businessRepository';
 import { RBACService } from '../rbac/rbacService';
 import { UsageService } from '../usage/usageService';
 import { PermissionName } from '../../../types/auth';
-import { cacheService } from '../../../services/core/cacheService';
+import type { CacheService } from '../../core/cacheService';
 import { NotFoundError, ValidationError, OperationNotAllowedError } from '../../../types/errors';
 import { ERROR_CODES } from '../../../constants/errorCodes';
 
@@ -18,7 +18,8 @@ export class OfferingService {
     private serviceRepository: ServiceRepository,
     private businessRepository: BusinessRepository,
     private rbacService: RBACService,
-    private usageService: UsageService
+    private usageService: UsageService,
+    private cacheService: CacheService
   ) {}
 
   async createService(
@@ -37,11 +38,9 @@ export class OfferingService {
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
 
     if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SERVICES, {
+        businessId,
+      });
     }
 
     const service = await this.serviceRepository.create(businessId, data);
@@ -50,29 +49,24 @@ export class OfferingService {
     await this.usageService.updateServiceUsage(businessId);
 
     // Invalidate cache immediately after creation
-    await cacheService.invalidateService(service.id, businessId, userId);
-    await cacheService.invalidateBusiness(businessId, userId);
+    await this.cacheService.invalidateService(service.id, businessId, userId);
+    await this.cacheService.invalidateBusiness(businessId, userId);
 
     return service;
   }
 
-  async getServiceById(
-    userId: string,
-    serviceId: string
-  ): Promise<ServiceData | null> {
+  async getServiceById(userId: string, serviceId: string): Promise<ServiceData | null> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) return null;
 
     // Check permissions to view services
     const [resource, action] = PermissionName.VIEW_ALL_SERVICES.split(':');
     const hasGlobalView = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalView) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_SERVICES,
-        { businessId: service.businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_SERVICES, {
+        businessId: service.businessId,
+      });
     }
 
     return service;
@@ -86,13 +80,11 @@ export class OfferingService {
     // Check permissions to view services for this business
     const [resource, action] = PermissionName.VIEW_ALL_SERVICES.split(':');
     const hasGlobalView = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalView) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_SERVICES,
-        { businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_SERVICES, {
+        businessId,
+      });
     }
 
     if (activeOnly) {
@@ -105,14 +97,14 @@ export class OfferingService {
   async getPublicServicesByBusinessId(businessId: string): Promise<PublicServiceData[]> {
     // Get active services
     const services = await this.serviceRepository.findActiveByBusinessId(businessId);
-    
+
     // Get business settings to check price visibility
     const business = await this.businessRepository.findById(businessId);
     if (!business) {
       // Return services with prices visible as fallback
-      return services.map(service => ({
+      return services.map((service) => ({
         ...service,
-        showPrice: true
+        showPrice: true,
       }));
     }
 
@@ -123,18 +115,18 @@ export class OfferingService {
 
     // If prices should be hidden, remove price information
     if (hideAllServicePrices) {
-      return services.map(service => ({
+      return services.map((service) => ({
         ...service,
         price: null, // Hide the actual price
         showPrice: false, // Add flag to indicate price is hidden
-        priceDisplayMessage: priceVisibility.priceDisplayMessage || 'Price available on request'
+        priceDisplayMessage: priceVisibility.priceDisplayMessage || 'Price available on request',
       }));
     }
 
     // Return services with prices visible
-    return services.map(service => ({
+    return services.map((service) => ({
       ...service,
-      showPrice: true // Add flag to indicate price is visible
+      showPrice: true, // Add flag to indicate price is visible
     }));
   }
 
@@ -145,19 +137,19 @@ export class OfferingService {
   ): Promise<ServiceData> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new NotFoundError('Service not found', undefined, { additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND } });
+      throw new NotFoundError('Service not found', undefined, {
+        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
+      });
     }
 
     // Check permissions to manage services for this business
     const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId: service.businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SERVICES, {
+        businessId: service.businessId,
+      });
     }
 
     return await this.serviceRepository.update(serviceId, data);
@@ -166,19 +158,19 @@ export class OfferingService {
   async deleteService(userId: string, serviceId: string): Promise<void> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new NotFoundError('Service not found', undefined, { additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND } });
+      throw new NotFoundError('Service not found', undefined, {
+        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
+      });
     }
 
     // Check permissions to manage services for this business
     const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId: service.businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SERVICES, {
+        businessId: service.businessId,
+      });
     }
 
     await this.serviceRepository.delete(serviceId);
@@ -192,18 +184,15 @@ export class OfferingService {
     // Check permissions to manage services for this business
     const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SERVICES, {
+        businessId,
+      });
     }
 
     await this.serviceRepository.reorderServices(businessId, serviceOrders);
   }
-
 
   async getServiceStats(
     userId: string,
@@ -216,19 +205,19 @@ export class OfferingService {
   }> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new NotFoundError('Service not found', undefined, { additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND } });
+      throw new NotFoundError('Service not found', undefined, {
+        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
+      });
     }
 
     // Check permissions to view analytics for this business
     const [resource, action] = PermissionName.VIEW_ALL_ANALYTICS.split(':');
     const hasGlobalAnalytics = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalAnalytics) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_ANALYTICS,
-        { businessId: service.businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_ANALYTICS, {
+        businessId: service.businessId,
+      });
     }
 
     return await this.serviceRepository.getServiceStats(serviceId);
@@ -242,17 +231,20 @@ export class OfferingService {
     // Check permissions to manage services for this business
     const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SERVICES, {
+        businessId,
+      });
     }
 
     if (priceMultiplier <= 0) {
-      throw new ValidationError('Price multiplier must be positive', 'priceMultiplier', undefined, undefined);
+      throw new ValidationError(
+        'Price multiplier must be positive',
+        'priceMultiplier',
+        undefined,
+        undefined
+      );
     }
 
     await this.serviceRepository.bulkUpdatePrices(businessId, priceMultiplier);
@@ -266,13 +258,11 @@ export class OfferingService {
     // Check permissions to view analytics for this business
     const [resource, action] = PermissionName.VIEW_ALL_ANALYTICS.split(':');
     const hasGlobalAnalytics = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalAnalytics) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_ANALYTICS,
-        { businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_ANALYTICS, {
+        businessId,
+      });
     }
 
     return await this.serviceRepository.findPopularServices(businessId, limit);
@@ -317,7 +307,11 @@ export class OfferingService {
 
     // This would need to be implemented in the repository
     // For now, we'll throw an error
-    throw new OperationNotAllowedError('getAllServices', 'Admin service listing not implemented', undefined);
+    throw new OperationNotAllowedError(
+      'getAllServices',
+      'Admin service listing not implemented',
+      undefined
+    );
   }
 
   async toggleServiceStatus(
@@ -327,44 +321,40 @@ export class OfferingService {
   ): Promise<ServiceData> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new NotFoundError('Service not found', undefined, { additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND } });
+      throw new NotFoundError('Service not found', undefined, {
+        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
+      });
     }
 
     // Check permissions to manage services for this business
     const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId: service.businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SERVICES, {
+        businessId: service.businessId,
+      });
     }
 
     return await this.serviceRepository.update(serviceId, { isActive });
   }
 
-  async duplicateService(
-    userId: string,
-    serviceId: string,
-    newName: string
-  ): Promise<ServiceData> {
+  async duplicateService(userId: string, serviceId: string, newName: string): Promise<ServiceData> {
     const originalService = await this.serviceRepository.findById(serviceId);
     if (!originalService) {
-      throw new NotFoundError('Service not found', undefined, { additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND } });
+      throw new NotFoundError('Service not found', undefined, {
+        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
+      });
     }
 
     // Check permissions to manage services for this business
     const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId: originalService.businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SERVICES, {
+        businessId: originalService.businessId,
+      });
     }
 
     const duplicateData: CreateServiceRequest = {
@@ -375,7 +365,7 @@ export class OfferingService {
       currency: originalService.currency,
       bufferTime: originalService.bufferTime,
       maxAdvanceBooking: originalService.maxAdvanceBooking,
-      minAdvanceBooking: originalService.minAdvanceBooking
+      minAdvanceBooking: originalService.minAdvanceBooking,
     };
 
     return await this.serviceRepository.create(originalService.businessId, duplicateData);
@@ -391,13 +381,11 @@ export class OfferingService {
     // Check permissions to manage services for this business
     const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SERVICES, {
+        businessId,
+      });
     }
 
     for (const serviceId of serviceIds) {
@@ -413,13 +401,11 @@ export class OfferingService {
     // Check permissions to manage services for this business
     const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
     const hasGlobalService = await this.rbacService.hasPermission(userId, resource, action);
-    
+
     if (!hasGlobalService) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.MANAGE_OWN_SERVICES,
-        { businessId }
-      );
+      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SERVICES, {
+        businessId,
+      });
     }
 
     for (const serviceId of serviceIds) {
@@ -436,8 +422,8 @@ export class OfferingService {
     context: 'list' | 'booking' | 'owner' = 'list'
   ): Promise<ServiceData[]> {
     const businessPriceSettings = businessSettings?.priceVisibility || {};
-    
-    return services.map(service => {
+
+    return services.map((service) => {
       // If context is 'owner', always show prices (for business owner/staff)
       if (context === 'owner') {
         return service;
@@ -447,13 +433,13 @@ export class OfferingService {
       // 1. Business-wide setting can override individual service settings
       // 2. Individual service showPrice setting
       // 3. Context-specific rules (booking vs list view)
-      
+
       let shouldShowPrice = true;
 
       // Check business-wide setting first
       if (businessPriceSettings.hideAllServicePrices === true) {
         shouldShowPrice = false;
-        
+
         // However, if we're in booking context and business allows showing price on booking
         if (context === 'booking' && businessPriceSettings.showPriceOnBooking === true) {
           shouldShowPrice = true;
@@ -470,9 +456,10 @@ export class OfferingService {
           price: 0, // Set to 0 instead of undefined to match type
           currency: service.currency || 'TRY', // Keep currency for consistency
           // Add custom message if available
-          priceDisplayMessage: businessPriceSettings.priceDisplayMessage || 'Contact us for pricing',
+          priceDisplayMessage:
+            businessPriceSettings.priceDisplayMessage || 'Contact us for pricing',
           // Add flag to indicate price is hidden
-          priceHidden: true
+          priceHidden: true,
         };
       }
 
@@ -488,20 +475,14 @@ export class OfferingService {
       // Check if user has global service management permission
       const [resource, action] = PermissionName.MANAGE_ALL_SERVICES.split(':');
       const hasGlobal = await this.rbacService.hasPermission(userId, resource, action);
-      
+
       if (hasGlobal) return true;
 
       // Check if user has owner-level access to this specific business
       const [ownResource, ownAction] = PermissionName.MANAGE_OWN_SERVICES.split(':');
-      return await this.rbacService.hasPermission(
-        userId, 
-        ownResource,
-        ownAction,
-        { businessId }
-      );
+      return await this.rbacService.hasPermission(userId, ownResource, ownAction, { businessId });
     } catch {
       return false;
     }
   }
-
 }

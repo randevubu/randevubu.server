@@ -1,203 +1,195 @@
 import { Request, Response } from 'express';
 import { UserBehaviorService } from '../services/domain/userBehavior';
 import { GuaranteedAuthRequest } from '../types/auth';
-import {
-  handleRouteError,
-  sendSuccessResponse,
-  createErrorContext,
-  sendAppErrorResponse,
-} from '../utils/responseUtils';
+import { requireAuthenticatedUser } from '../middleware/authUtils';
+import { handleRouteError, sendAppErrorResponse } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
+import { ResponseHelper } from '../utils/responseHelper';
 
 export class UserBehaviorController {
-  constructor(private userBehaviorService: UserBehaviorService) {}
+  constructor(
+    private userBehaviorService: UserBehaviorService,
+    private responseHelper: ResponseHelper
+  ) {}
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/{userId}:
+   *   get:
+   *     tags: [User Behavior]
+   *     summary: Get user behavior data
+   *     description: Retrieve behavior data for a specific user
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: User behavior data retrieved successfully
+   *       404:
+   *         description: User behavior data not found
+   */
   async getUserBehavior(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
+      const requestingUserId = requireAuthenticatedUser(req).id;
       const { userId } = req.params;
-      const requestingUserId = req.user.id;
-      const targetUserId = userId || requestingUserId;
 
-      // Validate userId parameter if provided
-      if (userId && (typeof userId !== 'string' || userId.trim().length === 0)) {
-        const error = new AppError(
-          'Invalid user ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+      if (!userId || typeof userId !== 'string') {
+        const error = new AppError('User ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate userId format if provided
-      if (userId) {
-        const idRegex = /^[a-zA-Z0-9-_]+$/;
-        if (!idRegex.test(userId) || userId.length < 1 || userId.length > 50) {
-          const error = new AppError(
-            'Invalid user ID format',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-      }
-
-      const behavior = await this.userBehaviorService.getUserBehavior(requestingUserId, targetUserId);
+      const behavior = await this.userBehaviorService.getUserBehavior(requestingUserId, userId);
 
       if (!behavior) {
         const error = new AppError(
-          'User behavior record not found',
+          'User behavior data not found',
           404,
-          ERROR_CODES.CUSTOMER_NOT_FOUND
+          ERROR_CODES.BUSINESS_NOT_FOUND
         );
         return sendAppErrorResponse(res, error);
       }
 
-      await sendSuccessResponse(res, 'success.userBehavior.retrieved', behavior, 200, req);
+      await this.responseHelper.success(res, 'success.userBehavior.retrieved', behavior, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/{userId}/summary:
+   *   get:
+   *     tags: [User Behavior]
+   *     summary: Get user behavior summary
+   *     description: Retrieve behavior summary for a specific user
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: User behavior summary retrieved successfully
+   */
   async getUserSummary(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
+      const requestingUserId = requireAuthenticatedUser(req).id;
       const { userId } = req.params;
-      const requestingUserId = req.user.id;
-      const targetUserId = userId || requestingUserId;
 
-      // Validate userId parameter if provided
-      if (userId && (typeof userId !== 'string' || userId.trim().length === 0)) {
-        const error = new AppError(
-          'Invalid user ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+      if (!userId || typeof userId !== 'string') {
+        const error = new AppError('User ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate userId format if provided
-      if (userId) {
-        const idRegex = /^[a-zA-Z0-9-_]+$/;
-        if (!idRegex.test(userId) || userId.length < 1 || userId.length > 50) {
-          const error = new AppError(
-            'Invalid user ID format',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-      }
+      const summary = await this.userBehaviorService.getUserSummary(requestingUserId, userId);
 
-      const summary = await this.userBehaviorService.getUserSummary(requestingUserId, targetUserId);
-
-      await sendSuccessResponse(res, 'success.userBehavior.summaryRetrieved', summary, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.summaryRetrieved',
+        summary,
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  async getMyBehavior(req: GuaranteedAuthRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user.id;
-
-      const [behavior, summary] = await Promise.all([
-        this.userBehaviorService.getUserBehavior(userId, userId),
-        this.userBehaviorService.getUserSummary(userId, userId)
-      ]);
-
-      await sendSuccessResponse(res, 'success.userBehavior.bothRetrieved', {
-        behavior,
-        summary
-      }, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
-  }
-
+  /**
+   * @swagger
+   * /api/v1/user-behavior/{userId}/status:
+   *   get:
+   *     tags: [User Behavior]
+   *     summary: Check user status
+   *     description: Check if user is banned, has strikes, etc.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: User status retrieved successfully
+   */
   async checkUserStatus(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
-      const requestingUserId = req.user.id;
-      const targetUserId = userId || requestingUserId;
 
-      // Validate userId parameter if provided
-      if (userId && (typeof userId !== 'string' || userId.trim().length === 0)) {
-        const error = new AppError(
-          'Invalid user ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+      if (!userId || typeof userId !== 'string') {
+        const error = new AppError('User ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate userId format if provided
-      if (userId) {
-        const idRegex = /^[a-zA-Z0-9-_]+$/;
-        if (!idRegex.test(userId) || userId.length < 1 || userId.length > 50) {
-          const error = new AppError(
-            'Invalid user ID format',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-      }
+      const status = await this.userBehaviorService.checkUserStatus(userId);
 
-      // Allow users to check their own status, require permissions for others
-      if (requestingUserId !== targetUserId) {
-        // This would require proper permission check in the service
-        // For now, we'll allow business users to check customer status
-      }
-
-      const status = await this.userBehaviorService.checkUserStatus(targetUserId);
-
-      await sendSuccessResponse(res, 'success.userBehavior.statusRetrieved', status, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.statusRetrieved',
+        status,
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/{userId}/strike:
+   *   post:
+   *     tags: [Admin - User Behavior]
+   *     summary: Add strike to user
+   *     description: Add a strike to a user's record (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - reason
+   *             properties:
+   *               reason:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Strike added successfully
+   */
   async addStrike(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
+      const requestingUserId = requireAuthenticatedUser(req).id;
       const { userId } = req.params;
       const { reason } = req.body;
-      const requestingUserId = req.user.id;
 
-      // Validate userId parameter
       if (!userId || typeof userId !== 'string') {
-        const error = new AppError(
-          'User ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('User ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate userId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(userId) || userId.length < 1 || userId.length > 50) {
+      if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
         const error = new AppError(
-          'Invalid user ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate reason parameter
-      if (!reason || typeof reason !== 'string' || reason.trim().length < 5) {
-        const error = new AppError(
-          'Reason must be at least 5 characters long',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate reason length limit
-      if (reason.trim().length > 500) {
-        const error = new AppError(
-          'Reason must not exceed 500 characters',
+          'Reason is required and must be at least 3 characters',
           400,
           ERROR_CODES.VALIDATION_ERROR
         );
@@ -210,97 +202,116 @@ export class UserBehaviorController {
         reason.trim()
       );
 
-      await sendSuccessResponse(res, 'success.userBehavior.strikeAdded', behavior, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.strikeAdded',
+        behavior,
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/{userId}/strike:
+   *   delete:
+   *     tags: [Admin - User Behavior]
+   *     summary: Remove strike from user
+   *     description: Remove a strike from a user's record (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Strike removed successfully
+   */
   async removeStrike(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
+      const requestingUserId = requireAuthenticatedUser(req).id;
       const { userId } = req.params;
-      const requestingUserId = req.user.id;
 
-      // Validate userId parameter
       if (!userId || typeof userId !== 'string') {
-        const error = new AppError(
-          'User ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate userId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(userId) || userId.length < 1 || userId.length > 50) {
-        const error = new AppError(
-          'Invalid user ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('User ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
       const behavior = await this.userBehaviorService.removeStrike(requestingUserId, userId);
 
-      await sendSuccessResponse(res, 'success.userBehavior.strikeRemoved', behavior, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.strikeRemoved',
+        behavior,
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/{userId}/ban:
+   *   post:
+   *     tags: [Admin - User Behavior]
+   *     summary: Ban user
+   *     description: Ban a user from the platform (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - reason
+   *             properties:
+   *               reason:
+   *                 type: string
+   *               durationDays:
+   *                 type: integer
+   *     responses:
+   *       200:
+   *         description: User banned successfully
+   */
   async banUser(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const { customerId } = req.params;
-      const { reason, durationDays, isTemporary } = req.body;
-      const requestingUserId = req.user.id;
+      const requestingUserId = requireAuthenticatedUser(req).id;
+      const { userId } = req.params;
+      const { reason, durationDays } = req.body;
 
-      // Validate customerId parameter
-      if (!customerId || typeof customerId !== 'string') {
-        const error = new AppError(
-          'Customer ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+      if (!userId || typeof userId !== 'string') {
+        const error = new AppError('User ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate customerId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(customerId) || customerId.length < 1 || customerId.length > 50) {
+      if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
         const error = new AppError(
-          'Invalid customer ID format',
+          'Reason is required and must be at least 3 characters',
           400,
           ERROR_CODES.VALIDATION_ERROR
         );
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate reason parameter
-      if (!reason || typeof reason !== 'string' || reason.trim().length < 10) {
+      if (durationDays !== undefined && (typeof durationDays !== 'number' || durationDays <= 0)) {
         const error = new AppError(
-          'Ban reason must be at least 10 characters long',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate reason length limit
-      if (reason.trim().length > 500) {
-        const error = new AppError(
-          'Ban reason must not exceed 500 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Only validate durationDays if it's a temporary ban
-      if (isTemporary !== false && (!durationDays || typeof durationDays !== 'number' || durationDays <= 0 || durationDays > 365)) {
-        const error = new AppError(
-          'Duration must be between 1 and 365 days for temporary bans',
+          'Duration must be a positive number',
           400,
           ERROR_CODES.VALIDATION_ERROR
         );
@@ -309,168 +320,252 @@ export class UserBehaviorController {
 
       const behavior = await this.userBehaviorService.banUser(
         requestingUserId,
-        customerId,
+        userId,
         reason.trim(),
         durationDays
       );
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(res, 'success.userBehavior.userBanned', behavior, 200, req);
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * @swagger
+   * /api/v1/user-behavior/{userId}/ban:
+   *   delete:
+   *     tags: [Admin - User Behavior]
+   *     summary: Unban user
+   *     description: Remove ban from a user (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: User unbanned successfully
+   */
+  async unbanUser(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const requestingUserId = requireAuthenticatedUser(req).id;
+      const { userId } = req.params;
+
+      if (!userId || typeof userId !== 'string') {
+        const error = new AppError('User ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
+        return sendAppErrorResponse(res, error);
+      }
+
+      const behavior = await this.userBehaviorService.unbanUser(requestingUserId, userId);
+
+      await this.responseHelper.success(
         res,
-        'success.userBehavior.statusUpdated',
+        'success.userBehavior.userUnbanned',
         behavior,
         200,
-        req,
-        isTemporary === false ? undefined : { durationDays }
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  async unbanUser(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+  /**
+   * @swagger
+   * /api/v1/user-behavior/problematic:
+   *   get:
+   *     tags: [Admin - User Behavior]
+   *     summary: Get problematic users
+   *     description: Retrieve list of users with behavior issues (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           default: 50
+   *     responses:
+   *       200:
+   *         description: Problematic users retrieved successfully
+   */
+  async getProblematicUsers(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const { customerId } = req.params;
-      const requestingUserId = req.user.id;
+      const requestingUserId = requireAuthenticatedUser(req).id;
+      const { limit } = req.query;
 
-      // Validate customerId parameter
-      if (!customerId || typeof customerId !== 'string') {
-        const error = new AppError(
-          'Customer ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
+      const limitNum = limit ? parseInt(limit as string, 10) : 50;
 
-      // Validate customerId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(customerId) || customerId.length < 1 || customerId.length > 50) {
+      if (isNaN(limitNum) || limitNum < 1 || limitNum > 200) {
         const error = new AppError(
-          'Invalid customer ID format',
+          'Limit must be between 1 and 200',
           400,
           ERROR_CODES.VALIDATION_ERROR
         );
         return sendAppErrorResponse(res, error);
-      }
-
-      const behavior = await this.userBehaviorService.unbanUser(requestingUserId, customerId);
-
-      await sendSuccessResponse(res, 'success.userBehavior.unbanned', behavior, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
-  }
-
-  async getProblematicUsers(req: GuaranteedAuthRequest, res: Response): Promise<void> {
-    try {
-      const requestingUserId = req.user.id;
-      const { limit } = req.query;
-
-      // Validate and parse limit parameter
-      let limitNum = 50;
-      if (limit) {
-        limitNum = parseInt(limit as string, 10);
-        if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
-          const error = new AppError(
-            'Limit must be between 1 and 100',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
       }
 
       const users = await this.userBehaviorService.getProblematicUsers(requestingUserId, limitNum);
 
-      await sendSuccessResponse(res, 'success.userBehavior.problematicRetrieved', users, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.problematicUsersRetrieved',
+        users,
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  async getUserRiskAssessment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+  /**
+   * @swagger
+   * /api/v1/user-behavior/banned:
+   *   get:
+   *     tags: [Admin - User Behavior]
+   *     summary: Get banned users
+   *     description: Retrieve list of currently banned users (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Banned users retrieved successfully
+   */
+  async getBannedUsers(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const { userId } = req.params;
-      const requestingUserId = req.user.id;
-      const targetUserId = userId || requestingUserId;
+      const requestingUserId = requireAuthenticatedUser(req).id;
 
-      // Validate userId parameter if provided
-      if (userId && (typeof userId !== 'string' || userId.trim().length === 0)) {
+      const users = await this.userBehaviorService.getBannedUsers(requestingUserId);
+
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.bannedUsersRetrieved',
+        users,
+        200,
+        req
+      );
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * @swagger
+   * /api/v1/user-behavior/strikes:
+   *   get:
+   *     tags: [Admin - User Behavior]
+   *     summary: Get users with strikes
+   *     description: Retrieve list of users with strikes (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: minStrikes
+   *         schema:
+   *           type: integer
+   *           default: 1
+   *     responses:
+   *       200:
+   *         description: Users with strikes retrieved successfully
+   */
+  async getUsersWithStrikes(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const requestingUserId = requireAuthenticatedUser(req).id;
+      const { minStrikes } = req.query;
+
+      const minStrikesNum = minStrikes ? parseInt(minStrikes as string, 10) : 1;
+
+      if (isNaN(minStrikesNum) || minStrikesNum < 1) {
         const error = new AppError(
-          'Invalid user ID format',
+          'Minimum strikes must be a positive integer',
           400,
           ERROR_CODES.VALIDATION_ERROR
         );
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate userId format if provided
-      if (userId) {
-        const idRegex = /^[a-zA-Z0-9-_]+$/;
-        if (!idRegex.test(userId) || userId.length < 1 || userId.length > 50) {
-          const error = new AppError(
-            'Invalid user ID format',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-      }
+      const users = await this.userBehaviorService.getUsersWithStrikes(
+        requestingUserId,
+        minStrikesNum
+      );
 
-      const assessment = await this.userBehaviorService.getUserRiskAssessment(targetUserId);
-
-      await sendSuccessResponse(res, 'success.userBehavior.riskAssessmentRetrieved', assessment, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.usersWithStrikesRetrieved',
+        users,
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  async calculateReliabilityScore(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+  /**
+   * @swagger
+   * /api/v1/user-behavior/stats:
+   *   get:
+   *     tags: [Admin - User Behavior]
+   *     summary: Get user behavior statistics
+   *     description: Retrieve overall user behavior statistics (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Statistics retrieved successfully
+   */
+  async getUserBehaviorStats(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const { userId } = req.params;
-      const requestingUserId = req.user.id;
-      const targetUserId = userId || requestingUserId;
+      const requestingUserId = requireAuthenticatedUser(req).id;
 
-      // Validate userId parameter if provided
-      if (userId && (typeof userId !== 'string' || userId.trim().length === 0)) {
-        const error = new AppError(
-          'Invalid user ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
+      const stats = await this.userBehaviorService.getUserBehaviorStats(requestingUserId);
 
-      // Validate userId format if provided
-      if (userId) {
-        const idRegex = /^[a-zA-Z0-9-_]+$/;
-        if (!idRegex.test(userId) || userId.length < 1 || userId.length > 50) {
-          const error = new AppError(
-            'Invalid user ID format',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-      }
-
-      const score = await this.userBehaviorService.calculateUserReliabilityScore(targetUserId);
-
-      await sendSuccessResponse(res, 'success.userBehavior.reliabilityScoreCalculated', {
-        userId: targetUserId,
-        reliabilityScore: score
-      }, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.statsRetrieved',
+        stats,
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/business/{businessId}/customer/{customerId}:
+   *   get:
+   *     tags: [User Behavior]
+   *     summary: Get customer behavior for business
+   *     description: Retrieve customer behavior data specific to a business
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: businessId
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: path
+   *         name: customerId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Customer behavior retrieved successfully
+   */
   async getCustomerBehaviorForBusiness(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
+      const requestingUserId = requireAuthenticatedUser(req).id;
       const { businessId, customerId } = req.params;
-      const requestingUserId = req.user.id;
 
-      // Validate businessId parameter
       if (!businessId || typeof businessId !== 'string') {
         const error = new AppError(
           'Business ID is required',
@@ -480,7 +575,6 @@ export class UserBehaviorController {
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate customerId parameter
       if (!customerId || typeof customerId !== 'string') {
         const error = new AppError(
           'Customer ID is required',
@@ -490,352 +584,450 @@ export class UserBehaviorController {
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate ID formats
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError(
-          'Invalid business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      if (!idRegex.test(customerId) || customerId.length < 1 || customerId.length > 50) {
-        const error = new AppError(
-          'Invalid customer ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      const result = await this.userBehaviorService.getCustomerBehaviorForBusiness(
+      const behavior = await this.userBehaviorService.getCustomerBehaviorForBusiness(
         requestingUserId,
         businessId,
         customerId
       );
 
-      await sendSuccessResponse(res, 'success.userBehavior.customerBehaviorRetrieved', result, 200, req);
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.customerBehaviorRetrieved',
+        behavior,
+        200,
+        req
+      );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/{userId}/flag:
+   *   post:
+   *     tags: [User Behavior]
+   *     summary: Flag user for review
+   *     description: Flag a user for administrative review
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - reason
+   *             properties:
+   *               reason:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: User flagged successfully
+   */
   async flagUserForReview(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
+      const requestingUserId = requireAuthenticatedUser(req).id;
       const { userId } = req.params;
       const { reason } = req.body;
-      const requestingUserId = req.user.id;
 
-      // Validate userId parameter
       if (!userId || typeof userId !== 'string') {
-        const error = new AppError(
-          'User ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
+        const error = new AppError('User ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate userId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(userId) || userId.length < 1 || userId.length > 50) {
+      if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
         const error = new AppError(
-          'Invalid user ID format',
+          'Reason is required and must be at least 3 characters',
           400,
           ERROR_CODES.VALIDATION_ERROR
         );
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate reason parameter
-      if (!reason || typeof reason !== 'string' || reason.trim().length < 10) {
-        const error = new AppError(
-          'Flag reason must be at least 10 characters long',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
+      await this.userBehaviorService.flagUserForReview(requestingUserId, userId, reason.trim());
 
-      // Validate reason length limit
-      if (reason.trim().length > 500) {
-        const error = new AppError(
-          'Flag reason must not exceed 500 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      await this.userBehaviorService.flagUserForReview(
-        requestingUserId,
-        userId,
-        reason.trim()
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.userFlagged',
+        undefined,
+        200,
+        req
       );
-
-      await sendSuccessResponse(res, 'success.userBehavior.flaggedForReview', undefined, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  // System and admin endpoints
-  async getUserBehaviorStats(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+  /**
+   * @swagger
+   * /api/v1/user-behavior/my/behavior:
+   *   get:
+   *     tags: [User Behavior]
+   *     summary: Get my own behavior data
+   *     description: Retrieve behavior data for the authenticated user
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: User behavior data retrieved successfully
+   */
+  async getMyBehavior(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      const requestingUserId = req.user.id;
+      const userId = requireAuthenticatedUser(req).id;
 
-      const stats = await this.userBehaviorService.getUserBehaviorStats(requestingUserId);
+      const behavior = await this.userBehaviorService.getUserBehavior(userId, userId);
 
-      await sendSuccessResponse(res, 'success.userBehavior.statsRetrieved', stats, 200, req);
+      if (!behavior) {
+        const error = new AppError(
+          'User behavior data not found',
+          404,
+          ERROR_CODES.BUSINESS_NOT_FOUND
+        );
+        return sendAppErrorResponse(res, error);
+      }
+
+      await this.responseHelper.success(res, 'success.userBehavior.retrieved', behavior, 200, req);
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/{userId}/risk-assessment:
+   *   get:
+   *     tags: [User Behavior]
+   *     summary: Get user risk assessment
+   *     description: Retrieve risk assessment for a specific user
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Risk assessment retrieved successfully
+   */
+  async getUserRiskAssessment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const { userId } = req.params;
+
+      if (!userId || typeof userId !== 'string') {
+        const error = new AppError('User ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
+        return sendAppErrorResponse(res, error);
+      }
+
+      const assessment = await this.userBehaviorService.getUserRiskAssessment(userId);
+
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.riskAssessmentRetrieved',
+        assessment,
+        200,
+        req
+      );
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * @swagger
+   * /api/v1/user-behavior/{userId}/reliability-score:
+   *   get:
+   *     tags: [User Behavior]
+   *     summary: Calculate user reliability score
+   *     description: Calculate and retrieve reliability score for a specific user
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Reliability score calculated successfully
+   */
+  async calculateReliabilityScore(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    try {
+      const { userId } = req.params;
+
+      if (!userId || typeof userId !== 'string') {
+        const error = new AppError('User ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
+        return sendAppErrorResponse(res, error);
+      }
+
+      const score = await this.userBehaviorService.calculateUserReliabilityScore(userId);
+
+      await this.responseHelper.success(
+        res,
+        'success.userBehavior.reliabilityScoreCalculated',
+        { score },
+        200,
+        req
+      );
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * @swagger
+   * /api/v1/user-behavior/admin/process-automatic-strikes:
+   *   post:
+   *     tags: [Admin - User Behavior]
+   *     summary: Process automatic strikes
+   *     description: Process automatic strikes for users with no-shows and cancellations (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Automatic strikes processed successfully
+   */
   async processAutomaticStrikes(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      // This endpoint would typically be protected to admin-only or system calls
+      requireAuthenticatedUser(req);
+
       const result = await this.userBehaviorService.processAutomaticStrikes();
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        'success.userBehavior.processed',
+        'success.userBehavior.automaticStrikesProcessed',
         result,
         200,
-        req,
-        { processed: result.processed, banned: result.banned }
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/admin/reset-expired-strikes:
+   *   post:
+   *     tags: [Admin - User Behavior]
+   *     summary: Reset expired strikes
+   *     description: Reset strikes that have expired (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Expired strikes reset successfully
+   */
   async resetExpiredStrikes(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      // System endpoint
+      requireAuthenticatedUser(req);
+
       const count = await this.userBehaviorService.resetExpiredStrikes();
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        'success.userBehavior.strikesReset',
-        { resetCount: count },
+        'success.userBehavior.expiredStrikesReset',
+        { count },
         200,
-        req,
-        { count }
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/admin/unban-expired:
+   *   post:
+   *     tags: [Admin - User Behavior]
+   *     summary: Unban users with expired bans
+   *     description: Automatically unban users whose ban period has expired (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Expired bans processed successfully
+   */
   async unbanExpiredBans(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
-      // System endpoint
+      requireAuthenticatedUser(req);
+
       const count = await this.userBehaviorService.unbanExpiredBans();
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        'success.userBehavior.unbannedExpired',
-        { unbannedCount: count },
+        'success.userBehavior.expiredBansProcessed',
+        { count },
         200,
-        req,
-        { count }
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
-  // Batch operations
+  /**
+   * @swagger
+   * /api/v1/user-behavior/admin/batch-strikes:
+   *   post:
+   *     tags: [Admin - User Behavior]
+   *     summary: Batch add strikes to multiple users
+   *     description: Add strikes to multiple users at once (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - userIds
+   *               - reason
+   *             properties:
+   *               userIds:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *               reason:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Strikes added successfully
+   */
   async batchAddStrikes(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
+      const requestingUserId = requireAuthenticatedUser(req).id;
       const { userIds, reason } = req.body;
-      const requestingUserId = req.user.id;
 
-      // Validate userIds array
       if (!Array.isArray(userIds) || userIds.length === 0) {
         const error = new AppError(
-          'userIds array is required',
+          'User IDs array is required and must not be empty',
           400,
           ERROR_CODES.REQUIRED_FIELD_MISSING
         );
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate array size limit
-      if (userIds.length > 50) {
+      if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
         const error = new AppError(
-          'Cannot process more than 50 users at once',
+          'Reason is required and must be at least 3 characters',
           400,
           ERROR_CODES.VALIDATION_ERROR
         );
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate reason parameter
-      if (!reason || typeof reason !== 'string' || reason.trim().length < 5) {
-        const error = new AppError(
-          'Reason must be at least 5 characters long',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
+      const results = await Promise.allSettled(
+        userIds.map((userId) =>
+          this.userBehaviorService.addStrike(requestingUserId, userId, reason.trim())
+        )
+      );
 
-      // Validate reason length limit
-      if (reason.trim().length > 500) {
-        const error = new AppError(
-          'Reason must not exceed 500 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
+      const successful = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
 
-      // Validate each userId in the array
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      for (const userId of userIds) {
-        if (!userId || typeof userId !== 'string' || !idRegex.test(userId) || userId.length < 1 || userId.length > 50) {
-          const error = new AppError(
-            'Invalid user ID format in userIds array',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-      }
-
-      const results = [];
-      for (const userId of userIds) {
-        try {
-          const behavior = await this.userBehaviorService.addStrike(
-            requestingUserId,
-            userId,
-            reason.trim()
-          );
-          results.push({ userId, success: true, behavior });
-        } catch (error) {
-          results.push({ 
-            userId, 
-            success: false, 
-            error: error instanceof Error ? error.message : 'Unknown error' 
-          });
-        }
-      }
-
-      const successCount = results.filter(r => r.success).length;
-
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        'success.userBehavior.strikesAdded',
-        results,
+        'success.userBehavior.batchStrikesAdded',
+        { successful, failed, total: userIds.length },
         200,
-        req,
-        { successCount, total: userIds.length }
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);
     }
   }
 
+  /**
+   * @swagger
+   * /api/v1/user-behavior/admin/batch-ban:
+   *   post:
+   *     tags: [Admin - User Behavior]
+   *     summary: Batch ban multiple users
+   *     description: Ban multiple users at once (Admin only)
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - userIds
+   *               - reason
+   *             properties:
+   *               userIds:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *               reason:
+   *                 type: string
+   *               durationDays:
+   *                 type: integer
+   *     responses:
+   *       200:
+   *         description: Users banned successfully
+   */
   async batchBanUsers(req: GuaranteedAuthRequest, res: Response): Promise<void> {
     try {
+      const requestingUserId = requireAuthenticatedUser(req).id;
       const { userIds, reason, durationDays } = req.body;
-      const requestingUserId = req.user.id;
 
-      // Validate userIds array
       if (!Array.isArray(userIds) || userIds.length === 0) {
         const error = new AppError(
-          'userIds array is required',
+          'User IDs array is required and must not be empty',
           400,
           ERROR_CODES.REQUIRED_FIELD_MISSING
         );
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate array size limit
-      if (userIds.length > 50) {
+      if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
         const error = new AppError(
-          'Cannot process more than 50 users at once',
+          'Reason is required and must be at least 3 characters',
           400,
           ERROR_CODES.VALIDATION_ERROR
         );
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate reason parameter
-      if (!reason || typeof reason !== 'string' || reason.trim().length < 10) {
+      if (durationDays !== undefined && (typeof durationDays !== 'number' || durationDays <= 0)) {
         const error = new AppError(
-          'Ban reason must be at least 10 characters long',
+          'Duration must be a positive number',
           400,
           ERROR_CODES.VALIDATION_ERROR
         );
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate reason length limit
-      if (reason.trim().length > 500) {
-        const error = new AppError(
-          'Ban reason must not exceed 500 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
+      const results = await Promise.allSettled(
+        userIds.map((userId) =>
+          this.userBehaviorService.banUser(requestingUserId, userId, reason.trim(), durationDays)
+        )
+      );
 
-      // Validate duration parameter
-      if (!durationDays || typeof durationDays !== 'number' || durationDays <= 0 || durationDays > 365) {
-        const error = new AppError(
-          'Duration must be between 1 and 365 days',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
+      const successful = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
 
-      // Validate each userId in the array
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      for (const userId of userIds) {
-        if (!userId || typeof userId !== 'string' || !idRegex.test(userId) || userId.length < 1 || userId.length > 50) {
-          const error = new AppError(
-            'Invalid user ID format in userIds array',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-      }
-
-      const results = [];
-      for (const userId of userIds) {
-        try {
-          const behavior = await this.userBehaviorService.banUser(
-            requestingUserId,
-            userId,
-            reason.trim(),
-            durationDays
-          );
-          results.push({ userId, success: true, behavior });
-        } catch (error) {
-          results.push({ 
-            userId, 
-            success: false, 
-            error: error instanceof Error ? error.message : 'Unknown error' 
-          });
-        }
-      }
-
-      const successCount = results.filter(r => r.success).length;
-
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
-        'success.userBehavior.banned',
-        results,
+        'success.userBehavior.batchUsersBanned',
+        { successful, failed, total: userIds.length },
         200,
-        req,
-        { successCount, total: userIds.length, durationDays }
+        req
       );
     } catch (error) {
       handleRouteError(error, req, res);

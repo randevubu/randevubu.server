@@ -22,6 +22,8 @@ import { StaffService } from './domain/staff';
 import { PricingTierService } from './domain/pricing/pricingTierService';
 import { IPGeolocationService } from './domain/geolocation/ipGeolocationService';
 import { DailyNotebookService } from './domain/dailyNotebook';
+import { RatingService } from './domain/rating/ratingService';
+import { ReportsService } from './domain/reports/reportsService';
 import { CancellationPolicyService } from './domain/business/cancellationPolicyService';
 import { UnifiedNotificationGateway } from './domain/notification/unifiedNotificationGateway';
 // Import shared services
@@ -31,16 +33,18 @@ import {
   SecureLoggingService,
   secureLoggingService,
   ValidationService,
-  createValidationService
+  createValidationService,
 } from './domain/shared';
 import { StartupService } from './core/startupService';
 import { TranslationService } from './core/translationService';
-import { cacheService } from './core/cacheService';
+import { CacheService } from './core/cacheService';
+import { cacheManager } from '../lib/redis/redis';
+import { CacheStampedeProtection } from '../lib/cache/cacheStampede';
+import Logger from '../utils/Logger/logger';
 
 // Import job infrastructure
 import { JobScheduler, jobMetrics } from '../jobs/base';
 import { AutoCompleteAppointmentsJob, SendAppointmentRemindersJob } from '../jobs/appointment';
-
 
 // Service container for dependency injection
 export class ServiceContainer {
@@ -70,6 +74,9 @@ export class ServiceContainer {
   public readonly pricingTierService: PricingTierService;
   public readonly dailyNotebookService: DailyNotebookService;
   public readonly translationService: TranslationService;
+  public readonly cacheService: CacheService;
+  public readonly ratingService: RatingService;
+  public readonly reportsService: ReportsService;
 
   // Job scheduler
   public readonly jobScheduler: JobScheduler;
@@ -79,7 +86,14 @@ export class ServiceContainer {
   public readonly secureLoggingService: SecureLoggingService;
   public readonly validationService: ValidationService;
 
-  constructor(repositories: RepositoryContainer, public readonly prisma: PrismaClient) {
+  constructor(
+    repositories: RepositoryContainer,
+    public readonly prisma: PrismaClient
+  ) {
+    // Core infrastructure services (needed by other services)
+    // Cache service with DI
+    this.cacheService = new CacheService(cacheManager, Logger, CacheStampedeProtection);
+
     this.tokenService = new TokenService(repositories);
     this.phoneVerificationService = new PhoneVerificationService(repositories, this.tokenService);
 
@@ -89,7 +103,12 @@ export class ServiceContainer {
     this.roleService = new RoleService(this.roleRepository, this.rbacService);
 
     // Auth service with RBAC support
-    this.authService = new AuthService(repositories, this.phoneVerificationService, this.tokenService, this.rbacService);
+    this.authService = new AuthService(
+      repositories,
+      this.phoneVerificationService,
+      this.tokenService,
+      this.rbacService
+    );
 
     // Business type service
     this.businessTypeService = new BusinessTypeService(repositories.businessTypeRepository);
@@ -102,13 +121,31 @@ export class ServiceContainer {
     );
 
     // Business services (needs usage service for staff counting)
-    this.businessService = new BusinessService(repositories.businessRepository, this.rbacService, repositories, this.usageService);
+    this.businessService = new BusinessService(
+      repositories.businessRepository,
+      this.rbacService,
+      repositories,
+      this.usageService
+    );
 
     // Create services that depend on usage service
-    this.offeringService = new OfferingService(repositories.serviceRepository, repositories.businessRepository, this.rbacService, this.usageService);
+    this.offeringService = new OfferingService(
+      repositories.serviceRepository,
+      repositories.businessRepository,
+      this.rbacService,
+      this.usageService,
+      this.cacheService
+    );
 
-    // Create notification service first for appointment service dependency
-    this.notificationService = new NotificationService(repositories, this.usageService);
+    // Translation service (needed by notification service)
+    this.translationService = new TranslationService();
+
+    // Create notification service with translation service dependency
+    this.notificationService = new NotificationService(
+      repositories,
+      this.translationService,
+      this.usageService
+    );
 
     // Create cancellation policy service for appointment service
     const cancellationPolicyService = new CancellationPolicyService(
@@ -139,7 +176,10 @@ export class ServiceContainer {
       unifiedNotificationGateway,
       this.prisma
     );
-    this.userBehaviorService = new UserBehaviorService(repositories.userBehaviorRepository, this.rbacService);
+    this.userBehaviorService = new UserBehaviorService(
+      repositories.userBehaviorRepository,
+      this.rbacService
+    );
     this.businessClosureService = new BusinessClosureService(
       repositories.businessClosureRepository,
       repositories.appointmentRepository,
@@ -154,16 +194,39 @@ export class ServiceContainer {
       this.rbacService
     );
 
-    this.subscriptionService = new SubscriptionService(repositories.subscriptionRepository, this.rbacService, this.pricingTierService, this.discountCodeService);
+    this.subscriptionService = new SubscriptionService(
+      repositories.subscriptionRepository,
+      this.rbacService,
+      this.pricingTierService,
+      this.discountCodeService
+    );
 
     // Then create payment service with discount code service dependency
     this.paymentService = new PaymentService(repositories, {
-      validateDiscountCode: this.discountCodeService.validateDiscountCode.bind(this.discountCodeService),
-      applyDiscountCode: async (code, userId, planId, originalAmount, subscriptionId, paymentId) => {
-        await this.discountCodeService.applyDiscountCode(code, userId, planId, originalAmount, subscriptionId, paymentId);
+      validateDiscountCode: this.discountCodeService.validateDiscountCode.bind(
+        this.discountCodeService
+      ),
+      applyDiscountCode: async (
+        code,
+        userId,
+        planId,
+        originalAmount,
+        subscriptionId,
+        paymentId
+      ) => {
+        await this.discountCodeService.applyDiscountCode(
+          code,
+          userId,
+          planId,
+          originalAmount,
+          subscriptionId,
+          paymentId
+        );
       },
-      applyPendingDiscount: this.discountCodeService.applyPendingDiscount.bind(this.discountCodeService),
-      canApplyToPayment: this.discountCodeService.canApplyToPayment.bind(this.discountCodeService)
+      applyPendingDiscount: this.discountCodeService.applyPendingDiscount.bind(
+        this.discountCodeService
+      ),
+      canApplyToPayment: this.discountCodeService.canApplyToPayment.bind(this.discountCodeService),
     });
 
     // Create payment retry service
@@ -175,7 +238,7 @@ export class ServiceContainer {
         maxRetries: 5,
         retrySchedule: [0, 1, 3, 7, 14], // Immediate, 1 day, 3 days, 1 week, 2 weeks
         escalationThreshold: 3,
-        gracePeriodDays: 30
+        gracePeriodDays: 30,
       }
     );
 
@@ -190,7 +253,6 @@ export class ServiceContainer {
       repositories.rescheduleSuggestionRepository,
       this.notificationService
     );
-
 
     // Subscription scheduler service
     this.subscriptionSchedulerService = new SubscriptionSchedulerService(
@@ -213,8 +275,14 @@ export class ServiceContainer {
     // Daily Notebook service
     this.dailyNotebookService = new DailyNotebookService(repositories.dailyNotebookRepository);
 
-    // Translation service
-    this.translationService = new TranslationService();
+    // Rating service
+    this.ratingService = new RatingService(
+      repositories.ratingRepository,
+      repositories.businessRepository
+    );
+
+    // Reports service
+    this.reportsService = new ReportsService(repositories);
 
     // Shared services
     this.errorHandlingService = errorHandlingService;
@@ -227,15 +295,13 @@ export class ServiceContainer {
     this.jobScheduler = new JobScheduler();
 
     // Register appointment auto-complete job
-    const autoCompleteJob = new AutoCompleteAppointmentsJob(
-      repositories.appointmentRepository
-    );
+    const autoCompleteJob = new AutoCompleteAppointmentsJob(repositories.appointmentRepository);
 
     const isDevelopment = process.env.NODE_ENV === 'development';
     this.jobScheduler.register(autoCompleteJob, {
       schedule: isDevelopment ? '*/1 * * * *' : '*/5 * * * *', // Every 1 min in dev, 5 min in prod
       timezone: 'Europe/Istanbul',
-      enabled: true
+      enabled: true,
     });
 
     // Register appointment reminder job
@@ -249,7 +315,7 @@ export class ServiceContainer {
     this.jobScheduler.register(reminderJob, {
       schedule: '* * * * *', // Every minute
       timezone: 'Europe/Istanbul',
-      enabled: true
+      enabled: true,
     });
   }
 }
@@ -287,5 +353,9 @@ export {
   SecureLoggingService,
   secureLoggingService,
   ValidationService,
-  createValidationService
+  createValidationService,
+  // Core services
+  CacheService,
+  RatingService,
+  ReportsService,
 };

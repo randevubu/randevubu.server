@@ -1,10 +1,15 @@
 import { PrismaClient } from '@prisma/client';
 import { NotificationService } from './notificationService';
+import { TranslationService } from '../../core/translationService';
 import { NotificationChannel } from '../../../types/business';
-import { NotificationPayload, NotificationResult, NotificationStatus } from '../../../types/notification';
+import {
+  NotificationPayload,
+  NotificationResult,
+  NotificationStatus,
+} from '../../../types/notification';
 import { RepositoryContainer } from '../../../repositories';
 import { UsageService } from '../usage/usageService';
-import logger from "../../../utils/Logger/logger";
+import logger from '../../../utils/Logger/logger';
 export interface TransactionalNotificationRequest {
   businessId: string;
   customerId: string;
@@ -81,7 +86,14 @@ export class UnifiedNotificationGateway {
     private repositories: RepositoryContainer,
     private usageService?: UsageService
   ) {
-    this.notificationService = new NotificationService(repositories, usageService);
+    // Create translation service for notification translations
+    const translationService = new TranslationService();
+
+    this.notificationService = new NotificationService(
+      repositories,
+      translationService,
+      usageService
+    );
   }
 
   /**
@@ -93,16 +105,21 @@ export class UnifiedNotificationGateway {
     request: TransactionalNotificationRequest
   ): Promise<NotificationGatewayResult> {
     // Get business notification settings
-    const businessSettings = await this.repositories.businessNotificationSettingsRepository.findByBusinessId(
-      request.businessId
-    );
+    const businessSettings =
+      await this.repositories.businessNotificationSettingsRepository.findByBusinessId(
+        request.businessId
+      );
 
     if (!businessSettings) {
-      logger.warn(`No notification settings found for business ${request.businessId}, using defaults`);
+      logger.warn(
+        `No notification settings found for business ${request.businessId}, using defaults`
+      );
     }
 
     // Get user notification preferences
-    const userPreferences = await this.notificationService.getNotificationPreferences(request.customerId);
+    const userPreferences = await this.notificationService.getNotificationPreferences(
+      request.customerId
+    );
 
     // Check if user has opted out of notifications
     if (userPreferences && !userPreferences.enableAppointmentReminders && !request.forceChannels) {
@@ -111,9 +128,9 @@ export class UnifiedNotificationGateway {
         results: [],
         skippedChannels: [
           { channel: NotificationChannel.PUSH, reason: 'User has disabled notifications' },
-          { channel: NotificationChannel.SMS, reason: 'User has disabled notifications' }
+          { channel: NotificationChannel.SMS, reason: 'User has disabled notifications' },
         ],
-        sentChannels: []
+        sentChannels: [],
       };
     }
 
@@ -122,7 +139,10 @@ export class UnifiedNotificationGateway {
     if (request.forceChannels) {
       channels = request.forceChannels;
     } else {
-      channels = this.determineEnabledChannels(businessSettings, userPreferences?.preferredChannels?.channels);
+      channels = this.determineEnabledChannels(
+        businessSettings,
+        userPreferences?.preferredChannels?.channels
+      );
     }
 
     // Check quiet hours (unless explicitly ignored)
@@ -130,13 +150,19 @@ export class UnifiedNotificationGateway {
       const now = new Date();
 
       // Check business quiet hours
-      if (businessSettings?.quietHours && this.isInQuietHours(now, businessSettings.quietHours, businessSettings.timezone)) {
+      if (
+        businessSettings?.quietHours &&
+        this.isInQuietHours(now, businessSettings.quietHours, businessSettings.timezone)
+      ) {
         logger.info(`Skipping notification - within business quiet hours`);
         return {
           success: false,
           results: [],
-          skippedChannels: channels.map(ch => ({ channel: ch, reason: 'Within business quiet hours' })),
-          sentChannels: []
+          skippedChannels: channels.map((ch) => ({
+            channel: ch,
+            reason: 'Within business quiet hours',
+          })),
+          sentChannels: [],
         };
       }
 
@@ -145,15 +171,18 @@ export class UnifiedNotificationGateway {
         const quietHoursConfig = {
           enabled: true,
           startTime: userPreferences.quietHours.start,
-          endTime: userPreferences.quietHours.end
+          endTime: userPreferences.quietHours.end,
         };
         if (this.isInQuietHours(now, quietHoursConfig, userPreferences.timezone)) {
           logger.info(`Skipping notification - within user quiet hours`);
           return {
             success: false,
             results: [],
-            skippedChannels: channels.map(ch => ({ channel: ch, reason: 'Within user quiet hours' })),
-            sentChannels: []
+            skippedChannels: channels.map((ch) => ({
+              channel: ch,
+              reason: 'Within user quiet hours',
+            })),
+            sentChannels: [],
           };
         }
       }
@@ -177,9 +206,7 @@ export class UnifiedNotificationGateway {
    * ALWAYS respects all business settings and user preferences.
    * No overrides allowed.
    */
-  async sendMarketing(
-    request: MarketingNotificationRequest
-  ): Promise<NotificationGatewayResult[]> {
+  async sendMarketing(request: MarketingNotificationRequest): Promise<NotificationGatewayResult[]> {
     const results: NotificationGatewayResult[] = [];
 
     for (const customerId of request.customerIds) {
@@ -191,7 +218,7 @@ export class UnifiedNotificationGateway {
         data: request.data,
         url: request.url,
         // Marketing cannot override settings
-        ignoreQuietHours: false
+        ignoreQuietHours: false,
       });
       results.push(result);
     }
@@ -204,16 +231,17 @@ export class UnifiedNotificationGateway {
    * NOTE: Only sends push notifications - SMS is reserved for customers only.
    * SMS notifications for business owners/staff have been removed per business decision.
    */
-  async sendSystemAlert(
-    request: SystemAlertRequest
-  ): Promise<NotificationGatewayResult> {
+  async sendSystemAlert(request: SystemAlertRequest): Promise<NotificationGatewayResult> {
     // Get business notification settings
-    const businessSettings = await this.repositories.businessNotificationSettingsRepository.findByBusinessId(
-      request.businessId
-    );
+    const businessSettings =
+      await this.repositories.businessNotificationSettingsRepository.findByBusinessId(
+        request.businessId
+      );
 
     if (!businessSettings) {
-      logger.warn(`No notification settings found for business ${request.businessId}, using defaults`);
+      logger.warn(
+        `No notification settings found for business ${request.businessId}, using defaults`
+      );
     }
 
     // Determine channels - for system alerts, use business settings
@@ -221,13 +249,19 @@ export class UnifiedNotificationGateway {
 
     // Check business quiet hours
     const now = new Date();
-    if (businessSettings?.quietHours && this.isInQuietHours(now, businessSettings.quietHours, businessSettings.timezone)) {
+    if (
+      businessSettings?.quietHours &&
+      this.isInQuietHours(now, businessSettings.quietHours, businessSettings.timezone)
+    ) {
       logger.info(`Skipping system alert - within business quiet hours`);
       return {
         success: false,
         results: [],
-        skippedChannels: channels.map(ch => ({ channel: ch, reason: 'Within business quiet hours' })),
-        sentChannels: []
+        skippedChannels: channels.map((ch) => ({
+          channel: ch,
+          reason: 'Within business quiet hours',
+        })),
+        sentChannels: [],
       };
     }
 
@@ -249,9 +283,7 @@ export class UnifiedNotificationGateway {
    * Send bulk notifications to multiple recipients
    * Useful for batch operations like closure notifications
    */
-  async sendBulk(
-    request: BulkNotificationRequest
-  ): Promise<{
+  async sendBulk(request: BulkNotificationRequest): Promise<{
     successful: number;
     failed: number;
     results: NotificationGatewayResult[];
@@ -263,7 +295,7 @@ export class UnifiedNotificationGateway {
     for (const recipient of request.recipients) {
       const personalizedData = {
         ...request.baseData,
-        ...recipient.personalizedData
+        ...recipient.personalizedData,
       };
 
       const result = await this.sendTransactional({
@@ -272,7 +304,7 @@ export class UnifiedNotificationGateway {
         title: request.title,
         body: request.body,
         data: personalizedData,
-        url: request.url
+        url: request.url,
       });
 
       results.push(result);
@@ -303,7 +335,7 @@ export class UnifiedNotificationGateway {
       const result = await smsService.sendSMS({
         phoneNumber,
         message,
-        context
+        context,
       });
 
       return {
@@ -311,14 +343,14 @@ export class UnifiedNotificationGateway {
         messageId: result.messageId,
         error: result.error,
         channel: NotificationChannel.SMS,
-        status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED
+        status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to send critical SMS',
         channel: NotificationChannel.SMS,
-        status: NotificationStatus.FAILED
+        status: NotificationStatus.FAILED,
       };
     }
   }
@@ -352,11 +384,11 @@ export class UnifiedNotificationGateway {
               title,
               body,
               data,
-              url
+              url,
             });
             results.push(...pushResults);
 
-            if (pushResults.some(r => r.success)) {
+            if (pushResults.some((r) => r.success)) {
               sentChannels.push(NotificationChannel.PUSH);
             }
             break;
@@ -369,7 +401,7 @@ export class UnifiedNotificationGateway {
               if (!canSendSms.allowed) {
                 skippedChannels.push({
                   channel: NotificationChannel.SMS,
-                  reason: `SMS quota exceeded: ${canSendSms.reason}`
+                  reason: `SMS quota exceeded: ${canSendSms.reason}`,
                 });
                 continue;
               }
@@ -380,7 +412,7 @@ export class UnifiedNotificationGateway {
             if (!user?.phoneNumber) {
               skippedChannels.push({
                 channel: NotificationChannel.SMS,
-                reason: 'User phone number not found'
+                reason: 'User phone number not found',
               });
               continue;
             }
@@ -394,7 +426,7 @@ export class UnifiedNotificationGateway {
             const result = await smsService.sendSMS({
               phoneNumber: user.phoneNumber,
               message: messageToSend,
-              context: { requestId: appointmentId || `notification-${Date.now()}` }
+              context: { requestId: appointmentId || `notification-${Date.now()}` },
             });
 
             // Record SMS usage
@@ -407,7 +439,7 @@ export class UnifiedNotificationGateway {
               messageId: result.messageId,
               error: result.error,
               channel: NotificationChannel.SMS,
-              status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED
+              status: result.success ? NotificationStatus.SENT : NotificationStatus.FAILED,
             });
 
             if (result.success) {
@@ -420,7 +452,7 @@ export class UnifiedNotificationGateway {
             // Email not implemented yet
             skippedChannels.push({
               channel: NotificationChannel.EMAIL,
-              reason: 'Email notifications not yet implemented'
+              reason: 'Email notifications not yet implemented',
             });
             break;
           }
@@ -428,7 +460,7 @@ export class UnifiedNotificationGateway {
           default:
             skippedChannels.push({
               channel,
-              reason: 'Unsupported channel'
+              reason: 'Unsupported channel',
             });
         }
       } catch (error) {
@@ -437,16 +469,16 @@ export class UnifiedNotificationGateway {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
           channel,
-          status: NotificationStatus.FAILED
+          status: NotificationStatus.FAILED,
         });
       }
     }
 
     return {
-      success: results.some(r => r.success),
+      success: results.some((r) => r.success),
       results,
       skippedChannels,
-      sentChannels
+      sentChannels,
     };
   }
 
@@ -477,7 +509,7 @@ export class UnifiedNotificationGateway {
 
     // Filter by user preferences if provided
     if (userPreferredChannels && userPreferredChannels.length > 0) {
-      return enabledChannels.filter(ch => userPreferredChannels.includes(ch));
+      return enabledChannels.filter((ch) => userPreferredChannels.includes(ch));
     }
 
     return enabledChannels;
@@ -488,9 +520,7 @@ export class UnifiedNotificationGateway {
    * NOTE: SMS is NOT available for business owners/staff - only PUSH notifications
    * SMS is reserved for customers only (via sendCriticalSMS)
    */
-  private determineEnabledChannelsForBusiness(
-    businessSettings: any
-  ): NotificationChannel[] {
+  private determineEnabledChannelsForBusiness(businessSettings: any): NotificationChannel[] {
     const enabledChannels: NotificationChannel[] = [];
 
     // Only push notifications for business owners/staff (SMS removed per business decision)
@@ -531,7 +561,7 @@ export class UnifiedNotificationGateway {
         hour12: false,
         timeZone: timezone,
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
       });
 
       const current = this.timeStringToMinutes(currentTimeStr);

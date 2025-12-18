@@ -11,17 +11,16 @@ import {
 } from '../schemas/pushNotification.schemas';
 import { AuthenticatedRequest } from '../types/request';
 import { NotificationStatus } from '../types/business';
-import {
-  handleRouteError,
-  sendSuccessResponse,
-  createErrorContext,
-  sendAppErrorResponse,
-} from '../utils/responseUtils';
+import { handleRouteError, createErrorContext, sendAppErrorResponse } from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
+import { ResponseHelper } from '../utils/responseHelper';
 
 export class PushNotificationController {
-  constructor(private notificationService: NotificationService) {}
+  constructor(
+    private notificationService: NotificationService,
+    private responseHelper: ResponseHelper
+  ) {}
 
   // Subscribe to push notifications
   subscribe = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -29,12 +28,9 @@ export class PushNotificationController {
       const userId = req.user!.id;
       const subscriptionData = pushSubscriptionRequestSchema.parse(req.body);
 
-      const subscription = await this.notificationService.subscribeToPush(
-        userId,
-        subscriptionData
-      );
+      const subscription = await this.notificationService.subscribeToPush(userId, subscriptionData);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.pushNotification.subscribed',
         {
@@ -48,11 +44,7 @@ export class PushNotificationController {
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
-        const error = new AppError(
-          'Invalid subscription data',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid subscription data', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
       handleRouteError(error, req, res);
@@ -72,7 +64,7 @@ export class PushNotificationController {
       );
 
       if (result) {
-        await sendSuccessResponse(
+        await this.responseHelper.success(
           res,
           'success.pushNotification.unsubscribed',
           undefined,
@@ -80,20 +72,12 @@ export class PushNotificationController {
           req
         );
       } else {
-        const error = new AppError(
-          'Subscription not found',
-          404,
-          ERROR_CODES.BUSINESS_NOT_FOUND
-        );
+        const error = new AppError('Subscription not found', 404, ERROR_CODES.BUSINESS_NOT_FOUND);
         return sendAppErrorResponse(res, error);
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
-        const error = new AppError(
-          'Invalid unsubscribe data',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid unsubscribe data', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
       handleRouteError(error, req, res);
@@ -104,10 +88,10 @@ export class PushNotificationController {
   getSubscriptions = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
-      
+
       // Validate and sanitize query parameters
       const activeOnly = req.query.activeOnly !== 'false';
-      
+
       // Additional validation for activeOnly parameter
       if (req.query.activeOnly && !['true', 'false'].includes(req.query.activeOnly as string)) {
         const error = new AppError(
@@ -123,10 +107,10 @@ export class PushNotificationController {
         activeOnly
       );
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.pushNotification.subscriptionsRetrieved',
-        subscriptions.map(sub => ({
+        subscriptions.map((sub) => ({
           id: sub.id,
           deviceName: sub.deviceName,
           deviceType: sub.deviceType,
@@ -153,7 +137,7 @@ export class PushNotificationController {
         preferences
       );
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.pushNotification.preferencesUpdated',
         {
@@ -171,11 +155,7 @@ export class PushNotificationController {
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
-        const error = new AppError(
-          'Invalid preferences data',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid preferences data', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
       handleRouteError(error, req, res);
@@ -191,7 +171,7 @@ export class PushNotificationController {
 
       if (!preferences) {
         // Return default preferences
-        await sendSuccessResponse(
+        await this.responseHelper.success(
           res,
           'success.pushNotification.defaultPreferencesRetrieved',
           {
@@ -209,7 +189,7 @@ export class PushNotificationController {
         return;
       }
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.pushNotification.preferencesRetrieved',
         {
@@ -237,10 +217,10 @@ export class PushNotificationController {
 
       const results = await this.notificationService.sendPushNotification(notificationData);
 
-      const successful = results.filter(r => r.success).length;
-      const failed = results.filter(r => !r.success).length;
+      const successful = results.filter((r) => r.success).length;
+      const failed = results.filter((r) => !r.success).length;
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.pushNotification.sent',
         {
@@ -248,8 +228,8 @@ export class PushNotificationController {
           summary: {
             total: results.length,
             successful,
-            failed
-          }
+            failed,
+          },
         },
         200,
         req,
@@ -257,11 +237,7 @@ export class PushNotificationController {
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
-        const error = new AppError(
-          'Invalid notification data',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid notification data', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
       handleRouteError(error, req, res);
@@ -281,13 +257,13 @@ export class PushNotificationController {
         icon: testData.icon,
         badge: testData.badge,
         data: { ...testData.data, isTest: true },
-        url: testData.url
+        url: testData.url,
       });
 
-      const successful = results.filter(r => r.success).length;
-      const failed = results.filter(r => !r.success).length;
+      const successful = results.filter((r) => r.success).length;
+      const failed = results.filter((r) => !r.success).length;
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.pushNotification.testSent',
         {
@@ -295,8 +271,8 @@ export class PushNotificationController {
           summary: {
             total: results.length,
             successful,
-            failed
-          }
+            failed,
+          },
         },
         200,
         req,
@@ -339,28 +315,25 @@ export class PushNotificationController {
         return sendAppErrorResponse(res, error);
       }
 
-      const result = await this.notificationService.sendBatchPushNotifications(
-        batchData.userIds,
-        {
-          title: batchData.title,
-          body: batchData.body,
-          icon: batchData.icon,
-          badge: batchData.badge,
-          data: batchData.data,
-          url: batchData.url
-        }
-      );
+      const result = await this.notificationService.sendBatchPushNotifications(batchData.userIds, {
+        title: batchData.title,
+        body: batchData.body,
+        icon: batchData.icon,
+        badge: batchData.badge,
+        data: batchData.data,
+        url: batchData.url,
+      });
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.pushNotification.batchSent',
         {
           summary: {
             total: batchData.userIds.length,
             successful: result.successful,
-            failed: result.failed
+            failed: result.failed,
           },
-          results: result.results
+          results: result.results,
         },
         200,
         req,
@@ -407,7 +380,7 @@ export class PushNotificationController {
 
       const result = await this.notificationService.getNotificationHistory(userId, options);
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.pushNotification.historyRetrieved',
         {
@@ -416,19 +389,15 @@ export class PushNotificationController {
             total: result.total,
             page: result.page,
             totalPages: result.totalPages,
-            limit: options.limit
-          }
+            limit: options.limit,
+          },
         },
         200,
         req
       );
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
-        const error = new AppError(
-          'Invalid query parameters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
+        const error = new AppError('Invalid query parameters', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
       handleRouteError(error, req, res);
@@ -449,7 +418,7 @@ export class PushNotificationController {
         return sendAppErrorResponse(res, error);
       }
 
-      await sendSuccessResponse(
+      await this.responseHelper.success(
         res,
         'success.pushNotification.vapidKeyRetrieved',
         { publicKey },
@@ -466,14 +435,14 @@ export class PushNotificationController {
     try {
       const publicKey = await this.notificationService.getVapidPublicKey();
       const isConfigured = !!publicKey;
-      
-      await sendSuccessResponse(
+
+      await this.responseHelper.success(
         res,
         'success.pushNotification.healthCheckCompleted',
         {
           pushNotificationsEnabled: isConfigured,
           vapidConfigured: isConfigured,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         },
         200,
         req

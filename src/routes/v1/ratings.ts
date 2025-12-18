@@ -1,56 +1,36 @@
 import { Router } from 'express';
 import { RatingController } from '../../controllers/ratingController';
-import { AuthMiddleware } from '../../middleware/auth';
-import { RatingService } from '../../services/domain/rating/ratingService';
-import { RatingRepository } from '../../repositories/ratingRepository';
-import { BusinessRepository } from '../../repositories/businessRepository';
-import { RepositoryContainer } from '../../repositories';
-import { ServiceContainer } from '../../services';
-import prisma from '../../lib/prisma';
+import { requireAuth, withAuth } from '../../middleware/authUtils';
 
-const router = Router();
+export function createRatingRoutes(ratingController: RatingController): Router {
+  const router = Router();
 
-// Initialize dependencies
-const repositories = new RepositoryContainer(prisma);
-const services = new ServiceContainer(repositories, prisma);
-const authMiddleware = new AuthMiddleware(
-  repositories,
-  services.tokenService,
-  services.rbacService
-);
+  // Rating routes
+  router.post(
+    '/businesses/:businessId/ratings',
+    requireAuth,
+    withAuth((req, res) => ratingController.submitRating(req, res))
+  );
 
-const ratingRepository = new RatingRepository(prisma);
-const businessRepository = new BusinessRepository(prisma);
-const ratingService = new RatingService(ratingRepository, businessRepository);
-const ratingController = new RatingController(ratingService);
+  router.get('/businesses/:businessId/ratings', (req, res) =>
+    ratingController.getBusinessRatings(req, res)
+  );
 
-// Rating routes
-router.post(
-  '/businesses/:businessId/ratings',
-  authMiddleware.authenticate,
-  ratingController.submitRating.bind(ratingController)
-);
+  router.get(
+    '/businesses/:businessId/appointments/:appointmentId/can-rate',
+    requireAuth,
+    withAuth((req, res) => ratingController.canUserRate(req, res))
+  );
 
-router.get(
-  '/businesses/:businessId/ratings',
-  ratingController.getBusinessRatings.bind(ratingController)
-);
+  router.get(
+    '/appointments/:appointmentId/rating',
+    requireAuth,
+    withAuth((req, res) => ratingController.getUserRating(req, res))
+  );
 
-router.get(
-  '/businesses/:businessId/appointments/:appointmentId/can-rate',
-  authMiddleware.authenticate,
-  ratingController.canUserRate.bind(ratingController)
-);
+  router.post('/businesses/:businessId/ratings/refresh-cache', (req, res) =>
+    ratingController.refreshRatingCache(req, res)
+  );
 
-router.get(
-  '/appointments/:appointmentId/rating',
-  authMiddleware.authenticate,
-  ratingController.getUserRating.bind(ratingController)
-);
-
-router.post(
-  '/businesses/:businessId/ratings/refresh-cache',
-  ratingController.refreshRatingCache.bind(ratingController)
-);
-
-export default router;
+  return router;
+}
