@@ -93,6 +93,14 @@ export function createV1Routes(
     createBusinessRoutes(
       controllers.businessController,
       controllers.subscriptionController,
+      controllers.staffController,
+      controllers.businessHoursController,
+      controllers.businessImageController,
+      controllers.businessSettingsController,
+      controllers.businessNotificationController,
+      controllers.cancellationPolicyController,
+      controllers.customerManagementController,
+      controllers.googleIntegrationController,
       cacheInvalidation
     )
   );

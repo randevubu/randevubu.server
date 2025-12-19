@@ -20,6 +20,14 @@ import { PaymentMethodController } from './paymentMethodController';
 import { RatingController } from './ratingController';
 import { ReportsController } from './reportsController';
 import { PaymentController } from './paymentController';
+// New business-related controllers (refactored from businessController)
+import { BusinessHoursController } from './businessHoursController';
+import { BusinessImageController } from './businessImageController';
+import { BusinessSettingsController } from './businessSettingsController';
+import { BusinessNotificationController } from './businessNotificationController';
+import { CancellationPolicyController } from './cancellationPolicyController';
+import { CustomerManagementController } from './customerManagementController';
+import { GoogleIntegrationController } from './googleIntegrationController';
 
 // Controller container for dependency injection
 export class ControllerContainer {
@@ -42,6 +50,14 @@ export class ControllerContainer {
   public readonly ratingController: RatingController;
   public readonly reportsController: ReportsController;
   public readonly paymentController: PaymentController;
+  // New business-related controllers
+  public readonly businessHoursController: BusinessHoursController;
+  public readonly businessImageController: BusinessImageController;
+  public readonly businessSettingsController: BusinessSettingsController;
+  public readonly businessNotificationController: BusinessNotificationController;
+  public readonly cancellationPolicyController: CancellationPolicyController;
+  public readonly customerManagementController: CustomerManagementController;
+  public readonly googleIntegrationController: GoogleIntegrationController;
 
   constructor(repositories: RepositoryContainer, services: ServiceContainer) {
     // Create a single ResponseHelper instance with TranslationService
@@ -81,9 +97,7 @@ export class ControllerContainer {
       services.businessService,
       responseHelper,
       services.tokenService,
-      services.rbacService,
-      services.staffService,
-      services.notificationService
+      services.rbacService
     );
     this.businessClosureController = new BusinessClosureController(
       services.businessClosureService,
@@ -112,6 +126,38 @@ export class ControllerContainer {
       services.subscriptionService,
       responseHelper
     );
+
+    // Initialize new business-related controllers
+    this.businessHoursController = new BusinessHoursController(
+      services.businessService,
+      responseHelper
+    );
+    this.businessImageController = new BusinessImageController(
+      services.businessService,
+      responseHelper
+    );
+    this.businessSettingsController = new BusinessSettingsController(
+      services.businessService,
+      responseHelper
+    );
+    this.businessNotificationController = new BusinessNotificationController(
+      services.businessService,
+      responseHelper,
+      services.rbacService,
+      services.notificationService
+    );
+    this.cancellationPolicyController = new CancellationPolicyController(
+      services.businessService,
+      responseHelper
+    );
+    this.customerManagementController = new CustomerManagementController(
+      services.businessService,
+      responseHelper
+    );
+    this.googleIntegrationController = new GoogleIntegrationController(
+      services.businessService,
+      responseHelper
+    );
   }
 }
 
@@ -136,4 +182,12 @@ export {
   RatingController,
   ReportsController,
   PaymentController,
+  // New business-related controllers
+  BusinessHoursController,
+  BusinessImageController,
+  BusinessSettingsController,
+  BusinessNotificationController,
+  CancellationPolicyController,
+  CustomerManagementController,
+  GoogleIntegrationController,
 };

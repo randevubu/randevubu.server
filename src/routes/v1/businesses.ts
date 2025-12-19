@@ -1,6 +1,15 @@
 import { Router } from 'express';
 import { BusinessController } from '../../controllers/businessController';
 import { SubscriptionController } from '../../controllers/subscriptionController';
+import { StaffController } from '../../controllers/staffController';
+// New specialized business controllers
+import { BusinessHoursController } from '../../controllers/businessHoursController';
+import { BusinessImageController } from '../../controllers/businessImageController';
+import { BusinessSettingsController } from '../../controllers/businessSettingsController';
+import { BusinessNotificationController } from '../../controllers/businessNotificationController';
+import { CancellationPolicyController } from '../../controllers/cancellationPolicyController';
+import { CustomerManagementController } from '../../controllers/customerManagementController';
+import { GoogleIntegrationController } from '../../controllers/googleIntegrationController';
 import {
   semiDynamicCache,
   dynamicCache,
@@ -40,6 +49,14 @@ import logger from '../../utils/Logger/logger';
 export function createBusinessRoutes(
   businessController: BusinessController,
   subscriptionController: SubscriptionController,
+  staffController: StaffController,
+  businessHoursController: BusinessHoursController,
+  businessImageController: BusinessImageController,
+  businessSettingsController: BusinessSettingsController,
+  businessNotificationController: BusinessNotificationController,
+  cancellationPolicyController: CancellationPolicyController,
+  customerManagementController: CustomerManagementController,
+  googleIntegrationController: GoogleIntegrationController,
   cacheInvalidation?: any
 ): Router {
   const router = Router();
@@ -480,7 +497,7 @@ export function createBusinessRoutes(
     '/my-business/price-settings',
     dynamicCache,
     requireBusinessAccess,
-    businessController.getPriceSettings.bind(businessController)
+    businessSettingsController.getPriceSettings.bind(businessSettingsController)
   );
 
   router.put(
@@ -488,7 +505,7 @@ export function createBusinessRoutes(
     cacheInvalidation.invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessPriceSettingsSchema),
-    businessController.updatePriceSettings.bind(businessController)
+    businessSettingsController.updatePriceSettings.bind(businessSettingsController)
   );
 
   /**
@@ -545,7 +562,7 @@ export function createBusinessRoutes(
     '/my-business/staff-privacy-settings',
     dynamicCache,
     requireBusinessAccess,
-    businessController.getStaffPrivacySettings.bind(businessController)
+    businessSettingsController.getStaffPrivacySettings.bind(businessSettingsController)
   );
 
   /**
@@ -608,7 +625,7 @@ export function createBusinessRoutes(
     cacheInvalidation.invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessStaffPrivacySettingsSchema),
-    businessController.updateStaffPrivacySettings.bind(businessController)
+    businessSettingsController.updateStaffPrivacySettings.bind(businessSettingsController)
   );
 
   // Business notification settings routes
@@ -721,7 +738,7 @@ export function createBusinessRoutes(
     '/my-business/notification-settings',
     dynamicCache,
     requireBusinessAccess,
-    businessController.getNotificationSettings.bind(businessController)
+    businessNotificationController.getNotificationSettings.bind(businessNotificationController)
   );
 
   /**
@@ -828,7 +845,7 @@ export function createBusinessRoutes(
     requireBusinessAccess,
     validateBody(updateBusinessNotificationSettingsSchema),
     validateNotificationSettings,
-    businessController.updateNotificationSettings.bind(businessController)
+    businessNotificationController.updateNotificationSettings.bind(businessNotificationController)
   );
 
   /**
@@ -876,7 +893,7 @@ export function createBusinessRoutes(
     cacheInvalidation.invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(testReminderSchema),
-    businessController.testReminder.bind(businessController)
+    businessNotificationController.testReminder.bind(businessNotificationController)
   );
 
   // Business Reservation Settings routes
@@ -927,7 +944,7 @@ export function createBusinessRoutes(
     '/my-business/reservation-settings',
     dynamicCache,
     requireBusinessAccess,
-    businessController.getReservationSettings.bind(businessController)
+    businessSettingsController.getReservationSettings.bind(businessSettingsController)
   );
 
   /**
@@ -976,7 +993,7 @@ export function createBusinessRoutes(
     cacheInvalidation.invalidateBusinessCache,
     requireBusinessAccess,
     validateBody(updateBusinessReservationSettingsSchema),
-    businessController.updateReservationSettings.bind(businessController)
+    businessSettingsController.updateReservationSettings.bind(businessSettingsController)
   );
 
   // User's services access
@@ -1602,7 +1619,7 @@ export function createBusinessRoutes(
     '/:id/hours',
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
     requireSpecificBusinessAccess(),
-    businessController.updateBusinessHours.bind(businessController)
+    businessHoursController.updateBusinessHours.bind(businessHoursController)
   );
 
   // Enhanced Business Hours Management Routes
@@ -1636,7 +1653,7 @@ export function createBusinessRoutes(
     businessCache,
     requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
     requireSpecificBusinessAccess('businessId'),
-    businessController.getBusinessHours.bind(businessController)
+    businessHoursController.getBusinessHours.bind(businessHoursController)
   );
 
   /**
@@ -1672,7 +1689,7 @@ export function createBusinessRoutes(
   router.get(
     '/:businessId/hours/status',
     semiDynamicCache,
-    businessController.getBusinessHoursStatus.bind(businessController)
+    businessHoursController.getBusinessHoursStatus.bind(businessHoursController)
   );
 
   /**
@@ -1761,7 +1778,7 @@ export function createBusinessRoutes(
     '/:businessId/hours/overrides',
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
     requireSpecificBusinessAccess('businessId'),
-    businessController.createBusinessHoursOverride.bind(businessController)
+    businessHoursController.createBusinessHoursOverride.bind(businessHoursController)
   );
 
   /**
@@ -1825,7 +1842,7 @@ export function createBusinessRoutes(
     '/:businessId/hours/overrides/:date',
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
     requireSpecificBusinessAccess('businessId'),
-    businessController.updateBusinessHoursOverride.bind(businessController)
+    businessHoursController.updateBusinessHoursOverride.bind(businessHoursController)
   );
 
   /**
@@ -1862,7 +1879,7 @@ export function createBusinessRoutes(
     '/:businessId/hours/overrides/:date',
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
     requireSpecificBusinessAccess('businessId'),
-    businessController.deleteBusinessHoursOverride.bind(businessController)
+    businessHoursController.deleteBusinessHoursOverride.bind(businessHoursController)
   );
 
   /**
@@ -1904,7 +1921,7 @@ export function createBusinessRoutes(
     businessCache,
     requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
     requireSpecificBusinessAccess('businessId'),
-    businessController.getBusinessHoursOverrides.bind(businessController)
+    businessHoursController.getBusinessHoursOverrides.bind(businessHoursController)
   );
 
   /**
@@ -2331,7 +2348,7 @@ export function createBusinessRoutes(
     '/:businessId/payment-methods',
     requireAny([PermissionName.VIEW_ALL_BUSINESSES, PermissionName.VIEW_OWN_BUSINESS]),
     requireSpecificBusinessAccess('businessId'),
-    businessController.getPaymentMethods.bind(businessController)
+    businessSettingsController.getPaymentMethods.bind(businessSettingsController)
   );
 
   /**
@@ -2416,7 +2433,7 @@ export function createBusinessRoutes(
     '/:businessId/payment-methods',
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
     requireSpecificBusinessAccess('businessId'),
-    businessController.addPaymentMethod.bind(businessController)
+    businessSettingsController.addPaymentMethod.bind(businessSettingsController)
   );
 
   // Staff Management Routes
@@ -2451,7 +2468,7 @@ export function createBusinessRoutes(
     requireAuth,
     attachBusinessContext,
     validateQuery(getBusinessStaffQuerySchema),
-    businessController.getBusinessStaff.bind(businessController)
+    staffController.getBusinessStaff.bind(staffController)
   );
 
   /**
@@ -2510,7 +2527,7 @@ export function createBusinessRoutes(
     '/:businessId/staff/invite',
     requireAuth,
     validateBody(inviteStaffSchema),
-    businessController.inviteStaff.bind(businessController)
+    staffController.inviteStaff.bind(staffController)
   );
 
   /**
@@ -2565,7 +2582,7 @@ export function createBusinessRoutes(
     '/:businessId/staff/verify-invitation',
     requireAuth,
     validateBody(verifyStaffInvitationSchema),
-    businessController.verifyStaffInvitation.bind(businessController)
+    staffController.verifyStaffInvitation.bind(staffController)
   );
 
   // Image Management Routes
@@ -2639,7 +2656,7 @@ export function createBusinessRoutes(
     requireAuth,
     uploadSingleImage,
     handleMulterError,
-    businessController.uploadImage.bind(businessController)
+    businessImageController.uploadImage.bind(businessImageController)
   );
 
   /**
@@ -2678,7 +2695,7 @@ export function createBusinessRoutes(
   router.delete(
     '/:businessId/images/:imageType',
     requireAuth,
-    businessController.deleteImage.bind(businessController)
+    businessImageController.deleteImage.bind(businessImageController)
   );
 
   /**
@@ -2723,7 +2740,7 @@ export function createBusinessRoutes(
   router.delete(
     '/:businessId/images/gallery',
     requireAuth,
-    businessController.deleteGalleryImage.bind(businessController)
+    businessImageController.deleteGalleryImage.bind(businessImageController)
   );
 
   /**
@@ -2784,7 +2801,7 @@ export function createBusinessRoutes(
   router.get(
     '/:businessId/images',
     requireAuth,
-    businessController.getBusinessImages.bind(businessController)
+    businessImageController.getBusinessImages.bind(businessImageController)
   );
 
   /**
@@ -2832,7 +2849,7 @@ export function createBusinessRoutes(
   router.put(
     '/:businessId/images/gallery',
     requireAuth,
-    businessController.updateGalleryImages.bind(businessController)
+    businessImageController.updateGalleryImages.bind(businessImageController)
   );
 
   // Google Integration Routes (MUST be before catch-all route)
@@ -2841,13 +2858,13 @@ export function createBusinessRoutes(
     '/:id/google-integration',
     requireAuth,
     requireSpecificBusinessAccess('id'),
-    businessController.updateGoogleIntegration.bind(businessController)
+    googleIntegrationController.updateGoogleIntegration.bind(googleIntegrationController)
   );
 
   // GET is public - anyone can see Google integration info for a business
   router.get(
     '/:id/google-integration',
-    businessController.getGoogleIntegration.bind(businessController)
+    googleIntegrationController.getGoogleIntegration.bind(googleIntegrationController)
   );
 
   // Add a catch-all route that tries slug first, then ID if slug doesn't work
@@ -2983,7 +3000,7 @@ export function createBusinessRoutes(
   router.get(
     '/my-business/cancellation-policies',
     requireBusinessAccess,
-    businessController.getCancellationPolicies.bind(businessController)
+    cancellationPolicyController.getCancellationPolicies.bind(cancellationPolicyController)
   );
 
   /**
@@ -3059,7 +3076,7 @@ export function createBusinessRoutes(
     '/my-business/cancellation-policies',
     requireBusinessAccess,
     validateBody(updateBusinessCancellationPolicySchema),
-    businessController.updateCancellationPolicies.bind(businessController)
+    cancellationPolicyController.updateCancellationPolicies.bind(cancellationPolicyController)
   );
 
   /**
@@ -3151,7 +3168,7 @@ export function createBusinessRoutes(
   router.get(
     '/my-business/customer-policy-status/:customerId',
     requireBusinessAccess,
-    businessController.getCustomerPolicyStatus.bind(businessController)
+    cancellationPolicyController.getCustomerPolicyStatus.bind(cancellationPolicyController)
   );
 
   // Customer Management Settings Routes
@@ -3279,7 +3296,7 @@ export function createBusinessRoutes(
   router.get(
     '/my-business/customer-management-settings',
     requireBusinessAccess,
-    businessController.getCustomerManagementSettings.bind(businessController)
+    customerManagementController.getCustomerManagementSettings.bind(customerManagementController)
   );
 
   /**
@@ -3451,7 +3468,7 @@ export function createBusinessRoutes(
     '/my-business/customer-management-settings',
     requireBusinessAccess,
     validateBody(updateBusinessCustomerManagementSchema),
-    businessController.updateCustomerManagementSettings.bind(businessController)
+    customerManagementController.updateCustomerManagementSettings.bind(customerManagementController)
   );
 
   /**
@@ -3489,7 +3506,7 @@ export function createBusinessRoutes(
   router.get(
     '/my-business/customers/:customerId/notes',
     requireBusinessAccess,
-    businessController.getCustomerNotes.bind(businessController)
+    customerManagementController.getCustomerNotes.bind(customerManagementController)
   );
 
   /**
@@ -3546,7 +3563,7 @@ export function createBusinessRoutes(
   router.post(
     '/my-business/customers/:customerId/notes',
     requireBusinessAccess,
-    businessController.addCustomerNote.bind(businessController)
+    customerManagementController.addCustomerNote.bind(customerManagementController)
   );
 
   /**
@@ -3578,7 +3595,7 @@ export function createBusinessRoutes(
   router.get(
     '/my-business/customers/:customerId/loyalty-status',
     requireBusinessAccess,
-    businessController.getCustomerLoyaltyStatus.bind(businessController)
+    customerManagementController.getCustomerLoyaltyStatus.bind(customerManagementController)
   );
 
   /**
@@ -3612,7 +3629,7 @@ export function createBusinessRoutes(
   router.get(
     '/my-business/appointments/:appointmentId/evaluation',
     requireBusinessAccess,
-    businessController.getCustomerEvaluation.bind(businessController)
+    customerManagementController.getCustomerEvaluation.bind(customerManagementController)
   );
 
   /**
@@ -3693,7 +3710,7 @@ export function createBusinessRoutes(
   router.post(
     '/my-business/appointments/:appointmentId/evaluation',
     requireBusinessAccess,
-    businessController.submitCustomerEvaluation.bind(businessController)
+    customerManagementController.submitCustomerEvaluation.bind(customerManagementController)
   );
 
   return router;
