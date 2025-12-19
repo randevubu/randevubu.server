@@ -1,5 +1,4 @@
 import swaggerJsdoc from 'swagger-jsdoc';
-import { SwaggerUiOptions } from 'swagger-ui-express';
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -19,10 +18,12 @@ const options: swaggerJsdoc.Options = {
     },
     servers: [
       {
-        url: process.env.NODE_ENV === 'production' 
-          ? 'https://api.randevubu.com'
-          : 'http://localhost:3000',
-        description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server',
+        url:
+          process.env.NODE_ENV === 'production'
+            ? 'https://api.randevubu.com'
+            : 'http://localhost:3000',
+        description:
+          process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server',
       },
     ],
     components: {
@@ -147,7 +148,7 @@ const options: swaggerJsdoc.Options = {
           enum: ['REGISTRATION', 'LOGIN', 'PHONE_CHANGE', 'ACCOUNT_RECOVERY'],
           example: 'LOGIN',
         },
-        
+
         // User Schemas
         User: {
           type: 'object',
@@ -225,7 +226,7 @@ const options: swaggerJsdoc.Options = {
             },
             price: {
               type: 'number',
-              example: 45.00,
+              example: 45.0,
             },
             currency: {
               type: 'string',
@@ -302,7 +303,7 @@ const options: swaggerJsdoc.Options = {
               type: 'number',
               minimum: 0,
               maximum: 10000,
-              example: 45.00,
+              example: 45.0,
               description: 'Service price (0-10,000)',
             },
             currency: {
@@ -386,7 +387,8 @@ const options: swaggerJsdoc.Options = {
             description: {
               type: 'string',
               nullable: true,
-              example: 'Professional hair and beauty services including haircuts, styling, coloring, and beauty treatments',
+              example:
+                'Professional hair and beauty services including haircuts, styling, coloring, and beauty treatments',
               description: 'Business description',
             },
             email: {
@@ -622,7 +624,8 @@ const options: swaggerJsdoc.Options = {
             description: {
               type: 'string',
               maxLength: 1000,
-              example: 'Professional hair and beauty services including haircuts, styling, coloring, and beauty treatments',
+              example:
+                'Professional hair and beauty services including haircuts, styling, coloring, and beauty treatments',
               description: 'Business description (optional, max 1000 characters)',
             },
             email: {
@@ -715,7 +718,7 @@ const options: swaggerJsdoc.Options = {
             },
           ],
         },
-        
+
         // Token Schemas
         TokenPair: {
           type: 'object',
@@ -750,7 +753,8 @@ const options: swaggerJsdoc.Options = {
               $ref: '#/components/schemas/PhoneNumber',
             },
           },
-          description: 'Backend automatically detects if this is a login or registration based on whether the user exists in the database.',
+          description:
+            'Backend automatically detects if this is a login or registration based on whether the user exists in the database.',
         },
         VerifyLoginRequest: {
           type: 'object',
@@ -791,14 +795,14 @@ const options: swaggerJsdoc.Options = {
               type: 'string',
               minLength: 1,
               maxLength: 50,
-              pattern: '^[a-zA-Z\\s\\-\']+$',
+              pattern: "^[a-zA-Z\\s\\-']+$",
               example: 'John',
             },
             lastName: {
               type: 'string',
               minLength: 1,
               maxLength: 50,
-              pattern: '^[a-zA-Z\\s\\-\']+$',
+              pattern: "^[a-zA-Z\\s\\-']+$",
               example: 'Doe',
             },
             avatar: {
@@ -1069,35 +1073,16 @@ const options: swaggerJsdoc.Options = {
       },
       {
         name: 'Customer Management',
-        description: 'Customer information, banning, flagging, and behavior management for business owners',
+        description:
+          'Customer information, banning, flagging, and behavior management for business owners',
       },
     ],
   },
-  apis: [
-    './src/routes/**/*.ts',
-    './src/controllers/**/*.ts',
-    './src/index.ts',
-  ],
+  apis: ['./src/routes/**/*.ts', './src/controllers/**/*.ts', './src/index.ts'],
 };
 
-export const swaggerSpec = swaggerJsdoc(options);
+// Generate OpenAPI specification from JSDoc comments
+export const openapiSpec = swaggerJsdoc(options);
 
-export const swaggerUiOptions: SwaggerUiOptions = {
-  customCss: `
-    .swagger-ui .topbar { display: none }
-    .swagger-ui .info .title { color: #3b82f6 }
-    .swagger-ui .scheme-container { background: #f8fafc; padding: 20px; border-radius: 8px; }
-  `,
-  customSiteTitle: 'RandevuBu API Documentation',
-  customfavIcon: '/favicon.ico',
-  swaggerOptions: {
-    persistAuthorization: true,
-    displayRequestDuration: true,
-    filter: true,
-    showExtensions: true,
-    showCommonExtensions: true,
-    docExpansion: 'list',
-    defaultModelsExpandDepth: 2,
-    defaultModelExpandDepth: 2,
-  },
-};
+// Export as swaggerSpec for backward compatibility (can be renamed gradually)
+export const swaggerSpec = openapiSpec;

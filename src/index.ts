@@ -10,9 +10,9 @@ import express, { Express, NextFunction, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import swaggerUi from 'swagger-ui-express';
 import { getMetrics, metricsMiddleware } from './utils/metrics';
-import { swaggerSpec, swaggerUiOptions } from './config/swagger';
+import { swaggerSpec } from './config/openapi';
+import { generateScalarHTML, scalarConfig } from './config/scalar';
 import { ControllerContainer } from './controllers';
 import prisma from './lib/prisma';
 import { initializeBusinessContextMiddleware } from './middleware/attachBusinessContext';
@@ -144,8 +144,8 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        styleSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+        scriptSrc: ["'self'", 'https://cdn.jsdelivr.net'],
         imgSrc: ["'self'", 'data:', 'https:'],
         fontSrc: ["'self'", 'https:', 'data:'],
         connectSrc: ["'self'", 'http://localhost:3000', 'http://localhost:3001'],
@@ -398,10 +398,13 @@ app.get('/health', async (req: Request, res: Response) => {
 app.use(metricsMiddleware);
 app.get('/metrics', getMetrics);
 
-// API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
+// API Documentation - Scalar (Modern API Documentation UI)
+app.get('/api-docs', (req: Request, res: Response) => {
+  const html = generateScalarHTML('/api-docs.json', scalarConfig);
+  res.send(html);
+});
 
-// API JSON specification
+// OpenAPI Specification (JSON format)
 app.get('/api-docs.json', (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
@@ -464,7 +467,7 @@ const server = app.listen(PORT, async () => {
 
   logger.info(`🚀 Server is running on port ${PORT}`);
   logger.info(`📱 Health check: http://localhost:${PORT}/health`);
-  logger.info(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
+  logger.info(`✨ API Documentation (Scalar): http://localhost:${PORT}/api-docs`);
   logger.info(`📋 API Spec JSON: http://localhost:${PORT}/api-docs.json`);
   logger.info(`🌐 Environment: ${config.NODE_ENV}`);
   logger.info(`📊 API Version: ${config.API_VERSION}`);
