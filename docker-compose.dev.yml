@@ -72,6 +72,21 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
 
+  # Redis Insight - Redis GUI (Development)
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: randevubu-redisinsight-dev
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_dev_data:/data
+    networks:
+      - randevubu-dev-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # Nginx (Development - Simple proxy)
   nginx:
     image: nginx:alpine
@@ -127,6 +142,8 @@ volumes:
   postgres_dev_data:
     driver: local
   redis_dev_data:
+    driver: local
+  redisinsight_dev_data:
     driver: local
   prometheus_dev_data:
     driver: local

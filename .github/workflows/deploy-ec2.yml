@@ -1,0 +1,29 @@
+name: Deploy API to EC2 (Server A)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'randevubu.server/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Deploy to Server A via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_A_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/ubuntu/randevubu-infrastructure/server-a-api
+            # Pull latest changes (assuming you have a git repo setup on the server or copy files over)
+            git pull origin main
+            
+            # Rebuild and restart the containers
+            docker-compose pull
+            docker-compose up -d --build

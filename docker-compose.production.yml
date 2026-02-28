@@ -51,10 +51,7 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
-    command: >
-      sh -c "cp /usr/local/etc/redis/redis.conf /tmp/redis.conf && 
-             sed -i \"s|requirepass .*|requirepass ${REDIS_PASSWORD}|\" /tmp/redis.conf && 
-             redis-server /tmp/redis.conf"
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD:-redis_password}
     deploy:
       resources:
         limits:
