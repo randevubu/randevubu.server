@@ -12,7 +12,7 @@ import * as path from 'path';
 // Load environment variables
 const envFile = process.env.NODE_ENV === 'production' 
   ? '.env.production' 
-  : '.env';
+  : '.env.development';
 
 console.log(`📁 Loading environment from: ${envFile}`);
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });

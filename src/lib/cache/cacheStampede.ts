@@ -1,5 +1,5 @@
-import redis from '../redis/redis';
-import logger from "../../utils/Logger/logger";
+import redis from '../../services/redis-client';
+import logger from '../../utils/Logger/logger';
 
 /**
  * Lua script for atomic lock release

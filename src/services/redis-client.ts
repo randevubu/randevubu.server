@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
-import { config } from '../../config/environment';
-import logger from "../../utils/Logger/logger";
+import { config } from '../config/environment';
+import logger from '../utils/Logger/logger';
 // Redis connection configuration optimized for production (Netflix/Airbnb-style)
 const redisConfig = {
   host: config.REDIS_HOST,
@@ -620,3 +620,4 @@ export class CacheManager {
 
 // Export cache manager instance
 export const cacheManager = new CacheManager(redis);
+    

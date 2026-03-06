@@ -4,9 +4,13 @@ yarn-debug.log*
 yarn-error.log*
 .env
 .env.production
+.env.development
 .env.local
 .env.*.local
 .DS_Store
+Dockerfile
+docker-compose.dev.yml
+docker-compose.production.yml
 *.log
 logs/
 uploads/

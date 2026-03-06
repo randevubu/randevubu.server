@@ -1,6 +1,6 @@
 import { NextFunction, Response } from 'express';
 import { AuthenticatedRequest } from '../types/request';
-import { cacheManager } from '../lib/redis/redis';
+import { cacheManager } from '../services/redis-client';
 import logger from "../utils/Logger/logger";
 /**
  * Production-ready user-based rate limiting middleware

@@ -6,7 +6,7 @@
  */
 
 const { Netgsm } = require('@netgsm/sms');
-require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env' });
+require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development' });
 
 // Get environment variables
 const username = process.env.NETGSM_USERNAME || '';

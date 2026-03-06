@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import type { CacheService } from '../services/core/cacheService';
-import { cacheManager } from '../lib/redis/redis';
+import { cacheManager } from '../services/redis-client';
 import { CachedRequest, CacheConfig, CacheResponse } from '../types/cache';
 import { CacheKeyGenerator } from '../utils/cacheKeyGenerator';
 import { CacheUtils } from '../utils/cacheUtils';

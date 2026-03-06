@@ -1,4 +1,4 @@
-import type { CacheManager } from '../../lib/redis/redis';
+import type { CacheManager } from '../redis-client';
 import type { ILogger } from '../../utils/Logger/types';
 import client from 'prom-client';
 import { register } from '../../utils/metrics';

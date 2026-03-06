@@ -20,7 +20,7 @@ import { AppointmentService } from "../../services/domain/appointment/appointmen
 import { BusinessService } from "../../services/domain/business";
 import { UpcomingAppointment, AppointmentStatus, NotificationChannel } from "../../types/business";
 import { getCurrentTimeInIstanbul } from "../../utils/timezoneHelper";
-import redisClient from "../../lib/redis/redis";
+import redisClient from "../../services/redis-client";
 import logger from "../../utils/Logger/logger";
 
 export class SendAppointmentRemindersJob extends BaseJob {

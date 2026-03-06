@@ -38,7 +38,7 @@ import {
 import { StartupService } from './core/startupService';
 import { TranslationService } from './core/translationService';
 import { CacheService } from './core/cacheService';
-import { cacheManager } from '../lib/redis/redis';
+import { cacheManager } from './redis-client';
 import { CacheStampedeProtection } from '../lib/cache/cacheStampede';
 import Logger from '../utils/Logger/logger';
 

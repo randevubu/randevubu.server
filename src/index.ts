@@ -1,7 +1,7 @@
 // Load environment variables first
 import { config, validateConfig } from './config/environment';
 // Initialize telemetry early (no-op unless OTEL_ENABLED=true)
-import './telemetry/opentelemetry';
+import './services/telemetry';
 
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
@@ -40,7 +40,7 @@ import {
   errorMonitor,
   createHealthCheck,
 } from './utils/monitoring';
-import { cacheManager } from './lib/redis/redis';
+import { cacheManager } from './services/redis-client';
 import { CacheMonitoring } from './middleware/cacheMonitoring';
 import logger from './utils/Logger/logger';
 // Validate configuration on startup

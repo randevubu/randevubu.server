@@ -1,6 +1,8 @@
 import { config as dotenvConfig } from 'dotenv';
+import path from 'path';
 
-dotenvConfig();
+const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
+dotenvConfig({ path: path.resolve(process.cwd(), envFile) });
 
 interface Config {
   NODE_ENV: string;
@@ -19,6 +21,10 @@ interface Config {
   PUBLIC_ASSET_BASE_URL?: string;
   AWS_SES_FROM_EMAIL?: string;
   AWS_SES_REPLY_EMAIL?: string;
+  LOG_LEVEL?: string;
+  LOG_BASE_DIR: string;
+  ERROR_LOG_DIR: string;
+  ALL_LOG_DIR: string;
 }
 
 const getConfig = (): Config => {
@@ -40,6 +46,10 @@ const getConfig = (): Config => {
     corsOrigins = ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'];
   }
 
+  const baseLogDir = process.env.LOG_BASE_DIR || (nodeEnv === 'production' ? '/app/logs' : './logs');
+  const errorLogDir = process.env.ERROR_LOG_DIR || `${baseLogDir}/errors`;
+  const allLogDir = process.env.ALL_LOG_DIR || `${baseLogDir}/all`;
+
   return {
     NODE_ENV: nodeEnv,
     PORT: port,
@@ -57,6 +67,10 @@ const getConfig = (): Config => {
     PUBLIC_ASSET_BASE_URL: process.env.PUBLIC_ASSET_BASE_URL,
     AWS_SES_FROM_EMAIL: process.env.AWS_SES_FROM_EMAIL,
     AWS_SES_REPLY_EMAIL: process.env.AWS_SES_REPLY_EMAIL,
+    LOG_LEVEL: process.env.LOG_LEVEL,
+    LOG_BASE_DIR: baseLogDir,
+    ERROR_LOG_DIR: errorLogDir,
+    ALL_LOG_DIR: allLogDir,
   };
 };
 

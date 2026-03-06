@@ -5,23 +5,10 @@ import os from 'os';
 import path from 'path';
 import { getContext } from '../asyncContext';
 
-const resolveLogDir = (envVar: string | undefined, fallback: string) =>
-  envVar && envVar.trim().length > 0 ? envVar.trim() : fallback;
+import { config } from '../../config/environment';
 
-const baseLogDir =
-  process.env.LOG_BASE_DIR ||
-  (process.env.NODE_ENV === 'production'
-    ? '/app/logs'
-    : path.join(process.cwd(), 'logs'));
-
-const errorLogDir = resolveLogDir(
-  process.env.ERROR_LOG_DIR,
-  path.join(baseLogDir, 'errors')
-);
-const allLogDir = resolveLogDir(
-  process.env.ALL_LOG_DIR,
-  path.join(baseLogDir, 'all')
-);
+const errorLogDir = config.ERROR_LOG_DIR;
+const allLogDir = config.ALL_LOG_DIR;
 
 const ensureDirectory = (dirPath: string) => {
   if (!fs.existsSync(dirPath)) {
@@ -49,7 +36,10 @@ const colors = {
 };
 
 const level = () => {
-  return process.env.NODE_ENV === 'development' ? 'debug' : 'warn';
+  if (config.LOG_LEVEL) {
+    return config.LOG_LEVEL;
+  }
+  return config.NODE_ENV === 'development' ? 'debug' : 'warn';
 };
 
 const format = winston.format.combine(
@@ -63,7 +53,7 @@ const format = winston.format.combine(
             time: timestamp,
             application: 'randevubu-server',
             containerId: os.hostname() || uuidv4(),  // Use HOSTNAME env or generate UUID
-            environment: process.env.NODE_ENV || 'production',
+            environment: config.NODE_ENV || 'production',
             nodeVersion: process.version || 'unknown',
             platform: os.platform() || 'unknown',
             // These upper four for detecting which container the log came from
