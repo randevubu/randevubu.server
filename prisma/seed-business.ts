@@ -214,7 +214,7 @@ const SAMPLE_BUSINESSES = [
       language: 'tr'
     },
     businessType: 'hair_salon',
-    subscriptionPlan: 'premium'
+    subscriptionPlan: 'premium_tier1'
   },
   {
     business: {
@@ -252,7 +252,7 @@ const SAMPLE_BUSINESSES = [
       language: 'tr'
     },
     businessType: 'barber_shop',
-    subscriptionPlan: 'starter'
+    subscriptionPlan: 'basic_tier1'
   },
   {
     business: {
@@ -290,7 +290,7 @@ const SAMPLE_BUSINESSES = [
       language: 'tr'
     },
     businessType: 'spa_wellness',
-    subscriptionPlan: 'pro'
+    subscriptionPlan: 'premium_tier2'
   },
   {
     business: {
@@ -328,7 +328,7 @@ const SAMPLE_BUSINESSES = [
       language: 'tr'
     },
     businessType: 'dental_clinic',
-    subscriptionPlan: 'premium'
+    subscriptionPlan: 'premium_tier1'
   }
 ];
 

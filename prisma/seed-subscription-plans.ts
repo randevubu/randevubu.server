@@ -2,17 +2,17 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-async function seedSubscriptionPlans() {
+export async function seedSubscriptionPlans() {
   console.log('🎯 Seeding subscription plans...');
 
   // Clear all existing subscription plans first
   console.log('🧹 Clearing existing subscription plans...');
-  
+
   // First delete business subscriptions that reference the plans
   console.log('   Deleting business subscriptions...');
   await prisma.businessSubscription.deleteMany({});
   console.log('   ✅ Cleared business subscriptions');
-  
+
   // Then delete the subscription plans
   console.log('   Deleting subscription plans...');
   await prisma.subscriptionPlan.deleteMany({});
@@ -29,7 +29,7 @@ async function seedSubscriptionPlans() {
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
       maxStaffPerBusiness: 1,
-      maxAppointmentsPerDay: 0, // Sınırsız
+      maxAppointmentsPerDay: 0, // Unlimited
       features: {
         appointmentBooking: true,
         staffManagement: true,
@@ -41,29 +41,30 @@ async function seedSubscriptionPlans() {
         apiAccess: false,
         multiLocation: false,
         prioritySupport: false,
+        mobileAppAccess: true,
         integrations: ['whatsapp', 'calendar', 'google'],
-        maxServices: 0, // Sınırsız
-        maxCustomers: 0, // Sınırsız
+        maxServices: 0, // Unlimited
+        maxCustomers: 0, // Unlimited
         smsQuota: 1000,
         pricingTier: 'TIER_1',
         trialDays: 7,
         description: [
-          'Online appointment booking system',
           'Up to 1 staff member',
+          '1,000 SMS per month',
           'Unlimited customers',
           'Email & SMS notifications',
-          '1,000 SMS per month',
+          'Mobile app access',
           'Basic reporting & analytics',
           'WhatsApp integration',
           'Google Calendar sync',
           'Unlimited appointments',
-          'Email support',
-          'Mobile app access',
           'Customer management',
           'Service management',
           'Basic customer segmentation',
           'Appointment reminders',
-          'Business hours management'
+          'Business hours management',
+          'Revenue analytics',
+          'Customer feedback system'
         ]
       },
       isActive: true,
@@ -80,43 +81,45 @@ async function seedSubscriptionPlans() {
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
       maxStaffPerBusiness: 5,
-      maxAppointmentsPerDay: 0, // Sınırsız
+      maxAppointmentsPerDay: 0, // Unlimited
       features: {
         appointmentBooking: true,
         staffManagement: true,
         basicReports: true,
         emailNotifications: true,
         smsNotifications: true,
-        customBranding: true,
+        customBranding: false,
         advancedReports: true,
-        apiAccess: true,
+        apiAccess: false,
         multiLocation: false,
         prioritySupport: true,
+        mobileAppAccess: true,
         integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
-        maxServices: 0, // Sınırsız
-        maxCustomers: 0, // Sınırsız
+        maxServices: 0, // Unlimited
+        maxCustomers: 0, // Unlimited
         smsQuota: 1500,
         pricingTier: 'TIER_1',
         description: [
-          'All Basic features',
           'Up to 5 staff members',
-          'Unlimited customers',
           '1,500 SMS per month',
+          'Unlimited customers',
+          'Email & SMS notifications',
+          'Mobile app access',
           'Advanced reporting & analytics',
-          'Custom branding & themes',
+          'WhatsApp integration',
           'Google Calendar & Outlook integration',
-          'Priority email & phone support',
           'Unlimited appointments',
-          'API access',
+          'Customer management',
+          'Service management',
           'Advanced customer segmentation',
-          'Automated marketing campaigns',
+          'Appointment reminders',
+          'Business hours management',
+          'Revenue analytics',
+          'Customer feedback system',
           'Customer loyalty programs',
           'Advanced appointment scheduling',
           'Staff performance tracking',
-          'Revenue analytics',
-          'Customer feedback system',
-          'Advanced notification settings',
-          'Custom business rules'
+          'Advanced notification settings'
         ]
       },
       isActive: true,
@@ -133,7 +136,7 @@ async function seedSubscriptionPlans() {
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
       maxStaffPerBusiness: 1,
-      maxAppointmentsPerDay: 0, // Sınırsız
+      maxAppointmentsPerDay: 0, // Unlimited
       features: {
         appointmentBooking: true,
         staffManagement: true,
@@ -145,29 +148,30 @@ async function seedSubscriptionPlans() {
         apiAccess: false,
         multiLocation: false,
         prioritySupport: false,
+        mobileAppAccess: true,
         integrations: ['whatsapp', 'calendar', 'google'],
-        maxServices: 0, // Sınırsız
-        maxCustomers: 0, // Sınırsız
+        maxServices: 0, // Unlimited
+        maxCustomers: 0, // Unlimited
         smsQuota: 1000,
         pricingTier: 'TIER_2',
         trialDays: 7,
         description: [
-          'Online appointment booking system',
           'Up to 1 staff member',
+          '1,000 SMS per month',
           'Unlimited customers',
           'Email & SMS notifications',
-          '1,000 SMS per month',
+          'Mobile app access',
           'Basic reporting & analytics',
           'WhatsApp integration',
           'Google Calendar sync',
           'Unlimited appointments',
-          'Email support',
-          'Mobile app access',
           'Customer management',
           'Service management',
           'Basic customer segmentation',
           'Appointment reminders',
-          'Business hours management'
+          'Business hours management',
+          'Revenue analytics',
+          'Customer feedback system'
         ]
       },
       isActive: true,
@@ -184,43 +188,45 @@ async function seedSubscriptionPlans() {
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
       maxStaffPerBusiness: 5,
-      maxAppointmentsPerDay: 0, // Sınırsız
+      maxAppointmentsPerDay: 0, // Unlimited
       features: {
         appointmentBooking: true,
         staffManagement: true,
         basicReports: true,
         emailNotifications: true,
         smsNotifications: true,
-        customBranding: true,
+        customBranding: false,
         advancedReports: true,
-        apiAccess: true,
+        apiAccess: false,
         multiLocation: false,
         prioritySupport: true,
+        mobileAppAccess: true,
         integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
-        maxServices: 0, // Sınırsız
-        maxCustomers: 0, // Sınırsız
+        maxServices: 0, // Unlimited
+        maxCustomers: 0, // Unlimited
         smsQuota: 1500,
         pricingTier: 'TIER_2',
         description: [
-          'All Basic features',
           'Up to 5 staff members',
-          'Unlimited customers',
           '1,500 SMS per month',
+          'Unlimited customers',
+          'Email & SMS notifications',
+          'Mobile app access',
           'Advanced reporting & analytics',
-          'Custom branding & themes',
+          'WhatsApp integration',
           'Google Calendar & Outlook integration',
-          'Priority email & phone support',
           'Unlimited appointments',
-          'API access',
+          'Customer management',
+          'Service management',
           'Advanced customer segmentation',
-          'Automated marketing campaigns',
+          'Appointment reminders',
+          'Business hours management',
+          'Revenue analytics',
+          'Customer feedback system',
           'Customer loyalty programs',
           'Advanced appointment scheduling',
           'Staff performance tracking',
-          'Revenue analytics',
-          'Customer feedback system',
-          'Advanced notification settings',
-          'Custom business rules'
+          'Advanced notification settings'
         ]
       },
       isActive: true,
@@ -237,7 +243,7 @@ async function seedSubscriptionPlans() {
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
       maxStaffPerBusiness: 1,
-      maxAppointmentsPerDay: 0, // Sınırsız
+      maxAppointmentsPerDay: 0, // Unlimited
       features: {
         appointmentBooking: true,
         staffManagement: true,
@@ -249,29 +255,30 @@ async function seedSubscriptionPlans() {
         apiAccess: false,
         multiLocation: false,
         prioritySupport: false,
+        mobileAppAccess: true,
         integrations: ['whatsapp', 'calendar', 'google'],
-        maxServices: 0, // Sınırsız
-        maxCustomers: 0, // Sınırsız
+        maxServices: 0, // Unlimited
+        maxCustomers: 0, // Unlimited
         smsQuota: 1000,
         pricingTier: 'TIER_3',
         trialDays: 7,
         description: [
-          'Online appointment booking system',
           'Up to 1 staff member',
+          '1,000 SMS per month',
           'Unlimited customers',
           'Email & SMS notifications',
-          '1,000 SMS per month',
+          'Mobile app access',
           'Basic reporting & analytics',
           'WhatsApp integration',
           'Google Calendar sync',
           'Unlimited appointments',
-          'Email support',
-          'Mobile app access',
           'Customer management',
           'Service management',
           'Basic customer segmentation',
           'Appointment reminders',
-          'Business hours management'
+          'Business hours management',
+          'Revenue analytics',
+          'Customer feedback system'
         ]
       },
       isActive: true,
@@ -288,7 +295,62 @@ async function seedSubscriptionPlans() {
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,
       maxStaffPerBusiness: 5,
-      maxAppointmentsPerDay: 0, // Sınırsız
+      maxAppointmentsPerDay: 0, // Unlimited
+      features: {
+        appointmentBooking: true,
+        staffManagement: true,
+        basicReports: true,
+        emailNotifications: true,
+        smsNotifications: true,
+        customBranding: false,
+        advancedReports: true,
+        apiAccess: false,
+        multiLocation: false,
+        prioritySupport: true,
+        mobileAppAccess: true,
+        integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
+        maxServices: 0, // Unlimited
+        maxCustomers: 0, // Unlimited
+        smsQuota: 1500,
+        pricingTier: 'TIER_3',
+        description: [
+          'Up to 5 staff members',
+          '1,500 SMS per month',
+          'Unlimited customers',
+          'Email & SMS notifications',
+          'Mobile app access',
+          'Advanced reporting & analytics',
+          'WhatsApp integration',
+          'Google Calendar & Outlook integration',
+          'Unlimited appointments',
+          'Customer management',
+          'Service management',
+          'Advanced customer segmentation',
+          'Appointment reminders',
+          'Business hours management',
+          'Revenue analytics',
+          'Customer feedback system',
+          'Customer loyalty programs',
+          'Advanced appointment scheduling',
+          'Staff performance tracking',
+          'Advanced notification settings'
+        ]
+      },
+      isActive: true,
+      isPopular: false,
+      sortOrder: 6
+    },
+    {
+      id: 'plan_pro',
+      name: 'pro',
+      displayName: 'Pro Plan',
+      description: 'Enterprise features for scaling businesses',
+      price: 2999.00,
+      currency: 'TRY',
+      billingInterval: 'MONTHLY',
+      maxBusinesses: 1,
+      maxStaffPerBusiness: 999,
+      maxAppointmentsPerDay: 0, // Unlimited
       features: {
         appointmentBooking: true,
         staffManagement: true,
@@ -298,38 +360,39 @@ async function seedSubscriptionPlans() {
         customBranding: true,
         advancedReports: true,
         apiAccess: true,
-        multiLocation: false,
+        multiLocation: true,
         prioritySupport: true,
-        integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics'],
-        maxServices: 0, // Sınırsız
-        maxCustomers: 0, // Sınırsız
-        smsQuota: 1500,
-        pricingTier: 'TIER_3',
+        mobileAppAccess: true,
+        integrations: ['calendar', 'whatsapp', 'google', 'outlook', 'analytics', 'custom'],
+        maxServices: 0, // Unlimited
+        maxCustomers: 0, // Unlimited
+        smsQuota: 0, // Unlimited
+        pricingTier: 'PRO',
         description: [
-          'All Basic features',
-          'Up to 5 staff members',
+          'Unlimited staff',
+          'Unlimited SMS',
           'Unlimited customers',
-          '1,500 SMS per month',
-          'Advanced reporting & analytics',
-          'Custom branding & themes',
+          'Email & SMS notifications',
+          'Mobile app access',
+          'Advanced reports',
+          'WhatsApp integration',
           'Google Calendar & Outlook integration',
-          'Priority email & phone support',
           'Unlimited appointments',
-          'API access',
+          'Customer management',
+          'Service management',
           'Advanced customer segmentation',
-          'Automated marketing campaigns',
-          'Customer loyalty programs',
-          'Advanced appointment scheduling',
-          'Staff performance tracking',
-          'Revenue analytics',
-          'Customer feedback system',
-          'Advanced notification settings',
-          'Custom business rules'
+          'API access',
+          'Dedicated account manager',
+          'Custom integrations',
+          'Priority support',
+          'Custom reporting',
+          'Custom branding',
+          'Multi-location support'
         ]
       },
       isActive: true,
       isPopular: false,
-      sortOrder: 6
+      sortOrder: 7
     }
   ];
 
@@ -337,7 +400,7 @@ async function seedSubscriptionPlans() {
     await prisma.subscriptionPlan.create({
       data: plan
     });
-    
+
     console.log(`✅ Created subscription plan: ${plan.displayName} - ${plan.price} ${plan.currency}/${plan.billingInterval.toLowerCase()}`);
   }
 }
@@ -415,7 +478,7 @@ async function seedTestSubscriptions() {
   console.log('💳 Creating test subscriptions with payment integration...');
 
   const testBusiness = await seedTestBusiness();
-  
+
   // Check if subscription already exists
   const existingSubscription = await prisma.businessSubscription.findUnique({
     where: { businessId: testBusiness.id }
@@ -514,7 +577,7 @@ async function displaySubscriptionSummary() {
     console.log(`   👥 Staff: ${plan.maxStaffPerBusiness} members`);
     console.log(`   📅 Appointments: ${plan.maxAppointmentsPerDay}/day`);
     console.log(`   ⭐ Popular: ${plan.isPopular ? 'Yes' : 'No'}`);
-    
+
     if (features.description) {
       console.log(`   📋 Features:`);
       features.description.forEach((feature: string, index: number) => {
@@ -553,7 +616,7 @@ async function displaySubscriptionSummary() {
 
   // Card Number: 5406670000000009 (Insufficient funds)
   // Card Number: 4111111111111129 (Invalid card)
-  
+
   // Show usage example
   console.log('\n💡 USAGE EXAMPLE');
   console.log('========================================');
@@ -584,7 +647,7 @@ export default async function main() {
     await seedSubscriptionPlans();
     await seedTestSubscriptions();
     await displaySubscriptionSummary();
-    
+
     console.log('\n🎉 Subscription plans seeding completed successfully!');
   } catch (error) {
     console.error('❌ Error seeding subscription plans:', error);

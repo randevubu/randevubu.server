@@ -822,14 +822,18 @@ export class BusinessController {
       const limit = parseInt(req.query.limit as string) || 20;
 
       const result = await this.businessService.getAllBusinessesMinimalDetails(page, limit);
+      const businesses = result.businesses ?? [];
 
-      await this.responseHelper.paginated(
+      await this.responseHelper.successWithMeta(
         res,
         'success.business.minimalRetrieved',
-        result.businesses,
-        result.total,
-        result.page,
-        limit,
+        businesses,
+        {
+          total: result.total,
+          page: result.page,
+          totalPages: result.totalPages,
+          limit,
+        },
         200,
         req
       );

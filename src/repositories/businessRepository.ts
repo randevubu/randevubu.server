@@ -1767,12 +1767,18 @@ export class BusinessRepository {
       logoUrl: prismaResult.logoUrl,
       coverImageUrl: prismaResult.coverImageUrl,
       primaryColor: prismaResult.primaryColor,
-      isVerified: prismaResult.isVerified,
-      isClosed: prismaResult.isClosed,
-      tags: prismaResult.tags,
+      isVerified: prismaResult.isVerified ?? false,
+      isClosed: prismaResult.isClosed ?? false,
+      tags: Array.isArray(prismaResult.tags) ? prismaResult.tags : [],
       averageRating: prismaResult.averageRating ?? null,
       totalRatings: prismaResult.totalRatings ?? 0,
-      businessType: prismaResult.businessType
+      businessType: prismaResult.businessType ?? {
+        id: '',
+        name: 'other',
+        displayName: 'Diğer',
+        icon: null,
+        category: 'general',
+      },
     };
   }
 

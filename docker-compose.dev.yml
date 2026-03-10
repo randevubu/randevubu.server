@@ -10,6 +10,7 @@ services:
     container_name: randevubu-dev
     ports:
       - "3001:3001"      # App port for direct access
+      - "5555:5555"      # Prisma Studio (when run via make db-studio)
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/randevubu?schema=public

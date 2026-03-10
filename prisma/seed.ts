@@ -1,4 +1,5 @@
 import { seedRBAC } from './seed-rbac';
+import { seedSubscriptionPlans } from './seed-subscription-plans';
 import { seedBusinessData } from './seed-business';
 import { seedCustomersAndAppointments } from './seed-customers-appointments';
 import seedDiscountCodes from './seed-discount-codes';
@@ -10,7 +11,10 @@ async function main() {
     // Seed RBAC (Roles, Permissions, and assignments)
     await seedRBAC();
     
-    // Seed Business Data (Business Types and Subscription Plans)
+    // Seed Subscription Plans (REQUIRED before businesses)
+    await seedSubscriptionPlans();
+    
+    // Seed Business Data (Business Types, Businesses, Services)
     await seedBusinessData();
     
     // Seed Discount Codes
