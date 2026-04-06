@@ -26,6 +26,7 @@ import { createRatingRoutes } from './ratings';
 import { createDailyNotebookRoutes } from './dailyNotebook';
 import { createPaymentMethodRoutes } from './paymentMethods';
 import { createContactRoutes } from './contact';
+import { createNewsletterRoutes } from './newsletter';
 import { initializeCacheInvalidationMiddleware } from '../../middleware/cacheInvalidation';
 import { createCacheInvalidation } from '../../middleware/cacheMiddleware';
 
@@ -127,6 +128,7 @@ export function createV1Routes(
   router.use('/', createDailyNotebookRoutes(controllers.dailyNotebookController));
   router.use('/payment-methods', createPaymentMethodRoutes(controllers.paymentMethodController));
   router.use('/contact', createContactRoutes(controllers.contactController));
+  router.use('/newsletter', createNewsletterRoutes(controllers.newsletterController));
 
   // Public routes (no authentication required)
   router.use('/public', createPublicRoutes());

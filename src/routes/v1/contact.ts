@@ -5,8 +5,8 @@ import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
 const rateLimiter = createUserRateLimiter({
   maxRequests: 5,
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  message: 'Çok fazla istek gönderdiniz. Lütfen birkaç dakika sonra tekrar deneyin.',
+  windowMs: 60 * 60 * 1000, // 1 hour
+  message: 'Çok fazla istek gönderdiniz. Lütfen bir saat sonra tekrar deneyin.',
   skipSuccessfulRequests: false,
   keyPrefix: 'contact_form_rate_limit',
 });

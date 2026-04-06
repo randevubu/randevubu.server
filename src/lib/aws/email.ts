@@ -202,6 +202,62 @@ Bu mesaj RandevuBu iletişim formu aracılığıyla gönderilmiştir.
       replyTo: email,
     });
   }
+
+  async sendNewsletterSubscriptionEmail(subscriberEmail: string): Promise<EmailResult> {
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="tr">
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #111827; background-color: #f9fafb; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #4f46e5; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+            .content { background-color: #ffffff; padding: 20px; border: 1px solid #e5e7eb; }
+            .footer { margin-top: 20px; padding: 15px; background-color: #f3f4f6; text-align: center; border-radius: 0 0 8px 8px; font-size: 12px; color: #6b7280; }
+            .info-row { margin: 10px 0; padding: 10px; background-color: #f9fafb; border-left: 3px solid #4f46e5; border-radius: 4px; }
+            .info-label { font-weight: bold; color: #6b7280; }
+            .info-value { color: #111827; margin-top: 4px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h2>📰 Yeni Bülten Aboneliği</h2>
+            </div>
+            <div class="content">
+              <p>Merhaba,</p>
+              <p><strong>RandevuBu</strong> bültenine yeni bir abonelik isteği aldınız:</p>
+              <div class="info-row">
+                <div class="info-label">E-posta:</div>
+                <div class="info-value">${escapeHtml(subscriberEmail)}</div>
+              </div>
+              <p>Bu adresi e-posta pazarlama listenize ekleyebilir veya doğrulama akışı uygulayabilirsiniz.</p>
+            </div>
+            <div class="footer">
+              Bu mesaj RandevuBu blog sayfasındaki bülten aboneliği formu üzerinden oluşturulmuştur.
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const textContent = `
+Yeni Bülten Aboneliği
+
+E-posta: ${subscriberEmail}
+
+Bu mesaj RandevuBu blog sayfasındaki bülten aboneliği formu üzerinden oluşturulmuştur.
+    `;
+
+    return this.sendEmail({
+      to: this.fromEmail,
+      subject: 'Yeni Bülten Aboneliği',
+      html: htmlContent,
+      text: textContent,
+      replyTo: subscriberEmail,
+    });
+  }
 }
 
 // Helper function to validate email

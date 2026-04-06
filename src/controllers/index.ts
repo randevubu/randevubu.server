@@ -6,6 +6,7 @@ import { ServiceController } from './serviceController';
 import { AppointmentController } from './appointmentController';
 import { DiscountCodeController } from './discountCodeController';
 import { ContactController } from './contactController';
+import { NewsletterController } from './newsletterController';
 import { SecureNotificationController } from './secureNotificationController';
 import { UserBehaviorController } from './userBehaviorController';
 import { RoleController } from './roleController';
@@ -41,6 +42,7 @@ export class ControllerContainer {
   public readonly staffController: StaffController;
   public readonly dailyNotebookController: DailyNotebookController;
   public readonly contactController: ContactController;
+  public readonly newsletterController: NewsletterController;
   public readonly secureNotificationController?: SecureNotificationController;
   public readonly businessController: BusinessController;
   public readonly businessClosureController: BusinessClosureController;
@@ -88,6 +90,7 @@ export class ControllerContainer {
       responseHelper
     );
     this.contactController = new ContactController(responseHelper);
+    this.newsletterController = new NewsletterController(responseHelper);
     // TODO: Add SecureNotificationService to ServiceContainer before enabling this
     // this.secureNotificationController = new SecureNotificationController(
     //   services.secureNotificationService,
@@ -173,6 +176,7 @@ export {
   StaffController,
   DailyNotebookController,
   ContactController,
+  NewsletterController,
   SecureNotificationController,
   BusinessController,
   BusinessClosureController,
