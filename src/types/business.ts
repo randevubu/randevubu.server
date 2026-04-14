@@ -531,7 +531,7 @@ export interface UpdateServiceRequest {
 export interface CreateAppointmentRequest {
   businessId: string;
   serviceId: string;
-  staffId: string;
+  staffId?: string;
   customerId?: string;
   date: string;
   startTime: string;
@@ -682,6 +682,8 @@ export interface AppointmentWithDetails extends AppointmentData {
     phoneNumber: string;
     email?: string | null;
   };
+  /** Turkish display string for `status` (API convenience for mobile/web). */
+  statusLabel?: string;
 }
 
 // Enhanced Closure System Types

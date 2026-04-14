@@ -27,11 +27,11 @@ export function createDateTimeInIstanbul(dateStr: string, timeStr: string): Date
  * @returns Date object representing current time in Istanbul timezone
  */
 export function getCurrentTimeInIstanbul(): Date {
-  // Get current time and format it in Istanbul timezone
   const now = new Date();
   
-  // Get the current time components in Istanbul timezone
-  const istanbulTimeString = now.toLocaleString("en-US", {
+  // Use formatToParts to reliably extract Istanbul time components
+  // This avoids the "24:xx" bug that toLocaleString produces at midnight
+  const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: ISTANBUL_TIMEZONE,
     year: 'numeric',
     month: '2-digit',
@@ -39,16 +39,22 @@ export function getCurrentTimeInIstanbul(): Date {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false
+    hourCycle: 'h23'
   });
   
-  // Parse this into date components
-  const parts = istanbulTimeString.match(/(\d+)\/(\d+)\/(\d+),\s+(\d+):(\d+):(\d+)/);
-  if (!parts) return now;
+  const parts = formatter.formatToParts(now);
+  const get = (type: string) => parseInt(parts.find(p => p.type === type)?.value || '0', 10);
   
-  const [, month, day, year, hour, minute, second] = parts.map(Number);
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  let hour = get('hour');
+  const minute = get('minute');
+  const second = get('second');
   
-  // Return as a Date object in local representation (treating as Istanbul time)
+  // Safety: clamp hour to 0-23 in case of any "24" edge case
+  if (hour >= 24) hour = 0;
+  
   return new Date(year, month - 1, day, hour, minute, second);
 }
 
@@ -86,7 +92,8 @@ export function formatTimeInIstanbul(date: Date): string {
     timeZone: ISTANBUL_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false
+    hour12: false,
+    hourCycle: 'h23'
   });
 }
 
@@ -108,7 +115,8 @@ export function getIstanbulOffset(date: Date): number {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false
+    hour12: false,
+    hourCycle: 'h23'
   });
   
   const utcString = utcDate.toLocaleString("en-US", { 
@@ -119,7 +127,8 @@ export function getIstanbulOffset(date: Date): number {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false
+    hour12: false,
+    hourCycle: 'h23'
   });
   
   const istanbulTime = new Date(istanbulString);

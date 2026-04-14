@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { PrismaClient, Prisma, $Enums } from '@prisma/client';
 import {
   AppointmentData,
@@ -121,11 +122,18 @@ export class AppointmentRepository {
       price: result.price,
       currency: result.currency,
       customerNotes: result.customerNotes,
-      internalNotes: result.internalNotes,
+      internalNotes: undefined,
       bookedAt: result.bookedAt,
       reminderSent: result.reminderSent,
       createdAt: result.createdAt,
       updatedAt: result.updatedAt
+    };
+  }
+
+  private mapPrismaResultToStaffAppointmentData(result: any): AppointmentData {
+    return {
+      ...this.mapPrismaResultToAppointmentData(result),
+      internalNotes: result.internalNotes,
     };
   }
 
@@ -168,7 +176,7 @@ export class AppointmentRepository {
 
     const startDateTime = createDateTimeInIstanbul(data.date, data.startTime);
     const endDateTime = new Date(startDateTime.getTime() + service.duration * 60000);
-    const appointmentId = `apt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const appointmentId = `apt_${randomUUID()}`;
 
     const result = await this.prisma.appointment.create({
       data: {
@@ -203,10 +211,26 @@ export class AppointmentRepository {
     const result = await this.prisma.appointment.findUnique({
       where: { id },
       include: {
-        business: true,
-        service: true,
+        business: {
+          select: {
+            id: true,
+            name: true,
+            timezone: true
+          }
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            duration: true,
+            price: true,
+            currency: true,
+            showPrice: true
+          }
+        },
         staff: {
-          include: {
+          select: {
+            role: true,
             user: {
               select: {
                 firstName: true,
@@ -225,10 +249,10 @@ export class AppointmentRepository {
         }
       }
     });
-    return result as AppointmentWithDetails | null;
+    return result ? this.mapPrismaResultToAppointmentWithDetails(result) : null;
   }
 
-  async findByCustomerId(customerId: string, page = 1, limit = 20): Promise<{
+  async findByCustomerId(customerId: string, page = 1, limit = 20, status?: AppointmentStatus): Promise<{
     appointments: AppointmentWithDetails[];
     total: number;
     page: number;
@@ -236,9 +260,14 @@ export class AppointmentRepository {
   }> {
     const skip = (page - 1) * limit;
 
+    const where: Record<string, unknown> = { customerId };
+    if (status) {
+      where.status = status;
+    }
+
     const [appointments, total] = await Promise.all([
       this.prisma.appointment.findMany({
-        where: { customerId },
+        where,
         skip,
         take: limit,
         orderBy: [
@@ -251,7 +280,6 @@ export class AppointmentRepository {
               id: true,
               name: true,
               address: true,
-              phone: true,
               timezone: true,
               settings: true
             }
@@ -263,19 +291,12 @@ export class AppointmentRepository {
               duration: true,
               price: true,
               currency: true,
-              showPrice: true,
-              businessId: true
+              showPrice: true
             }
           },
           staff: {
             select: {
-              id: true,
-              businessId: true,
-              userId: true,
               role: true,
-              isActive: true,
-              joinedAt: true,
-              leftAt: true,
               user: {
                 select: {
                   firstName: true,
@@ -288,14 +309,13 @@ export class AppointmentRepository {
             select: {
               id: true,
               firstName: true,
-              lastName: true,
-              phoneNumber: true
+              lastName: true
             }
           }
         }
       }),
       this.prisma.appointment.count({
-        where: { customerId }
+        where
       })
     ]);
 
@@ -303,10 +323,11 @@ export class AppointmentRepository {
       appointments: appointments.map(apt => {
         const businessSettings = this.extractBusinessSettings(apt.business?.settings);
         const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
-
-        const filteredApt = this.filterPriceInfo(apt, shouldHide);
-
-        return this.mapPrismaResultToAppointmentWithDetails(filteredApt);
+        const filtered = this.filterPriceInfo(apt, shouldHide);
+        return this.mapPrismaResultToAppointmentWithDetails({
+          ...filtered,
+          business: filtered.business ? { ...filtered.business, settings: undefined } : undefined
+        });
       }),
       total,
       page,
@@ -390,7 +411,11 @@ export class AppointmentRepository {
 
   async findByUserBusinesses(userId: string, filters?: {
     status?: AppointmentStatus;
+    /** Tek gün — appointment.date */
     date?: string;
+    /** Aralık (hafta/ay/yıl) — appointment.date alanı, dahil */
+    startDate?: string;
+    endDate?: string;
     businessId?: string;
     page?: number;
     limit?: number;
@@ -400,8 +425,8 @@ export class AppointmentRepository {
     page: number;
     totalPages: number;
   }> {
-    const page = filters?.page || 1;
-    const limit = filters?.limit || 50;
+    const page = Math.max(1, filters?.page || 1);
+    const limit = Math.max(1, Math.min(100, filters?.limit || 50));
     const skip = (page - 1) * limit;
 
     // Build where clause for appointments in user's businesses
@@ -500,8 +525,11 @@ export class AppointmentRepository {
       appointments: appointments.map(apt => {
         const businessSettings = this.extractBusinessSettings(apt.business?.settings);
         const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
-
-        return this.mapPrismaResultToAppointmentWithDetails(this.filterPriceInfo(apt, shouldHide));
+        const filtered = this.filterPriceInfo(apt, shouldHide);
+        return this.mapPrismaResultToAppointmentWithDetails({
+          ...filtered,
+          business: filtered.business ? { ...filtered.business, settings: undefined } : undefined
+        });
       }),
       total,
       page,
@@ -527,8 +555,24 @@ export class AppointmentRepository {
           { startTime: 'desc' }
         ],
         include: {
-          business: true,
-          service: true,
+          business: {
+            select: {
+              id: true,
+              name: true,
+              timezone: true,
+              settings: true
+            }
+          },
+          service: {
+            select: {
+              id: true,
+              name: true,
+              duration: true,
+              price: true,
+              currency: true,
+              showPrice: true
+            }
+          },
           staff: {
             select: {
               role: true,
@@ -556,7 +600,15 @@ export class AppointmentRepository {
     ]);
 
     return {
-      appointments: appointments.map(apt => this.mapPrismaResultToAppointmentWithDetails(apt)),
+      appointments: appointments.map(apt => {
+        const businessSettings = this.extractBusinessSettings(apt.business?.settings);
+        const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+        const filtered = this.filterPriceInfo(apt, shouldHide);
+        return this.mapPrismaResultToAppointmentWithDetails({
+          ...filtered,
+          business: filtered.business ? { ...filtered.business, settings: undefined } : undefined
+        });
+      }),
       total,
       page,
       totalPages: Math.ceil(total / limit)
@@ -569,6 +621,8 @@ export class AppointmentRepository {
     page: number;
     totalPages: number;
   }> {
+    page = Math.max(1, page);
+    limit = Math.max(1, Math.min(100, limit));
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
@@ -622,8 +676,24 @@ export class AppointmentRepository {
           { startTime: 'desc' }
         ],
         include: {
-          business: true,
-          service: true,
+          business: {
+            select: {
+              id: true,
+              name: true,
+              timezone: true,
+              settings: true
+            }
+          },
+          service: {
+            select: {
+              id: true,
+              name: true,
+              duration: true,
+              price: true,
+              currency: true,
+              showPrice: true
+            }
+          },
           staff: {
             select: {
               role: true,
@@ -649,7 +719,15 @@ export class AppointmentRepository {
     ]);
 
     return {
-      appointments: appointments.map(apt => this.mapPrismaResultToAppointmentWithDetails(apt)),
+      appointments: appointments.map(apt => {
+        const businessSettings = this.extractBusinessSettings(apt.business?.settings);
+        const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+        const filtered = this.filterPriceInfo(apt, shouldHide);
+        return this.mapPrismaResultToAppointmentWithDetails({
+          ...filtered,
+          business: filtered.business ? { ...filtered.business, settings: undefined } : undefined
+        });
+      }),
       total,
       page,
       totalPages: Math.ceil(total / limit)
@@ -732,10 +810,26 @@ export class AppointmentRepository {
         { startTime: 'asc' }
       ],
       include: {
-        business: true,
-        service: true,
+        business: {
+          select: {
+            id: true,
+            name: true,
+            timezone: true
+          }
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            duration: true,
+            price: true,
+            currency: true,
+            showPrice: true
+          }
+        },
         staff: {
-          include: {
+          select: {
+            role: true,
             user: {
               select: {
                 firstName: true,
@@ -748,8 +842,7 @@ export class AppointmentRepository {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
-            phoneNumber: true
+            lastName: true
           }
         }
       }
@@ -775,10 +868,26 @@ export class AppointmentRepository {
         { startTime: 'asc' }
       ],
       include: {
-        business: true,
-        service: true,
+        business: {
+          select: {
+            id: true,
+            name: true,
+            timezone: true
+          }
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            duration: true,
+            price: true,
+            currency: true,
+            showPrice: true
+          }
+        },
         staff: {
-          include: {
+          select: {
+            role: true,
             user: {
               select: {
                 firstName: true,
@@ -791,13 +900,12 @@ export class AppointmentRepository {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
-            phoneNumber: true
+            lastName: true
           }
         }
       }
     });
-    return result as AppointmentWithDetails | null;
+    return result ? this.mapPrismaResultToAppointmentWithDetails(result) : null;
   }
 
   async findAppointmentsInTimeRange(
@@ -818,10 +926,26 @@ export class AppointmentRepository {
         { startTime: 'asc' }
       ],
       include: {
-        business: true,
-        service: true,
+        business: {
+          select: {
+            id: true,
+            name: true,
+            timezone: true
+          }
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            duration: true,
+            price: true,
+            currency: true,
+            showPrice: true
+          }
+        },
         staff: {
-          include: {
+          select: {
+            role: true,
             user: {
               select: {
                 firstName: true,
@@ -834,8 +958,7 @@ export class AppointmentRepository {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
-            phoneNumber: true
+            lastName: true
           }
         }
       }
@@ -927,8 +1050,8 @@ export class AppointmentRepository {
         price: Number(apt.price),
         customerNotes: apt.customerNotes || undefined,
         business: apt.business ? {
-          ...apt.business,
-          settings: this.extractBusinessSettings(apt.business.settings) || undefined
+          id: apt.business.id,
+          name: apt.business.name,
         } : undefined,
         service: apt.service ? {
           ...apt.service,
@@ -1032,8 +1155,8 @@ export class AppointmentRepository {
         price: Number(apt.price),
         customerNotes: apt.customerNotes || undefined,
         business: apt.business ? {
-          ...apt.business,
-          settings: this.extractBusinessSettings(apt.business.settings) || undefined
+          id: apt.business.id,
+          name: apt.business.name,
         } : undefined,
         service: apt.service ? {
           ...apt.service,
@@ -1271,16 +1394,44 @@ export class AppointmentRepository {
       },
       include: {
         staff: {
-          include: {
-            user: true
+          select: {
+            id: true,
+            role: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
           }
         },
-        business: true,
-        service: true,
-        customer: true
+        business: {
+          select: {
+            id: true,
+            name: true,
+            timezone: true
+          }
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            duration: true,
+            price: true,
+            currency: true,
+            showPrice: true
+          }
+        },
+        customer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        }
       }
     });
-    return result as unknown as AppointmentWithDetails[];
+    return result.map(apt => this.mapPrismaResultToAppointmentWithDetails(apt));
   }
 
   async findByBusinessAndDateRange(
@@ -1320,8 +1471,7 @@ export class AppointmentRepository {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
-            phoneNumber: true
+            lastName: true
           }
         },
         service: {
@@ -1342,8 +1492,7 @@ export class AppointmentRepository {
             user: {
               select: {
                 firstName: true,
-                lastName: true,
-                phoneNumber: true
+                lastName: true
               }
             }
           }
@@ -1352,8 +1501,6 @@ export class AppointmentRepository {
           select: {
             id: true,
             name: true,
-            email: true,
-            phone: true,
             settings: true
           }
         }
@@ -1365,8 +1512,19 @@ export class AppointmentRepository {
       const businessSettings = this.extractBusinessSettings(apt.business?.settings);
       const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
 
-      return this.filterPriceInfo(apt, shouldHide);
-    }).map(apt => this.mapPrismaResultToAppointmentWithDetails(apt));
+      const filtered = this.filterPriceInfo(apt, shouldHide);
+      const sanitized = {
+        ...filtered,
+        business: filtered.business
+          ? {
+            ...filtered.business,
+            settings: undefined
+          }
+          : undefined
+      };
+
+      return this.mapPrismaResultToAppointmentWithDetails(sanitized);
+    });
   }
 
   // Count appointments with filters
@@ -1409,13 +1567,19 @@ export class AppointmentRepository {
   // ============================================================================
 
   /**
-   * Find confirmed appointments that have passed their end time
-   * Used by auto-complete background job
+   * Find appointments that should be auto-completed: end time has passed and status is
+   * still CONFIRMED or IN_PROGRESS (monitor flow promotes CONFIRMED → IN_PROGRESS in-session).
    */
-  async findConfirmedAppointmentsPastEndTime(now: Date): Promise<AppointmentWithDetails[]> {
+  /**
+   * @param now Must be a real UTC instant (e.g. `new Date()`), not a synthetic "Istanbul wall" Date,
+   *            so it compares correctly to timestamptz columns from Prisma.
+   */
+  async findAppointmentsEligibleForAutoComplete(now: Date): Promise<AppointmentWithDetails[]> {
     const appointments = await this.prisma.appointment.findMany({
       where: {
-        status: AppointmentStatus.CONFIRMED,
+        status: {
+          in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS],
+        },
         endTime: {
           lt: now,
         },
@@ -1468,11 +1632,71 @@ export class AppointmentRepository {
         id: {
           in: appointmentIds,
         },
+        status: {
+          in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS],
+        },
       },
       data: {
         status: AppointmentStatus.COMPLETED,
         completedAt: now,
         updatedAt: now,
+      },
+    });
+
+    return { count: result.count };
+  }
+
+  /**
+   * Completes CONFIRMED/IN_PROGRESS rows whose end time has passed (UTC instant comparison).
+   * Call from read paths so lists/details refresh without waiting for the cron job.
+   * Empty filter = all matching rows (use sparingly; cheap single updateMany with indexed endTime).
+   */
+  async finalizeEndedAppointmentsIfStale(
+    filter: { customerId?: string; appointmentId?: string; businessId?: string } = {}
+  ): Promise<number> {
+    const now = new Date();
+    const where: Prisma.AppointmentWhereInput = {
+      // Only "active" slots: terminal states (COMPLETED, CANCELED, NO_SHOW) are never overwritten
+      status: {
+        in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS],
+      },
+      endTime: { lt: now },
+    };
+    if (filter.appointmentId) {
+      where.id = filter.appointmentId;
+    }
+    if (filter.customerId) {
+      where.customerId = filter.customerId;
+    }
+    if (filter.businessId) {
+      where.businessId = filter.businessId;
+    }
+
+    const result = await this.prisma.appointment.updateMany({
+      where,
+      data: {
+        status: AppointmentStatus.COMPLETED,
+        completedAt: now,
+        updatedAt: now,
+      },
+    });
+
+    return result.count;
+  }
+
+  async updateStatusBatch(
+    appointmentIds: string[],
+    status: AppointmentStatus
+  ): Promise<{ count: number }> {
+    if (appointmentIds.length === 0) return { count: 0 };
+
+    const result = await this.prisma.appointment.updateMany({
+      where: {
+        id: { in: appointmentIds },
+      },
+      data: {
+        status,
+        updatedAt: new Date(),
       },
     });
 

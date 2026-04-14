@@ -18,6 +18,8 @@ import {
   ClosureData
 } from '../../../types/appointment';
 import logger from "../../../utils/Logger/logger";
+import { AppError } from '../../../types/responseTypes';
+import { ERROR_CODES } from '../../../constants/errorCodes';
 
 /**
  * AppointmentRescheduleService
@@ -45,16 +47,15 @@ export class AppointmentRescheduleService {
   ): Promise<void> {
     const business = await this.businessRepository.findById(businessId);
     if (!business) {
-      throw new Error('Business not found');
+      throw new AppError('Business not found', 404, ERROR_CODES.BUSINESS_NOT_FOUND);
     }
 
     const settings = (business.settings as BusinessSettings) || {};
     const reservationSettings = settings.reservationSettings;
 
-    // Use default values if settings not configured
     const rules: ReservationSettings = {
       maxAdvanceBookingDays: reservationSettings?.maxAdvanceBookingDays || 30,
-      minNotificationHours: reservationSettings?.minNotificationHours || 2,
+      minNotificationHours: reservationSettings?.minNotificationHours ?? 0,
       maxDailyAppointments: reservationSettings?.maxDailyAppointments || 50
     };
 
@@ -64,25 +65,36 @@ export class AppointmentRescheduleService {
     const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysDifference > rules.maxAdvanceBookingDays) {
-      throw new Error(`Appointments cannot be rescheduled more than ${rules.maxAdvanceBookingDays} days in advance`);
+      throw new AppError(
+        'Reschedule date is too far in the future',
+        400,
+        ERROR_CODES.APPOINTMENT_TOO_FAR_FUTURE,
+        true,
+        { maxDays: rules.maxAdvanceBookingDays }
+      );
     }
 
-    // 2. Check minimum advance booking - use service setting if provided, otherwise business setting
+    // 2. Check minimum advance booking
     const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     const minAdvanceHours = serviceMinAdvanceBooking !== undefined ? serviceMinAdvanceBooking : rules.minNotificationHours;
 
     if (hoursDifference < minAdvanceHours) {
-      throw new Error(`Appointments must be rescheduled at least ${minAdvanceHours} hours in advance`);
+      throw new AppError(
+        `Must reschedule at least ${minAdvanceHours} hours in advance`,
+        400,
+        ERROR_CODES.APPOINTMENT_INSUFFICIENT_ADVANCE,
+        true,
+        { minHours: minAdvanceHours }
+      );
     }
 
-    // 3. Check maximum daily appointments for this specific business
+    // 3. Check maximum daily appointments
     const appointmentDateStart = new Date(appointmentDateTime);
     appointmentDateStart.setHours(0, 0, 0, 0);
 
     const appointmentDateEnd = new Date(appointmentDateTime);
     appointmentDateEnd.setHours(23, 59, 59, 999);
 
-    // Get existing appointments count for this business on this day using repository
     const count = await this.appointmentRepository.getAppointmentsCount({
       businessId,
       date: {
@@ -95,10 +107,16 @@ export class AppointmentRescheduleService {
     });
 
     if (count >= rules.maxDailyAppointments) {
-      throw new Error(`Maximum daily appointments (${rules.maxDailyAppointments}) has been reached for this business on this date`);
+      throw new AppError(
+        `Daily appointment limit (${rules.maxDailyAppointments}) reached for this date`,
+        409,
+        ERROR_CODES.APPOINTMENT_DAILY_LIMIT_REACHED,
+        true,
+        { maxDaily: rules.maxDailyAppointments }
+      );
     }
 
-    // 4. Check if customer already has an appointment with this business on the same day
+    // 4. Check if customer already has an appointment on the same day
     if (customerId) {
       const customerAppointmentsCount = await this.appointmentRepository.getAppointmentsCount({
         businessId,
@@ -113,7 +131,11 @@ export class AppointmentRescheduleService {
       });
 
       if (customerAppointmentsCount > 0) {
-        throw new Error('You already have an appointment with this business on this date');
+        throw new AppError(
+          'Customer already has appointment on this date',
+          409,
+          ERROR_CODES.APPOINTMENT_TIME_CONFLICT
+        );
       }
     }
   }
@@ -123,12 +145,11 @@ export class AppointmentRescheduleService {
       const closure = await this.businessClosureRepository.findById(closureId);
 
       if (!closure) {
-        throw new Error('Closure not found');
+        throw new AppError('Closure not found', 404, ERROR_CODES.APPOINTMENT_NOT_FOUND);
       }
 
       const endDate = closure.endDate || new Date('2099-12-31');
 
-      // Use appointment repository to search for affected appointments
       const result = await this.appointmentRepository.search({
         businessId: closure.businessId,
         status: AppointmentStatus.CONFIRMED as any,
@@ -138,7 +159,12 @@ export class AppointmentRescheduleService {
 
       return result.appointments;
     } catch (error) {
-      throw new Error(`Failed to get affected appointments: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (error instanceof AppError) throw error;
+      throw new AppError(
+        `Failed to get affected appointments: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        500,
+        ERROR_CODES.INTERNAL_SERVER_ERROR
+      );
     }
   }
 
@@ -150,7 +176,7 @@ export class AppointmentRescheduleService {
       const appointment = await this.appointmentRepository.findByIdWithDetails(appointmentId);
 
       if (!appointment) {
-        throw new Error('Appointment not found');
+        throw new AppError('Appointment not found', 404, ERROR_CODES.APPOINTMENT_NOT_FOUND);
       }
 
       // Calculate search window (typically 2-4 weeks after closure ends)
@@ -201,7 +227,11 @@ export class AppointmentRescheduleService {
         }, availableSlots, closureData)
       }];
     } catch (error) {
-      throw new Error(`Failed to generate reschedule suggestions: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (error instanceof AppError) throw error;
+      throw new AppError(
+        `Failed to generate reschedule suggestions: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        500, ERROR_CODES.INTERNAL_SERVER_ERROR
+      );
     }
   }
 
@@ -216,7 +246,7 @@ export class AppointmentRescheduleService {
       const closure = await this.businessClosureRepository.findById(closureId);
 
       if (!closure) {
-        throw new Error('Closure not found');
+        throw new AppError('Closure not found', 404, ERROR_CODES.APPOINTMENT_NOT_FOUND);
       }
 
       for (const appointment of affectedAppointments) {
@@ -253,7 +283,11 @@ export class AppointmentRescheduleService {
 
       return results;
     } catch (error) {
-      throw new Error(`Failed to auto-reschedule appointments: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (error instanceof AppError) throw error;
+      throw new AppError(
+        `Failed to auto-reschedule appointments: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        500, ERROR_CODES.INTERNAL_SERVER_ERROR
+      );
     }
   }
 
@@ -335,7 +369,11 @@ export class AppointmentRescheduleService {
 
       return availableSlots.slice(0, 10); // Return maximum 10 slots
     } catch (error) {
-      throw new Error(`Failed to find available slots: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (error instanceof AppError) throw error;
+      throw new AppError(
+        `Failed to find available slots: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        500, ERROR_CODES.INTERNAL_SERVER_ERROR
+      );
     }
   }
 
@@ -349,11 +387,11 @@ export class AppointmentRescheduleService {
       const suggestion = await this.rescheduleSuggestionRepository.findByIdWithAppointment(suggestionId);
 
       if (!suggestion) {
-        throw new Error('Reschedule suggestion not found');
+        throw new AppError('Reschedule suggestion not found', 404, ERROR_CODES.APPOINTMENT_NOT_FOUND);
       }
 
       if (suggestion.originalAppointment.customerId !== customerId) {
-        throw new Error('Unauthorized to respond to this suggestion');
+        throw new AppError('Unauthorized to respond to this suggestion', 403, ERROR_CODES.ACCESS_DENIED);
       }
 
       await this.rescheduleSuggestionRepository.updateCustomerResponse(suggestionId, response);
@@ -391,7 +429,11 @@ export class AppointmentRescheduleService {
         );
       }
     } catch (error) {
-      throw new Error(`Failed to record customer response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (error instanceof AppError) throw error;
+      throw new AppError(
+        `Failed to record customer response: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        500, ERROR_CODES.INTERNAL_SERVER_ERROR
+      );
     }
   }
 
@@ -585,7 +627,11 @@ export class AppointmentRescheduleService {
 
       return stats;
     } catch (error) {
-      throw new Error(`Failed to get reschedule statistics: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (error instanceof AppError) throw error;
+      throw new AppError(
+        `Failed to get reschedule statistics: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        500, ERROR_CODES.INTERNAL_SERVER_ERROR
+      );
     }
   }
 }

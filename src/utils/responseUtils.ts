@@ -11,6 +11,7 @@ import { BaseError } from '../types/errors';
 import { TranslationService } from '../services/core/translationService';
 import { translateMessage } from './translationUtils';
 import { getLanguageFromRequest } from '../middleware/language';
+import { getTranslationKey, ErrorCode } from '../constants/errorCodes';
 
 /**
  * Send a standardized success response
@@ -81,28 +82,29 @@ export function sendErrorResponse(
   statusCode: number = 400,
   error?: any
 ): void {
-  // Determine error code and key based on error type
   let errorCode = 'INTERNAL_SERVER_ERROR';
-  let errorKey = 'errors.system.internalError';
+  let errorKey: string = 'errors.system.internalError';
 
-  if (error?.name) {
-    // Use the error class name as code
-    errorCode = error.name;
-    // Create a more specific key based on error name and status code
-    errorKey = `errors.${error.name.toLowerCase()}.${statusCode}`;
-  } else if (error?.code) {
+  if (error?.code && typeof error.code === 'string') {
     errorCode = error.code;
-    errorKey = `errors.${error.code.toLowerCase()}`;
+    // Use the canonical ERROR_TRANSLATION_KEYS mapping when available
+    const mappedKey = getTranslationKey(errorCode as ErrorCode);
+    errorKey = mappedKey || `errors.${error.code.toLowerCase()}`;
+  } else if (error?.name) {
+    errorCode = error.name;
+    errorKey = `errors.${error.name.toLowerCase()}.${statusCode}`;
   }
 
   const response: ErrorResponse = {
     success: false,
     statusCode,
+    message,
     error: {
-      code: errorCode,
-      key: errorKey,
+      code: errorCode as any,
+      key: errorKey as any,
+      message,
       details: message,
-      // Include additional data if available
+      ...(error?.params && { params: error.params }),
       ...(error?.data && { data: error.data }),
     },
   };

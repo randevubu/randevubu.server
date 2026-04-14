@@ -4,6 +4,8 @@ import { CacheRequest, CacheResponse } from '../types/request';
 import { CacheUtils } from '../utils/cacheUtils';
 import logger from '../utils/Logger/logger';
 
+const CACHE_INVALIDATION_WRAPPED = '__cacheInvalidationWrapped';
+
 /**
  * Cache invalidation middleware factory for mutations
  * This follows industry best practices by handling invalidation at the route level
@@ -20,6 +22,12 @@ export const createInvalidateCacheOnSuccess =
     user?: boolean;
   }) => {
     return (req: CacheRequest, res: Response, next: NextFunction) => {
+      if ((res as Response & { [CACHE_INVALIDATION_WRAPPED]?: boolean })[CACHE_INVALIDATION_WRAPPED]) {
+        next();
+        return;
+      }
+      (res as Response & { [CACHE_INVALIDATION_WRAPPED]?: boolean })[CACHE_INVALIDATION_WRAPPED] = true;
+
       // Store original res.json
       const originalJson = res.json.bind(res);
 

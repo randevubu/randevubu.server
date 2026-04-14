@@ -252,37 +252,31 @@ export class BusinessClosureRepository {
       where.id = { not: excludeClosureId };
     }
 
-    // Check for overlapping periods
+    // Check for truly overlapping periods (adjacent/touching closures are NOT conflicts)
     if (endDate) {
       where.OR = [
+        // Existing has an end date: overlap iff existing.start < new.end AND existing.end > new.start
         {
           AND: [
-            { startDate: { lte: startDate } },
-            { OR: [
-              { endDate: null },
-              { endDate: { gte: startDate } }
-            ]}
+            { startDate: { lt: endDate } },
+            { endDate: { not: null } },
+            { endDate: { gt: startDate } }
           ]
         },
+        // Existing is indefinite (no end): overlap iff existing.start < new.end
         {
           AND: [
-            { startDate: { lte: endDate } },
-            { OR: [
-              { endDate: null },
-              { endDate: { gte: endDate } }
-            ]}
-          ]
-        },
-        {
-          AND: [
-            { startDate: { gte: startDate } },
-            { startDate: { lte: endDate } }
+            { endDate: null },
+            { startDate: { lt: endDate } }
           ]
         }
       ];
     } else {
-      // For indefinite closure, check if there are any future closures
-      where.startDate = { gte: startDate };
+      // New closure is indefinite — conflicts with any existing that ends after new.start or is also indefinite
+      where.OR = [
+        { endDate: null },
+        { endDate: { gt: startDate } }
+      ];
     }
 
     const result = await this.prisma.businessClosure.findMany({ where });

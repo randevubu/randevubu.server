@@ -929,8 +929,8 @@ export function createBusinessRoutes(
    *                       description: "Maximum days in advance appointments can be booked"
    *                     minNotificationHours:
    *                       type: integer
-   *                       example: 2
-   *                       description: "Minimum hours before appointment for notification"
+   *                       example: 0
+   *                       description: "Minimum hours in advance booking is required (0 = none)"
    *                     maxDailyAppointments:
    *                       type: integer
    *                       example: 50
@@ -970,9 +970,9 @@ export function createBusinessRoutes(
    *                 description: "Maximum days in advance appointments can be booked"
    *               minNotificationHours:
    *                 type: integer
-   *                 minimum: 1
+   *                 minimum: 0
    *                 maximum: 168
-   *                 description: "Minimum hours before appointment for notification"
+   *                 description: "Minimum hours in advance booking is required (0 = none)"
    *               maxDailyAppointments:
    *                 type: integer
    *                 minimum: 1
@@ -2961,10 +2961,10 @@ export function createBusinessRoutes(
    *                       type: number
    *                       example: 4
    *                       description: Minimum hours before appointment that cancellation is allowed
-   *                     maxMonthlyCancellations:
+   *                     maxDailyCancellations:
    *                       type: number
    *                       example: 3
-   *                       description: Maximum cancellations allowed per month per customer
+   *                       description: Maximum cancellations per day (Istanbul) per customer before new booking is blocked
    *                     maxMonthlyNoShows:
    *                       type: number
    *                       example: 2
@@ -3025,12 +3025,12 @@ export function createBusinessRoutes(
    *                 maximum: 168
    *                 example: 4
    *                 description: Minimum hours before appointment that cancellation is allowed
-   *               maxMonthlyCancellations:
+   *               maxDailyCancellations:
    *                 type: number
    *                 minimum: 0
    *                 maximum: 50
    *                 example: 3
-   *                 description: Maximum cancellations allowed per month per customer
+   *                 description: Maximum cancellations per Istanbul calendar day per customer
    *               maxMonthlyNoShows:
    *                 type: number
    *                 minimum: 0
@@ -3118,7 +3118,7 @@ export function createBusinessRoutes(
    *                     currentCancellations:
    *                       type: number
    *                       example: 1
-   *                       description: Current monthly cancellation count
+   *                       description: Cancellations today (Istanbul calendar day) for daily limit
    *                     currentNoShows:
    *                       type: number
    *                       example: 0

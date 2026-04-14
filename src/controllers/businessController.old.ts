@@ -1925,7 +1925,7 @@ export class BusinessController {
           data: {
             businessId,
             maxAdvanceBookingDays: 30,
-            minNotificationHours: 2,
+            minNotificationHours: 0,
             maxDailyAppointments: 50,
             createdAt: new Date(),
             updatedAt: new Date(),

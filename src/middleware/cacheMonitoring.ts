@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import type { CacheService } from '../services/core/cacheService';
 import { CacheResponse } from '../types/request';
 import logger from '../utils/Logger/logger';
+
+const CACHE_MONITORING_WRAPPED = '__cacheMonitoringWrapped';
 /**
  * Cache monitoring middleware
  * Tracks cache performance metrics and provides real-time monitoring
@@ -49,6 +51,12 @@ export class CacheMonitoring {
    */
   static trackCachePerformance() {
     return (req: Request, res: Response, next: NextFunction) => {
+      if ((res as Response & { [CACHE_MONITORING_WRAPPED]?: boolean })[CACHE_MONITORING_WRAPPED]) {
+        next();
+        return;
+      }
+
+      (res as Response & { [CACHE_MONITORING_WRAPPED]?: boolean })[CACHE_MONITORING_WRAPPED] = true;
       const startTime = Date.now();
 
       // Track request

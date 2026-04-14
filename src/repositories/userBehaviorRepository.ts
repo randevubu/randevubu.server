@@ -38,6 +38,21 @@ export class UserBehaviorRepository {
     return result ? this.mapToUserBehaviorData(result) : null;
   }
 
+  /**
+   * Canceled appointments whose cancel time falls on the current calendar day in Europe/Istanbul.
+   */
+  async countCanceledTodayIstanbul(customerId: string): Promise<number> {
+    const rows = await this.prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count
+      FROM appointments
+      WHERE "customerId" = ${customerId}
+        AND status = 'CANCELED'
+        AND "canceledAt" IS NOT NULL
+        AND (timezone('Europe/Istanbul', "canceledAt"))::date = (timezone('Europe/Istanbul', now()))::date
+    `;
+    return Number(rows[0]?.count ?? 0);
+  }
+
   async createOrUpdate(userId: string): Promise<UserBehaviorData> {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -165,14 +180,20 @@ export class UserBehaviorRepository {
     if (newStrikes >= 3) {
       isBanned = true;
       banCount += 1;
-      
-      // Progressive ban duration
-      if (banCount === 1) {
-        bannedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 1 week
-      } else if (banCount === 2) {
-        bannedUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 1 month
+
+      // Late cancellation (customer cancels within policy window): fixed 1-day ban, not progressive 7/30/90
+      const isLateCancellationStrike = /late cancellation/i.test(reason);
+      if (isLateCancellationStrike) {
+        bannedUntil = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000);
       } else {
-        bannedUntil = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 3 months
+        // Progressive ban duration for other strike reasons (no-show, automated flags, etc.)
+        if (banCount === 1) {
+          bannedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 1 week
+        } else if (banCount === 2) {
+          bannedUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 1 month
+        } else {
+          bannedUntil = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 3 months
+        }
       }
     }
 

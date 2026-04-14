@@ -71,15 +71,7 @@ export function logError(
   const logLevel = isExpectedError ? "warn" : "error";
   Logger[logLevel](message, errorLog);
 
-  if (isExpectedError && next) return next(error);
-
-  if (res && !res.headersSent) {
-    res.status(500).json({
-      status: "error",
-      message: "Unexpected server error",
-      requestId: meta.requestId, // Include requestId for debugging
-    });
-  }
+  // Logging only — never send responses or call next(error) here; handleControllerError owns the HTTP reply.
 }
 
 // Service-level logging functions

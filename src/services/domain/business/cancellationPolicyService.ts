@@ -13,13 +13,26 @@ import {
 } from '../../../types/cancellationPolicy';
 import { UserBehaviorRepository } from '../../../repositories/userBehaviorRepository';
 import { BusinessRepository } from '../../../repositories/businessRepository';
-import { getCurrentTimeInIstanbul } from '../../../utils/timezoneHelper';
-
 export class CancellationPolicyService {
   constructor(
     private userBehaviorRepository: UserBehaviorRepository,
     private businessRepository: BusinessRepository
   ) {}
+
+  /** Merge stored JSON with defaults; resolve maxDailyCancellations from legacy maxMonthlyCancellations if needed */
+  private normalizeCancellationPolicies(
+    raw: Partial<CancellationPolicySettings> & { maxMonthlyCancellations?: number }
+  ): CancellationPolicySettings {
+    const merged = {
+      ...DEFAULT_CANCELLATION_POLICIES,
+      ...raw,
+      maxDailyCancellations:
+        raw.maxDailyCancellations ??
+        raw.maxMonthlyCancellations ??
+        DEFAULT_CANCELLATION_POLICIES.maxDailyCancellations
+    };
+    return merged;
+  }
 
   /**
    * Get business cancellation policy settings
@@ -28,21 +41,19 @@ export class CancellationPolicyService {
     const business = await this.businessRepository.findById(businessId);
     
     if (!business || !business.settings) {
-      return DEFAULT_CANCELLATION_POLICIES;
+      return this.normalizeCancellationPolicies(DEFAULT_CANCELLATION_POLICIES);
     }
 
     const settings = business.settings as Record<string, unknown>;
-    const policies = settings.cancellationPolicies as CancellationPolicySettings | undefined;
+    const policies = settings.cancellationPolicies as
+      | (Partial<CancellationPolicySettings> & { maxMonthlyCancellations?: number })
+      | undefined;
 
     if (!policies) {
-      return DEFAULT_CANCELLATION_POLICIES;
+      return this.normalizeCancellationPolicies(DEFAULT_CANCELLATION_POLICIES);
     }
 
-    // Merge with defaults to ensure all fields are present
-    return {
-      ...DEFAULT_CANCELLATION_POLICIES,
-      ...policies
-    };
+    return this.normalizeCancellationPolicies(policies);
   }
 
   /**
@@ -61,10 +72,10 @@ export class CancellationPolicyService {
     const currentSettings = business.settings as Record<string, unknown> || {};
     const currentPolicies = currentSettings.cancellationPolicies as CancellationPolicySettings || DEFAULT_CANCELLATION_POLICIES;
 
-    const updatedPolicies = {
+    const updatedPolicies = this.normalizeCancellationPolicies({
       ...currentPolicies,
       ...policySettings
-    };
+    });
 
     const updatedSettings = {
       ...currentSettings,
@@ -97,17 +108,31 @@ export class CancellationPolicyService {
       if (!newBehavior) {
         throw new Error('Failed to create user behavior record');
       }
-      return this.buildCustomerPolicyStatus(customerId, businessId, newBehavior, policySettings);
+      const cancellationsToday = await this.userBehaviorRepository.countCanceledTodayIstanbul(customerId);
+      return this.buildCustomerPolicyStatus(
+        customerId,
+        businessId,
+        newBehavior,
+        policySettings,
+        cancellationsToday
+      );
     }
 
-    return this.buildCustomerPolicyStatus(customerId, businessId, userBehavior, policySettings);
+    const cancellationsToday = await this.userBehaviorRepository.countCanceledTodayIstanbul(customerId);
+    return this.buildCustomerPolicyStatus(
+      customerId,
+      businessId,
+      userBehavior,
+      policySettings,
+      cancellationsToday
+    );
   }
 
   /**
    * Check if a customer can perform an action based on policies
    */
   async checkPolicyViolations(context: PolicyEnforcementContext): Promise<PolicyCheckResult> {
-    const { customerId, businessId, appointmentDate, action, currentTime } = context;
+    const { customerId, businessId, appointmentDate, action } = context;
     
     const customerStatus = await this.getCustomerPolicyStatus(customerId, businessId);
     const violations: PolicyViolationResult[] = [];
@@ -141,8 +166,11 @@ export class CancellationPolicyService {
     }
 
     // Check cancellation time policy
+    // Use real UTC "now" — appointmentDate from DB is a UTC instant; getCurrentTimeInIstanbul() is not
+    // a reliable instant on servers whose TZ is not Europe/Istanbul (e.g. Docker UTC).
     if (action === 'CANCEL' && appointmentDate) {
-      const hoursUntilAppointment = (appointmentDate.getTime() - currentTime.getTime()) / (1000 * 60 * 60);
+      const nowMs = Date.now();
+      const hoursUntilAppointment = (appointmentDate.getTime() - nowMs) / (1000 * 60 * 60);
       
       if (hoursUntilAppointment < customerStatus.policySettings.minCancellationHours) {
         const timeViolation: PolicyViolationResult = {
@@ -156,15 +184,18 @@ export class CancellationPolicyService {
       }
     }
 
-    // Check monthly cancellation limit
-    if (action === 'CANCEL' && customerStatus.currentCancellations >= customerStatus.policySettings.maxMonthlyCancellations) {
+    // Daily cancellation cap (Istanbul calendar day): blocks new bookings only
+    if (
+      action === 'BOOK' &&
+      customerStatus.currentCancellations >= customerStatus.policySettings.maxDailyCancellations
+    ) {
       const cancellationViolation: PolicyViolationResult = {
         isViolation: true,
-        violationType: 'MONTHLY_CANCELLATIONS',
-        message: `Aylık maksimum iptal sayısına ulaştınız (${customerStatus.policySettings.maxMonthlyCancellations})`,
+        violationType: 'DAILY_CANCELLATIONS',
+        message: `Günlük maksimum iptal sayısına ulaştığınız için yeni randevu alamazsınız (${customerStatus.policySettings.maxDailyCancellations})`,
         remainingCount: 0,
-        canBookAppointment: true,
-        canCancelAppointment: false
+        canBookAppointment: false,
+        canCancelAppointment: true
       };
       violations.push(cancellationViolation);
     }
@@ -241,9 +272,10 @@ export class CancellationPolicyService {
     customerId: string,
     businessId: string,
     userBehavior: any,
-    policySettings: CancellationPolicySettings
+    policySettings: CancellationPolicySettings,
+    cancellationsToday: number
   ): CustomerPolicyStatus {
-    const now = getCurrentTimeInIstanbul();
+    const now = new Date();
     const gracePeriodEndsAt = new Date(userBehavior.createdAt);
     gracePeriodEndsAt.setDate(gracePeriodEndsAt.getDate() + (policySettings.gracePeriodDays || 0));
     
@@ -252,7 +284,7 @@ export class CancellationPolicyService {
     return {
       customerId,
       businessId,
-      currentCancellations: userBehavior.cancelationsThisMonth || 0,
+      currentCancellations: cancellationsToday,
       currentNoShows: userBehavior.noShowsThisMonth || 0,
       isBanned: userBehavior.isBanned || false,
       bannedUntil: userBehavior.bannedUntil,

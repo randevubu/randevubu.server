@@ -118,7 +118,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
    */
   router.get(
     '/my-appointments',
-    dynamicCache,
+    realTimeCache,
     requireBusinessAccess,
     appointmentController.getMyAppointments.bind(appointmentController)
   );
@@ -461,16 +461,17 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
    *         description: Customer not found
    */
   // Explicit route for current user's customer appointments
+  // realTimeCache: status transitions (e.g. IN_PROGRESS → COMPLETED) must not be served from Redis
   router.get(
     '/customer',
-    dynamicCache,
+    realTimeCache,
     appointmentController.getCustomerAppointments.bind(appointmentController)
   );
 
   // Explicit route for specific customerId (admin/staff)
   router.get(
     '/customer/:customerId',
-    dynamicCache,
+    realTimeCache,
     appointmentController.getCustomerAppointments.bind(appointmentController)
   );
 
@@ -498,7 +499,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
    */
   router.get(
     '/:id',
-    dynamicCache,
+    realTimeCache,
     appointmentController.getAppointmentById.bind(appointmentController)
   );
 
@@ -1203,6 +1204,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
    */
   router.get(
     '/business/:businessId/date-range',
+    requireBusinessOwnershipAccess,
     appointmentController.getAppointmentsByDateRange.bind(appointmentController)
   );
 

@@ -190,7 +190,6 @@ export function createPublicRoutes(): Router {
    *         description: Business or service not found
    */
   router.get('/businesses/:businessId/available-slots',
-    semiDynamicCache,
     validateParams(businessIdParamSchema),
     controllers.appointmentController.getPublicAvailableSlots.bind(controllers.appointmentController)
   );

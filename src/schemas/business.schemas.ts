@@ -373,11 +373,20 @@ export const updateBusinessCancellationPolicySchema = z.object({
     .max(168, 'Minimum cancellation time cannot exceed 7 days (168 hours)')
     .describe('Minimum hours before appointment that cancellation is allowed'),
 
+  maxDailyCancellations: z.number()
+    .int('Maximum daily cancellations must be an integer')
+    .min(0, 'Maximum daily cancellations cannot be negative')
+    .max(50, 'Maximum daily cancellations cannot exceed 50')
+    .optional()
+    .describe('Maximum cancellations per calendar day (Europe/Istanbul) per customer before new bookings are blocked'),
+
+  /** @deprecated Prefer maxDailyCancellations; accepted for backward compatibility */
   maxMonthlyCancellations: z.number()
     .int('Maximum monthly cancellations must be an integer')
     .min(0, 'Maximum monthly cancellations cannot be negative')
     .max(50, 'Maximum monthly cancellations cannot exceed 50')
-    .describe('Maximum number of cancellations allowed per month per customer'),
+    .optional()
+    .describe('Deprecated alias for maxDailyCancellations'),
 
   maxMonthlyNoShows: z.number()
     .int('Maximum monthly no-shows must be an integer')
@@ -424,6 +433,17 @@ export const updateBusinessCancellationPolicySchema = z.object({
 }, {
   message: 'Ban duration must be specified when auto-ban is enabled',
   path: ['banDurationDays']
+}).refine(
+  (data) => data.maxDailyCancellations !== undefined || data.maxMonthlyCancellations !== undefined,
+  {
+    message: 'maxDailyCancellations is required (or use deprecated maxMonthlyCancellations)',
+    path: ['maxDailyCancellations']
+  }
+).transform((data) => {
+  const maxDailyCancellations =
+    data.maxDailyCancellations ?? data.maxMonthlyCancellations!;
+  const { maxMonthlyCancellations: _legacy, ...rest } = data;
+  return { ...rest, maxDailyCancellations };
 });
 
 export type UpdateBusinessCancellationPolicySchema = z.infer<typeof updateBusinessCancellationPolicySchema>;
@@ -664,8 +684,14 @@ export const createAppointmentSchema = z.object({
   serviceId: z.string()
     .min(1, 'Service ID is required'),
 
-  staffId: z.string()
-    .min(1, 'Staff ID is required'),
+  staffId: z.preprocess(
+    (value) => {
+      if (value === null || value === undefined) return undefined;
+      if (typeof value === 'string' && value.trim() === '') return undefined;
+      return value;
+    },
+    z.string().min(1, 'Staff ID is required').optional()
+  ),
 
   customerId: z.string()
     .min(1, 'Customer ID is required')
@@ -869,12 +895,57 @@ export const businessSearchSchema = z.object({
     .optional()
 });
 
+const turkishStatusMap: Record<string, AppointmentStatus> = {
+  'beklemede': AppointmentStatus.PENDING,
+  'onaylandi': AppointmentStatus.CONFIRMED,
+  'devam ediyor': AppointmentStatus.IN_PROGRESS,
+  'tamamlandi': AppointmentStatus.COMPLETED,
+  'iptal edildi': AppointmentStatus.CANCELED,
+  'gelmedi': AppointmentStatus.NO_SHOW,
+};
+
+function normalizeTurkish(val: string): string {
+  return val
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'i')
+    .replace(/Ş/g, 's')
+    .replace(/Ğ/g, 'g')
+    .replace(/Ü/g, 'u')
+    .replace(/Ö/g, 'o')
+    .replace(/Ç/g, 'c')
+    .replace(/ş/g, 's')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/ı/g, 'i')
+    .toLowerCase()
+    .normalize('NFC')
+    .replace(/\u0307/g, '');
+}
+
 export const appointmentSearchSchema = z.object({
   businessId: z.string().optional(),
   serviceId: z.string().optional(),
   staffId: z.string().optional(),
   customerId: z.string().optional(),
-  status: z.nativeEnum(AppointmentStatus).optional(),
+  status: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null || val === '') return undefined;
+      const str = String(val).trim();
+      if (!str) return undefined;
+
+      const upper = str.toUpperCase();
+      if (Object.values(AppointmentStatus).includes(upper as AppointmentStatus)) {
+        return upper;
+      }
+
+      const normalized = normalizeTurkish(str);
+      const mapped = turkishStatusMap[normalized];
+      return mapped || str;
+    },
+    z.nativeEnum(AppointmentStatus).optional()
+  ),
   startDate: z.string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Start date must be in YYYY-MM-DD format')
     .optional(),
@@ -1189,10 +1260,10 @@ export const businessReservationSettingsSchema = z.object({
 
   minNotificationHours: z.number()
     .int('Min notification hours must be an integer')
-    .min(1, 'Minimum notification period is 1 hour')
+    .min(0, 'Minimum notification period cannot be negative (0 = same-day / no extra lead time)')
     .max(168, 'Maximum notification period is 1 week (168 hours)')
-    .default(2)
-    .describe('Minimum hours before appointment for notification'),
+    .default(0)
+    .describe('Minimum hours in advance a customer must book (0 = no minimum beyond other rules)'),
 
   maxDailyAppointments: z.number()
     .int('Max daily appointments must be an integer')
@@ -1213,10 +1284,10 @@ export const updateBusinessReservationSettingsSchema = z.object({
 
   minNotificationHours: z.number()
     .int('Min notification hours must be an integer')
-    .min(1, 'Minimum notification period is 1 hour')
+    .min(0, 'Minimum notification period cannot be negative (0 = same-day / no extra lead time)')
     .max(168, 'Maximum notification period is 1 week (168 hours)')
     .optional()
-    .describe('Minimum hours before appointment for notification'),
+    .describe('Minimum hours in advance a customer must book (0 = no minimum beyond other rules)'),
 
   maxDailyAppointments: z.number()
     .int('Max daily appointments must be an integer')

@@ -14,6 +14,7 @@ import {
 } from "../../constants/errorCodes";
 import { extractRequestDetails, logError } from "../Logger/loggerHelper";
 import { sendErrorResponse } from "../responseUtils";
+import { AppError } from "../../types/responseTypes";
 import { CustomError } from "./customError";
 import zodErrorHandler from "./zodError";
 import prismaErrorHandler from "./prismaError";
@@ -88,7 +89,8 @@ function handleUnexpectedError(
     res
   );
   
-  sendErrorResponse(res, "An unexpected error occurred", 500, { originalMessage: message });
+  const userMessage = message || "An unexpected error occurred";
+  sendErrorResponse(res, userMessage, 500);
 }
 
 /**
@@ -141,6 +143,8 @@ export function handleControllerError(
     handlePrismaError(error, req, res);
   } else if (error instanceof CustomError) {
     handleCustomError(error, req, res);
+  } else if (error instanceof AppError) {
+    sendErrorResponse(res, error.message, error.statusCode, error);
   } else {
     handleUnexpectedError(error, req, res);
   }

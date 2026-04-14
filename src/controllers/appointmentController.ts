@@ -20,6 +20,7 @@ import {
 import { formatDateForAPI, formatTimeForAPI } from '../utils/timezoneHelper';
 import { handleControllerError } from '../utils/errors/errorHandler';
 import logger from '../utils/Logger/logger';
+import { getAppointmentStatusLabelTr } from '../utils/appointmentStatusLabels';
 
 const noopNext: NextFunction = (() => undefined) as NextFunction;
 export class AppointmentController {
@@ -63,6 +64,7 @@ export class AppointmentController {
         date: formatDateForAPI(apt.date),
         startTime: formatTimeForAPI(apt.startTime),
         endTime: formatTimeForAPI(apt.endTime),
+        statusLabel: getAppointmentStatusLabelTr(apt.status),
       }));
 
       await this.responseHelper.success(
@@ -131,7 +133,10 @@ export class AppointmentController {
       await this.responseHelper.success(
         res,
         'success.appointment.retrieved',
-        appointment,
+        {
+          ...appointment,
+          statusLabel: getAppointmentStatusLabelTr(appointment.status),
+        },
         200,
         req
       );
@@ -179,18 +184,28 @@ export class AppointmentController {
       const page = Math.max(1, Math.min(1000, parseInt(req.query.page as string) || 1));
       const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 20));
 
+      const statusParam = req.query.status as string | undefined;
+      let status: AppointmentStatus | undefined;
+      if (statusParam && Object.values(AppointmentStatus).includes(statusParam as AppointmentStatus)) {
+        status = statusParam as AppointmentStatus;
+      }
+
       const result = await this.appointmentService.getCustomerAppointments(
         userId,
         customerId || userId,
         page,
-        limit
+        limit,
+        status
       );
 
       await this.responseHelper.success(
         res,
         'success.appointment.customerRetrieved',
         {
-          appointments: result.appointments,
+          appointments: result.appointments.map((apt) => ({
+            ...apt,
+            statusLabel: getAppointmentStatusLabelTr(apt.status),
+          })),
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
@@ -243,17 +258,15 @@ export class AppointmentController {
       const pageNum = Math.max(1, Math.min(1000, parseInt(page as string) || 1));
       const limitNum = Math.max(1, Math.min(100, parseInt(limit as string) || 20));
 
-      const filters = {
-        status: status as AppointmentStatus,
-        date: date as string,
-        page: pageNum,
-        limit: limitNum,
-      };
-
-      const result = await this.appointmentService.getAllAppointments(
+      const result = await this.appointmentService.searchAppointments(
         userId,
-        filters.page,
-        filters.limit
+        {
+          staffId,
+          status: status as AppointmentStatus,
+          startDate: date as string,
+        },
+        pageNum,
+        limitNum
       );
 
       await this.responseHelper.success(
@@ -285,8 +298,8 @@ export class AppointmentController {
       const business = (req as BusinessOwnershipRequest).business; // Properly typed business object
       const userId = req.user!.id;
       const { staffId } = req.query; // Optional staff filter
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const page = Math.max(1, Math.min(1000, parseInt(req.query.page as string) || 1));
+      const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 20));
 
       // Type-safe access to business properties
       logger.info('Fetching appointments for business', {
@@ -422,10 +435,9 @@ export class AppointmentController {
       }
 
       // Validate status
-      const validStatuses = ['CONFIRMED', 'COMPLETED', 'CANCELED', 'NO_SHOW'];
-      if (!validStatuses.includes(status)) {
+      if (!Object.values(AppointmentStatus).includes(status)) {
         const error = new AppError(
-          `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+          `Invalid status. Must be one of: ${Object.values(AppointmentStatus).join(', ')}`,
           400,
           ERROR_CODES.VALIDATION_ERROR
         );
@@ -731,11 +743,8 @@ export class AppointmentController {
       const businessContext = req.businessContext;
 
       if (!businessContext || businessContext.businessIds.length === 0) {
-        res.status(404).json({
-          success: false,
-          error: 'No businesses found for user',
-        });
-        return;
+        const error = new AppError('No businesses found for user', 404, ERROR_CODES.BUSINESS_NOT_FOUND);
+        return sendAppErrorResponse(res, error);
       }
 
       // Get today's appointments for all user's businesses
@@ -748,7 +757,11 @@ export class AppointmentController {
           );
           allAppointments.push(...appointments);
         } catch (error) {
-          // Continue with other businesses
+          logger.warn('Failed to fetch appointments for business', {
+            businessId,
+            userId,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
         }
       }
 
@@ -1054,7 +1067,8 @@ export class AppointmentController {
         endDate: endDate as string,
       };
 
-      const result = await this.appointmentService.getPublicAppointments(filters, 1, 1000);
+      // SECURITY: Use permission-aware service method to prevent cross-business data exposure
+      const result = await this.appointmentService.searchAppointments(userId, filters, 1, 1000);
 
       // Use service method to format data for public access (timezone handling is business logic)
       const sanitizedAppointments = result.appointments.map((apt) => ({
@@ -1458,6 +1472,28 @@ export class AppointmentController {
 
       if (!businessId || typeof businessId !== 'string') {
         const error = new AppError('Business ID is required', 400, ERROR_CODES.VALIDATION_ERROR);
+        return sendAppErrorResponse(res, error);
+      }
+
+      const idRegex = /^[a-zA-Z0-9-_]+$/;
+      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
+        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (!idRegex.test(serviceId) || serviceId.length < 1 || serviceId.length > 50) {
+        const error = new AppError('Invalid service ID format', 400, ERROR_CODES.VALIDATION_ERROR);
+        return sendAppErrorResponse(res, error);
+      }
+
+      if (
+        staffId &&
+        (typeof staffId !== 'string' ||
+          !idRegex.test(staffId) ||
+          staffId.length < 1 ||
+          staffId.length > 50)
+      ) {
+        const error = new AppError('Invalid staff ID format', 400, ERROR_CODES.VALIDATION_ERROR);
         return sendAppErrorResponse(res, error);
       }
 

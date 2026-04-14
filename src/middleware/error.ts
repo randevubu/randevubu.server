@@ -7,6 +7,7 @@ import {
   ErrorCode,
   ErrorContext,
   InternalServerError,
+  ValidationError,
   createSecureErrorResponse,
 } from '../types/errors';
 import {
@@ -59,6 +60,11 @@ export const errorHandler = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+
   const context: ErrorContext = {
     ipAddress: req.ip,
     userAgent: req.get('user-agent'),
@@ -168,6 +174,11 @@ export const errorHandler = async (
     if (config.NODE_ENV === 'development') {
       logger.debug('Translation failed', { translationKey, language, error: translationError });
     }
+  }
+
+  // Request validation (Zod) already embeds field-level text in `message`; do not replace with generic i18n.
+  if (error instanceof ValidationError) {
+    translatedMessage = error.message;
   }
 
   // Enhance response with translation key and translated message

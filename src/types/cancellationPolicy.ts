@@ -7,7 +7,7 @@ import { CancellationPolicySettings } from './businessSettings';
 
 export interface PolicyViolationResult {
   isViolation: boolean;
-  violationType?: 'CANCELLATION_TIME' | 'MONTHLY_CANCELLATIONS' | 'MONTHLY_NO_SHOWS' | 'BANNED_USER';
+  violationType?: 'CANCELLATION_TIME' | 'DAILY_CANCELLATIONS' | 'MONTHLY_CANCELLATIONS' | 'MONTHLY_NO_SHOWS' | 'BANNED_USER';
   message: string;
   remainingCount?: number;
   nextResetDate?: Date;
@@ -18,6 +18,7 @@ export interface PolicyViolationResult {
 export interface CustomerPolicyStatus {
   customerId: string;
   businessId: string;
+  /** Cancellations counted today (Europe/Istanbul calendar day) for daily policy limit */
   currentCancellations: number;
   currentNoShows: number;
   isBanned: boolean;
@@ -46,7 +47,7 @@ export interface PolicyCheckResult {
 
 export interface DefaultPolicySettings {
   minCancellationHours: number;
-  maxMonthlyCancellations: number;
+  maxDailyCancellations: number;
   maxMonthlyNoShows: number;
   enablePolicyEnforcement: boolean;
   policyWarningMessage: string;
@@ -57,7 +58,7 @@ export interface DefaultPolicySettings {
 
 export const DEFAULT_CANCELLATION_POLICIES: DefaultPolicySettings = {
   minCancellationHours: 4,
-  maxMonthlyCancellations: 3,
+  maxDailyCancellations: 3,
   maxMonthlyNoShows: 2,
   enablePolicyEnforcement: true,
   policyWarningMessage: 'Bu kuralları aşan müşteriler sistemden otomatik olarak engellenecek ve bir daha işletmenizden randevu alamayacaktır. Bu politikalar müşteri deneyimini korumak ve adil bir rezervasyon sistemi sağlamak için uygulanır.',

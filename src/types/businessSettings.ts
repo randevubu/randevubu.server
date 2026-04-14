@@ -19,7 +19,10 @@ export interface StaffPrivacySettings {
 
 export interface CancellationPolicySettings {
   minCancellationHours: number;
-  maxMonthlyCancellations: number;
+  /** Max self-service cancellations per calendar day (Europe/Istanbul) before new bookings are blocked */
+  maxDailyCancellations: number;
+  /** @deprecated Legacy persisted field; use maxDailyCancellations */
+  maxMonthlyCancellations?: number;
   maxMonthlyNoShows: number;
   enablePolicyEnforcement: boolean;
   policyWarningMessage?: string;

@@ -1121,7 +1121,7 @@ export class BusinessService {
     // Extract reservation settings with defaults
     const reservationSettings = (settings.reservationSettings as Record<string, unknown>) || {};
     const maxAdvanceBookingDays = (reservationSettings.maxAdvanceBookingDays as number) || 30;
-    const minNotificationHours = (reservationSettings.minNotificationHours as number) || 2;
+    const minNotificationHours = (reservationSettings.minNotificationHours as number | undefined) ?? 0;
     const maxDailyAppointments = (reservationSettings.maxDailyAppointments as number) || 50;
 
     // Apply price visibility logic to services
@@ -1908,7 +1908,7 @@ export class BusinessService {
     return {
       businessId,
       maxAdvanceBookingDays: reservationSettings.maxAdvanceBookingDays || 30,
-      minNotificationHours: reservationSettings.minNotificationHours || 2,
+      minNotificationHours: reservationSettings.minNotificationHours ?? 0,
       maxDailyAppointments: reservationSettings.maxDailyAppointments || 50,
       createdAt: business.createdAt,
       updatedAt: business.updatedAt
@@ -1943,7 +1943,7 @@ export class BusinessService {
       ...currentSettings,
       reservationSettings: {
         maxAdvanceBookingDays: settingsData.maxAdvanceBookingDays ?? currentReservationSettings.maxAdvanceBookingDays ?? 30,
-        minNotificationHours: settingsData.minNotificationHours ?? currentReservationSettings.minNotificationHours ?? 2,
+        minNotificationHours: settingsData.minNotificationHours ?? currentReservationSettings.minNotificationHours ?? 0,
         maxDailyAppointments: settingsData.maxDailyAppointments ?? currentReservationSettings.maxDailyAppointments ?? 50
       }
     };

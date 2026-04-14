@@ -6,8 +6,9 @@
  * 
  * This job:
  * - Runs on a schedule (every 1 minute in dev, every 5 minutes in prod)
- * - Finds appointments with status=CONFIRMED and endTime < now
+ * - Finds appointments with status CONFIRMED or IN_PROGRESS and endTime < now
  * - Updates them to status=COMPLETED
+ * - Does not change CANCELED or NO_SHOW (gelmedi); those stay as manually set
  * - Is idempotent (safe to run multiple times)
  * - Uses repository pattern (no direct Prisma access)
  * - Emits Prometheus metrics
@@ -15,7 +16,6 @@
 
 import { BaseJob } from "../base/BaseJob";
 import { AppointmentRepository } from "../../repositories/appointmentRepository";
-import { getCurrentTimeInIstanbul } from "../../utils/timezoneHelper";
 import logger from "../../utils/Logger/logger";
 
 export class AutoCompleteAppointmentsJob extends BaseJob {
@@ -30,11 +30,12 @@ export class AutoCompleteAppointmentsJob extends BaseJob {
     }
 
     async execute(): Promise<void> {
-        const now = getCurrentTimeInIstanbul();
+        // Real UTC instant — matches PostgreSQL timestamptz / Prisma DateTime comparisons
+        const now = new Date();
 
         // Find appointments that need to be auto-completed
         const appointments = await this.appointmentRepository
-            .findConfirmedAppointmentsPastEndTime(now);
+            .findAppointmentsEligibleForAutoComplete(now);
 
         if (appointments.length === 0) {
             logger.debug("📋 No appointments to auto-complete");

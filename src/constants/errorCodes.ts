@@ -71,6 +71,12 @@ export const ERROR_CODES = {
   APPOINTMENT_NO_SHOW_NOT_ALLOWED: 'APPOINTMENT_NO_SHOW_NOT_ALLOWED',
   APPOINTMENT_STAFF_NOT_AVAILABLE: 'APPOINTMENT_STAFF_NOT_AVAILABLE',
   APPOINTMENT_SERVICE_UNAVAILABLE: 'APPOINTMENT_SERVICE_UNAVAILABLE',
+  /** Booking earlier than business/service minimum advance (hours) */
+  APPOINTMENT_INSUFFICIENT_ADVANCE: 'APPOINTMENT_INSUFFICIENT_ADVANCE',
+  /** Business reached max appointments for that calendar day */
+  APPOINTMENT_DAILY_LIMIT_REACHED: 'APPOINTMENT_DAILY_LIMIT_REACHED',
+  /** Cancellation / no-show policy blocks new booking (e.g. daily cancel cap) */
+  APPOINTMENT_BOOKING_POLICY_VIOLATION: 'APPOINTMENT_BOOKING_POLICY_VIOLATION',
 
   // =============================================================================
   // SERVICE ERRORS
@@ -217,6 +223,9 @@ export const ERROR_TRANSLATION_KEYS = {
   [ERROR_CODES.APPOINTMENT_NO_SHOW_NOT_ALLOWED]: 'errors.appointment.noShowNotAllowed',
   [ERROR_CODES.APPOINTMENT_STAFF_NOT_AVAILABLE]: 'errors.appointment.staffNotAvailable',
   [ERROR_CODES.APPOINTMENT_SERVICE_UNAVAILABLE]: 'errors.appointment.serviceUnavailable',
+  [ERROR_CODES.APPOINTMENT_INSUFFICIENT_ADVANCE]: 'errors.appointment.insufficientAdvance',
+  [ERROR_CODES.APPOINTMENT_DAILY_LIMIT_REACHED]: 'errors.appointment.dailyLimitReached',
+  [ERROR_CODES.APPOINTMENT_BOOKING_POLICY_VIOLATION]: 'errors.appointment.bookingPolicyViolation',
 
   // Services
   [ERROR_CODES.SERVICE_NOT_FOUND]: 'errors.service.notFound',

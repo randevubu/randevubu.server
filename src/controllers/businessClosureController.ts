@@ -753,9 +753,21 @@ export class BusinessClosureController {
         message: 'Business closure created successfully'
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create closure';
+      const keyMap: Record<string, { code: string; key: string }> = {
+        'Closure start date cannot be in the past': { code: 'CLOSURE_START_IN_PAST', key: 'errors.business.closureStartInPast' },
+        'Closure end date must be at or after start date': { code: 'CLOSURE_END_BEFORE_START', key: 'errors.business.closureEndBeforeStart' },
+        'Closure period conflicts with existing closure': { code: 'CLOSURE_CONFLICT', key: 'errors.business.closureConflict' },
+      };
+      const matched = keyMap[message] || { code: 'CLOSURE_CREATE_FAILED', key: 'errors.business.closureCreateFailed' };
       res.status(400).json({
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to create closure'
+        message,
+        error: {
+          code: matched.code,
+          key: matched.key,
+          message,
+        }
       });
     }
   }
