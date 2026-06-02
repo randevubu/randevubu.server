@@ -594,6 +594,23 @@ export class ServiceController {
     }
   }
 
+  async getServiceAssignmentStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const userId = req.user!.id;
+
+      if (!id || typeof id !== 'string') {
+        const error = new AppError('Service ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
+        return sendAppErrorResponse(res, error);
+      }
+
+      const status = await this.offeringService.getServiceAssignmentStatus(userId, id);
+      await this.responseHelper.success(res, 'Assignment status retrieved', status, 200, req);
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
   async toggleServiceStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;

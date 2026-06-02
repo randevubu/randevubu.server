@@ -18,12 +18,17 @@ export const updateGoogleIntegrationSchema = z.object({
     .min(1, 'Google Place ID, CID, or URL is required')
     .optional(),
   googleUrl: z.string()
-    .url('Invalid Google URL format')
+    .min(1, 'Google URL cannot be empty')
     .optional(),
-  enabled: z.boolean()
+  enabled: z.boolean(),
+  mapEnabled: z.boolean().optional(),
+  googleAverageRating: z.number().min(1).max(5).optional().nullable(),
+  googleTotalRatings: z.number().int().min(0).optional().nullable(),
+  isReset: z.boolean().optional(),
+  reviewsHidden: z.boolean().optional(),
 }).refine(
   (data) => {
-    // If enabled is true, must provide either googlePlaceId or googleUrl
+    if (data.isReset) return true;
     if (data.enabled && !data.googlePlaceId && !data.googleUrl) {
       return false;
     }

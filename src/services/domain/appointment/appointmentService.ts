@@ -54,6 +54,49 @@ export class AppointmentService {
     return { resource, action };
   }
 
+  /**
+   * Resolve which business_staff IDs to use as an appointment filter for a given user + business.
+   *
+   * Rules:
+   *  - Platform ADMIN → no restriction (returns null); optional requestedStaffId is honoured
+   *  - Business OWNER (global role or business_staff.role = 'OWNER'):
+   *      With requestedStaffId (staff selector) → filter to [requestedStaffId]
+   *      Without selector → null (all appointments in the business)
+   *  - Everyone else (STAFF / MANAGER / RECEPTIONIST):
+   *      Always filter to their own staff record; requestedStaffId is ignored
+   *
+   * Returns null to indicate "no staff filter — return all appointments".
+   */
+  private async resolveStaffFilter(
+    userId: string,
+    businessId: string,
+    requestedStaffId?: string
+  ): Promise<string[] | null> {
+    const userPermissions = await this.rbacService.getUserPermissions(userId);
+    const roleNames = userPermissions.roles.map(r => r.name);
+
+    if (roleNames.includes('ADMIN')) {
+      return requestedStaffId ? [requestedStaffId] : null;
+    }
+
+    const staffRecord = await this.repositories.prismaClient.businessStaff.findFirst({
+      where: { userId, businessId, isActive: true, leftAt: null },
+      select: { id: true, role: true }
+    });
+
+    const isOwnerLevel = roleNames.includes('OWNER') || staffRecord?.role === 'OWNER';
+
+    if (isOwnerLevel) {
+      // Owner with selector → that staff member only
+      if (requestedStaffId) return [requestedStaffId];
+      // Owner with no selector → all appointments in the business (null = no filter)
+      return null;
+    }
+
+    // STAFF / MANAGER / RECEPTIONIST: always own appointments only
+    return staffRecord ? [staffRecord.id] : [];
+  }
+
   // Helper method to validate business reservation rules (for non-transaction use)
   private async validateBusinessReservationRules(
     businessId: string,
@@ -88,8 +131,10 @@ export class AppointmentService {
       );
     }
 
-    // 1. Check maximum advance booking days
-    const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    // 1. Check maximum advance booking days (calendar days: today = 0, tomorrow = 1, …)
+    const todayMidnight = new Date(now); todayMidnight.setHours(0, 0, 0, 0);
+    const apptMidnight = new Date(appointmentDateTime); apptMidnight.setHours(0, 0, 0, 0);
+    const daysDifference = Math.round((apptMidnight.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysDifference > rules.maxAdvanceBookingDays) {
       throw new AppError(
@@ -209,8 +254,10 @@ export class AppointmentService {
       );
     }
 
-    // 1. Check maximum advance booking days
-    const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    // 1. Check maximum advance booking days (calendar days: today = 0, tomorrow = 1, …)
+    const todayMidnight = new Date(now); todayMidnight.setHours(0, 0, 0, 0);
+    const apptMidnight = new Date(appointmentDateTime); apptMidnight.setHours(0, 0, 0, 0);
+    const daysDifference = Math.round((apptMidnight.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysDifference > rules.maxAdvanceBookingDays) {
       throw new AppError(
@@ -479,9 +526,10 @@ export class AppointmentService {
     // Validate business-level reservation rules (includes service-level validation)
     await this.validateBusinessReservationRules(data.businessId, appointmentDateTime, customerId, service.duration, service.minAdvanceBooking);
 
-    // Check service-level maximum advance booking (keep existing logic as fallback)
-    const hoursUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-    const daysUntilAppointment = hoursUntilAppointment / 24;
+    // Check service-level maximum advance booking (calendar days, today = 0)
+    const svcTodayMidnight = new Date(now); svcTodayMidnight.setHours(0, 0, 0, 0);
+    const svcApptMidnight = new Date(appointmentDateTime); svcApptMidnight.setHours(0, 0, 0, 0);
+    const daysUntilAppointment = Math.round((svcApptMidnight.getTime() - svcTodayMidnight.getTime()) / (1000 * 60 * 60 * 24));
     if (daysUntilAppointment > service.maxAdvanceBooking) {
       throw new AppError(
         `Service max advance booking of ${service.maxAdvanceBooking} days exceeded`,
@@ -720,6 +768,7 @@ export class AppointmentService {
       businessId?: string;
       page?: number;
       limit?: number;
+      staffId?: string;
     }
   ): Promise<{
     appointments: AppointmentWithDetails[];
@@ -730,7 +779,7 @@ export class AppointmentService {
     // Check if user has business role - only OWNER and STAFF can access
     const userPermissions = await this.rbacService.getUserPermissions(userId);
     const roleNames = userPermissions.roles.map(role => role.name);
-    const hasBusinessRole = roleNames.some(role => ['OWNER', 'STAFF'].includes(role));
+    const hasBusinessRole = roleNames.some(role => ['OWNER', 'STAFF', 'ADMIN'].includes(role));
 
     if (!hasBusinessRole) {
       throw new AuthorizationError('Access denied. Business role required.');
@@ -738,15 +787,46 @@ export class AppointmentService {
 
     await this.appointmentRepository.finalizeEndedAppointmentsIfStale();
 
-    // Get appointments from all businesses user has access to
-    return await this.appointmentRepository.findByUserBusinesses(userId, filters);
+    // ADMIN sees all (or selected staff when selector used)
+    const isAdmin = roleNames.includes('ADMIN');
+    if (isAdmin) {
+      const staffIds = filters?.staffId ? [filters.staffId] : undefined;
+      return await this.appointmentRepository.findByUserBusinesses(userId, { ...filters, staffIds });
+    }
+
+    const isOwnerLevel = roleNames.includes('OWNER') ||
+      !!(await this.repositories.prismaClient.businessStaff.findFirst({
+        where: { userId, role: 'OWNER', isActive: true, leftAt: null },
+        select: { id: true }
+      }));
+
+    if (isOwnerLevel) {
+      if (filters?.staffId) {
+        // Owner used the staff selector — show that staff member's appointments
+        return await this.appointmentRepository.findByUserBusinesses(userId, {
+          ...filters,
+          staffIds: [filters.staffId]
+        });
+      }
+      // Owner with no selector — show ALL appointments for their businesses
+      return await this.appointmentRepository.findByUserBusinesses(userId, filters);
+    }
+
+    // Non-owner staff: scope to own records only
+    const staffRecords = await this.repositories.prismaClient.businessStaff.findMany({
+      where: { userId, isActive: true, leftAt: null },
+      select: { id: true }
+    });
+    const staffIds = staffRecords.map(s => s.id);
+    return await this.appointmentRepository.findByUserBusinesses(userId, { ...filters, staffIds });
   }
 
   async getBusinessAppointments(
     userId: string,
     businessId: string,
     page = 1,
-    limit = 20
+    limit = 20,
+    requestedStaffId?: string
   ): Promise<{
     appointments: AppointmentWithDetails[];
     total: number;
@@ -767,7 +847,8 @@ export class AppointmentService {
 
     await this.appointmentRepository.finalizeEndedAppointmentsIfStale();
 
-    return await this.appointmentRepository.findByBusinessId(businessId, page, limit);
+    const staffIds = await this.resolveStaffFilter(userId, businessId, requestedStaffId);
+    return await this.appointmentRepository.findByBusinessId(businessId, page, limit, staffIds ?? undefined);
   }
 
   async searchAppointments(
@@ -1433,14 +1514,11 @@ export class AppointmentService {
       const title = 'New Appointment Booking';
       const body = `${customerName} booked ${service.name} for ${appointmentDate} at ${appointmentTime}`;
 
-      // Use unified notification gateway - respects all business settings
-      // Note: SMS will use the template message, other channels use title/body
-      const result = await this.notificationGateway.sendSystemAlert({
+      const notificationPayload = {
         businessId: appointment.businessId,
-        userId: business.ownerId,
         title,
         body,
-        smsMessage, // Pass SMS-specific message
+        smsMessage,
         appointmentId: appointment.id,
         data: {
           appointmentId: appointment.id,
@@ -1453,12 +1531,35 @@ export class AppointmentService {
           type: 'new_appointment'
         },
         url: `/appointments/${appointment.id}`
+      };
+
+      // Notify business owner
+      const ownerResult = await this.notificationGateway.sendSystemAlert({
+        ...notificationPayload,
+        userId: business.ownerId,
       });
 
-      if (result.success) {
-        logger.info(`✅ Appointment notification sent to business owner: ${business.ownerId} via ${result.sentChannels.join(', ')}`);
+      if (ownerResult.success) {
+        logger.info(`✅ Appointment notification sent to business owner: ${business.ownerId} via ${ownerResult.sentChannels.join(', ')}`);
       } else {
-        logger.info(`⚠️ Appointment notification skipped: ${result.skippedChannels.map(sc => sc.reason).join(', ')}`);
+        logger.info(`⚠️ Owner notification skipped: ${ownerResult.skippedChannels.map(sc => sc.reason).join(', ')}`);
+      }
+
+      // Notify assigned staff member (if different from owner)
+      if (appointment.staffId && this.repositories?.staffRepository) {
+        const staffMember = await this.repositories.staffRepository.findById(appointment.staffId);
+        if (staffMember && staffMember.userId && staffMember.userId !== business.ownerId) {
+          const staffResult = await this.notificationGateway.sendSystemAlert({
+            ...notificationPayload,
+            userId: staffMember.userId,
+          });
+
+          if (staffResult.success) {
+            logger.info(`✅ Appointment notification sent to staff: ${staffMember.userId} via ${staffResult.sentChannels.join(', ')}`);
+          } else {
+            logger.info(`⚠️ Staff notification skipped: ${staffResult.skippedChannels.map(sc => sc.reason).join(', ')}`);
+          }
+        }
       }
 
     } catch (error) {
@@ -1539,7 +1640,9 @@ export class AppointmentService {
    */
   async getMonitorAppointments(
     businessId: string,
+    userId: string,
     date?: string,
+    requestedStaffId?: string,
     includeStats: boolean = true,
     maxQueueSize: number = 10
   ): Promise<{
@@ -1594,11 +1697,15 @@ export class AppointmentService {
     const dayEnd = new Date(targetDate);
     dayEnd.setHours(23, 59, 59, 999);
 
+    // Resolve staff scoping: owners see their own unless staff selector provided
+    const staffIds = await this.resolveStaffFilter(userId, businessId, requestedStaffId);
+
     // Fetch all appointments for the day with full details
     const appointmentsWithDetails = await this.appointmentRepository.findByBusinessAndDateRange(
       businessId,
       dayStart,
-      dayEnd
+      dayEnd,
+      staffIds ?? undefined
     );
 
     const now = getCurrentTimeInIstanbul();
@@ -1837,6 +1944,15 @@ export class AppointmentService {
       staffId || null
     );
 
+    // If no staff-specific hours found, try business-level hours (staffId=null)
+    if (workingHours.length === 0 && staffId) {
+      workingHours = await this.appointmentRepository.findWorkingHours(
+        businessId,
+        dayOfWeek,
+        null
+      );
+    }
+
     // If workingHours table is empty, read from the business's businessHours JSON field
     if (workingHours.length === 0) {
       const business = await this.businessRepository.findById(businessId);
@@ -1940,7 +2056,13 @@ export class AppointmentService {
     currentSlotTime.setHours(openHour, openMinute, 0, 0);
 
     const closingTime = new Date(targetDate);
-    closingTime.setHours(closeHour, closeMinute, 0, 0);
+    if (closeHour === 0 && closeMinute === 0) {
+      // 00:00 means midnight = end of day → next day's 00:00
+      closingTime.setDate(closingTime.getDate() + 1);
+      closingTime.setHours(0, 0, 0, 0);
+    } else {
+      closingTime.setHours(closeHour, closeMinute, 0, 0);
+    }
 
     const now = new Date();
     const slotInterval = 15;
@@ -1950,7 +2072,7 @@ export class AppointmentService {
       slotEndTime.setMinutes(slotEndTime.getMinutes() + duration);
 
       if (slotEndTime > closingTime) {
-        break;
+        break; // slot ends after closing — skip
       }
 
       if (currentSlotTime > now) {

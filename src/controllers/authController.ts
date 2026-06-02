@@ -297,12 +297,9 @@ export class AuthController {
     const deviceInfo = extractDeviceInfo(req);
     const context = createErrorContext(req);
 
-    logger.info('Refresh token debug info', {
+    logger.debug('Refresh token request received', {
       hasCookieToken: !!cookieRefreshToken,
       hasBodyToken: !!bodyRefreshToken,
-      cookieTokenLength: cookieRefreshToken?.length,
-      cookieTokenStart: cookieRefreshToken?.substring(0, 50),
-      allCookies: Object.keys(req.cookies || {}),
       requestId: context.requestId,
     });
 
@@ -321,7 +318,6 @@ export class AuthController {
     if (typeof refreshToken !== 'string' || refreshToken.trim() === '') {
       logger.error('Invalid refresh token type or empty', {
         tokenType: typeof refreshToken,
-        tokenValue: refreshToken,
         requestId: context.requestId,
       });
       this.clearAuthCookies(res, context, req);
@@ -340,7 +336,6 @@ export class AuthController {
     if (tokenParts.length !== 3) {
       logger.error('Refresh token does not have JWT structure', {
         tokenParts: tokenParts.length,
-        token: refreshToken.substring(0, 50) + '...',
         requestId: context.requestId,
       });
       this.clearAuthCookies(res, context, req);

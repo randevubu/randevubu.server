@@ -97,7 +97,7 @@ export function createStaffRoutes(): Router {
   router.post(
     '/invite',
     cacheInvalidation.invalidateBusinessCache,
-    rateLimitByUser(5, 60),
+    rateLimitByUser(5, 60_000),
     validateBody(inviteStaffSchema),
     controllers.staffController.inviteStaff.bind(controllers.staffController)
   );
@@ -151,7 +151,7 @@ export function createStaffRoutes(): Router {
   router.post(
     '/verify-invitation',
     cacheInvalidation.invalidateBusinessCache,
-    rateLimitByUser(3, 60),
+    rateLimitByUser(3, 60_000),
     validateBody(verifyStaffInvitationSchema),
     controllers.staffController.verifyStaffInvitation.bind(controllers.staffController)
   );
@@ -419,7 +419,7 @@ export function createStaffRoutes(): Router {
    */
   router.post(
     '/bulk-invite',
-    rateLimitByUser(2, 300), // 2 requests per 5 minutes for bulk operations
+    rateLimitByUser(2, 300_000), // 2 requests per 5 minutes for bulk operations
     validateBody(bulkInviteStaffSchema),
     controllers.staffController.bulkInviteStaff.bind(controllers.staffController)
   );

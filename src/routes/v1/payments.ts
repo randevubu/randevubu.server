@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { PaymentController } from '../../controllers/paymentController';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { staticCache, dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
+import { strictRateLimit } from '../../middleware/userRateLimit';
+import { verifyIyzicoWebhook } from '../../middleware/verifyIyzicoWebhook';
 
 export function createPaymentRoutes(paymentController: PaymentController): Router {
   const router = Router();
@@ -10,6 +12,7 @@ export function createPaymentRoutes(paymentController: PaymentController): Route
   router.post(
     '/businesses/:businessId/payments',
     requireAuth,
+    strictRateLimit,
     withAuth((req, res) => paymentController.createSubscriptionPayment(req, res))
   );
 
@@ -33,6 +36,7 @@ export function createPaymentRoutes(paymentController: PaymentController): Route
   router.post(
     '/payments/:paymentId/refund',
     requireAuth,
+    strictRateLimit,
     withAuth((req, res) => paymentController.refundPayment(req, res))
   );
 
@@ -40,6 +44,7 @@ export function createPaymentRoutes(paymentController: PaymentController): Route
   router.post(
     '/payments/:paymentId/cancel',
     requireAuth,
+    strictRateLimit,
     withAuth((req, res) => paymentController.cancelPayment(req, res))
   );
 
@@ -48,13 +53,15 @@ export function createPaymentRoutes(paymentController: PaymentController): Route
     paymentController.getSubscriptionPlans(req, res)
   );
 
-  // Get test credit cards for Iyzico sandbox
-  router.get('/payments/test-cards', staticCache, (req, res) =>
-    paymentController.getTestCards(req, res)
-  );
+  // Get test credit cards for Iyzico sandbox — dev/staging only
+  if (process.env.NODE_ENV !== 'production') {
+    router.get('/payments/test-cards', staticCache, (req, res) =>
+      paymentController.getTestCards(req, res)
+    );
+  }
 
-  // Handle Iyzico webhook notifications
-  router.post('/payments/webhook', (req, res) => paymentController.webhookHandler(req, res));
+  // Handle Iyzico webhook notifications — signature is verified before the handler runs
+  router.post('/payments/webhook', verifyIyzicoWebhook, (req, res) => paymentController.webhookHandler(req, res));
 
   return router;
 }

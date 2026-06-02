@@ -251,7 +251,7 @@ export class StaffRepository {
   async getBusinessStaffStats(businessId: string): Promise<{
     totalStaff: number;
     activeStaff: number;
-    byRole: Record<BusinessStaffRole, number>;
+    byRole: Record<string, number>;
   }> {
     const [totalStaff, activeStaff, roleStats] = await Promise.all([
       this.prisma.businessStaff.count({
@@ -271,8 +271,7 @@ export class StaffRepository {
       OWNER: 0,
       MANAGER: 0,
       STAFF: 0,
-      RECEPTIONIST: 0,
-    } as Record<BusinessStaffRole, number>;
+    } as Record<string, number>;
 
     roleStats.forEach((stat) => {
       byRole[stat.role] = stat._count.role;

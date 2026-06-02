@@ -625,14 +625,13 @@ export class RBACService {
       // This allows new users to be assigned their default CUSTOMER role during registration
       const isAutoRegistration = metadata?.source === "auto_registration";
 
-      if (!isAutoRegistration) {
-        // Check if grantor has permission to assign roles (only for manual assignments)
-        const grantorPermissions = await this.getUserPermissions(grantedBy);
-        if (
-          grantorPermissions.effectiveLevel <
-          SECURITY_CONSTANTS.MIN_LEVEL_THRESHOLD
-        ) {
-          // Minimum level for role assignment
+      // Fetch grantor permissions once for both the minimum-level and escalation checks
+      const grantorPermissions = isAutoRegistration
+        ? null
+        : await this.getUserPermissions(grantedBy);
+
+      if (grantorPermissions !== null) {
+        if (grantorPermissions.effectiveLevel < SECURITY_CONSTANTS.MIN_LEVEL_THRESHOLD) {
           throw new ForbiddenError("Insufficient permissions to assign roles");
         }
       }
@@ -646,6 +645,13 @@ export class RBACService {
 
       if (!role || !role.isActive) {
         throw new UserNotFoundError("Role not found or inactive");
+      }
+
+      // Prevent privilege escalation: grantor cannot assign a role with higher level than their own
+      if (grantorPermissions !== null && role.level > grantorPermissions.effectiveLevel) {
+        throw new ForbiddenError(
+          "Cannot assign a role with a higher permission level than your own"
+        );
       }
 
       // Check if user already has this role

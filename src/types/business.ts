@@ -108,6 +108,7 @@ export interface BusinessData {
   averageRating?: number | null;
   totalRatings?: number;
   lastRatingAt?: Date | null;
+  reviewsHidden?: boolean;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;
@@ -372,7 +373,6 @@ export enum BusinessStaffRole {
   OWNER = 'OWNER',
   MANAGER = 'MANAGER',
   STAFF = 'STAFF',
-  RECEPTIONIST = 'RECEPTIONIST'
 }
 
 export enum AppointmentStatus {
@@ -432,10 +432,11 @@ export interface CreateBusinessRequest {
 
 export interface UpdateBusinessRequest {
   name?: string;
+  slug?: string;
   description?: string;
   email?: string;
   phone?: string;
-  // website is auto-generated
+  website?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -513,6 +514,7 @@ export interface CreateServiceRequest {
   bufferTime?: number;
   maxAdvanceBooking?: number;
   minAdvanceBooking?: number;
+  assignToAll?: boolean;
 }
 
 export interface UpdateServiceRequest {
@@ -526,6 +528,7 @@ export interface UpdateServiceRequest {
   bufferTime?: number;
   maxAdvanceBooking?: number;
   minAdvanceBooking?: number;
+  assignToAll?: boolean;
 }
 
 export interface CreateAppointmentRequest {

@@ -48,6 +48,7 @@ describe("UsageController", () => {
       canAddCustomer: jest.fn(),
       updateStaffUsage: jest.fn(),
       updateServiceUsage: jest.fn(),
+      updateCustomerUsage: jest.fn(),
     };
 
     // Create UsageController instance
@@ -323,6 +324,7 @@ describe("UsageController", () => {
 
       mockUsageService.updateStaffUsage.mockResolvedValue(undefined);
       mockUsageService.updateServiceUsage.mockResolvedValue(undefined);
+      mockUsageService.updateCustomerUsage.mockResolvedValue(undefined);
 
       // Act
       await usageController.refreshUsageCounters(mockRequest, mockResponse);
@@ -334,12 +336,15 @@ describe("UsageController", () => {
       expect(mockUsageService.updateServiceUsage).toHaveBeenCalledWith(
         businessId
       );
+      expect(mockUsageService.updateCustomerUsage).toHaveBeenCalledWith(
+        businessId
+      );
       expect(sendSuccessResponse).toHaveBeenCalledWith(
         mockResponse,
         "Usage data refreshed successfully",
         {
           data: {
-            refreshedCounters: ["staff", "services"],
+            refreshedCounters: ["staff", "services", "customers"],
             updatedAt: expect.any(String),
           },
         }

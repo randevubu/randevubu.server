@@ -17,6 +17,7 @@
 import { BaseJob } from "../base/BaseJob";
 import { AppointmentRepository } from "../../repositories/appointmentRepository";
 import logger from "../../utils/Logger/logger";
+import { getCurrentTimeInIstanbul } from "../../utils/timezoneHelper";
 
 export class AutoCompleteAppointmentsJob extends BaseJob {
     constructor(
@@ -30,8 +31,7 @@ export class AutoCompleteAppointmentsJob extends BaseJob {
     }
 
     async execute(): Promise<void> {
-        // Real UTC instant — matches PostgreSQL timestamptz / Prisma DateTime comparisons
-        const now = new Date();
+        const now = getCurrentTimeInIstanbul();
 
         // Find appointments that need to be auto-completed
         const appointments = await this.appointmentRepository

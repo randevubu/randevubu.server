@@ -30,6 +30,7 @@ import { CancellationPolicySettings } from '../../../types/businessSettings';
 import { CustomerPolicyStatus } from '../../../types/cancellationPolicy';
 import { CustomerManagementSettings, CustomerNote, CustomerEvaluation, CustomerLoyaltyStatus } from '../../../types/customerManagement';
 import logger from "../../../utils/Logger/logger";
+import { cacheManager } from '../../../services/redis-client';
 export class BusinessService {
   private cancellationPolicyService: CancellationPolicyService;
   private customerManagementService: CustomerManagementService;
@@ -68,9 +69,6 @@ export class BusinessService {
     // Generate unique slug
     const slug = await this.generateUniqueSlug(data.name);
 
-    // Generate website URL automatically
-    const website = `https://randevubu.com/business/${slug}`;
-
     // Create default business hours (Monday-Friday 9AM-6PM, weekends closed)
     const defaultBusinessHours = {
       monday: { openTime: '09:00', closeTime: '18:00', isOpen: true },
@@ -92,7 +90,6 @@ export class BusinessService {
       ...data,
       ownerId: userId,
       slug: slug,
-      website: website,
       businessHours: defaultBusinessHours
     });
 
@@ -324,10 +321,26 @@ export class BusinessService {
       businesses.push(...mappedBusinesses);
     }
 
-    // If user is staff, get businesses they work at (basic info only)
+    // If user is staff, get businesses they work at (with subscription so DashboardGuard can check)
     if (roleNames.includes('STAFF')) {
-      const staffBusinesses = await this.businessRepository.findByStaffUserId(userId);
-      businesses.push(...staffBusinesses.map(b => ({ ...b, subscription: undefined })));
+      const staffBusinesses = await this.businessRepository.findByStaffUserIdWithSubscription(userId);
+      const mappedStaffBusinesses = staffBusinesses.map(business => ({
+        ...business,
+        subscription: business.subscription ? {
+          id: business.subscription.id,
+          businessId: business.id,
+          planId: business.subscription.plan.id,
+          status: business.subscription.status as string,
+          currentPeriodStart: business.subscription.currentPeriodStart,
+          currentPeriodEnd: business.subscription.currentPeriodEnd,
+          cancelAtPeriodEnd: business.subscription.cancelAtPeriodEnd,
+          autoRenewal: true,
+          failedPaymentCount: 0,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        } : undefined
+      }));
+      businesses.push(...mappedStaffBusinesses);
     }
 
     // Remove duplicates (in case user is both owner and staff of same business)
@@ -436,33 +449,38 @@ export class BusinessService {
     businessId: string,
     data: UpdateBusinessRequest
   ): Promise<BusinessData> {
-    // Check permissions - either global or business-specific
+    // Check permissions: global edit OR direct business ownership
     const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
 
     if (!hasGlobalEdit) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.EDIT_OWN_BUSINESS,
-        { businessId }
-      );
+      const business = await this.businessRepository.findById(businessId);
+      if (!business || business.ownerId !== userId) {
+        throw new ForbiddenError('Permission denied');
+      }
     }
 
-    // If name is being updated, regenerate slug and website URL
+    // If name is being updated, regenerate slug (website is never auto-set)
     if (data.name) {
       const slug = await this.generateUniqueSlug(data.name, businessId);
-      const website = `https://randevubu.com/business/${slug}`;
-
-      // Add slug and website to update data
-      const updateData = {
-        ...data,
-        slug,
-        website
-      };
-
-      return await this.businessRepository.update(businessId, updateData);
+      const updated = await this.businessRepository.update(businessId, { ...data, slug });
+      await cacheManager.del(`semi:anonymous:global:/slug/${updated.slug}`).catch(() => {});
+      return updated;
     }
 
-    return await this.businessRepository.update(businessId, data);
+    const updated = await this.businessRepository.update(businessId, data);
+    // Clear public slug cache so updated info is immediately visible
+    await cacheManager.del(`semi:anonymous:global:/slug/${updated.slug}`).catch(() => {});
+    return updated;
+  }
+
+  private async canEditBusiness(userId: string, businessId: string, ownerId: string): Promise<boolean> {
+    if (ownerId === userId) return true;
+    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
+    if (hasGlobalEdit) return true;
+    const ownerStaff = await this.repositories.prismaClient.businessStaff.findFirst({
+      where: { businessId, userId, role: 'OWNER', isActive: true, leftAt: null }
+    });
+    return !!ownerStaff;
   }
 
   async updateBusinessPriceSettings(
@@ -470,21 +488,14 @@ export class BusinessService {
     businessId: string,
     priceSettings: UpdateBusinessPriceSettingsSchema
   ): Promise<BusinessData> {
-    // Check permissions - either global or business-specific
-    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-
-    if (!hasGlobalEdit) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.EDIT_OWN_BUSINESS,
-        { businessId }
-      );
-    }
-
-    // Get current business settings
+    // Get current business first (needed for both permission check and settings merge)
     const currentBusiness = await this.businessRepository.findById(businessId);
     if (!currentBusiness) {
       throw new Error('Business not found');
+    }
+
+    if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
+      throw new ForbiddenError('Permission denied');
     }
 
     // Merge price settings into existing business settings
@@ -510,21 +521,14 @@ export class BusinessService {
     userId: string,
     businessId: string
   ): Promise<any> {
-    // Check permissions - either global or business-specific
-    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
-
-    if (!hasGlobalView) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.VIEW_OWN_BUSINESS,
-        { businessId }
-      );
-    }
-
-    // Get current business settings
+    // Get current business first (needed for both permission check and reading settings)
     const currentBusiness = await this.businessRepository.findById(businessId);
     if (!currentBusiness) {
       throw new Error('Business not found');
+    }
+
+    if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
+      throw new ForbiddenError('Permission denied');
     }
 
     // Extract price visibility settings
@@ -543,21 +547,14 @@ export class BusinessService {
     businessId: string,
     staffPrivacySettings: UpdateBusinessStaffPrivacySettingsSchema
   ): Promise<BusinessData> {
-    // Check permissions - either global or business-specific
-    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
-
-    if (!hasGlobalEdit) {
-      await this.rbacService.requirePermission(
-        userId,
-        PermissionName.EDIT_OWN_BUSINESS,
-        { businessId }
-      );
-    }
-
-    // Get current business settings
+    // Get current business first (needed for both permission check and settings merge)
     const currentBusiness = await this.businessRepository.findById(businessId);
     if (!currentBusiness) {
       throw new Error('Business not found');
+    }
+
+    if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
+      throw new ForbiddenError('Permission denied');
     }
 
     // Merge staff privacy settings into existing business settings
@@ -589,6 +586,36 @@ export class BusinessService {
     this.rbacService.forceInvalidateUser(userId);
 
     return updatedBusiness;
+  }
+
+  async updateProfilePrivacySettings(
+    userId: string,
+    businessId: string,
+    profilePrivacy: { showPhone: boolean; showEmail: boolean }
+  ): Promise<{ showPhone: boolean; showEmail: boolean }> {
+    const currentBusiness = await this.businessRepository.findById(businessId);
+    if (!currentBusiness) throw new Error('Business not found');
+    if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
+      throw new ForbiddenError('Permission denied');
+    }
+    const currentSettings = (currentBusiness.settings as Record<string, unknown>) || {};
+    const updatedSettings = { ...currentSettings, profilePrivacy };
+    await this.businessRepository.update(businessId, { settings: updatedSettings });
+    return profilePrivacy;
+  }
+
+  async getProfilePrivacySettings(
+    userId: string,
+    businessId: string
+  ): Promise<{ showPhone: boolean; showEmail: boolean }> {
+    const currentBusiness = await this.businessRepository.findById(businessId);
+    if (!currentBusiness) throw new Error('Business not found');
+    const settings = (currentBusiness.settings as Record<string, unknown>) || {};
+    const p = (settings.profilePrivacy as Record<string, unknown>) || {};
+    return {
+      showPhone: (p.showPhone as boolean) ?? true,
+      showEmail: (p.showEmail as boolean) ?? false,
+    };
   }
 
   async getStaffPrivacySettings(
@@ -775,7 +802,33 @@ export class BusinessService {
       );
     }
 
-    return await this.businessRepository.updateBusinessHours(businessId, businessHours);
+    const result = await this.businessRepository.updateBusinessHours(businessId, businessHours);
+
+    // Sync working_hours table so slot generation picks up the new times
+    const dayMapping: Record<string, number> = {
+      sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+      thursday: 4, friday: 5, saturday: 6
+    };
+
+    for (const [day, hoursRaw] of Object.entries(businessHours)) {
+      const dayOfWeek = dayMapping[day];
+      if (dayOfWeek === undefined || !hoursRaw) continue;
+
+      const hours = hoursRaw as any;
+      if (hours.isOpen && hours.open && hours.close) {
+        await this.repositories.appointmentRepository.upsertWorkingHours({
+          businessId,
+          dayOfWeek,
+          startTime: hours.open as string,
+          endTime: hours.close as string,
+          isActive: true
+        });
+      } else {
+        await this.repositories.appointmentRepository.deactivateWorkingHours(businessId, dayOfWeek);
+      }
+    }
+
+    return result;
   }
 
   // Enhanced Business Hours Management Methods
@@ -1209,7 +1262,12 @@ export class BusinessService {
 
   // Utility methods
   private async generateUniqueSlug(name: string, excludeId?: string): Promise<string> {
+    const turkishMap: Record<string, string> = {
+      'ç': 'c', 'ğ': 'g', 'ı': 'i', 'ö': 'o', 'ş': 's', 'ü': 'u',
+      'Ç': 'c', 'Ğ': 'g', 'İ': 'i', 'I': 'i', 'Ö': 'o', 'Ş': 's', 'Ü': 'u',
+    };
     const baseSlug = name
+      .split('').map(c => turkishMap[c] ?? c).join('')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
@@ -1326,7 +1384,7 @@ export class BusinessService {
     ]);
 
     // If user doesn't have global permission, verify they own this business
-    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
+    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
 
     if (!hasGlobalUpdate) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
@@ -1387,13 +1445,13 @@ export class BusinessService {
     ]);
 
     // If user doesn't have global permission, check business-specific access
-    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
+    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
 
     if (!hasGlobalUpdate) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
         userId,
         'business',
-        'update_own',
+        'edit_own',
         { businessId }
       );
 
@@ -1449,13 +1507,13 @@ export class BusinessService {
     ]);
 
     // If user doesn't have global permission, check business-specific access
-    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
+    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
 
     if (!hasGlobalUpdate) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
         userId,
         'business',
-        'update_own',
+        'edit_own',
         { businessId }
       );
 
@@ -1524,13 +1582,13 @@ export class BusinessService {
     ]);
 
     // If user doesn't have global permission, check business-specific access
-    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'update_all');
+    const hasGlobalUpdate = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
 
     if (!hasGlobalUpdate) {
       const hasBusinessAccess = await this.rbacService.hasPermission(
         userId,
         'business',
-        'update_own',
+        'edit_own',
         { businessId }
       );
 
@@ -1560,7 +1618,7 @@ export class BusinessService {
       );
 
       if (!hasBusinessAccess) {
-        throw new Error('Access denied: You do not have permission to view this business settings');
+        throw new ForbiddenError('Bu işletmenin bildirim ayarlarını görüntüleme yetkiniz bulunmuyor');
       }
     }
 
@@ -1589,20 +1647,10 @@ export class BusinessService {
     businessId: string,
     data: BusinessNotificationSettingsRequest
   ): Promise<BusinessNotificationSettingsData> {
-    // Check permissions - use specific business notification permissions
-    const hasGlobalNotificationEdit = await this.rbacService.hasPermission(userId, 'business_notification', 'edit_all');
-
-    if (!hasGlobalNotificationEdit) {
-      const hasOwnNotificationEdit = await this.rbacService.hasPermission(
-        userId,
-        'business_notification',
-        'edit_own',
-        { businessId }
-      );
-
-      if (!hasOwnNotificationEdit) {
-        throw new Error('Access denied: You do not have permission to update this business settings');
-      }
+    // Only MANAGER (level 250) or OWNER (level 300) and above can update notification settings
+    const userPermissions = await this.rbacService.getUserPermissions(userId);
+    if (userPermissions.effectiveLevel < 250) {
+      throw new ForbiddenError('Bildirim ayarlarını değiştirme yetkiniz bulunmamaktadır. Bu işlem yalnızca işletme sahibi veya yöneticisi tarafından yapılabilir.');
     }
 
     // Verify business exists
@@ -2210,6 +2258,11 @@ export class BusinessService {
       googlePlaceId?: string;
       googleUrl?: string;
       enabled: boolean;
+      mapEnabled?: boolean;
+      googleAverageRating?: number | null;
+      googleTotalRatings?: number | null;
+      isReset?: boolean;
+      reviewsHidden?: boolean;
     }
   ): Promise<BusinessData> {
     // Quick ownership check first (faster than full RBAC)
@@ -2225,30 +2278,31 @@ export class BusinessService {
     if (data.googleUrl) {
       const { GooglePlaceIdExtractor } = await import('../../../utils/googlePlaceIdExtractor');
 
+      // Resolve short links (maps.app.goo.gl etc.) to their final URL first
+      const resolvedUrl = await GooglePlaceIdExtractor.resolveUrl(data.googleUrl);
+      logger.info('Google URL resolution', { original: data.googleUrl, resolved: resolvedUrl });
+
       // Extract coordinates (PRIORITY for embedding)
-      coordinates = GooglePlaceIdExtractor.extractCoordinates(data.googleUrl);
+      coordinates = GooglePlaceIdExtractor.extractCoordinates(resolvedUrl);
 
       // Also extract Place ID if not provided
       if (!data.googlePlaceId) {
-        finalPlaceId = GooglePlaceIdExtractor.extractPlaceId(data.googleUrl) || undefined;
+        finalPlaceId = GooglePlaceIdExtractor.extractPlaceId(resolvedUrl) || undefined;
       }
 
-      if (!finalPlaceId && !coordinates && data.enabled) {
-        // Could not extract Place ID or coordinates from URL
-        const businessName = GooglePlaceIdExtractor.extractBusinessName(data.googleUrl);
-        throw new ValidationError(
-          `Could not extract Google location data from the provided URL${businessName ? ` for "${businessName}"` : ''}. Please provide a direct Google Maps link with coordinates or Place ID.`
-        );
+      logger.info('Google extraction result', { finalPlaceId, coordinates, resolvedUrl });
+
+      if (!finalPlaceId && !coordinates) {
+        logger.warn('Could not extract Place ID from URL', { businessId, url: data.googleUrl, resolvedUrl });
       }
     }
 
-    // If enabling and providing Place ID, validate it
-    if (data.enabled && finalPlaceId) {
-      // Validate format
+    // If enabling and providing Place ID, validate format only when entered directly (not extracted from URL)
+    if (data.enabled && finalPlaceId && !data.googleUrl) {
       const { GooglePlaceIdExtractor } = await import('../../../utils/googlePlaceIdExtractor');
       if (!GooglePlaceIdExtractor.isValidPlaceId(finalPlaceId)) {
         throw new ValidationError(
-          'Invalid Google identifier format. Please provide either a Place ID (starts with "Ch") or a Google Maps URL with a valid location.'
+          'Geçersiz Place ID formatı. "Ch" ile başlayan bir Place ID veya geçerli bir Google Haritalar URL\'si girin.'
         );
       }
 
@@ -2266,17 +2320,38 @@ export class BusinessService {
 
     // Update business with Google integration data AND coordinates
     const updateData: {
-      googlePlaceId?: string;
-      googleOriginalUrl?: string;
+      googlePlaceId?: string | null;
+      googleOriginalUrl?: string | null;
       enabled: boolean;
+      mapEnabled?: boolean;
       linkedBy: string;
-      latitude?: number;
-      longitude?: number;
-    } = {
+      latitude?: number | null;
+      longitude?: number | null;
+      googleAverageRating?: number | null;
+      googleTotalRatings?: number | null;
+      reviewsHidden?: boolean;
+      isReset?: boolean;
+    } = data.isReset ? {
+      // Explicit reset: clear all google fields
+      enabled: false,
+      mapEnabled: false,
+      linkedBy: userId,
+      googlePlaceId: null,
+      googleOriginalUrl: null,
+      latitude: null,
+      longitude: null,
+      googleAverageRating: null,
+      googleTotalRatings: null,
+      reviewsHidden: true,
+    } : {
       googlePlaceId: finalPlaceId,
-      googleOriginalUrl: data.googleUrl, // Store the original URL
+      googleOriginalUrl: data.googleUrl,
       enabled: data.enabled,
-      linkedBy: userId
+      mapEnabled: data.mapEnabled,
+      linkedBy: userId,
+      googleAverageRating: data.googleAverageRating,
+      googleTotalRatings: data.googleTotalRatings,
+      ...(data.reviewsHidden !== undefined && { reviewsHidden: data.reviewsHidden }),
     };
 
     // Add coordinates if extracted
@@ -2299,7 +2374,135 @@ export class BusinessService {
       });
     }
 
-    return await this.businessRepository.updateGoogleIntegration(businessId, updateData);
+    try {
+      return await this.businessRepository.updateGoogleIntegration(businessId, updateData);
+    } catch (error: any) {
+      if (error?.code === 'P2002' && error?.meta?.target?.includes('googlePlaceId')) {
+        throw new ValidationError('Bu Google konumu başka bir işletmeye bağlı. Lütfen farklı bir URL veya Place ID kullanın.');
+      }
+      throw error;
+    }
+  }
+
+  async syncGoogleRating(
+    userId: string,
+    businessId: string
+  ): Promise<{ googleAverageRating: number; googleTotalRatings: number }> {
+    const prisma = (this.businessRepository as any).prisma;
+    const business = await prisma.business.findUnique({
+      where: { id: businessId },
+      select: { id: true, ownerId: true, googlePlaceId: true, googleIntegrationEnabled: true, googleOriginalUrl: true, latitude: true, longitude: true },
+    });
+    if (!business || business.ownerId !== userId) {
+      throw new ForbiddenError("You don't have permission to edit this business");
+    }
+
+    const placeId = business.googlePlaceId as string | null;
+    if (!placeId) {
+      throw new ValidationError('Bu işletmeye bağlı bir Google Place ID bulunamadı');
+    }
+
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    if (!apiKey) {
+      throw new Error('Google Places API key is not configured');
+    }
+
+    const isHexCIDFormat = placeId.includes(':') && placeId.includes('0x');
+    const isNumericCID = /^\d{10,}$/.test(placeId); // pure numeric CID (e.g. from ?cid= param)
+
+    // Build legacy Places API URL — works for ChIJ (place_id) and CID (hex or numeric) formats
+    let legacyUrl: string;
+    if (isHexCIDFormat) {
+      const hexCid = placeId.split(':')[1].replace('0x', '');
+      const decimalCid = BigInt('0x' + hexCid).toString();
+      legacyUrl = `https://maps.googleapis.com/maps/api/place/details/json?cid=${decimalCid}&fields=rating,user_ratings_total,reviews&language=tr&key=${apiKey}`;
+    } else if (isNumericCID) {
+      legacyUrl = `https://maps.googleapis.com/maps/api/place/details/json?cid=${placeId}&fields=rating,user_ratings_total,reviews&language=tr&key=${apiKey}`;
+    } else {
+      legacyUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=rating,user_ratings_total,reviews&language=tr&key=${apiKey}`;
+    }
+
+    const response = await fetch(legacyUrl);
+    if (!response.ok) {
+      const bodyText = await response.text();
+      logger.error('Google Places API error', { status: response.status, body: bodyText, placeId });
+      throw new ValidationError(`Google Places API hatası: ${response.status}`);
+    }
+
+    const legacyData = await response.json() as {
+      status: string;
+      result?: {
+        rating?: number;
+        user_ratings_total?: number;
+        reviews?: Array<{
+          author_name?: string;
+          profile_photo_url?: string;
+          rating?: number;
+          text?: string;
+          time?: number;
+          relative_time_description?: string;
+        }>;
+      };
+    };
+
+    if (legacyData.status === 'REQUEST_DENIED') {
+      logger.error('Google Places REQUEST_DENIED', { legacyData, placeId });
+      throw new ValidationError('Places API Google Cloud\'da etkin değil veya API anahtarı bu servise izin vermiyor. Google Cloud Console\'dan "Places API" servisinin etkin olduğunu kontrol edin.');
+    }
+    if (legacyData.status !== 'OK' || !legacyData.result) {
+      logger.error('Google Places API status error', { status: legacyData.status, placeId });
+      throw new ValidationError(`Google Places API hatası: ${legacyData.status}`);
+    }
+
+    const data = {
+      rating: legacyData.result.rating,
+      userRatingCount: legacyData.result.user_ratings_total,
+      reviews: legacyData.result.reviews?.map((r, i) => ({
+        name: `${placeId}-review-${i}`,
+        rating: r.rating,
+        text: r.text ? { text: r.text } : undefined,
+        publishTime: r.time ? new Date(r.time * 1000).toISOString() : undefined,
+        relativePublishTimeDescription: r.relative_time_description,
+        authorAttribution: { displayName: r.author_name, photoUri: r.profile_photo_url },
+      })),
+    };
+
+    const googleAverageRating = data.rating ?? 0;
+    const googleTotalRatings = data.userRatingCount ?? 0;
+
+    await this.businessRepository.updateGoogleIntegration(businessId, {
+      enabled: (business as any).googleIntegrationEnabled ?? true,
+      googleAverageRating,
+      googleTotalRatings,
+    });
+
+    // Delete all existing reviews before inserting fresh ones from the current Place ID.
+    // This prevents stale reviews from old Place IDs from appearing after a URL change.
+    await prisma.googleReview.deleteMany({ where: { businessId } });
+
+    if (data.reviews?.length) {
+      for (const review of data.reviews) {
+        const googleReviewId = review.name ?? `${placeId}-${review.publishTime}`;
+        await prisma.googleReview.create({
+          data: {
+            id: `${businessId}-${googleReviewId}`.slice(0, 25) + Date.now().toString(36),
+            businessId,
+            googleReviewId,
+            authorName: review.authorAttribution?.displayName ?? 'Anonim',
+            authorPhotoUrl: review.authorAttribution?.photoUri ?? null,
+            rating: review.rating ?? 0,
+            text: review.text?.text ?? null,
+            publishTime: review.publishTime ? new Date(review.publishTime) : null,
+            relativeTimeDescription: review.relativePublishTimeDescription ?? null,
+            syncedAt: new Date(),
+          },
+        });
+      }
+    }
+
+    logger.info('Google rating & reviews synced', { businessId, googleAverageRating, googleTotalRatings, reviewCount: data.reviews?.length ?? 0 });
+
+    return { googleAverageRating, googleTotalRatings };
   }
 
   async getGoogleIntegrationSettings(
@@ -2309,12 +2512,17 @@ export class BusinessService {
     googlePlaceId: string | null;
     googleOriginalUrl: string | null;
     googleIntegrationEnabled: boolean;
+    googleMapEnabled: boolean;
     googleLinkedAt: Date | null;
+    googleLinkedBy: string | null;
     latitude: number | null;
     longitude: number | null;
     averageRating: number | null;
     totalRatings: number;
     lastRatingAt: Date | null;
+    googleAverageRating: number | null;
+    googleTotalRatings: number | null;
+    reviewsHidden: boolean;
   }> {
     // Public method - no ownership check needed
     // Google integration info is public data (anyone can see Google Maps/reviews)
@@ -2327,5 +2535,31 @@ export class BusinessService {
     }
 
     return settings;
+  }
+
+  async getGoogleReviews(businessId: string): Promise<Array<{
+    id: string;
+    authorName: string;
+    authorPhotoUrl: string | null;
+    rating: number;
+    text: string | null;
+    publishTime: Date | null;
+    relativeTimeDescription: string | null;
+  }>> {
+    const prisma = (this.businessRepository as any).prisma;
+    return prisma.googleReview.findMany({
+      where: { businessId },
+      orderBy: { publishTime: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        authorName: true,
+        authorPhotoUrl: true,
+        rating: true,
+        text: true,
+        publishTime: true,
+        relativeTimeDescription: true,
+      },
+    });
   }
 }

@@ -71,8 +71,10 @@ export class ReservationValidationMiddleware {
       const appointmentDateTime = createDateTimeInIstanbul(dateStr, timeStr);
       const now = getCurrentTimeInIstanbul();
 
-      // 1. Check maximum advance booking days
-      const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      // 1. Check maximum advance booking days (calendar days, today = day 0)
+      const todayMid = new Date(now); todayMid.setHours(0, 0, 0, 0);
+      const apptMid = new Date(appointmentDateTime); apptMid.setHours(0, 0, 0, 0);
+      const daysDifference = Math.round((apptMid.getTime() - todayMid.getTime()) / (1000 * 60 * 60 * 24));
       
       if (daysDifference > rules.maxAdvanceBookingDays) {
         const message = `Cannot book more than ${rules.maxAdvanceBookingDays} days in advance`;
@@ -199,7 +201,9 @@ export class ReservationValidationMiddleware {
 
       const dateTime = new Date(date);
       const now = new Date();
-      const daysDifference = Math.ceil((dateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const todayMid2 = new Date(now); todayMid2.setHours(0, 0, 0, 0);
+      const dateMid = new Date(dateTime); dateMid.setHours(0, 0, 0, 0);
+      const daysDifference = Math.round((dateMid.getTime() - todayMid2.getTime()) / (1000 * 60 * 60 * 24));
       
       if (daysDifference > maxAdvanceBookingDays) {
         const message = `Cannot book more than ${maxAdvanceBookingDays} days in advance`;

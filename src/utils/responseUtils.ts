@@ -259,7 +259,8 @@ export function handleRouteError(error: any, req: any, res: Response, next?: any
     error: {
       code: error.code || 'INTERNAL_ERROR',
       key: error.key || 'INTERNAL_ERROR',
-      details: error.details || undefined,
+      // Never expose internal details (Prisma errors, stack fragments) on server errors
+      details: statusCode < 500 ? (error.details ?? undefined) : undefined,
     },
   };
 
@@ -328,9 +329,10 @@ export async function sendStandardSuccessResponse<T>(
 /**
  * Send app error response
  */
-export function sendAppErrorResponse(res: Response, error: any, statusCode: number = 500): void {
+export function sendAppErrorResponse(res: Response, error: any, statusCode?: number): void {
   const message = getErrorMessage(error);
-  sendErrorResponse(res, message, statusCode);
+  const status = statusCode ?? error?.statusCode ?? 500;
+  sendErrorResponse(res, message, status, error);
 }
 
 /**

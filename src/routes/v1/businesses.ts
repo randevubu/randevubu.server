@@ -29,6 +29,7 @@ import { handleMulterError, uploadSingleImage } from '../../middleware/multer';
 import { validateNotificationSettings } from '../../middleware/notificationValidation';
 import { validateBody, validateQuery } from '../../middleware/validation';
 import {
+  addPaymentMethodSchema,
   businessNotificationSettingsSchema,
   testReminderSchema,
   updateBusinessNotificationSettingsSchema,
@@ -37,6 +38,7 @@ import {
   updateBusinessStaffPrivacySettingsSchema,
   updateBusinessCancellationPolicySchema,
   updateBusinessCustomerManagementSchema,
+  updateGalleryImagesSchema,
 } from '../../schemas/business.schemas';
 import {
   getBusinessStaffQuerySchema,
@@ -302,6 +304,12 @@ export function createBusinessRoutes(
     businessController.checkSlugAvailability.bind(businessController)
   );
 
+  // Public Google integration GET - must be before requireAuth middleware
+  router.get(
+    '/:id/google-integration',
+    googleIntegrationController.getGoogleIntegration.bind(googleIntegrationController)
+  );
+
   // Protected routes (authentication required) - MUST come before catch-all route
   router.use(requireAuth);
   router.use(attachBusinessContext);
@@ -374,7 +382,6 @@ export function createBusinessRoutes(
    */
   router.get(
     '/my-business',
-    dynamicCache,
     requireBusinessAccess,
     businessController.getMyBusiness.bind(businessController)
   );
@@ -455,6 +462,7 @@ export function createBusinessRoutes(
    */
   router.patch(
     '/my-business',
+    cacheInvalidation.invalidateBusinessCache,
     requireBusinessAccess,
     businessController.updateMyBusiness.bind(businessController)
   );
@@ -626,6 +634,19 @@ export function createBusinessRoutes(
     requireBusinessAccess,
     validateBody(updateBusinessStaffPrivacySettingsSchema),
     businessSettingsController.updateStaffPrivacySettings.bind(businessSettingsController)
+  );
+
+  router.get(
+    '/my-business/profile-privacy-settings',
+    requireBusinessAccess,
+    businessSettingsController.getProfilePrivacySettings.bind(businessSettingsController)
+  );
+
+  router.put(
+    '/my-business/profile-privacy-settings',
+    cacheInvalidation.invalidateBusinessCache,
+    requireBusinessAccess,
+    businessSettingsController.updateProfilePrivacySettings.bind(businessSettingsController)
   );
 
   // Business notification settings routes
@@ -1078,7 +1099,6 @@ export function createBusinessRoutes(
    */
   router.get(
     '/my-services',
-    dynamicCache,
     requireBusinessAccess,
     businessController.getMyServices.bind(businessController)
   );
@@ -1410,6 +1430,7 @@ export function createBusinessRoutes(
    */
   router.patch(
     '/:id',
+    cacheInvalidation.invalidateBusinessCache,
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
     requireSpecificBusinessAccess(),
     businessController.updateBusiness.bind(businessController)
@@ -2433,6 +2454,7 @@ export function createBusinessRoutes(
     '/:businessId/payment-methods',
     requireAny([PermissionName.EDIT_ALL_BUSINESSES, PermissionName.EDIT_OWN_BUSINESS]),
     requireSpecificBusinessAccess('businessId'),
+    validateBody(addPaymentMethodSchema),
     businessSettingsController.addPaymentMethod.bind(businessSettingsController)
   );
 
@@ -2654,6 +2676,7 @@ export function createBusinessRoutes(
   router.post(
     '/:businessId/images/upload',
     requireAuth,
+    ...(cacheInvalidation ? [cacheInvalidation.invalidateBusinessCache] : []),
     uploadSingleImage,
     handleMulterError,
     businessImageController.uploadImage.bind(businessImageController)
@@ -2692,12 +2715,6 @@ export function createBusinessRoutes(
    *       404:
    *         description: Business or image not found
    */
-  router.delete(
-    '/:businessId/images/:imageType',
-    requireAuth,
-    businessImageController.deleteImage.bind(businessImageController)
-  );
-
   /**
    * @swagger
    * /api/v1/businesses/{businessId}/images/gallery:
@@ -2740,7 +2757,15 @@ export function createBusinessRoutes(
   router.delete(
     '/:businessId/images/gallery',
     requireAuth,
+    ...(cacheInvalidation ? [cacheInvalidation.invalidateBusinessCache] : []),
     businessImageController.deleteGalleryImage.bind(businessImageController)
+  );
+
+  router.delete(
+    '/:businessId/images/:imageType',
+    requireAuth,
+    ...(cacheInvalidation ? [cacheInvalidation.invalidateBusinessCache] : []),
+    businessImageController.deleteImage.bind(businessImageController)
   );
 
   /**
@@ -2849,10 +2874,19 @@ export function createBusinessRoutes(
   router.put(
     '/:businessId/images/gallery',
     requireAuth,
+    validateBody(updateGalleryImagesSchema),
     businessImageController.updateGalleryImages.bind(businessImageController)
   );
 
   // Google Integration Routes (MUST be before catch-all route)
+  // POST sync - fetch rating from Google Places API
+  router.post(
+    '/:id/google-integration/sync',
+    requireAuth,
+    requireSpecificBusinessAccess('id'),
+    googleIntegrationController.syncGoogleRating.bind(googleIntegrationController)
+  );
+
   // PUT requires authentication and ownership
   router.put(
     '/:id/google-integration',
@@ -3711,6 +3745,29 @@ export function createBusinessRoutes(
     '/my-business/appointments/:appointmentId/evaluation',
     requireBusinessAccess,
     customerManagementController.submitCustomerEvaluation.bind(customerManagementController)
+  );
+
+  // Photos (gallery with storage tracking via BusinessImage table)
+  router.get(
+    '/:businessId/photos',
+    requireAuth,
+    businessImageController.getPhotos.bind(businessImageController)
+  );
+
+  router.post(
+    '/:businessId/photos/upload',
+    requireAuth,
+    ...(cacheInvalidation ? [cacheInvalidation.invalidateBusinessCache] : []),
+    uploadSingleImage,
+    handleMulterError,
+    businessImageController.uploadPhoto.bind(businessImageController)
+  );
+
+  router.delete(
+    '/:businessId/photos/:imageId',
+    requireAuth,
+    ...(cacheInvalidation ? [cacheInvalidation.invalidateBusinessCache] : []),
+    businessImageController.deletePhoto.bind(businessImageController)
   );
 
   return router;

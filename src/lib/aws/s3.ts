@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config as appConfig } from '../../config/environment';
 import Logger from '../../utils/Logger/logger';
@@ -140,6 +140,22 @@ export class S3ClientWrapper {
     if (key) {
       await this.deleteObject(key);
     }
+  }
+
+  async getObjectSize(key: string): Promise<number> {
+    try {
+      const command = new HeadObjectCommand({ Bucket: this.bucketName, Key: key });
+      const result = await this.s3Client.send(command);
+      return result.ContentLength ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  async getObjectSizeByUrl(url: string): Promise<number> {
+    const key = this.extractKeyFromUrl(url);
+    if (!key) return 0;
+    return this.getObjectSize(key);
   }
 }
 

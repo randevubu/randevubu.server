@@ -88,18 +88,10 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      // Validate permissions if provided
-      if (
-        permissions &&
-        (!Array.isArray(permissions) || !permissions.every((p: string) => typeof p === 'string'))
-      ) {
-        const error = new AppError(
-          'Permissions must be an array of strings',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
+      // Normalize permissions: accept array of strings or empty/object (treat as no permissions)
+      const normalizedPermissions: string[] = Array.isArray(permissions)
+        ? permissions.filter((p: any) => typeof p === 'string')
+        : [];
 
       const context = createErrorContext(req, 'STAFF_INVITATION');
 
@@ -109,20 +101,19 @@ export class StaffController {
           businessId,
           phoneNumber: phoneNumber.replace(/\s/g, ''),
           role,
-          permissions: permissions || [],
+          permissions: normalizedPermissions,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
         } as InviteStaffRequest,
         context
       );
 
-      await this.responseHelper.success(
-        res,
-        'success.staff.invited',
-        { success: result.success },
-        200,
-        req
-      );
+      if (result.success) {
+        await this.responseHelper.success(res, 'success.staff.invited', { success: true }, 200, req);
+      } else {
+        const error = new AppError(result.message, 400, ERROR_CODES.STAFF_ALREADY_EXISTS);
+        sendAppErrorResponse(res, error, 400);
+      }
     } catch (error) {
       handleRouteError(error, req, res);
     }
@@ -243,7 +234,7 @@ export class StaffController {
         await this.responseHelper.success(res, 'success.staff.verified', result, 201, req);
       } else {
         const error = new AppError(result.message, 400, ERROR_CODES.INVALID_VERIFICATION_CODE);
-        sendAppErrorResponse(res, error);
+        sendAppErrorResponse(res, error, 400);
       }
     } catch (error) {
       handleRouteError(error, req, res);
@@ -259,7 +250,8 @@ export class StaffController {
     try {
       const userId = req.user!.id;
       const { businessId } = req.params;
-      const includeInactive = req.query.includeInactive === 'true';
+      // Zod schema (getBusinessStaffQuerySchema) already transforms the string to boolean
+      const includeInactive = !!req.query.includeInactive;
 
       // Validate businessId parameter
       if (!businessId || typeof businessId !== 'string') {
@@ -275,20 +267,6 @@ export class StaffController {
       const idRegex = /^[a-zA-Z0-9-_]+$/;
       if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
         const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate includeInactive query parameter
-      if (
-        req.query.includeInactive &&
-        req.query.includeInactive !== 'true' &&
-        req.query.includeInactive !== 'false'
-      ) {
-        const error = new AppError(
-          'includeInactive must be true or false',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
         return sendAppErrorResponse(res, error);
       }
 
@@ -321,7 +299,9 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      const staff = await this.staffService.getStaffById(staffId);
+      // Authorization: requester must be owner/staff of the same business or have global admin permission.
+      // getStaffByIdAuthorized throws ForbiddenError (403) if the check fails.
+      const staff = await this.staffService.getStaffByIdAuthorized(req.user!.id, staffId);
 
       if (!staff) {
         const error = new AppError('Staff member not found', 404, ERROR_CODES.STAFF_NOT_FOUND);
@@ -503,7 +483,8 @@ export class StaffController {
     try {
       const userId = req.user!.id;
       const { businessId, role } = req.params;
-      const includeInactive = req.query.includeInactive === 'true';
+      // Zod schema (getStaffByRoleQuerySchema) already transforms the string to boolean
+      const includeInactive = !!req.query.includeInactive;
 
       // Validate businessId parameter
       if (!businessId || typeof businessId !== 'string') {
@@ -531,20 +512,6 @@ export class StaffController {
       // Validate role value
       if (!Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)) {
         const error = new AppError('Invalid staff role', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate includeInactive query parameter
-      if (
-        req.query.includeInactive &&
-        req.query.includeInactive !== 'true' &&
-        req.query.includeInactive !== 'false'
-      ) {
-        const error = new AppError(
-          'includeInactive must be true or false',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
         return sendAppErrorResponse(res, error);
       }
 
@@ -887,21 +854,19 @@ export class StaffController {
   }
 
   private getRoleDisplayName(role: BusinessStaffRole): string {
-    const roleNames = {
+    const roleNames: Record<string, string> = {
       [BusinessStaffRole.OWNER]: 'Owner',
       [BusinessStaffRole.MANAGER]: 'Manager',
       [BusinessStaffRole.STAFF]: 'Staff Member',
-      [BusinessStaffRole.RECEPTIONIST]: 'Receptionist',
     };
     return roleNames[role] || role;
   }
 
   private getRoleDescription(role: BusinessStaffRole): string {
-    const roleDescriptions = {
+    const roleDescriptions: Record<string, string> = {
       [BusinessStaffRole.OWNER]: 'Full access to all business features',
       [BusinessStaffRole.MANAGER]: 'Manage staff, services, and appointments',
       [BusinessStaffRole.STAFF]: 'Handle appointments and basic operations',
-      [BusinessStaffRole.RECEPTIONIST]: 'Manage appointments and customer interactions',
     };
     return roleDescriptions[role] || '';
   }
@@ -931,7 +896,8 @@ export class StaffController {
         return sendAppErrorResponse(res, error);
       }
 
-      const staff = await this.staffService.getPublicBusinessStaff(businessId);
+      const serviceId = typeof req.query.serviceId === 'string' ? req.query.serviceId : undefined;
+      const staff = await this.staffService.getPublicBusinessStaff(businessId, serviceId);
 
       await this.responseHelper.success(res, 'success.staff.publicRetrieved', { staff }, 200, req);
     } catch (error) {

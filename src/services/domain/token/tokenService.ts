@@ -194,6 +194,10 @@ export class TokenService {
       if (error instanceof jose.errors.JWTClaimValidationFailed) {
         throw new InvalidTokenError("Access token validation failed", context);
       }
+      // Catch all remaining JOSE errors (JWSInvalid, JWSSignatureVerificationFailed, etc.)
+      if (error instanceof jose.errors.JOSEError) {
+        throw new InvalidTokenError("Invalid access token", context);
+      }
       throw error;
     }
   }
@@ -207,7 +211,6 @@ export class TokenService {
 
     try {
       logger.debug("Attempting JWT verification", {
-        tokenStart: refreshToken.substring(0, 50),
         tokenLength: refreshToken.length,
         requestId: context?.requestId,
       });
@@ -243,9 +246,7 @@ export class TokenService {
         hasStoredToken: !!storedToken,
         isRevoked: storedToken?.isRevoked,
         expiresAt: storedToken?.expiresAt,
-        now: new Date(),
         isExpired: storedToken ? storedToken.expiresAt < new Date() : 'N/A',
-        tokenValue: decoded.tokenValue.substring(0, 20) + '...',
         requestId: context?.requestId,
       });
 
@@ -321,7 +322,6 @@ export class TokenService {
         logger.error('JWT verification failed', {
           errorName: 'JWTInvalid',
           errorMessage: error.message,
-          tokenStart: refreshToken.substring(0, 50),
           tokenLength: refreshToken.length,
           requestId: context?.requestId,
         });

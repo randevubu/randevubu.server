@@ -177,7 +177,8 @@ export const businessCache = cache({
   keyPrefix: 'business',
   keyGenerator: (req: CachedRequest) => {
     const userId = CacheUtils.getUserId(req);
-    const businessId = req.params.id || 'list';
+    // Routes use different param names (/:id vs /:businessId) — check both
+    const businessId = req.params.id || req.params.businessId || CacheUtils.getBusinessId(req) || 'list';
     return CacheKeyGenerator.generateCacheKey('business', userId, businessId, req.path, req.query);
   },
   skipCache: (req: CachedRequest) => req.query.refresh === 'true',

@@ -143,6 +143,49 @@ export class CSRFMiddleware {
   requireCSRF = (req: Request, res: Response, next: NextFunction): void => {
     return this.verifyToken(req, res, next);
   };
+
+  // Lightweight Origin-header CSRF check that works for both browser and mobile clients.
+  // React Native / mobile apps that don't send Origin are allowed through (no CSRF risk).
+  // Browser requests with an Origin that isn't in CORS_ORIGINS are rejected.
+  verifyOriginHeader = (req: Request, res: Response, next: NextFunction): void => {
+    try {
+      if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+
+      const origin = req.headers.origin as string | undefined;
+      const referer = req.headers.referer as string | undefined;
+
+      // No Origin/Referer → mobile or server-to-server client, not vulnerable to CSRF
+      if (!origin && !referer) return next();
+
+      let requestOrigin: string | null = null;
+      if (origin) {
+        requestOrigin = origin;
+      } else if (referer) {
+        try { requestOrigin = new URL(referer).origin; } catch { /* malformed referer */ }
+      }
+
+      if (!requestOrigin) return next();
+
+      const allowedOrigins = (process.env.CORS_ORIGINS || '')
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean);
+
+      if (!allowedOrigins.includes(requestOrigin)) {
+        const context = this.createErrorContext(req);
+        logger.warn('CSRF origin check failed', {
+          requestOrigin,
+          ip: context.ipAddress,
+          endpoint: context.endpoint,
+        });
+        throw new ForbiddenError('Request origin not allowed', context);
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 // Export default instance

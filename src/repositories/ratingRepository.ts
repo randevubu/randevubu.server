@@ -123,4 +123,10 @@ export class RatingRepository {
 
     return ratings as CustomerEvaluationData[];
   }
+
+  async deleteRating(ratingId: string, businessId: string): Promise<void> {
+    await this.prisma.customerEvaluation.delete({
+      where: { id: ratingId, businessId }
+    });
+  }
 }

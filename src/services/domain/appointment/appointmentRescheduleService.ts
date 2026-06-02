@@ -61,8 +61,10 @@ export class AppointmentRescheduleService {
 
     const now = new Date();
 
-    // 1. Check maximum advance booking days
-    const daysDifference = Math.ceil((appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    // 1. Check maximum advance booking days (calendar days: today = 0, tomorrow = 1, …)
+    const todayMidnight = new Date(now); todayMidnight.setHours(0, 0, 0, 0);
+    const apptMidnight = new Date(appointmentDateTime); apptMidnight.setHours(0, 0, 0, 0);
+    const daysDifference = Math.round((apptMidnight.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysDifference > rules.maxAdvanceBookingDays) {
       throw new AppError(

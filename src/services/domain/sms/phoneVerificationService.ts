@@ -83,12 +83,7 @@ export class PhoneVerificationService {
     );
 
     if (process.env.NODE_ENV === 'development') {
-      logger.info('DEV verification code generated', {
-        phoneNumber: normalizedPhone,
-        purpose,
-        code,
-        requestId: context?.requestId,
-      });
+      console.log(`\n🔑 DEV VERIFICATION CODE | Phone: ${normalizedPhone} | Code: ${code} | Purpose: ${purpose}\n`);
     }
 
     logger.info("📝 STORING VERIFICATION CODE:", {
@@ -147,29 +142,13 @@ export class PhoneVerificationService {
     purpose: PrismaVerificationPurpose,
     context?: ErrorContext
   ): Promise<VerificationResult> {
-    logger.info("🔍 VERIFICATION SERVICE CALLED:", {
-      phoneNumber,
-      code,
-      purpose,
-      requestId: context?.requestId,
-    });
-
     const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
     if (!normalizedPhone) {
-      logger.info("❌ PHONE NUMBER INVALID:", phoneNumber);
       throw new InvalidPhoneNumberError(phoneNumber, context);
     }
 
-    logger.info("✅ PHONE NUMBER NORMALIZED:", {
-      original: phoneNumber,
-      normalized: normalizedPhone,
-    });
-
-    // Debug logging
     logger.info("Verification attempt started", {
-      originalPhone: phoneNumber,
-      normalizedPhone: this.maskPhoneNumber(normalizedPhone),
-      code: code,
+      phoneNumber: this.maskPhoneNumber(normalizedPhone),
       purpose,
       requestId: context?.requestId,
     });
@@ -180,17 +159,6 @@ export class PhoneVerificationService {
         purpose
       );
 
-    logger.info("🔎 DATABASE LOOKUP RESULT:", {
-      found: !!verification,
-      verificationId: verification?.id,
-      phoneMatch: verification?.phoneNumber === normalizedPhone,
-      isUsed: verification?.isUsed,
-      expiresAt: verification?.expiresAt,
-      attempts: verification?.attempts,
-      maxAttempts: verification?.maxAttempts,
-      searchedPhone: normalizedPhone,
-      foundPhone: verification?.phoneNumber,
-    });
 
     if (!verification) {
       // Check if there are any recent codes that might have just expired
@@ -259,18 +227,7 @@ export class PhoneVerificationService {
     }
 
     // Verify the code
-    logger.info("🔐 VERIFYING CODE:", {
-      providedCode: code,
-      providedCodeLength: code.length,
-      hashedCodeFromDB: verification.code.substring(0, 20) + '...',
-    });
-
     const isValidCode = await this.tokenService.verifyCode(code, verification.code);
-
-    logger.info("✔️ CODE VERIFICATION RESULT:", {
-      isValid: isValidCode,
-      providedCode: code,
-    });
 
     // Update attempt count
     const newAttempts =
@@ -451,19 +408,15 @@ export class PhoneVerificationService {
     purpose: PrismaVerificationPurpose,
     context?: ErrorContext
   ): Promise<void> {
-    // In development mode: Only log the code, don't send actual SMS
+    // In development mode: log the code for testing (SMS is not sent), skip actual sending
     if (process.env.NODE_ENV === 'development') {
-      logger.info(
-        `🔐 [DEV MODE] Verification code generated (SMS NOT sent): ${code}`,
-        {
-          phoneNumber: this.maskPhoneNumber(phoneNumber),
-          purpose,
-          code,
-          requestId: context?.requestId,
-          note: 'SMS sending is disabled in development mode. Use this code for testing.',
-        }
-      );
-      return; // Skip actual SMS sending in development
+      logger.info('[DEV MODE] Verification code generated (SMS not sent)', {
+        phoneNumber: this.maskPhoneNumber(phoneNumber),
+        purpose,
+        code,
+        requestId: context?.requestId,
+      });
+      return;
     }
 
     // Production mode: Send actual SMS via NetGSM

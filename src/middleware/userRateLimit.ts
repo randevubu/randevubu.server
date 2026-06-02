@@ -174,12 +174,20 @@ export const RateLimitPresets = {
     message: 'Too many sensitive requests, please try again later',
   }),
 
-  // Very strict for authentication attempts
+  // OTP login attempts — separate bucket from token refresh
   auth: new UserRateLimiter({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 5,            // 5 attempts per 15 minutes
+    maxRequests: 10,           // 10 attempts per 15 minutes
     keyPrefix: 'rate_limit_auth',
     message: 'Too many authentication attempts, please try again later',
+  }),
+
+  // Token refresh — automated by the app, must never share bucket with login
+  refresh: new UserRateLimiter({
+    windowMs: 60 * 1000,       // 1 minute
+    maxRequests: 60,            // 60 refreshes per minute (plenty for any real user)
+    keyPrefix: 'rate_limit_refresh',
+    message: 'Too many token refresh requests, please try again later',
   }),
 
   // Lenient for public endpoints
@@ -210,5 +218,6 @@ export const createUserRateLimiter = (config: RateLimitConfig) => {
 export const standardRateLimit = RateLimitPresets.standard.middleware;
 export const strictRateLimit = RateLimitPresets.strict.middleware;
 export const authRateLimit = RateLimitPresets.auth.middleware;
+export const refreshRateLimit = RateLimitPresets.refresh.middleware;
 export const publicRateLimit = RateLimitPresets.public.middleware;
 export const adminRateLimit = RateLimitPresets.admin.middleware;

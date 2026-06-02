@@ -379,26 +379,33 @@ export class SubscriptionRepository {
     const now = new Date();
     const trialEnd = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
 
-    const result = await this.prisma.businessSubscription.create({
-      data: {
+    const trialData = {
+      planId,
+      status: SubscriptionStatus.TRIAL,
+      currentPeriodStart: now,
+      currentPeriodEnd: trialEnd,
+      trialStart: now,
+      trialEnd: trialEnd,
+      cancelAtPeriodEnd: false,
+      paymentMethodId: paymentMethodId || null,
+      metadata: {
+        trialDays,
+        requiresPaymentMethod: !!paymentMethodId,
+        createdAt: now.toISOString(),
+        ...(discountMetadata && { pendingDiscount: discountMetadata }),
+        ...(salesmanCode && { salesmanCode }),
+      },
+    };
+
+    // Use upsert so a previously cancelled/incomplete record doesn't block trial creation.
+    const result = await this.prisma.businessSubscription.upsert({
+      where: { businessId },
+      create: {
         id: `bs_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
         businessId,
-        planId,
-        status: SubscriptionStatus.TRIAL,
-        currentPeriodStart: now,
-        currentPeriodEnd: trialEnd,
-        trialStart: now,
-        trialEnd: trialEnd,
-        cancelAtPeriodEnd: false,
-        paymentMethodId: paymentMethodId || null,
-        metadata: {
-          trialDays,
-          requiresPaymentMethod: !!paymentMethodId,
-          createdAt: now.toISOString(),
-          ...(discountMetadata && { pendingDiscount: discountMetadata }),
-          ...(salesmanCode && { salesmanCode })
-        }
-      }
+        ...trialData,
+      },
+      update: trialData,
     });
     return result as BusinessSubscriptionData;
   }

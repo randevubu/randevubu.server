@@ -41,7 +41,6 @@ export class AppointmentRepository {
         'OWNER': 'Owner',
         'MANAGER': 'Manager',
         'STAFF': 'Staff Member',
-        'RECEPTIONIST': 'Receptionist',
       };
       return roleNames[role] || 'Staff';
     }
@@ -419,6 +418,8 @@ export class AppointmentRepository {
     businessId?: string;
     page?: number;
     limit?: number;
+    /** When set, only return appointments assigned to these business_staff IDs */
+    staffIds?: string[];
   }): Promise<{
     appointments: AppointmentWithDetails[];
     total: number;
@@ -463,6 +464,9 @@ export class AppointmentRepository {
     }
     if (filters?.businessId) {
       whereClause.businessId = filters.businessId;
+    }
+    if (filters?.staffIds && filters.staffIds.length > 0) {
+      whereClause.staffId = { in: filters.staffIds };
     }
 
     const [appointments, total] = await Promise.all([
@@ -537,17 +541,21 @@ export class AppointmentRepository {
     };
   }
 
-  async findByBusinessId(businessId: string, page = 1, limit = 20): Promise<{
+  async findByBusinessId(businessId: string, page = 1, limit = 20, staffIds?: string[]): Promise<{
     appointments: AppointmentWithDetails[];
     total: number;
     page: number;
     totalPages: number;
   }> {
     const skip = (page - 1) * limit;
+    const where: Record<string, unknown> = { businessId };
+    if (staffIds && staffIds.length > 0) {
+      where.staffId = { in: staffIds };
+    }
 
     const [appointments, total] = await Promise.all([
       this.prisma.appointment.findMany({
-        where: { businessId },
+        where,
         skip,
         take: limit,
         orderBy: [
@@ -594,9 +602,7 @@ export class AppointmentRepository {
           }
         }
       }),
-      this.prisma.appointment.count({
-        where: { businessId }
-      })
+      this.prisma.appointment.count({ where })
     ]);
 
     return {
@@ -1373,6 +1379,46 @@ export class AppointmentRepository {
   }
 
 
+  async upsertWorkingHours(data: {
+    businessId: string;
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+    isActive: boolean;
+  }): Promise<void> {
+    const existing = await this.prisma.workingHours.findFirst({
+      where: { businessId: data.businessId, dayOfWeek: data.dayOfWeek, staffId: null }
+    });
+
+    if (existing) {
+      await this.prisma.workingHours.update({
+        where: { id: existing.id },
+        data: { startTime: data.startTime, endTime: data.endTime, isActive: data.isActive, updatedAt: new Date() }
+      });
+    } else {
+      await this.prisma.workingHours.create({
+        data: {
+          id: `wh_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+          businessId: data.businessId,
+          staffId: null,
+          dayOfWeek: data.dayOfWeek,
+          startTime: data.startTime,
+          endTime: data.endTime,
+          isActive: data.isActive,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      });
+    }
+  }
+
+  async deactivateWorkingHours(businessId: string, dayOfWeek: number): Promise<void> {
+    await this.prisma.workingHours.updateMany({
+      where: { businessId, dayOfWeek, staffId: null },
+      data: { isActive: false, updatedAt: new Date() }
+    });
+  }
+
   // Appointments for a given day (optionally by staff) including staff user
   async findAppointmentsForDay(
     businessId: string,
@@ -1437,11 +1483,14 @@ export class AppointmentRepository {
   async findByBusinessAndDateRange(
     businessId: string,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
+    staffIds?: string[]
   ): Promise<AppointmentWithDetails[]> {
+    const staffFilter = staffIds && staffIds.length > 0 ? { staffId: { in: staffIds } } : {};
     const appointments = await this.prisma.appointment.findMany({
       where: {
         businessId,
+        ...staffFilter,
         OR: [
           // Appointment starts within closure period
           {
@@ -1581,7 +1630,7 @@ export class AppointmentRepository {
           in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS],
         },
         endTime: {
-          lt: now,
+          lt: getCurrentTimeInIstanbul(),
         },
       },
       include: {
@@ -1654,13 +1703,14 @@ export class AppointmentRepository {
   async finalizeEndedAppointmentsIfStale(
     filter: { customerId?: string; appointmentId?: string; businessId?: string } = {}
   ): Promise<number> {
-    const now = new Date();
+    const now = getCurrentTimeInIstanbul();
+    const gracePeriodCutoff = now;
     const where: Prisma.AppointmentWhereInput = {
       // Only "active" slots: terminal states (COMPLETED, CANCELED, NO_SHOW) are never overwritten
       status: {
         in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS],
       },
-      endTime: { lt: now },
+      endTime: { lt: gracePeriodCutoff },
     };
     if (filter.appointmentId) {
       where.id = filter.appointmentId;

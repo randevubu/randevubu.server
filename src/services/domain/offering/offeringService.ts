@@ -12,6 +12,7 @@ import { PermissionName } from '../../../types/auth';
 import type { CacheService } from '../../core/cacheService';
 import { NotFoundError, ValidationError, OperationNotAllowedError } from '../../../types/errors';
 import { ERROR_CODES } from '../../../constants/errorCodes';
+import logger from '../../../utils/Logger/logger';
 
 export class OfferingService {
   constructor(
@@ -27,9 +28,12 @@ export class OfferingService {
     businessId: string,
     data: CreateServiceRequest
   ): Promise<ServiceData> {
+    logger.info('Service create requested', { userId, businessId, name: data.name });
+
     // Check if business can add more services
     const canAddService = await this.usageService.canAddService(businessId);
     if (!canAddService.allowed) {
+      logger.warn('Service create blocked by usage limit', { userId, businessId, reason: canAddService.reason });
       throw new Error(`Cannot create service: ${canAddService.reason}`);
     }
 
@@ -43,7 +47,26 @@ export class OfferingService {
       });
     }
 
+    const nameExists = await this.serviceRepository.existsByNameAndBusiness(data.name, businessId);
+    if (nameExists) {
+      logger.warn('Service create blocked: duplicate name', { userId, businessId, name: data.name });
+      throw new ValidationError('Bu isimde bir hizmet zaten mevcut', 'name', undefined, undefined);
+    }
+
     const service = await this.serviceRepository.create(businessId, data);
+
+    // Assign staff to the new service based on caller's role
+    const callerPermissions = await this.rbacService.getUserPermissions(userId);
+    if (callerPermissions.effectiveLevel <= 200) {
+      // STAFF: auto-assign only this staff member
+      const staffRecord = await this.serviceRepository.getBusinessStaffRecord(userId, businessId);
+      if (staffRecord) {
+        await this.serviceRepository.assignStaffToService(service.id, staffRecord.id);
+      }
+    } else if (data.assignToAll) {
+      // MANAGER/OWNER with "assign to everyone" checked
+      await this.serviceRepository.assignAllStaffToService(service.id, businessId);
+    }
 
     // Update service usage tracking
     await this.usageService.updateServiceUsage(businessId);
@@ -52,6 +75,7 @@ export class OfferingService {
     await this.cacheService.invalidateService(service.id, businessId, userId);
     await this.cacheService.invalidateBusiness(businessId, userId);
 
+    logger.info('Service created successfully', { userId, businessId, serviceId: service.id, name: service.name });
     return service;
   }
 
@@ -135,8 +159,11 @@ export class OfferingService {
     serviceId: string,
     data: UpdateServiceRequest
   ): Promise<ServiceData> {
+    logger.info('Service update requested', { userId, serviceId });
+
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
+      logger.warn('Service update failed: not found', { userId, serviceId });
       throw new NotFoundError('Service not found', undefined, {
         additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
       });
@@ -152,12 +179,58 @@ export class OfferingService {
       });
     }
 
-    return await this.serviceRepository.update(serviceId, data);
+    const { assignToAll, ...updateData } = data;
+
+    if (updateData.name) {
+      const nameExists = await this.serviceRepository.existsByNameAndBusiness(updateData.name, service.businessId, serviceId);
+      if (nameExists) {
+        logger.warn('Service update blocked: duplicate name', { userId, serviceId, name: updateData.name });
+        throw new ValidationError('Bu isimde bir hizmet zaten mevcut', 'name', undefined, undefined);
+      }
+    }
+
+    const updated = await this.serviceRepository.update(serviceId, updateData);
+
+    if (assignToAll === true) {
+      await this.serviceRepository.assignAllStaffToService(serviceId, service.businessId);
+      logger.info('Assigned all staff to service on update', { userId, serviceId, businessId: service.businessId });
+    }
+
+    await this.cacheService.invalidateService(serviceId, service.businessId, userId);
+    await this.cacheService.invalidateBusiness(service.businessId, userId);
+
+    logger.info('Service updated successfully', { userId, serviceId, businessId: service.businessId });
+    return updated;
+  }
+
+  async getServiceAssignmentStatus(
+    userId: string,
+    serviceId: string
+  ): Promise<{ assignedCount: number; totalActiveStaff: number; assignedToAll: boolean }> {
+    const service = await this.serviceRepository.findById(serviceId);
+    if (!service) {
+      throw new NotFoundError('Service not found', undefined, {
+        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
+      });
+    }
+
+    const [resource, action] = PermissionName.VIEW_ALL_SERVICES.split(':');
+    const hasGlobalView = await this.rbacService.hasPermission(userId, resource, action);
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_SERVICES, {
+        businessId: service.businessId,
+      });
+    }
+
+    return this.serviceRepository.getServiceAssignmentStatus(serviceId, service.businessId);
   }
 
   async deleteService(userId: string, serviceId: string): Promise<void> {
+    logger.info('Service delete requested', { userId, serviceId });
+
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
+      logger.warn('Service delete failed: not found', { userId, serviceId });
       throw new NotFoundError('Service not found', undefined, {
         additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
       });
@@ -174,6 +247,11 @@ export class OfferingService {
     }
 
     await this.serviceRepository.delete(serviceId);
+
+    await this.cacheService.invalidateService(serviceId, service.businessId, userId);
+    await this.cacheService.invalidateBusiness(service.businessId, userId);
+
+    logger.info('Service deleted successfully', { userId, serviceId, businessId: service.businessId, name: service.name });
   }
 
   async reorderServices(

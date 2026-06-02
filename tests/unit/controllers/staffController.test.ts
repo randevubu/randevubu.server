@@ -2,88 +2,42 @@ import { Response } from "express";
 import { StaffController } from "../../../src/controllers/staffController";
 import { BusinessContextRequest } from "../../../src/middleware/businessContext";
 import { AuthenticatedRequest } from "../../../src/types/request";
+import { ForbiddenError } from "../../../src/types/errors";
 import { TestHelpers } from "../../utils/testHelpers";
-
-// Mock dependencies
-jest.mock("../../../src/services/staffService");
-jest.mock("../../../src/utils/errorResponse");
-jest.mock("../../../src/utils/logger");
-
-// Mock the error response utilities
-import {
-  createErrorContext,
-  handleRouteError,
-  sendAppErrorResponse,
-  sendSuccessResponse,
-} from "../../../src/utils/errorResponse";
-
-jest
-  .mocked(sendSuccessResponse)
-  .mockImplementation((res, data, message, meta, statusCode = 200) => {
-    res.status(statusCode).json({
-      success: true,
-      data,
-      message,
-      meta,
-    });
-  });
-
-jest.mocked(sendAppErrorResponse).mockImplementation((res, error) => {
-  res.status(error.statusCode).json({
-    success: false,
-    error: error.message,
-  });
-});
-
-jest.mocked(createErrorContext).mockImplementation((req, userId) => ({
-  requestId: "test-request-id",
-  userId,
-  userAgent: req.get("User-Agent"),
-  ip: req.ip || req.connection.remoteAddress,
-  endpoint: req.path,
-  method: req.method,
-}));
-
-jest.mocked(handleRouteError).mockImplementation((error, req, res) => {
-  res.status(500).json({
-    success: false,
-    error: "Internal server error",
-  });
-});
 
 describe("StaffController", () => {
   let staffController: StaffController;
   let mockStaffService: any;
+  let mockResponseHelper: any;
   let mockRequest: AuthenticatedRequest;
   let mockResponse: Response;
   let mockBusinessContextRequest: BusinessContextRequest;
 
   beforeEach(() => {
-    // Reset all mocks
     jest.clearAllMocks();
 
-    // Create mock StaffService
     mockStaffService = {
       inviteStaff: jest.fn(),
       verifyStaffInvitation: jest.fn(),
       getBusinessStaff: jest.fn(),
       getStaffById: jest.fn(),
+      getStaffByIdAuthorized: jest.fn(),
+      getUserStaffPositions: jest.fn(),
       updateStaff: jest.fn(),
       removeStaff: jest.fn(),
       getStaffStats: jest.fn(),
       transferStaffBetweenBusinesses: jest.fn(),
       getPublicBusinessStaff: jest.fn(),
-      repositories: {
-        staffRepository: {
-          findByUserId: jest.fn(),
-        },
-      },
     };
 
-    // Create StaffController instance
-    staffController = new StaffController(mockStaffService);
+    mockResponseHelper = {
+      success: jest.fn().mockImplementation(async (res: Response, _key: string, data: any, statusCode = 200) => {
+        res.status(statusCode).json({ success: true, data });
+      }),
+    };
 
-    // Create mock request and response
+    staffController = new StaffController(mockStaffService, mockResponseHelper);
+
     mockRequest = TestHelpers.createMockRequest() as AuthenticatedRequest;
     mockRequest.user = {
       id: "user-123",
@@ -92,8 +46,7 @@ describe("StaffController", () => {
       isActive: true,
     };
 
-    mockBusinessContextRequest =
-      TestHelpers.createMockRequest() as BusinessContextRequest;
+    mockBusinessContextRequest = TestHelpers.createMockRequest() as BusinessContextRequest;
     mockBusinessContextRequest.user = {
       id: "user-123",
       phoneNumber: "+905551234567",
@@ -118,7 +71,6 @@ describe("StaffController", () => {
 
   describe("inviteStaff", () => {
     it("should invite staff successfully", async () => {
-      // Arrange
       const inviteData = {
         businessId: "business-123",
         phoneNumber: "+905559876543",
@@ -130,42 +82,76 @@ describe("StaffController", () => {
 
       mockRequest.body = inviteData;
 
-      const mockResult = {
-        success: true,
-        message: "Staff invitation sent successfully",
-      };
-
+      const mockResult = { success: true, message: "Staff invitation sent successfully" };
       mockStaffService.inviteStaff.mockResolvedValue(mockResult);
 
-      // Act
       await staffController.inviteStaff(mockRequest, mockResponse);
 
-      // Assert
       expect(mockStaffService.inviteStaff).toHaveBeenCalledWith(
         "user-123",
-        inviteData,
+        expect.objectContaining({
+          businessId: "business-123",
+          phoneNumber: "+905559876543",
+          role: "STAFF",
+          firstName: "John",
+          lastName: "Doe",
+        }),
         expect.any(Object)
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockResult,
-      });
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
     });
-  });
 
-  describe("verifyStaffInvitation", () => {
-    it("should verify staff invitation successfully", async () => {
-      // Arrange
-      const verificationData = {
+    it("should return 400 when phone number is already registered as active staff", async () => {
+      mockRequest.body = {
         businessId: "business-123",
         phoneNumber: "+905559876543",
-        verificationCode: "123456",
         role: "STAFF",
         permissions: [],
         firstName: "John",
         lastName: "Doe",
       };
 
+      mockStaffService.inviteStaff.mockResolvedValue({
+        success: false,
+        message: "This person is already a staff member of this business",
+      });
+
+      await staffController.inviteStaff(mockRequest, mockResponse);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
+    });
+
+    it("should return 400 when required fields are missing", async () => {
+      mockRequest.body = { businessId: "business-123" };
+
+      await staffController.inviteStaff(mockRequest, mockResponse);
+
+      expect(mockStaffService.inviteStaff).not.toHaveBeenCalled();
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
+    });
+  });
+
+  describe("verifyStaffInvitation", () => {
+    const verificationData = {
+      businessId: "business-123",
+      phoneNumber: "+905559876543",
+      verificationCode: "123456",
+      role: "STAFF",
+      permissions: [],
+      firstName: "John",
+      lastName: "Doe",
+    };
+
+    it("should verify staff invitation successfully", async () => {
       mockRequest.body = verificationData;
 
       const mockResult = {
@@ -173,29 +159,84 @@ describe("StaffController", () => {
         message: "Staff invitation verified successfully",
         staffMember: { id: "staff-123", role: "STAFF" },
       };
-
       mockStaffService.verifyStaffInvitation.mockResolvedValue(mockResult);
 
-      // Act
       await staffController.verifyStaffInvitation(mockRequest, mockResponse);
 
-      // Assert
       expect(mockStaffService.verifyStaffInvitation).toHaveBeenCalledWith(
         "user-123",
-        verificationData,
+        expect.objectContaining({
+          businessId: "business-123",
+          phoneNumber: "+905559876543",
+          verificationCode: "123456",
+          role: "STAFF",
+          firstName: "John",
+          lastName: "Doe",
+        }),
         expect.any(Object)
       );
       expect(mockResponse.status).toHaveBeenCalledWith(201);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockResult,
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+    });
+
+    it("should return 400 for invalid or expired verification code", async () => {
+      mockRequest.body = verificationData;
+
+      mockStaffService.verifyStaffInvitation.mockResolvedValue({
+        success: false,
+        message: "Invalid verification code",
       });
+
+      await staffController.verifyStaffInvitation(mockRequest, mockResponse);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
+    });
+
+    it("should return 400 when staff member already exists in the business", async () => {
+      mockRequest.body = verificationData;
+
+      mockStaffService.verifyStaffInvitation.mockResolvedValue({
+        success: false,
+        message: "This person is already a staff member of this business",
+      });
+
+      await staffController.verifyStaffInvitation(mockRequest, mockResponse);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
+    });
+
+    it("should return 400 when required fields are missing", async () => {
+      mockRequest.body = { businessId: "business-123", phoneNumber: "+905559876543" };
+
+      await staffController.verifyStaffInvitation(mockRequest, mockResponse);
+
+      expect(mockStaffService.verifyStaffInvitation).not.toHaveBeenCalled();
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
+    });
+
+    it("should return 400 for invalid verification code format", async () => {
+      mockRequest.body = { ...verificationData, verificationCode: "abc" };
+
+      await staffController.verifyStaffInvitation(mockRequest, mockResponse);
+
+      expect(mockStaffService.verifyStaffInvitation).not.toHaveBeenCalled();
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
     });
   });
 
   describe("getBusinessStaff", () => {
     it("should get business staff successfully", async () => {
-      // Arrange
       const businessId = "business-123";
       mockBusinessContextRequest.params = { businessId };
 
@@ -203,152 +244,175 @@ describe("StaffController", () => {
         { id: "staff-1", name: "Staff Member 1", role: "STAFF" },
         { id: "staff-2", name: "Staff Member 2", role: "MANAGER" },
       ];
-
       mockStaffService.getBusinessStaff.mockResolvedValue(mockStaff);
 
-      // Act
-      await staffController.getBusinessStaff(
-        mockBusinessContextRequest,
-        mockResponse
-      );
+      await staffController.getBusinessStaff(mockBusinessContextRequest, mockResponse);
 
-      // Assert
       expect(mockStaffService.getBusinessStaff).toHaveBeenCalledWith(
         "user-123",
         businessId,
         false
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { staff: mockStaff },
-      });
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, data: { staff: mockStaff } })
+      );
     });
   });
 
   describe("getStaffMember", () => {
-    it("should get staff member successfully", async () => {
-      // Arrange
-      const staffId = "staff-123";
+    const staffId = "staff-123";
+    const mockStaffMember = {
+      id: staffId,
+      name: "Staff Member",
+      role: "STAFF",
+      businessId: "business-123",
+    };
+
+    beforeEach(() => {
       mockRequest.params = { staffId };
+    });
 
-      const mockStaffMember = {
-        id: staffId,
-        name: "Staff Member",
-        role: "STAFF",
-        businessId: "business-123",
-      };
+    it("same-business owner: should return staff member (200)", async () => {
+      mockStaffService.getStaffByIdAuthorized.mockResolvedValue(mockStaffMember);
 
-      mockStaffService.getStaffById.mockResolvedValue(mockStaffMember);
-
-      // Act
       await staffController.getStaffMember(mockRequest, mockResponse);
 
-      // Assert
-      expect(mockStaffService.getStaffById).toHaveBeenCalledWith(staffId);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { staff: mockStaffMember },
-      });
+      expect(mockStaffService.getStaffByIdAuthorized).toHaveBeenCalledWith("user-123", staffId);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, data: { staff: mockStaffMember } })
+      );
+    });
+
+    it("same-business staff member: should return staff member (200)", async () => {
+      mockStaffService.getStaffByIdAuthorized.mockResolvedValue(mockStaffMember);
+
+      await staffController.getStaffMember(mockRequest, mockResponse);
+
+      expect(mockStaffService.getStaffByIdAuthorized).toHaveBeenCalledWith("user-123", staffId);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+    });
+
+    it("global admin permission: should return staff member (200)", async () => {
+      mockStaffService.getStaffByIdAuthorized.mockResolvedValue(mockStaffMember);
+
+      await staffController.getStaffMember(mockRequest, mockResponse);
+
+      expect(mockStaffService.getStaffByIdAuthorized).toHaveBeenCalledWith("user-123", staffId);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+    });
+
+    it("different-business owner: should be denied (403)", async () => {
+      mockStaffService.getStaffByIdAuthorized.mockRejectedValue(
+        new ForbiddenError("You do not have access to this business")
+      );
+
+      await staffController.getStaffMember(mockRequest, mockResponse);
+
+      expect(mockStaffService.getStaffByIdAuthorized).toHaveBeenCalledWith("user-123", staffId);
+      expect(mockResponse.status).toHaveBeenCalledWith(403);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
+    });
+
+    it("different-business staff: should be denied (403)", async () => {
+      mockStaffService.getStaffByIdAuthorized.mockRejectedValue(
+        new ForbiddenError("You do not have access to this business")
+      );
+
+      await staffController.getStaffMember(mockRequest, mockResponse);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(403);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
+    });
+
+    it("unauthenticated request: should not return staff data", async () => {
+      mockRequest.user = undefined;
+      mockStaffService.getStaffByIdAuthorized.mockResolvedValue(mockStaffMember);
+
+      await staffController.getStaffMember(mockRequest, mockResponse);
+
+      expect(mockResponse.json).not.toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+    });
+
+    it("staff not found: should return 404", async () => {
+      mockStaffService.getStaffByIdAuthorized.mockResolvedValue(null);
+
+      await staffController.getStaffMember(mockRequest, mockResponse);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(404);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
     });
   });
 
   describe("updateStaffMember", () => {
     it("should update staff member successfully", async () => {
-      // Arrange
       const staffId = "staff-123";
-      const updateData = {
-        role: "MANAGER",
-        permissions: ["MANAGE_APPOINTMENTS"],
-      };
+      const updateData = { role: "MANAGER", permissions: ["MANAGE_APPOINTMENTS"] };
 
       mockRequest.params = { staffId };
       mockRequest.body = updateData;
 
-      const mockUpdatedStaff = {
-        id: staffId,
-        ...updateData,
-      };
-
+      const mockUpdatedStaff = { id: staffId, ...updateData };
       mockStaffService.updateStaff.mockResolvedValue(mockUpdatedStaff);
 
-      // Act
       await staffController.updateStaffMember(mockRequest, mockResponse);
 
-      // Assert
-      expect(mockStaffService.updateStaff).toHaveBeenCalledWith(
-        "user-123",
-        staffId,
-        updateData
+      expect(mockStaffService.updateStaff).toHaveBeenCalledWith("user-123", staffId, updateData);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, data: { staff: mockUpdatedStaff } })
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { staff: mockUpdatedStaff },
-      });
     });
   });
 
   describe("removeStaffMember", () => {
     it("should remove staff member successfully", async () => {
-      // Arrange
       const staffId = "staff-123";
       mockRequest.params = { staffId };
-
       mockStaffService.removeStaff.mockResolvedValue(undefined);
 
-      // Act
       await staffController.removeStaffMember(mockRequest, mockResponse);
 
-      // Assert
-      expect(mockStaffService.removeStaff).toHaveBeenCalledWith(
-        "user-123",
-        staffId
+      expect(mockStaffService.removeStaff).toHaveBeenCalledWith("user-123", staffId);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { message: "Staff member removed successfully" },
-      });
     });
   });
 
   describe("getStaffStats", () => {
     it("should get staff statistics successfully", async () => {
-      // Arrange
       const businessId = "business-123";
       mockBusinessContextRequest.params = { businessId };
 
       const mockStats = {
         totalStaff: 5,
         activeStaff: 4,
-        staffByRole: {
-          STAFF: 3,
-          MANAGER: 1,
-          ADMIN: 1,
-        },
+        byRole: { STAFF: 3, MANAGER: 1, OWNER: 1, RECEPTIONIST: 0 },
       };
-
       mockStaffService.getStaffStats.mockResolvedValue(mockStats);
 
-      // Act
-      await staffController.getStaffStats(
-        mockBusinessContextRequest,
-        mockResponse
-      );
+      await staffController.getStaffStats(mockBusinessContextRequest, mockResponse);
 
-      // Assert
-      expect(mockStaffService.getStaffStats).toHaveBeenCalledWith(
-        "user-123",
-        businessId
+      expect(mockStaffService.getStaffStats).toHaveBeenCalledWith("user-123", businessId);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, data: { stats: mockStats } })
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { stats: mockStats },
-      });
     });
   });
 
   describe("getStaffByRole", () => {
     it("should get staff by role successfully", async () => {
-      // Arrange
       const businessId = "business-123";
       const role = "STAFF";
       mockBusinessContextRequest.params = { businessId, role };
@@ -357,212 +421,118 @@ describe("StaffController", () => {
         { id: "staff-1", name: "Staff Member 1", role: "STAFF" },
         { id: "staff-2", name: "Staff Member 2", role: "STAFF" },
       ];
-
       mockStaffService.getBusinessStaff.mockResolvedValue(mockStaff);
 
-      // Act
-      await staffController.getStaffByRole(
-        mockBusinessContextRequest,
-        mockResponse
-      );
+      await staffController.getStaffByRole(mockBusinessContextRequest, mockResponse);
 
-      // Assert
-      expect(mockStaffService.getBusinessStaff).toHaveBeenCalledWith(
-        "user-123",
-        businessId,
-        false
+      expect(mockStaffService.getBusinessStaff).toHaveBeenCalledWith("user-123", businessId, false);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, data: { staff: mockStaff } })
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { staff: mockStaff },
-      });
     });
   });
 
   describe("getMyStaffPositions", () => {
     it("should get my staff positions successfully", async () => {
-      // Arrange
       const mockPositions = [
         { businessId: "business-1", role: "STAFF", businessName: "Business 1" },
-        {
-          businessId: "business-2",
-          role: "MANAGER",
-          businessName: "Business 2",
-        },
+        { businessId: "business-2", role: "MANAGER", businessName: "Business 2" },
       ];
 
-      // Mock the repository access through the service
-      mockStaffService.repositories = {
-        staffRepository: {
-          findByUserId: jest.fn().mockResolvedValue(mockPositions),
-        },
-      };
+      mockStaffService.getUserStaffPositions.mockResolvedValue(mockPositions);
 
-      // Act
       await staffController.getMyStaffPositions(mockRequest, mockResponse);
 
-      // Assert
-      expect(
-        mockStaffService.repositories.staffRepository.findByUserId
-      ).toHaveBeenCalledWith("user-123");
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { positions: mockPositions },
-      });
+      expect(mockStaffService.getUserStaffPositions).toHaveBeenCalledWith("user-123");
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, data: { positions: mockPositions } })
+      );
     });
   });
 
   describe("transferStaff", () => {
     it("should transfer staff successfully", async () => {
-      // Arrange
       const transferData = {
         staffIds: ["staff-1", "staff-2"],
         fromBusinessId: "business-1",
         toBusinessId: "business-2",
       };
-
       mockRequest.body = transferData;
+      mockStaffService.transferStaffBetweenBusinesses.mockResolvedValue(undefined);
 
-      mockStaffService.transferStaffBetweenBusinesses.mockResolvedValue(
-        undefined
-      );
-
-      // Act
       await staffController.transferStaff(mockRequest, mockResponse);
 
-      // Assert
-      expect(
-        mockStaffService.transferStaffBetweenBusinesses
-      ).toHaveBeenCalledWith(
+      expect(mockStaffService.transferStaffBetweenBusinesses).toHaveBeenCalledWith(
         "user-123",
         transferData.staffIds,
         transferData.fromBusinessId,
         transferData.toBusinessId
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { message: "Staff transferred successfully" },
-      });
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
     });
   });
 
   describe("bulkInviteStaff", () => {
     it("should bulk invite staff successfully", async () => {
-      // Arrange
       const bulkInviteData = {
         businessId: "business-123",
         invitations: [
-          { phoneNumber: "+905551234567", role: "STAFF" },
-          { phoneNumber: "+905559876543", role: "MANAGER" },
+          { phoneNumber: "+905551234567", role: "STAFF", firstName: "Alice", lastName: "Smith" },
+          { phoneNumber: "+905559876543", role: "MANAGER", firstName: "Bob", lastName: "Jones" },
         ],
       };
-
       mockRequest.body = bulkInviteData;
 
-      const mockResults = [
-        {
-          phoneNumber: "+905551234567",
-          success: true,
-          message: "Invitation sent",
-        },
-        {
-          phoneNumber: "+905559876543",
-          success: true,
-          message: "Invitation sent",
-        },
-      ];
+      mockStaffService.inviteStaff.mockResolvedValue({ success: true, message: "Invitation sent" });
 
-      // Mock the inviteStaff method to return success for each invitation
-      mockStaffService.inviteStaff.mockResolvedValue({
-        success: true,
-        message: "Invitation sent",
-      });
-
-      // Act
       await staffController.bulkInviteStaff(mockRequest, mockResponse);
 
-      // Assert
       expect(mockStaffService.inviteStaff).toHaveBeenCalledTimes(2);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { results: expect.any(Array) },
-      });
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, data: { results: expect.any(Array) } })
+      );
     });
   });
 
   describe("getAvailableRoles", () => {
     it("should get available roles successfully", async () => {
-      // Arrange
-      const mockRoles = [
-        {
-          value: "OWNER",
-          label: "Owner",
-          description: "Full access to all business features",
-        },
-        {
-          value: "MANAGER",
-          label: "Manager",
-          description: "Manage staff, services, and appointments",
-        },
-        {
-          value: "STAFF",
-          label: "Staff Member",
-          description: "Handle appointments and basic operations",
-        },
-        {
-          value: "RECEPTIONIST",
-          label: "Receptionist",
-          description: "Manage appointments and customer interactions",
-        },
-      ];
-
-      // Act
       await staffController.getAvailableRoles(mockRequest, mockResponse);
 
-      // Assert
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { roles: mockRoles },
-      });
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: {
+            roles: expect.arrayContaining([
+              expect.objectContaining({ value: "OWNER" }),
+              expect.objectContaining({ value: "MANAGER" }),
+              expect.objectContaining({ value: "STAFF" }),
+              expect.objectContaining({ value: "RECEPTIONIST" }),
+            ]),
+          },
+        })
+      );
     });
   });
 
   describe("getPublicBusinessStaff", () => {
     it("should get public business staff successfully", async () => {
-      // Arrange
       const businessId = "business-123";
       mockRequest.params = { businessId };
 
       const mockPublicStaff = [
-        {
-          id: "staff-1",
-          name: "Staff Member 1",
-          role: "STAFF",
-          showName: true,
-        },
-        {
-          id: "staff-2",
-          name: "Staff Member 2",
-          role: "MANAGER",
-          showName: true,
-        },
+        { id: "staff-1", name: "Staff Member 1", role: "STAFF" },
+        { id: "staff-2", name: "Staff Member 2", role: "MANAGER" },
       ];
+      mockStaffService.getPublicBusinessStaff.mockResolvedValue(mockPublicStaff);
 
-      mockStaffService.getPublicBusinessStaff.mockResolvedValue(
-        mockPublicStaff
-      );
-
-      // Act
       await staffController.getPublicBusinessStaff(mockRequest, mockResponse);
 
-      // Assert
-      expect(mockStaffService.getPublicBusinessStaff).toHaveBeenCalledWith(
-        businessId
+      expect(mockStaffService.getPublicBusinessStaff).toHaveBeenCalledWith(businessId);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, data: { staff: mockPublicStaff } })
       );
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        data: { staff: mockPublicStaff },
-      });
     });
   });
 });

@@ -28,6 +28,12 @@ export function createRatingRoutes(ratingController: RatingController): Router {
     withAuth((req, res) => ratingController.getUserRating(req, res))
   );
 
+  router.delete(
+    '/businesses/:businessId/ratings/:ratingId',
+    requireAuth,
+    withAuth((req, res) => ratingController.deleteRating(req, res))
+  );
+
   router.post('/businesses/:businessId/ratings/refresh-cache', (req, res) =>
     ratingController.refreshRatingCache(req, res)
   );

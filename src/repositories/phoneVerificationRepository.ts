@@ -1,4 +1,5 @@
 import { PrismaClient, VerificationPurpose } from '@prisma/client';
+import { cacheManager } from '../services/redis-client';
 import {
   PhoneVerificationRepository,
   PhoneVerificationData,
@@ -164,9 +165,23 @@ export class PrismaPhoneVerificationRepository implements PhoneVerificationRepos
       },
     });
 
-    // Note: We'd need to store IP addresses in the verification table to track IP-based limits
-    // For now, we'll return 0 for IP count as it's not stored in the current schema
-    const ipCount = 0;
+    // Track IP-based counts in Redis with a 24-hour TTL so we don't need a schema migration
+    let ipCount = 0;
+    if (ipAddress) {
+      try {
+        const redis = cacheManager.getRedis();
+        const key = `otp_ip_daily:${ipAddress}:${dayStart.toISOString().slice(0, 10)}`;
+        const raw = await redis.incr(key);
+        // Set TTL only on first increment
+        if (raw === 1) await redis.expire(key, 86400);
+        // Decrement by 1 because incr already counted the *current* request;
+        // we want the count *before* this request to decide whether to block.
+        ipCount = Math.max(0, raw - 1);
+      } catch {
+        // Redis unavailable — fail open (don't block legitimate users)
+        ipCount = 0;
+      }
+    }
 
     return { phoneCount, ipCount };
   }

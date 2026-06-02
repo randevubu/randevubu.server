@@ -678,7 +678,6 @@ export class RoleRepository {
       OWNER: 300,
       MANAGER: 250,
       STAFF: 200,
-      RECEPTIONIST: 150,
     };
     return roleLevels[role as keyof typeof roleLevels] || 100;
   }

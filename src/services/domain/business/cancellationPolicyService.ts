@@ -22,14 +22,17 @@ export class CancellationPolicyService {
   /** Merge stored JSON with defaults; resolve maxDailyCancellations from legacy maxMonthlyCancellations if needed */
   private normalizeCancellationPolicies(
     raw: Partial<CancellationPolicySettings> & { maxMonthlyCancellations?: number }
-  ): CancellationPolicySettings {
+  ): CancellationPolicySettings & { maxMonthlyCancellations: number } {
+    const maxDailyCancellations =
+      raw.maxDailyCancellations ??
+      raw.maxMonthlyCancellations ??
+      DEFAULT_CANCELLATION_POLICIES.maxDailyCancellations;
     const merged = {
       ...DEFAULT_CANCELLATION_POLICIES,
       ...raw,
-      maxDailyCancellations:
-        raw.maxDailyCancellations ??
-        raw.maxMonthlyCancellations ??
-        DEFAULT_CANCELLATION_POLICIES.maxDailyCancellations
+      maxDailyCancellations,
+      // Always include maxMonthlyCancellations alias so the client can read and send it back
+      maxMonthlyCancellations: maxDailyCancellations,
     };
     return merged;
   }

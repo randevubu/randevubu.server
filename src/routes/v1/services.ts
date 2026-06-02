@@ -180,6 +180,12 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
    *         description: Not found
    */
   router.get(
+    '/:id/assignment-status',
+    requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),
+    serviceController.getServiceAssignmentStatus.bind(serviceController)
+  );
+
+  router.get(
     '/:id',
     serviceCache,
     requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),

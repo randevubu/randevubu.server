@@ -187,12 +187,11 @@ export const validateStaffRole = (role: string): role is BusinessStaffRole => {
 };
 
 // Role hierarchy validation (optional - for permission checks)
-export const getRoleHierarchy = (): Record<BusinessStaffRole, number> => {
+export const getRoleHierarchy = (): Record<string, number> => {
   return {
-    [BusinessStaffRole.OWNER]: 4,
-    [BusinessStaffRole.MANAGER]: 3,
-    [BusinessStaffRole.STAFF]: 2,
-    [BusinessStaffRole.RECEPTIONIST]: 1,
+    [BusinessStaffRole.OWNER]: 3,
+    [BusinessStaffRole.MANAGER]: 2,
+    [BusinessStaffRole.STAFF]: 1,
   };
 };
 

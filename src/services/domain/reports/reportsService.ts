@@ -429,25 +429,26 @@ export class ReportsService {
       totalAppointments > 0
         ? (noShowAppointments / totalAppointments) * 100
         : 0;
-    const averageAppointmentValue =
-      totalAppointments > 0 ? totalRevenue / totalAppointments : 0;
 
-    // Get Daily Notebook data for complete financial picture
+    // Get Daily Notebook data for manual income/expenses (non-appointment entries)
     const dailyNotebookData = await this.getDailyNotebookData(
       targetBusiness.id,
       startDate,
       endDate
     );
 
-    // Find the "Randevular" (appointments) column from Daily Notebook
-    const appointmentsColumn = dailyNotebookData.incomeByColumn.find(c => c.isSystem);
-    const appointmentRevenueFromNotebook = appointmentsColumn?.amount || 0;
-    const manualIncome = dailyNotebookData.totalIncome - appointmentRevenueFromNotebook;
-    
-    // All revenue from Daily Notebook (single source of truth)
-    const combinedRevenue = dailyNotebookData.totalIncome;
+    // Manual (non-system) income from Daily Notebook only — appointment prices come from the DB directly
+    const manualIncome = dailyNotebookData.incomeByColumn
+      .filter(c => !c.isSystem)
+      .reduce((sum, c) => sum + c.amount, 0);
     const manualExpenses = dailyNotebookData.totalExpenses;
+
+    // Appointment revenue = sum of COMPLETED appointment prices (already in totalRevenue)
+    const appointmentRevenue = totalRevenue;
+    const combinedRevenue = appointmentRevenue + manualIncome;
     const netProfit = combinedRevenue - manualExpenses;
+    const averageAppointmentValue =
+      completedAppointments > 0 ? appointmentRevenue / completedAppointments : 0;
 
     return {
       businessId: targetBusiness.id,
@@ -457,7 +458,7 @@ export class ReportsService {
       canceledAppointments,
       noShowAppointments,
       totalRevenue: combinedRevenue,
-      appointmentRevenue: appointmentRevenueFromNotebook,
+      appointmentRevenue,
       manualIncome,
       manualExpenses,
       netProfit,
@@ -488,22 +489,14 @@ export class ReportsService {
     const targetBusiness = businesses[0];
     const dateFilter = this.buildDateFilter(startDate, endDate);
 
-    // Get Daily Notebook data (single source of truth for revenue)
+    // Get Daily Notebook data for manual income entries only
     const dailyNotebookData = await this.getDailyNotebookData(
       targetBusiness.id,
       startDate,
       endDate
     );
 
-    // Find the "Randevular" (appointments) column from Daily Notebook
-    const appointmentsColumn = dailyNotebookData.incomeByColumn.find(c => c.isSystem);
-    const appointmentRevenue = appointmentsColumn?.amount || 0;
-    const manualIncome = dailyNotebookData.totalIncome - appointmentRevenue;
-    
-    const totalRevenue = dailyNotebookData.totalIncome;
-    const periodRevenue = totalRevenue;
-
-    // Get appointment data for counting
+    // Get appointment revenue directly from completed appointments
     const revenueData =
       await this.repositories.prismaClient.appointment.aggregate({
         where: {
@@ -516,6 +509,13 @@ export class ReportsService {
         },
         _count: true,
       });
+
+    const appointmentRevenue = Number(revenueData._sum.price || 0);
+    const manualIncome = dailyNotebookData.incomeByColumn
+      .filter(c => !c.isSystem)
+      .reduce((sum, c) => sum + c.amount, 0);
+    const totalRevenue = appointmentRevenue + manualIncome;
+    const periodRevenue = totalRevenue;
 
     // Revenue by day (appointments only, manual income is tracked separately in Daily Notebook)
     const dailyRevenue =
@@ -836,6 +836,9 @@ export class ReportsService {
         id: true,
         name: true,
       },
+      orderBy: {
+        createdAt: 'desc',
+      },
     });
   }
 
@@ -1069,28 +1072,26 @@ export class ReportsService {
         _count: true,
       });
 
-    const appointmentsTotal = Number(revenueData._sum.price || 0);
-    
-    // Find the "Randevular" (appointments) column from Daily Notebook
-    const appointmentsColumn = dailyNotebookData.incomeByColumn.find(c => c.isSystem);
-    const appointmentRevenueFromNotebook = appointmentsColumn?.amount || 0;
-    const manualIncome = dailyNotebookData.totalIncome - appointmentRevenueFromNotebook;
-    
-    // Calculate totals (all from Daily Notebook - single source of truth)
-    const totalRevenue = dailyNotebookData.totalIncome;
+    // Appointment revenue comes directly from completed appointment prices
+    const appointmentRevenue = Number(revenueData._sum.price || 0);
+
+    // Manual (non-system) income from Daily Notebook only
+    const manualIncome = dailyNotebookData.incomeByColumn
+      .filter(c => !c.isSystem)
+      .reduce((sum, c) => sum + c.amount, 0);
+
+    const totalRevenue = appointmentRevenue + manualIncome;
     const totalExpenses = dailyNotebookData.totalExpenses;
     const netProfit = totalRevenue - totalExpenses;
     const profitMargin =
       totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-    // Get payment methods (simplified - based on appointments data)
     const paymentMethods = [
-      { method: "Cash", amount: appointmentRevenueFromNotebook * 0.4, percentage: 40 },
-      { method: "Card", amount: appointmentRevenueFromNotebook * 0.45, percentage: 45 },
-      { method: "Digital", amount: appointmentRevenueFromNotebook * 0.15, percentage: 15 },
+      { method: "Cash", amount: appointmentRevenue * 0.4, percentage: 40 },
+      { method: "Card", amount: appointmentRevenue * 0.45, percentage: 45 },
+      { method: "Digital", amount: appointmentRevenue * 0.15, percentage: 15 },
     ];
 
-    // Monthly trends with Daily Notebook integration (last 6 months)
     const monthlyTrends = await this.getMonthlyFinancialTrends(
       targetBusiness.id,
       6
@@ -1098,7 +1099,7 @@ export class ReportsService {
 
     return {
       totalRevenue,
-      appointmentRevenue: appointmentRevenueFromNotebook,
+      appointmentRevenue,
       manualIncome,
       netProfit,
       expenses: totalExpenses,
@@ -1106,7 +1107,7 @@ export class ReportsService {
       profitMargin: Math.round(profitMargin * 100) / 100,
       revenueGrowth: 12.5, // TODO: Calculate actual growth
       avgTransactionValue:
-        revenueData._count > 0 ? appointmentsTotal / revenueData._count : 0,
+        revenueData._count > 0 ? appointmentRevenue / revenueData._count : 0,
       paymentMethods,
       monthlyTrends,
       incomeBreakdown: {
@@ -1613,19 +1614,25 @@ export class ReportsService {
     }
 
     // Get all notebooks in the date range
+    const startYear = startDate.getFullYear();
+    const startMonth = startDate.getMonth() + 1;
+    const endYear = endDate.getFullYear();
+    const endMonth = endDate.getMonth() + 1;
+
+    const notebookWhere: any = { businessId };
+    if (startYear === endYear) {
+      notebookWhere.year = startYear;
+      notebookWhere.month = { gte: startMonth, lte: endMonth };
+    } else {
+      notebookWhere.OR = [
+        { year: startYear, month: { gte: startMonth } },
+        { year: { gt: startYear, lt: endYear } },
+        { year: endYear, month: { lte: endMonth } },
+      ];
+    }
+
     const notebooks = await this.repositories.prismaClient.businessDailyNotebook.findMany({
-      where: {
-        businessId,
-        OR: [
-          {
-            year: startDate.getFullYear(),
-            month: { gte: startDate.getMonth() + 1, lte: endDate.getMonth() + 1 },
-          },
-          {
-            year: { gte: startDate.getFullYear(), lte: endDate.getFullYear() },
-          },
-        ],
-      },
+      where: notebookWhere,
       include: {
         dailyEntries: {
           include: {

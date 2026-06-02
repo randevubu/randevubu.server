@@ -3,6 +3,7 @@ import { BusinessService } from '../services/domain/business';
 import { AuthenticatedRequest } from '../types/request';
 import { handleRouteError } from '../utils/responseUtils';
 import { ResponseHelper } from '../utils/responseHelper';
+import type { CacheService } from '../services/core/cacheService';
 
 /**
  * Controller for managing business hours and overrides
@@ -11,7 +12,8 @@ import { ResponseHelper } from '../utils/responseHelper';
 export class BusinessHoursController {
   constructor(
     private businessService: BusinessService,
-    private responseHelper: ResponseHelper
+    private responseHelper: ResponseHelper,
+    private cacheService?: CacheService
   ) {}
 
   /**
@@ -50,6 +52,8 @@ export class BusinessHoursController {
       }
 
       const business = await this.businessService.updateBusinessHours(userId, id, businessHours);
+
+      await this.cacheService?.invalidateBusiness(id, userId);
 
       await this.responseHelper.success(
         res,

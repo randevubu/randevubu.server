@@ -710,7 +710,7 @@ export class NotificationService {
 
     try {
       // For now, just log the notification - implement actual SMS sending later
-      logger.info(`SMS to ${phoneNumber}: ${message}`);
+      logger.info('SMS notification queued', { phone: phoneNumber.replace(/\d(?=\d{4})/g, '*'), messageLength: message.length });
 
       return {
         success: true,
@@ -748,7 +748,7 @@ export class NotificationService {
 
     try {
       // For now, just log the notification - implement actual SMS sending later
-      logger.info(`SMS to ${phoneNumber}: ${message}`);
+      logger.info('SMS notification queued', { phone: phoneNumber.replace(/\d(?=\d{4})/g, '*'), messageLength: message.length });
 
       return {
         success: true,
@@ -786,7 +786,7 @@ export class NotificationService {
 
     try {
       // For now, just log the notification - implement actual SMS sending later
-      logger.info(`SMS to ${phoneNumber}: ${message}`);
+      logger.info('SMS notification queued', { phone: phoneNumber.replace(/\d(?=\d{4})/g, '*'), messageLength: message.length });
 
       return {
         success: true,
@@ -828,7 +828,7 @@ export class NotificationService {
     );
 
     try {
-      logger.info(`SMS to ${phoneNumber}: ${message}`);
+      logger.info('SMS notification queued', { phone: phoneNumber.replace(/\d(?=\d{4})/g, '*'), messageLength: message.length });
 
       return {
         success: true,
@@ -871,7 +871,7 @@ export class NotificationService {
 
     try {
       // Send to support team (could be email, Slack, etc.)
-      logger.info(`🚨 ESCALATION - SMS to ${phoneNumber}: ${message}`);
+      logger.info('SMS notification queued', { phone: phoneNumber.replace(/\d(?=\d{4})/g, '*'), messageLength: message.length });
 
       // Also log for support team monitoring
       logger.warn(`Payment escalation for business ${businessName}: ${failureCount} failures`);
@@ -914,7 +914,7 @@ export class NotificationService {
     );
 
     try {
-      logger.info(`SMS to ${phoneNumber}: ${message}`);
+      logger.info('SMS notification queued', { phone: phoneNumber.replace(/\d(?=\d{4})/g, '*'), messageLength: message.length });
 
       return {
         success: true,
@@ -954,7 +954,7 @@ export class NotificationService {
     );
 
     try {
-      logger.info(`SMS to ${phoneNumber}: ${message}`);
+      logger.info('SMS notification queued', { phone: phoneNumber.replace(/\d(?=\d{4})/g, '*'), messageLength: message.length });
 
       return {
         success: true,

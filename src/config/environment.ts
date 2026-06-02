@@ -93,6 +93,14 @@ export const validateConfig = (): void => {
       throw new Error(`Missing required environment variables for production: ${missingVars.join(', ')}`);
     }
 
+    // Reject placeholder or weak JWT secrets — server must not start with known/trivial values
+    for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
+      const val = process.env[key]!;
+      if (val.includes('CHANGE_ME') || val.includes('change_me') || val.length < 32) {
+        throw new Error(`${key} must be a strong secret of at least 32 characters in production (run: openssl rand -hex 64)`);
+      }
+    }
+
     // Validate DATABASE_URL format
     if (process.env.DATABASE_URL && !process.env.DATABASE_URL.startsWith('postgresql://')) {
       throw new Error('DATABASE_URL must be a valid PostgreSQL connection string starting with postgresql://');

@@ -27,6 +27,12 @@ export class UsageService {
       PermissionName.VIEW_OWN_ANALYTICS
     );
 
+    await Promise.all([
+      this.usageRepository.updateActiveCustomerCount(businessId),
+      this.usageRepository.updateActiveStaffCount(businessId),
+      this.usageRepository.updateServiceUsage(businessId),
+      this.usageRepository.updateStorageUsage(businessId),
+    ]);
     return await this.usageRepository.getUsageSummary(businessId);
   }
 
@@ -83,29 +89,41 @@ export class UsageService {
       ? (summary.currentMonth?.storageUsedMB || 0) / (summary.planLimits.storageGB * 1024) * 100
       : 0;
 
+    const storageRemaining = summary.planLimits.storageGB > 0
+      ? Math.max(0, (summary.planLimits.storageGB * 1024) - (summary.currentMonth?.storageUsedMB || 0))
+      : 0;
+
+    const staffCurrent = summary.currentMonth?.staffMembersActive || 0;
+    const staffLimit = summary.planLimits.maxStaffPerBusiness;
+
     return {
       smsQuotaAlert: {
         isNearLimit: smsUsagePercentage >= 80,
+        isAtLimit: smsUsagePercentage >= 100,
         percentage: smsUsagePercentage,
         remaining: summary.remainingQuotas.smsRemaining,
         quota: summary.planLimits.smsQuota
       },
       staffLimitAlert: {
-        isAtLimit: (summary.currentMonth?.staffMembersActive || 0) >= summary.planLimits.maxStaffPerBusiness,
-        current: summary.currentMonth?.staffMembersActive || 0,
-        limit: summary.planLimits.maxStaffPerBusiness
+        isNearLimit: staffLimit > 0 && (staffCurrent / staffLimit) >= 0.8,
+        isAtLimit: staffCurrent >= staffLimit,
+        current: staffCurrent,
+        limit: staffLimit
       },
       customerLimitAlert: {
-        isNearLimit: false, // Unlimited customers
+        isNearLimit: false,
+        isAtLimit: false,
         percentage: 0,
         current: summary.currentMonth?.customersAdded || 0,
-        limit: 0 // Unlimited
+        limit: 0
       },
       storageLimitAlert: {
-        isNearLimit: false, // Unlimited storage
-        percentage: 0,
+        isNearLimit: summary.planLimits.storageGB > 0 && storageUsagePercentage >= 80,
+        isAtLimit: summary.planLimits.storageGB > 0 && storageUsagePercentage >= 100,
+        percentage: storageUsagePercentage,
         usedMB: summary.currentMonth?.storageUsedMB || 0,
-        limitMB: 0 // Unlimited
+        limitMB: summary.planLimits.storageGB > 0 ? summary.planLimits.storageGB * 1024 : 0,
+        remaining: storageRemaining
       }
     };
   }
@@ -132,18 +150,18 @@ export class UsageService {
     await this.usageRepository.updateActiveStaffCount(businessId);
   }
 
-  // Method to be called when customer is added
-  async recordCustomerUsage(businessId: string, count: number = 1): Promise<void> {
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
+  // Sync customer count from appointments (same source as customers list)
+  async updateCustomerUsage(businessId: string): Promise<void> {
+    await this.usageRepository.updateActiveCustomerCount(businessId);
+  }
 
-    await this.repositories.usageRepository.recordCustomerUsage(businessId, count);
+  async recordCustomerUsage(businessId: string): Promise<void> {
+    await this.updateCustomerUsage(businessId);
   }
 
   // Method to be called when service is added/removed  
   async updateServiceUsage(businessId: string): Promise<void> {
-    await this.repositories.usageRepository.updateServiceUsage(businessId);
+    await this.usageRepository.updateServiceUsage(businessId);
   }
 
   // Check if business can perform action based on limits

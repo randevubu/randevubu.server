@@ -91,6 +91,9 @@ export interface BusinessMinimalDetails {
   tags: string[];
   averageRating: number | null;
   totalRatings: number;
+  googleIntegrationEnabled: boolean;
+  googleAverageRating: number | null;
+  googleTotalRatings: number | null;
   businessType: {
     id: string;
     name: string;
@@ -103,7 +106,7 @@ export interface BusinessMinimalDetails {
 export class BusinessRepository {
   constructor(private prisma: PrismaClient) {}
 
-  async create(data: CreateBusinessRequest & { ownerId: string; slug: string; website: string }): Promise<BusinessData> {
+  async create(data: CreateBusinessRequest & { ownerId: string; slug: string; website?: string }): Promise<BusinessData> {
     // Validate business type exists
     const businessType = await this.prisma.businessType.findUnique({
       where: { id: data.businessTypeId },
@@ -162,10 +165,10 @@ export class BusinessRepository {
   }
 
   async createWithRoleAssignment(
-    data: CreateBusinessRequest & { 
-      ownerId: string; 
-      slug: string; 
-      website: string;
+    data: CreateBusinessRequest & {
+      ownerId: string;
+      slug: string;
+      website?: string;
       businessHours: BusinessHours;
     }
   ): Promise<BusinessData> {
@@ -776,6 +779,42 @@ export class BusinessRepository {
     return result.map(business => this.mapPrismaResultToBusinessData(business));
   }
 
+  async findByStaffUserIdWithSubscription(userId: string): Promise<BusinessWithSubscription[]> {
+    const result = await this.prisma.business.findMany({
+      where: {
+        staff: { some: { userId, isActive: true, leftAt: null } },
+        deletedAt: null
+      },
+      select: {
+        id: true, ownerId: true, businessTypeId: true, name: true, slug: true,
+        description: true, email: true, phone: true, website: true, address: true,
+        city: true, state: true, country: true, postalCode: true, latitude: true,
+        longitude: true, businessHours: true, timezone: true, logoUrl: true,
+        coverImageUrl: true, profileImageUrl: true, galleryImages: true,
+        primaryColor: true, theme: true, settings: true, isActive: true,
+        isVerified: true, verifiedAt: true, isClosed: true, closedUntil: true,
+        closureReason: true, tags: true, averageRating: true, totalRatings: true,
+        lastRatingAt: true, createdAt: true, updatedAt: true, deletedAt: true,
+        businessType: { select: { id: true, name: true, displayName: true, icon: true, category: true } },
+        subscription: {
+          select: {
+            id: true, status: true, currentPeriodStart: true, currentPeriodEnd: true,
+            cancelAtPeriodEnd: true, trialStart: true, trialEnd: true,
+            plan: {
+              select: {
+                id: true, name: true, displayName: true, description: true,
+                price: true, currency: true, billingInterval: true,
+                maxBusinesses: true, maxStaffPerBusiness: true, features: true, isPopular: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    return result.map(business => this.mapPrismaResultToBusinessWithSubscription(business));
+  }
+
   async findBySlug(slug: string): Promise<BusinessData | null> {
     const result = await this.prisma.business.findUnique({
       where: { slug }
@@ -817,6 +856,7 @@ export class BusinessRepository {
         averageRating: true,
         totalRatings: true,
         lastRatingAt: true,
+        reviewsHidden: true,
         settings: true,
         businessType: {
           select: {
@@ -864,6 +904,13 @@ export class BusinessRepository {
     const updateData: Record<string, unknown> = { ...data };
     if (data.businessHours) {
       updateData.businessHours = data.businessHours as Prisma.InputJsonValue;
+    }
+    // Store empty strings as null for nullable text fields
+    const nullableFields = ['website', 'email', 'phone', 'description', 'address', 'city', 'state', 'postalCode'];
+    for (const field of nullableFields) {
+      if (field in updateData && (updateData[field] === '' || updateData[field] == null)) {
+        updateData[field] = null;
+      }
     }
     
     const result = await this.prisma.business.update({
@@ -1323,6 +1370,9 @@ export class BusinessRepository {
           tags: true,
           averageRating: true,
           totalRatings: true,
+          googleIntegrationEnabled: true,
+          googleAverageRating: true,
+          googleTotalRatings: true,
           businessType: {
             select: {
               id: true,
@@ -1590,29 +1640,32 @@ export class BusinessRepository {
   }
 
   async addGalleryImage(businessId: string, imageUrl: string): Promise<BusinessData> {
-    const business = await this.findById(businessId);
-    if (!business) {
-      throw new NotFoundError('Business not found', undefined, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
-    }
+    // Atomic conditional append: only appends if under limit and not a duplicate.
+    // Avoids the read-modify-write race when multiple uploads run in parallel.
+    const updated = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      UPDATE "businesses"
+      SET "galleryImages" = array_append("galleryImages", ${imageUrl}::text)
+      WHERE id = ${businessId}::text
+        AND cardinality("galleryImages") < 10
+        AND NOT (${imageUrl}::text = ANY("galleryImages"))
+      RETURNING id
+    `;
 
-    const currentGallery = business.galleryImages || [];
-    
-    if (currentGallery.length >= 10) {
+    if (updated.length === 0) {
+      // Row missing, limit hit, or duplicate — distinguish by re-reading
+      const business = await this.findById(businessId);
+      if (!business) {
+        throw new NotFoundError('Business not found', undefined, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
+      }
+      const currentGallery = business.galleryImages || [];
+      if (currentGallery.includes(imageUrl)) {
+        throw new ValidationError('Image already exists in gallery', undefined, undefined, undefined);
+      }
       throw new ValidationError('Maximum 10 gallery images allowed', undefined, undefined, undefined);
     }
 
-    if (currentGallery.includes(imageUrl)) {
-      throw new ValidationError('Image already exists in gallery', undefined, undefined, undefined);
-    }
-
-    const updatedGallery = [...currentGallery, imageUrl];
-
-    const result = await this.prisma.business.update({
-      where: { id: businessId },
-      data: { galleryImages: updatedGallery }
-    });
-    
-    return this.mapPrismaResultToBusinessData(result);
+    const result = await this.findById(businessId);
+    return result!;
   }
 
   async removeGalleryImage(businessId: string, imageUrl: string): Promise<BusinessData> {
@@ -1706,6 +1759,7 @@ export class BusinessRepository {
       averageRating: prismaResult.averageRating ?? null,
       totalRatings: prismaResult.totalRatings ?? 0,
       lastRatingAt: prismaResult.lastRatingAt ?? null,
+      reviewsHidden: prismaResult.reviewsHidden ?? false,
       createdAt: prismaResult.createdAt,
       updatedAt: prismaResult.updatedAt,
       deletedAt: prismaResult.deletedAt,
@@ -1772,6 +1826,9 @@ export class BusinessRepository {
       tags: Array.isArray(prismaResult.tags) ? prismaResult.tags : [],
       averageRating: prismaResult.averageRating ?? null,
       totalRatings: prismaResult.totalRatings ?? 0,
+      googleIntegrationEnabled: prismaResult.googleIntegrationEnabled ?? false,
+      googleAverageRating: prismaResult.googleAverageRating ?? null,
+      googleTotalRatings: prismaResult.googleTotalRatings ?? null,
       businessType: prismaResult.businessType ?? {
         id: '',
         name: 'other',
@@ -1796,7 +1853,7 @@ export class BusinessRepository {
       id: prismaResult.id,
       businessId: prismaResult.businessId,
       enableAppointmentReminders: prismaResult.enableAppointmentReminders,
-      reminderChannels: Array.isArray(prismaResult.reminderChannels) 
+      reminderChannels: Array.isArray(prismaResult.reminderChannels)
         ? prismaResult.reminderChannels.map((channel: string) => {
             switch (channel) {
               case 'sms': return 'SMS' as const;
@@ -1839,35 +1896,48 @@ export class BusinessRepository {
   async updateGoogleIntegration(
     businessId: string,
     data: {
-      googlePlaceId?: string;
-      googleOriginalUrl?: string;
+      googlePlaceId?: string | null;
+      googleOriginalUrl?: string | null;
       enabled: boolean;
+      mapEnabled?: boolean;
       linkedBy?: string;
-      latitude?: number;
-      longitude?: number;
+      latitude?: number | null;
+      longitude?: number | null;
+      googleAverageRating?: number | null;
+      googleTotalRatings?: number | null;
+      reviewsHidden?: boolean;
     }
   ): Promise<BusinessData> {
     const updateData: any = {
       googleIntegrationEnabled: data.enabled,
+      ...(data.mapEnabled !== undefined && { googleMapEnabled: data.mapEnabled }),
       googleLinkedAt: data.enabled ? new Date() : null,
-      googleLinkedBy: data.linkedBy
+      googleLinkedBy: data.linkedBy,
+      ...(data.reviewsHidden !== undefined && { reviewsHidden: data.reviewsHidden }),
     };
 
     if (data.googlePlaceId !== undefined) {
-      updateData.googlePlaceId = data.googlePlaceId;
+      updateData.googlePlaceId = data.googlePlaceId; // allows null to clear
     }
 
     if (data.googleOriginalUrl !== undefined) {
-      updateData.googleOriginalUrl = data.googleOriginalUrl;
+      updateData.googleOriginalUrl = data.googleOriginalUrl; // allows null to clear
     }
 
-    // Store coordinates for coordinate-based embedding (more reliable than CID)
     if (data.latitude !== undefined) {
       updateData.latitude = data.latitude;
     }
 
     if (data.longitude !== undefined) {
       updateData.longitude = data.longitude;
+    }
+
+    if (data.googleAverageRating !== undefined) {
+      updateData.googleAverageRating = data.googleAverageRating;
+    }
+
+    if (data.googleTotalRatings !== undefined) {
+      updateData.googleTotalRatings = data.googleTotalRatings;
     }
 
     return await this.prisma.business.update({
@@ -1885,25 +1955,35 @@ export class BusinessRepository {
     googlePlaceId: string | null;
     googleOriginalUrl: string | null;
     googleIntegrationEnabled: boolean;
+    googleMapEnabled: boolean;
     googleLinkedAt: Date | null;
+    googleLinkedBy: string | null;
     latitude: number | null;
     longitude: number | null;
     averageRating: number | null;
     totalRatings: number;
     lastRatingAt: Date | null;
+    googleAverageRating: number | null;
+    googleTotalRatings: number | null;
+    reviewsHidden: boolean;
   } | null> {
-    const business = await this.prisma.business.findUnique({
+    const business = await (this.prisma.business.findUnique as any)({
       where: { id: businessId },
       select: {
         googlePlaceId: true,
         googleOriginalUrl: true,
         googleIntegrationEnabled: true,
+        googleMapEnabled: true,
         googleLinkedAt: true,
+        googleLinkedBy: true,
         latitude: true,
         longitude: true,
         averageRating: true,
         totalRatings: true,
-        lastRatingAt: true
+        lastRatingAt: true,
+        googleAverageRating: true,
+        googleTotalRatings: true,
+        reviewsHidden: true,
       }
     });
 
@@ -1915,12 +1995,17 @@ export class BusinessRepository {
       googlePlaceId: business.googlePlaceId,
       googleOriginalUrl: business.googleOriginalUrl,
       googleIntegrationEnabled: business.googleIntegrationEnabled,
-      googleLinkedAt: business.googleLinkedAt,
+      googleMapEnabled: business.googleMapEnabled ?? false,
+      googleLinkedAt: business.googleLinkedAt ?? null,
+      googleLinkedBy: business.googleLinkedBy ?? null,
       latitude: business.latitude,
       longitude: business.longitude,
       averageRating: business.averageRating,
       totalRatings: business.totalRatings,
-      lastRatingAt: business.lastRatingAt
+      lastRatingAt: business.lastRatingAt,
+      googleAverageRating: business.googleAverageRating ?? null,
+      googleTotalRatings: business.googleTotalRatings ?? null,
+      reviewsHidden: business.reviewsHidden ?? false,
     };
   }
 

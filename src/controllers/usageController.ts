@@ -265,13 +265,14 @@ export class UsageController {
       await Promise.all([
         this.usageService.updateStaffUsage(businessId),
         this.usageService.updateServiceUsage(businessId),
+        this.usageService.updateCustomerUsage(businessId),
       ]);
 
       await this.responseHelper.success(
         res,
         'success.usage.dataRefreshed',
         {
-          refreshedCounters: ['staff', 'services'],
+          refreshedCounters: ['staff', 'services', 'customers'],
           updatedAt: new Date().toISOString(),
         },
         200,

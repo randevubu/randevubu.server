@@ -50,7 +50,8 @@ const dayHoursSchema = z.object({
     const [openHour, openMin] = data.openTime.split(':').map(Number);
     const [closeHour, closeMin] = data.closeTime.split(':').map(Number);
     const openMinutes = openHour * 60 + openMin;
-    const closeMinutes = closeHour * 60 + closeMin;
+    // 00:00 as close time = midnight = end of day
+    const closeMinutes = (closeHour === 0 && closeMin === 0) ? 24 * 60 : closeHour * 60 + closeMin;
     return openMinutes < closeMinutes;
   }
   return true;
@@ -63,14 +64,15 @@ const dayHoursSchema = z.object({
     const [openHour, openMin] = data.openTime.split(':').map(Number);
     const [closeHour, closeMin] = data.closeTime.split(':').map(Number);
     const openMinutes = openHour * 60 + openMin;
-    const closeMinutes = closeHour * 60 + closeMin;
-    
+    // 00:00 as close time = midnight = end of day
+    const closeMinutes = (closeHour === 0 && closeMin === 0) ? 24 * 60 : closeHour * 60 + closeMin;
+
     for (const breakPeriod of data.breaks) {
       const [breakStartHour, breakStartMin] = breakPeriod.startTime.split(':').map(Number);
       const [breakEndHour, breakEndMin] = breakPeriod.endTime.split(':').map(Number);
       const breakStartMinutes = breakStartHour * 60 + breakStartMin;
       const breakEndMinutes = breakEndHour * 60 + breakEndMin;
-      
+
       if (breakStartMinutes < openMinutes || breakEndMinutes > closeMinutes) {
         return false;
       }
@@ -142,7 +144,8 @@ export const createBusinessHoursOverrideSchema = z.object({
     const [openHour, openMin] = data.openTime.split(':').map(Number);
     const [closeHour, closeMin] = data.closeTime.split(':').map(Number);
     const openMinutes = openHour * 60 + openMin;
-    const closeMinutes = closeHour * 60 + closeMin;
+    // 00:00 as close time = midnight = end of day
+    const closeMinutes = (closeHour === 0 && closeMin === 0) ? 24 * 60 : closeHour * 60 + closeMin;
     return openMinutes < closeMinutes;
   }
   return true;
@@ -249,21 +252,31 @@ export const updateBusinessSchema = z.object({
     .min(2, 'Business name must be at least 2 characters')
     .max(100, 'Business name must be less than 100 characters')
     .optional(),
-  
+
   description: z.string()
     .max(1000, 'Description must be less than 1000 characters')
     .optional(),
-  
-  email: z.string()
-    .email('Invalid email format')
+
+  email: z.preprocess(
+    val => (val === '' ? undefined : val),
+    z.string().email('Invalid email format').optional()
+  ),
+
+  phone: z.preprocess(
+    val => (val === '' ? undefined : val),
+    z.string().regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format').optional()
+  ),
+
+  website: z.string()
+    .transform(val => {
+      if (!val || val.trim() === '') return '';
+      const trimmed = val.trim();
+      if (!/^https?:\/\//i.test(trimmed)) return `https://${trimmed}`;
+      return trimmed;
+    })
+    .pipe(z.string().url('Invalid website URL format').or(z.literal('')))
     .optional(),
-  
-  phone: z.string()
-    .regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format')
-    .optional(),
-  
-  // website is auto-generated, not user input
-  
+
   address: z.string()
     .max(200, 'Address must be less than 200 characters')
     .optional(),
@@ -368,25 +381,24 @@ export const updateBusinessStaffPrivacySettingsSchema = z.object({
 // Business Cancellation Policy Settings schemas
 export const updateBusinessCancellationPolicySchema = z.object({
   minCancellationHours: z.number()
-    .int('Minimum cancellation hours must be an integer')
-    .min(1, 'Minimum cancellation time must be at least 1 hour')
+    .min(0, 'Minimum cancellation time cannot be negative')
     .max(168, 'Minimum cancellation time cannot exceed 7 days (168 hours)')
-    .describe('Minimum hours before appointment that cancellation is allowed'),
+    .describe('Minimum hours before appointment that cancellation is allowed (0 = no minimum, 0.5 = 30 min)'),
 
   maxDailyCancellations: z.number()
     .int('Maximum daily cancellations must be an integer')
     .min(0, 'Maximum daily cancellations cannot be negative')
     .max(50, 'Maximum daily cancellations cannot exceed 50')
     .optional()
+    .default(3)
     .describe('Maximum cancellations per calendar day (Europe/Istanbul) per customer before new bookings are blocked'),
 
-  /** @deprecated Prefer maxDailyCancellations; accepted for backward compatibility */
   maxMonthlyCancellations: z.number()
     .int('Maximum monthly cancellations must be an integer')
     .min(0, 'Maximum monthly cancellations cannot be negative')
     .max(50, 'Maximum monthly cancellations cannot exceed 50')
     .optional()
-    .describe('Deprecated alias for maxDailyCancellations'),
+    .describe('Alias for maxDailyCancellations accepted from client'),
 
   maxMonthlyNoShows: z.number()
     .int('Maximum monthly no-shows must be an integer')
@@ -425,7 +437,6 @@ export const updateBusinessCancellationPolicySchema = z.object({
     .default(30)
     .describe('Duration of automatic ban in days when auto-ban is enabled')
 }).refine((data) => {
-  // If auto-ban is enabled, ban duration must be specified
   if (data.autoBanEnabled && (!data.banDurationDays || data.banDurationDays < 1)) {
     return false;
   }
@@ -433,16 +444,10 @@ export const updateBusinessCancellationPolicySchema = z.object({
 }, {
   message: 'Ban duration must be specified when auto-ban is enabled',
   path: ['banDurationDays']
-}).refine(
-  (data) => data.maxDailyCancellations !== undefined || data.maxMonthlyCancellations !== undefined,
-  {
-    message: 'maxDailyCancellations is required (or use deprecated maxMonthlyCancellations)',
-    path: ['maxDailyCancellations']
-  }
-).transform((data) => {
-  const maxDailyCancellations =
-    data.maxDailyCancellations ?? data.maxMonthlyCancellations!;
-  const { maxMonthlyCancellations: _legacy, ...rest } = data;
+}).transform((data) => {
+  // Resolve maxDailyCancellations from either field; maxDailyCancellations has default(3) so it is always defined
+  const maxDailyCancellations = data.maxMonthlyCancellations ?? data.maxDailyCancellations!;
+  const { maxMonthlyCancellations: _alias, ...rest } = data;
   return { ...rest, maxDailyCancellations };
 });
 
@@ -620,7 +625,9 @@ export const createServiceSchema = z.object({
     .int('Min advance booking must be an integer')
     .min(0, 'Min advance booking must be non-negative')
     .max(72, 'Min advance booking must be less than 3 days')
-    .optional()
+    .optional(),
+
+  assignToAll: z.boolean().optional().default(false)
 });
 
 export const updateServiceSchema = z.object({
@@ -673,7 +680,9 @@ export const updateServiceSchema = z.object({
     .int('Min advance booking must be an integer')
     .min(0, 'Min advance booking must be non-negative')
     .max(72, 'Min advance booking must be less than 3 days')
-    .optional()
+    .optional(),
+
+  assignToAll: z.boolean().optional()
 });
 
 // Appointment validation schemas
@@ -994,8 +1003,9 @@ export const validateBusinessHours = (businessHours: unknown): boolean => {
         const [openHour, openMin] = open.split(':').map(Number);
         const [closeHour, closeMin] = close.split(':').map(Number);
         const openMinutes = openHour * 60 + openMin;
-        const closeMinutes = closeHour * 60 + closeMin;
-        
+        // 00:00 as close time = midnight = end of day
+        const closeMinutes = (closeHour === 0 && closeMin === 0) ? 24 * 60 : closeHour * 60 + closeMin;
+
         if (openMinutes >= closeMinutes) {
           return false;
         }
@@ -1332,6 +1342,29 @@ export const monitorAppointmentsSchema = z.object({
     })
     .optional()
     .describe('Maximum number of waiting appointments to return (1-50, default: 10)')
+});
+
+// Payment method schema — enforces card field formats before hitting the payment gateway
+export const addPaymentMethodSchema = z.object({
+  cardHolderName: z.string().min(2, 'Cardholder name must be at least 2 characters').max(100),
+  cardNumber: z.string().regex(/^\d{13,19}$/, 'Card number must be 13–19 digits'),
+  expireMonth: z.number({ invalid_type_error: 'Expire month must be a number' }).int().min(1).max(12),
+  expireYear: z.number({ invalid_type_error: 'Expire year must be a number' }).int().min(new Date().getFullYear()),
+  cvc: z.string().regex(/^\d{3,4}$/, 'CVC must be 3 or 4 digits'),
+  isDefault: z.boolean().optional().default(false),
+});
+
+// Gallery images schema — restricts URLs to the application's own CDN/S3 bucket
+const cdnBaseUrl = process.env.PUBLIC_ASSET_BASE_URL || `https://${process.env.AWS_S3_BUCKET_NAME || ''}.s3`;
+export const updateGalleryImagesSchema = z.object({
+  imageUrls: z.array(
+    z.string()
+      .url('Each entry must be a valid URL')
+      .refine(
+        (url) => !process.env.AWS_S3_BUCKET_NAME || url.startsWith(cdnBaseUrl),
+        'Image URL must be served from the application CDN'
+      )
+  ).max(10, 'Maximum 10 gallery images allowed'),
 });
 
 // Export notification settings schema types

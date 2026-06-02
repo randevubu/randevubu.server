@@ -61,6 +61,19 @@ export class ServiceRepository {
     return result ? this.mapPrismaServiceToServiceData(result) : null;
   }
 
+  async existsByNameAndBusiness(name: string, businessId: string, excludeId?: string): Promise<boolean> {
+    const record = await this.prisma.service.findFirst({
+      where: {
+        businessId,
+        isActive: true,
+        name: { equals: name, mode: 'insensitive' },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+    return record !== null;
+  }
+
   async findByBusinessId(businessId: string): Promise<ServiceData[]> {
     const result = await this.prisma.service.findMany({
       where: { businessId },
@@ -177,6 +190,87 @@ export class ServiceRepository {
       ...this.mapPrismaServiceToServiceData(service),
       appointmentCount: service._count.appointments
     }));
+  }
+
+  async getBusinessStaffRecord(userId: string, businessId: string): Promise<{ id: string } | null> {
+    return this.prisma.businessStaff.findFirst({
+      where: { userId, businessId, isActive: true },
+      select: { id: true },
+    });
+  }
+
+  // --- ServiceStaff (many-to-many) ---
+
+  async assignStaffToService(serviceId: string, staffId: string): Promise<void> {
+    await this.prisma.serviceStaff.upsert({
+      where: { serviceId_staffId: { serviceId, staffId } },
+      create: {
+        id: `ss_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        serviceId,
+        staffId,
+        isActive: true,
+      },
+      update: { isActive: true },
+    });
+  }
+
+  async assignAllStaffToService(serviceId: string, businessId: string): Promise<void> {
+    const activeStaff = await this.prisma.businessStaff.findMany({
+      where: { businessId, isActive: true },
+      select: { id: true },
+    });
+
+    await this.prisma.$transaction(
+      activeStaff.map(staff =>
+        this.prisma.serviceStaff.upsert({
+          where: { serviceId_staffId: { serviceId, staffId: staff.id } },
+          create: {
+            id: `ss_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            serviceId,
+            staffId: staff.id,
+            isActive: true,
+          },
+          update: { isActive: true },
+        })
+      )
+    );
+  }
+
+  async removeStaffFromAllServices(staffId: string): Promise<void> {
+    await this.prisma.serviceStaff.updateMany({
+      where: { staffId },
+      data: { isActive: false },
+    });
+  }
+
+  async getServiceStaffIds(serviceId: string): Promise<string[]> {
+    const records = await this.prisma.serviceStaff.findMany({
+      where: { serviceId, isActive: true },
+      select: { staffId: true },
+    });
+    return records.map(r => r.staffId);
+  }
+
+  async hasAnyStaffAssigned(serviceId: string): Promise<boolean> {
+    const count = await this.prisma.serviceStaff.count({
+      where: { serviceId, isActive: true },
+    });
+    return count > 0;
+  }
+
+  async getServiceAssignmentStatus(
+    serviceId: string,
+    businessId: string
+  ): Promise<{ assignedCount: number; totalActiveStaff: number; assignedToAll: boolean }> {
+    const [assignedCount, totalActiveStaff] = await Promise.all([
+      this.prisma.serviceStaff.count({ where: { serviceId, isActive: true } }),
+      this.prisma.businessStaff.count({ where: { businessId, isActive: true } }),
+    ]);
+    return {
+      assignedCount,
+      totalActiveStaff,
+      assignedToAll: totalActiveStaff > 0 && assignedCount >= totalActiveStaff,
+    };
   }
 
   async checkServiceAvailability(

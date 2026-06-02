@@ -81,7 +81,7 @@ export class BusinessContextMiddleware {
             deletedAt: null
           },
           select: { id: true, name: true },
-          orderBy: { createdAt: 'asc' }
+          orderBy: { createdAt: 'desc' }
         });
         logger.info('🔍 [attachBusinessContext] Owned businesses query completed, count:', ownedBusinesses.length);
         businessIds.push(...ownedBusinesses.map(b => b.id));
@@ -140,28 +140,22 @@ export class BusinessContextMiddleware {
   }
 
   requireBusinessAccess(req: BusinessContextRequest, res: Response, next: NextFunction): void {
-    // Allow users with OWNER or CUSTOMER role to proceed even without businesses
-    // This enables them to create their first business
-    if (req.businessContext?.isOwner) {
-      return next();
-    }
-    
-    if (req.businessContext?.isCustomer) {
-      return next();
-    }
-    
-    // For users without business context but with valid roles, let them proceed
-    // The controller will handle the empty state gracefully
     if (!req.businessContext) {
-      return next();
+      const context = createErrorContext(req, req.user?.id);
+      const error = BusinessErrors.noAccess('No business access', context);
+      return sendAppErrorResponse(res, error);
     }
-    
-    // Only block users who have business context but no access to any businesses
-    // This should be rare and indicates a data inconsistency
-    if (req.businessContext.businessIds.length === 0) {
-      return next();
+
+    if (
+      !req.businessContext.isOwner &&
+      !req.businessContext.isStaff &&
+      !req.businessContext.isCustomer
+    ) {
+      const context = createErrorContext(req, req.user?.id);
+      const error = BusinessErrors.noAccess('No business access', context);
+      return sendAppErrorResponse(res, error);
     }
-    
+
     next();
   }
 

@@ -204,6 +204,9 @@ export class AppointmentController {
         {
           appointments: result.appointments.map((apt) => ({
             ...apt,
+            startTime: formatTimeForAPI(new Date(apt.startTime)),
+            endTime: formatTimeForAPI(new Date(apt.endTime)),
+            date: formatDateForAPI(new Date(apt.date)),
             statusLabel: getAppointmentStatusLabelTr(apt.status),
           })),
           total: result.total,
@@ -314,7 +317,8 @@ export class AppointmentController {
         userId,
         businessId,
         page,
-        limit
+        limit,
+        staffId as string | undefined
       );
 
       await this.responseHelper.success(
@@ -1376,7 +1380,8 @@ export class AppointmentController {
   ): Promise<void> {
     try {
       const { businessId } = req.params;
-      const { date, includeStats, maxQueueSize } = req.query;
+      const { date, includeStats, maxQueueSize, staffId: staffIdQuery } = req.query;
+      const userId = req.user!.id;
 
       // Business ownership already validated by middleware
       const business = req.business;
@@ -1421,7 +1426,9 @@ export class AppointmentController {
 
       const monitorData = await this.appointmentService.getMonitorAppointments(
         businessId,
+        userId,
         date as string | undefined,
+        staffIdQuery as string | undefined,
         includeStats === 'true' || includeStats === '1',
         queueSize
       );
@@ -1523,6 +1530,8 @@ export class AppointmentController {
         staffId: staffId as string | undefined,
       });
 
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
       await this.responseHelper.success(
         res,
         'success.appointment.availableSlotsRetrieved',

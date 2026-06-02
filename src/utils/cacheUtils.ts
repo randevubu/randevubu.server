@@ -23,7 +23,13 @@ export class CacheUtils {
    * Get business ID from request with consistent fallback
    */
   static getBusinessId(req: CacheRequest): string {
-    return req.businessId || req.businessContext?.primaryBusinessId || 'global';
+    return (
+      req.businessId ||
+      req.params.businessId ||
+      (req.query.businessId as string | undefined) ||
+      req.businessContext?.primaryBusinessId ||
+      'global'
+    );
   }
 
   /**

@@ -4,6 +4,38 @@
 
 export class GooglePlaceIdExtractor {
   /**
+   * Resolve a short/redirect URL to its final destination URL.
+   * Uses native fetch (Node 18+) which automatically follows redirects.
+   * response.url is the final URL after all hops.
+   */
+  static async resolveUrl(url: string): Promise<string> {
+    const isShortLink =
+      url.includes('maps.app.goo.gl') ||
+      url.includes('goo.gl/maps') ||
+      url.includes('bit.ly');
+
+    if (!isShortLink) return url;
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const response = await fetch(url, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      // response.url is the final URL after all redirects
+      return response.url || url;
+    } catch {
+      return url;
+    }
+  }
+  /**
    * Extract coordinates from Google Maps URL
    * Extracts coordinates that come AFTER the Place ID (!1s...) - these are the actual business location
    */

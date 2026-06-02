@@ -164,6 +164,12 @@ export class SubscriptionService {
       throw new Error('Business already has an active subscription');
     }
 
+    // Check if business already used its free trial (trialStart set on any past subscription)
+    const anyPastSubscription = await this.subscriptionRepository.findByBusinessId(businessId);
+    if (anyPastSubscription?.trialStart) {
+      throw new Error('Free trial has already been used for this business');
+    }
+
     // Validate the plan exists
     const plan = await this.subscriptionRepository.findPlanById(data.planId);
     if (!plan || !plan.isActive) {
@@ -211,16 +217,11 @@ export class SubscriptionService {
     const shouldStartTrial = trialDays > 0;
     
     if (shouldStartTrial) {
-      // Store payment method before starting trial
-      if (!data.paymentMethodId) {
-        throw new Error('Payment method is required for trial subscriptions');
-      }
-      
       const trialSubscription = await this.subscriptionRepository.startTrial(
-        businessId, 
-        data.planId, 
+        businessId,
+        data.planId,
         trialDays,
-        data.paymentMethodId,
+        data.paymentMethodId, // optional — no card required for free trial
         pendingDiscountMetadata,
         data.salesmanCode
       );
@@ -1123,20 +1124,14 @@ export class SubscriptionService {
   }
 
   /**
-   * Get trial days for a plan based on plan name and features
+   * All plans include a 7-day free trial (no payment method required).
+   * Plan-level override still respected if set in features.trialDays.
    */
   private getTrialDaysForPlan(plan: SubscriptionPlanData): number {
-    // Check if plan has trial days in features
     if (plan.features.trialDays && typeof plan.features.trialDays === 'number') {
       return plan.features.trialDays;
     }
-    
-    // Only basic plans get 7-day trial
-    if (plan.name.includes('basic')) {
-      return 7; // 7-day trial for basic plans only
-    }
-    
-    return 0; // No trial for premium or other plans
+    return 7;
   }
 
   /**

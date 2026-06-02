@@ -67,7 +67,7 @@ export class SMSService {
     } catch (error) {
       logger.error("SMS Service: Failed to initialize NetGSM client", {
         error: error instanceof Error ? error.message : String(error),
-        username: this.username,
+        usernameConfigured: !!this.username,
         hasPassword: !!this.password,
       });
       // Initialize with empty credentials to prevent crashes

@@ -6,11 +6,24 @@ import { handleRouteError } from '../utils/responseUtils';
 import { ResponseHelper } from '../utils/responseHelper';
 import logger from '../utils/Logger/logger';
 
+interface GoogleReviewItem {
+  id: string;
+  authorName: string;
+  authorPhotoUrl: string | null;
+  rating: number;
+  text: string | null;
+  publishTime: Date | null;
+  relativeTimeDescription: string | null;
+}
+
 interface GoogleIntegrationResponse {
   googlePlaceId?: string | null;
   googleOriginalUrl?: string | null;
   googleIntegrationEnabled: boolean;
+  googleMapEnabled: boolean;
   googleLinkedAt?: Date | null;
+  googleLinkedBy?: string | null;
+  reviewsHidden?: boolean;
   latitude?: number | null;
   longitude?: number | null;
   internalRatings: {
@@ -18,6 +31,9 @@ interface GoogleIntegrationResponse {
     totalRatings?: number;
     lastRatingAt?: Date | null;
   };
+  googleAverageRating?: number | null;
+  googleTotalRatings?: number | null;
+  googleReviews: GoogleReviewItem[];
   urls: {
     maps?: string;
     reviews?: string;
@@ -78,6 +94,29 @@ export class GoogleIntegrationController {
       logger.info('✅ [CONTROLLER] updateGoogleIntegration - RESPONSE SENT');
     } catch (error) {
       logger.info('❌ [CONTROLLER] updateGoogleIntegration - ERROR:', error);
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
+   * Sync Google rating from Places API
+   * POST /api/v1/businesses/:id/google-integration/sync
+   */
+  async syncGoogleRating(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const userId = req.user!.id;
+
+      const result = await this.businessService.syncGoogleRating(userId, id);
+
+      await this.responseHelper.success(
+        res,
+        'success.business.googleRatingSynced',
+        result,
+        200,
+        req
+      );
+    } catch (error) {
       handleRouteError(error, req, res);
     }
   }
@@ -269,24 +308,27 @@ export class GoogleIntegrationController {
         logger.info('🔍 [GOOGLE INTEGRATION GET] No URLs generated - integration disabled');
       }
 
+      const googleReviews = await this.businessService.getGoogleReviews(id);
+
       // Separate internal and Google ratings in the response
       const responseData: GoogleIntegrationResponse = {
-        // Google integration settings
         googlePlaceId: settings.googlePlaceId,
         googleOriginalUrl: settings.googleOriginalUrl,
         googleIntegrationEnabled: settings.googleIntegrationEnabled,
+        googleMapEnabled: (settings as any).googleMapEnabled ?? false,
         googleLinkedAt: settings.googleLinkedAt,
+        googleLinkedBy: (settings as any).googleLinkedBy ?? null,
+        reviewsHidden: (settings as any).reviewsHidden ?? false,
         latitude: settings.latitude,
         longitude: settings.longitude,
-
-        // Internal ratings (from your app)
         internalRatings: {
           averageRating: settings.averageRating,
           totalRatings: settings.totalRatings,
           lastRatingAt: settings.lastRatingAt,
         },
-
-        // URLs for maps embed and links
+        googleAverageRating: settings.googleAverageRating,
+        googleTotalRatings: settings.googleTotalRatings,
+        googleReviews,
         urls,
       };
 

@@ -146,6 +146,30 @@ export class BusinessSettingsController {
     }
   }
 
+  async getProfilePrivacySettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+      if (!businessId) { res.status(400).json({ success: false, error: 'Business context required' }); return; }
+      const settings = await this.businessService.getProfilePrivacySettings(userId, businessId);
+      await this.responseHelper.success(res, 'success.business.profilePrivacySettingsRetrieved', settings, 200, req);
+    } catch (error) { handleRouteError(error, req, res); }
+  }
+
+  async updateProfilePrivacySettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const businessId = req.businessContext?.primaryBusinessId;
+      if (!businessId) { res.status(400).json({ success: false, error: 'Business context required' }); return; }
+      const { showPhone, showEmail } = req.body;
+      const settings = await this.businessService.updateProfilePrivacySettings(userId, businessId, {
+        showPhone: Boolean(showPhone),
+        showEmail: Boolean(showEmail),
+      });
+      await this.responseHelper.success(res, 'success.business.profilePrivacySettingsUpdated', settings, 200, req);
+    } catch (error) { handleRouteError(error, req, res); }
+  }
+
   /**
    * Get reservation settings
    * GET /api/v1/businesses/settings/reservation

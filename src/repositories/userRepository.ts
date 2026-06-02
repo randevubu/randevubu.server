@@ -258,8 +258,10 @@ export class PrismaUserRepository implements UserRepository {
     const limit = filters?.limit || 50;
     const skip = (page - 1) * limit;
     
-    // Build sort order
-    const sortBy = filters?.sortBy ?? 'createdAt';
+    // Build sort order — allowlist prevents ORM injection from user-supplied field names
+    const ALLOWED_SORT_FIELDS = new Set(['createdAt', 'updatedAt', 'firstName', 'lastName', 'lastLoginAt']);
+    const rawSortBy = filters?.sortBy ?? 'createdAt';
+    const sortBy = ALLOWED_SORT_FIELDS.has(rawSortBy) ? rawSortBy : 'createdAt';
     const sortOrder: 'asc' | 'desc' = filters?.sortOrder ?? 'desc';
     const orderBy: Prisma.UserOrderByWithRelationInput = { [sortBy]: sortOrder };
 

@@ -133,7 +133,8 @@ export class ControllerContainer {
     // Initialize new business-related controllers
     this.businessHoursController = new BusinessHoursController(
       services.businessService,
-      responseHelper
+      responseHelper,
+      services.cacheService
     );
     this.businessImageController = new BusinessImageController(
       services.businessService,

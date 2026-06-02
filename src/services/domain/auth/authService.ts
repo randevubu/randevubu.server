@@ -42,23 +42,10 @@ export class AuthService {
     deviceInfo?: DeviceInfo,
     context?: ErrorContext
   ): Promise<LoginResult> {
-    logger.info("🚀 AUTH SERVICE CALLED:", {
-      phoneNumber,
-      verificationCode,
-      requestId: context?.requestId,
-    });
-
     const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
-    logger.info("✅ AUTH SERVICE PHONE NORMALIZED:", {
-      original: phoneNumber,
-      normalized: normalizedPhone,
-    });
 
-    // Debug logging
     logger.info("Auth service verification attempt", {
-      originalPhone: phoneNumber,
-      normalizedPhone: this.maskPhoneNumber(normalizedPhone),
-      verificationCode: verificationCode,
+      phoneNumber: this.maskPhoneNumber(normalizedPhone),
       requestId: context?.requestId,
     });
 

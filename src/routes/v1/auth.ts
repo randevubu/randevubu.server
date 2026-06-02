@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
 import { AuthController } from '../../controllers/authController';
 import prisma from '../../lib/prisma';
 import { AuthMiddleware } from '../../middleware/auth';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { csrfMiddleware } from '../../middleware/csrf';
+import { authRateLimit, strictRateLimit, refreshRateLimit } from '../../middleware/userRateLimit';
 import { validateBody } from '../../middleware/validation';
 import { RepositoryContainer } from '../../repositories';
 import { dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
@@ -39,36 +39,12 @@ const router = Router();
 // Apply cache monitoring to all routes
 router.use(trackCachePerformance);
 
-// Rate limiting - More relaxed in development
 const isDevelopment = process.env.NODE_ENV === 'development';
 
-const authRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isDevelopment ? 100 : 10, // Much higher limit in dev
-  message: {
-    success: false,
-    error: {
-      message: 'Too many authentication attempts from this IP, please try again later.',
-      retryAfter: '15 minutes',
-    },
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const verificationRateLimit = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: isDevelopment ? 50 : 10, // Increased from 3 to 10 in production
-  message: {
-    success: false,
-    error: {
-      message: 'Too many verification code requests, please try again later.',
-      retryAfter: '5 minutes',
-    },
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// Use Redis-backed, environment-independent rate limiters from userRateLimit.ts:
+// authRateLimit   → 10 req / 15 min  (verify-login OTP only)
+// refreshRateLimit → 60 req / min    (token refresh — automated, separate bucket)
+// strictRateLimit  → 10 req / min    (send-verification)
 
 // Authentication routes
 
@@ -118,7 +94,7 @@ const verificationRateLimit = rateLimit({
  */
 router.post(
   '/send-verification',
-  verificationRateLimit,
+  strictRateLimit,
   validateBody(sendVerificationSchema),
   authController.sendVerificationCode
 );
@@ -213,7 +189,7 @@ router.post(
  */
 router.post(
   '/refresh',
-  authRateLimit,
+  refreshRateLimit,
   // No validation middleware - we handle token validation manually in controller
   authController.refreshToken
 );
@@ -250,12 +226,37 @@ router.post(
 router.post(
   '/logout',
   requireAuth,
-  // CSRF not required for logout - it's a safe operation that only invalidates user's own session
-  // csrfMiddleware.requireCSRF,
+  csrfMiddleware.verifyOriginHeader,
   validateBody(logoutSchema),
   withAuth((req, res, next) => {
     return authController.logout(req, res).catch(next);
   })
 );
+
+// DEV ONLY: Get latest verification code for a phone number
+if (isDevelopment) {
+  router.get('/dev/latest-code', async (req, res) => {
+    const { phone } = req.query;
+    if (!phone) {
+      res.status(400).json({ error: 'phone query param required' });
+      return;
+    }
+    const record = await prisma.phoneVerification.findFirst({
+      where: { phoneNumber: String(phone), isUsed: false },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!record) {
+      res.status(404).json({ error: 'No active code found' });
+      return;
+    }
+    res.json({
+      phoneNumber: record.phoneNumber,
+      hashedCode: record.code,
+      note: 'Code is hashed — check server logs for plain text code',
+      createdAt: record.createdAt,
+      expiresAt: record.expiresAt,
+    });
+  });
+}
 
 export default router;

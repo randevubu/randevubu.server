@@ -92,12 +92,31 @@ export class RatingService {
     };
   }
 
+  async deleteRating(
+    ratingId: string,
+    businessId: string
+  ): Promise<void> {
+    // Verify rating belongs to this business
+    const ratings = await this.businessRepository.getBusinessRatings(businessId, { page: 1, limit: 1000 });
+    const rating = ratings.ratings.find(r => r.id === ratingId);
+    if (!rating) {
+      throw new ValidationError('Rating not found');
+    }
+    await this.ratingRepository.deleteRating(ratingId, businessId);
+    await this.businessRepository.updateRatingCache(businessId);
+  }
+
   async refreshRatingCache(businessId: string): Promise<{
     averageRating: number;
     totalRatings: number;
     lastRatingAt: Date | null;
   }> {
     await this.businessRepository.updateRatingCache(businessId);
+    // Unhide reviews when explicitly refreshing
+    await (this.businessRepository as any).prisma.business.update({
+      where: { id: businessId },
+      data: { reviewsHidden: false },
+    });
 
     // Get the updated values
     const settings = await this.businessRepository.getGoogleIntegrationSettings(businessId);

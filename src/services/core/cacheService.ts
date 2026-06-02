@@ -355,6 +355,11 @@ export class CacheService {
         this.deletePattern(`${CACHE_VERSION}:${CachePrefix.APPOINTMENT}:*biz:${businessId}*`),
         this.deletePattern(`${CACHE_VERSION}:${CachePrefix.STATS}:*biz:${businessId}*`),
         this.deletePattern(`${CACHE_VERSION}:${CachePrefix.MONITOR}:*${businessId}*`),
+        // Clear ALL semi-dynamic business cache regardless of user (anonymous OR authenticated):
+        //   semi:*  covers all semi-dynamic public routes (slug, list, catch-all)
+        this.deletePattern(`semi:*`),
+        // Clear middleware-level businessCache keys (format: business:{userId}:{businessId}:{path})
+        this.deletePattern(`business:*:${businessId}*`),
       ]);
 
       const total = totalDeleted.reduce((sum, count) => sum + count, 0);
@@ -392,6 +397,19 @@ export class CacheService {
         totalDeleted += await this.deletePattern(
           `${CACHE_VERSION}:${CachePrefix.SERVICE}:*biz:${businessId}*`
         );
+        // Clear the my-services dynamic response cache.
+        // The cache key uses userId:businessId, but businessId may be 'global' at cache-write
+        // time (business context not yet attached), so we clear by userId wildcard to catch all.
+        if (userId && userId !== 'anonymous') {
+          totalDeleted += await this.deletePattern(
+            `dynamic:${userId}:*:/api/v1/businesses/my-services*`
+          );
+        } else {
+          // Fallback: clear by businessId (covers cases where userId is unknown)
+          totalDeleted += await this.deletePattern(
+            `dynamic:*:${businessId}:/api/v1/businesses/my-services*`
+          );
+        }
       }
 
       this.logger.info(`Invalidated ${totalDeleted} service cache entries`, {

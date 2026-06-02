@@ -373,12 +373,17 @@ model Business {
   galleryImages            String[]                      @default([])
   averageRating            Float?                        @default(0)
   googleIntegrationEnabled Boolean                       @default(false)
+  googleMapEnabled         Boolean                       @default(false)
+  reviewsHidden            Boolean                       @default(false)
   googleLinkedAt           DateTime?
   googleLinkedBy           String?
   googlePlaceId            String?                       @unique
   lastRatingAt             DateTime?
   totalRatings             Int                           @default(0)
   googleOriginalUrl        String?
+  googleAverageRating      Float?
+  googleTotalRatings       Int?
+  googleReviews            GoogleReview[]
   appointments             Appointment[]
   availabilityAlerts       AvailabilityAlert[]
   birthdayReminders        BirthdayReminder[]
@@ -552,15 +557,16 @@ model WorkingHours {
 }
 
 model BusinessImage {
-  id         String   @id
-  businessId String
-  url        String
-  alt        String?
-  type       String
-  sortOrder  Int      @default(0)
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  id            String   @id
+  businessId    String
+  url           String
+  alt           String?
+  type          String
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  fileSizeBytes Int      @default(0)
+  createdAt     DateTime @default(now())
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([businessId])
   @@index([type])
@@ -1289,4 +1295,22 @@ enum ColumnPriority {
   LOW
 
   @@map("column_priority")
+}
+
+model GoogleReview {
+  id                      String   @id @default(cuid())
+  businessId              String
+  googleReviewId          String
+  authorName              String
+  authorPhotoUrl          String?
+  rating                  Int
+  text                    String?
+  publishTime             DateTime?
+  relativeTimeDescription String?
+  syncedAt                DateTime @default(now())
+  business                Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, googleReviewId])
+  @@index([businessId])
+  @@map("google_reviews")
 }

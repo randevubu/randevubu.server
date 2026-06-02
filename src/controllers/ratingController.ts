@@ -117,6 +117,20 @@ export class RatingController {
   }
 
   /**
+   * Delete a rating (business owner only)
+   * DELETE /api/v1/businesses/:businessId/ratings/:ratingId
+   */
+  async deleteRating(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { businessId, ratingId } = req.params;
+      await this.ratingService.deleteRating(ratingId, businessId);
+      await this.responseHelper.success(res, 'success.rating.deleted', {}, 200, req);
+    } catch (error) {
+      handleRouteError(error, req, res);
+    }
+  }
+
+  /**
    * Refresh rating cache for a business
    * POST /api/v1/businesses/:businessId/ratings/refresh-cache
    */

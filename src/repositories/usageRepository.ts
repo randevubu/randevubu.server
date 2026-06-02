@@ -28,9 +28,11 @@ export interface UsageSummary {
     appointmentsCreated: number;
     customersAdded: number;
   };
+  todayAppointmentsCount: number;
   planLimits: {
     smsQuota: number;
     maxStaffPerBusiness: number;
+    maxAppointmentsPerDay: number;
     maxCustomers: number;
     maxServices: number;
     storageGB: number;
@@ -281,25 +283,31 @@ export class UsageRepository {
       }
     });
 
-    // Get year-to-date totals
-    const yearToDateAgg = await this.prisma.businessUsage.aggregate({
-      where: {
-        businessId,
-        year: currentYear
-      },
-      _sum: {
-        smssSent: true,
-        appointmentsCreated: true,
-        customersAdded: true
-      }
-    });
+    // Get today's date range
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+    // Get year-to-date totals and today's appointment count in parallel
+    const [yearToDateAgg, todayAppointmentsCount] = await Promise.all([
+      this.prisma.businessUsage.aggregate({
+        where: { businessId, year: currentYear },
+        _sum: { smssSent: true, appointmentsCreated: true, customersAdded: true }
+      }),
+      this.prisma.appointment.count({
+        where: {
+          businessId,
+          startTime: { gte: todayStart, lt: todayEnd }
+        }
+      })
+    ]);
 
     const planLimits = {
       smsQuota: Number(planFeatures.smsQuota) || 0,
       maxStaffPerBusiness: business.subscription.plan.maxStaffPerBusiness,
+      maxAppointmentsPerDay: business.subscription.plan.maxAppointmentsPerDay,
       maxCustomers: Number(planFeatures.maxCustomers) || 0,
       maxServices: Number(planFeatures.maxServices) || 0,
-      storageGB: Number(planFeatures.storageGB) || 0
+      storageGB: Number(planFeatures.storageGB) || 0.1  // fallback 100 MB
     };
 
     const currentUsage = currentMonthUsage ? {
@@ -338,6 +346,7 @@ export class UsageRepository {
         appointmentsCreated: yearToDateAgg._sum.appointmentsCreated || 0,
         customersAdded: yearToDateAgg._sum.customersAdded || 0
       },
+      todayAppointmentsCount,
       planLimits,
       remainingQuotas: {
         smsRemaining: Math.max(0, planLimits.smsQuota - (currentUsage?.smssSent || 0)),
@@ -475,6 +484,41 @@ export class UsageRepository {
     });
   }
 
+  async updateActiveCustomerCount(businessId: string): Promise<void> {
+    const activeCustomerCount = await this.prisma.user.count({
+      where: {
+        isActive: true,
+        appointments: {
+          some: { businessId },
+        },
+      },
+    });
+
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+
+    await this.prisma.businessUsage.upsert({
+      where: {
+        businessId_month_year: {
+          businessId,
+          month,
+          year,
+        },
+      },
+      update: {
+        customersAdded: activeCustomerCount,
+      },
+      create: {
+        id: `usage_${businessId}_${year}${month.toString().padStart(2, '0')}`,
+        businessId,
+        month,
+        year,
+        customersAdded: activeCustomerCount,
+      },
+    });
+  }
+
   async updateServiceUsage(businessId: string): Promise<void> {
     const activeServiceCount = await this.prisma.service.count({
       where: {
@@ -504,5 +548,86 @@ export class UsageRepository {
         servicesActive: activeServiceCount
       }
     });
+  }
+
+  async updateStorageUsage(businessId: string): Promise<void> {
+    // Check if any BusinessImage records exist for this business
+    const imageCount = await this.prisma.businessImage.count({ where: { businessId } });
+
+    // If none exist yet, backfill from Business.galleryImages using S3 HeadObject
+    if (imageCount === 0) {
+      const business = await this.prisma.business.findUnique({
+        where: { id: businessId },
+        select: { galleryImages: true, logoUrl: true, coverImageUrl: true, profileImageUrl: true }
+      });
+
+      if (business) {
+        const { getS3Client } = await import('../lib/aws/s3');
+        const s3 = getS3Client();
+
+        const allUrls: Array<{ url: string; type: string }> = [
+          ...((business.galleryImages as string[]) || []).map(url => ({ url, type: 'gallery' })),
+          ...(business.logoUrl ? [{ url: business.logoUrl, type: 'logo' }] : []),
+          ...(business.coverImageUrl ? [{ url: business.coverImageUrl, type: 'cover' }] : []),
+          ...(business.profileImageUrl ? [{ url: business.profileImageUrl, type: 'profile' }] : []),
+        ];
+
+        for (const { url, type } of allUrls) {
+          const fileSizeBytes = await s3.getObjectSizeByUrl(url);
+          const id = `img_${businessId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          await this.prisma.businessImage.upsert({
+            where: { id },
+            update: {},
+            create: { id, businessId, url, type, fileSizeBytes }
+          }).catch(() => {});
+        }
+      }
+    }
+
+    const result = await this.prisma.businessImage.aggregate({
+      where: { businessId },
+      _sum: { fileSizeBytes: true }
+    });
+
+    const totalBytes = result._sum.fileSizeBytes || 0;
+    const storageUsedMB = Math.ceil(totalBytes / (1024 * 1024));
+
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+
+    await this.prisma.businessUsage.upsert({
+      where: { businessId_month_year: { businessId, month, year } },
+      update: { storageUsedMB },
+      create: {
+        id: `usage_${businessId}_${year}${month.toString().padStart(2, '0')}`,
+        businessId, month, year, storageUsedMB
+      }
+    });
+  }
+
+  async createBusinessImage(businessId: string, url: string, type: string, fileSizeBytes: number): Promise<{ id: string; url: string; type: string; fileSizeBytes: number; createdAt: Date }> {
+    const id = `img_${businessId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const image = await this.prisma.businessImage.create({
+      data: { id, businessId, url, type, fileSizeBytes }
+    });
+    return { id: image.id, url: image.url, type: image.type, fileSizeBytes: image.fileSizeBytes, createdAt: image.createdAt };
+  }
+
+  async deleteBusinessImageById(imageId: string, businessId: string): Promise<{ url: string; fileSizeBytes: number } | null> {
+    const image = await this.prisma.businessImage.findFirst({
+      where: { id: imageId, businessId }
+    });
+    if (!image) return null;
+    await this.prisma.businessImage.delete({ where: { id: imageId } });
+    return { url: image.url, fileSizeBytes: image.fileSizeBytes };
+  }
+
+  async getBusinessImages(businessId: string): Promise<Array<{ id: string; url: string; type: string; fileSizeBytes: number; createdAt: Date }>> {
+    const images = await this.prisma.businessImage.findMany({
+      where: { businessId, isActive: true },
+      orderBy: { createdAt: 'desc' }
+    });
+    return images.map(img => ({ id: img.id, url: img.url, type: img.type, fileSizeBytes: img.fileSizeBytes, createdAt: img.createdAt }));
   }
 }
