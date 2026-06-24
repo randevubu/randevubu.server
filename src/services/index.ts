@@ -28,8 +28,6 @@ import { CancellationPolicyService } from './domain/business/cancellationPolicyS
 import { UnifiedNotificationGateway } from './domain/notification/unifiedNotificationGateway';
 // Import shared services
 import {
-  ErrorHandlingService,
-  errorHandlingService,
   SecureLoggingService,
   secureLoggingService,
   ValidationService,
@@ -45,6 +43,7 @@ import Logger from '../utils/Logger/logger';
 // Import job infrastructure
 import { JobScheduler, jobMetrics } from '../jobs/base';
 import { AutoCompleteAppointmentsJob, SendAppointmentRemindersJob } from '../jobs/appointment';
+import { ResetMonthlyCountsJob } from '../jobs/user';
 
 // Service container for dependency injection
 export class ServiceContainer {
@@ -64,6 +63,7 @@ export class ServiceContainer {
   public readonly paymentService: PaymentService;
   public readonly paymentRetryService: PaymentRetryService;
   public readonly notificationService: NotificationService;
+  public readonly notificationGateway!: UnifiedNotificationGateway;
   public readonly closureAnalyticsService: ClosureAnalyticsService;
   public readonly appointmentRescheduleService: AppointmentRescheduleService;
   public readonly discountCodeService: DiscountCodeService;
@@ -82,7 +82,6 @@ export class ServiceContainer {
   public readonly jobScheduler: JobScheduler;
 
   // Shared services
-  public readonly errorHandlingService: ErrorHandlingService;
   public readonly secureLoggingService: SecureLoggingService;
   public readonly validationService: ValidationService;
 
@@ -159,6 +158,7 @@ export class ServiceContainer {
       repositories,
       this.usageService
     );
+    (this as any).notificationGateway = unifiedNotificationGateway;
 
     // Create appointment service with all dependencies injected
     this.appointmentService = new AppointmentService(
@@ -285,7 +285,6 @@ export class ServiceContainer {
     this.reportsService = new ReportsService(repositories);
 
     // Shared services
-    this.errorHandlingService = errorHandlingService;
     this.secureLoggingService = secureLoggingService;
     this.validationService = createValidationService(this.prisma, repositories);
 
@@ -314,6 +313,14 @@ export class ServiceContainer {
 
     this.jobScheduler.register(reminderJob, {
       schedule: '* * * * *', // Every minute
+      timezone: 'Europe/Istanbul',
+      enabled: true,
+    });
+
+    // Register monthly counts reset job — runs at 00:00 on 1st of every month
+    const resetMonthlyJob = new ResetMonthlyCountsJob(repositories.prismaClient);
+    this.jobScheduler.register(resetMonthlyJob, {
+      schedule: '0 0 1 * *',
       timezone: 'Europe/Istanbul',
       enabled: true,
     });
@@ -348,8 +355,6 @@ export {
   DailyNotebookService,
   TranslationService,
   // Shared services
-  ErrorHandlingService,
-  errorHandlingService,
   SecureLoggingService,
   secureLoggingService,
   ValidationService,

@@ -5,6 +5,7 @@ import {
 import { UserBehaviorRepository } from '../../../repositories/userBehaviorRepository';
 import { RBACService } from '../rbac';
 import { PermissionName } from '../../../types/auth';
+import { AppError } from '../../../types/responseTypes';
 
 export class UserBehaviorService {
   constructor(
@@ -40,7 +41,7 @@ export class UserBehaviorService {
       if (!hasGlobalView) {
         // Check if requesting user is a business owner/staff who had appointments with target user
         // This would require additional logic to verify business relationship
-        throw new Error('Access denied: You do not have permission to view this user\'s behavior');
+        throw new AppError('ACCESS_DENIED', { message: 'You do not have permission to view this user\'s behavior' });
       }
     }
 
@@ -65,7 +66,7 @@ export class UserBehaviorService {
     ]);
 
     if (!reason || reason.trim().length < 5) {
-      throw new Error('Strike reason must be at least 5 characters long');
+      throw new AppError('VALIDATION_ERROR', { message: 'Strike reason must be at least 5 characters long' });
     }
 
     return await this.userBehaviorRepository.addStrike(targetUserId, reason);
@@ -91,12 +92,12 @@ export class UserBehaviorService {
     await this.rbacService.requirePermission(requestingUserId, PermissionName.BAN_USERS);
 
     if (!reason || reason.trim().length < 10) {
-      throw new Error('Ban reason must be at least 10 characters long');
+      throw new AppError('VALIDATION_ERROR', { message: 'Ban reason must be at least 10 characters long' });
     }
 
     // Validate duration only if provided (for temporary bans)
     if (durationDays !== undefined && (durationDays <= 0 || durationDays > 365)) {
-      throw new Error('Ban duration must be between 1 and 365 days');
+      throw new AppError('VALIDATION_ERROR', { message: 'Ban duration must be between 1 and 365 days' });
     }
 
     return await this.userBehaviorRepository.banUser(targetUserId, reason, durationDays);
@@ -181,7 +182,7 @@ export class UserBehaviorService {
     await this.rbacService.requirePermission(requestingUserId, PermissionName.VIEW_USER_BEHAVIOR);
 
     // This would need to be implemented in the repository
-    throw new Error('getBannedUsers not implemented in repository');
+    throw new AppError('INTERNAL_SERVER_ERROR', { message: 'getBannedUsers not implemented in repository' });
   }
 
   async getUsersWithStrikes(
@@ -192,7 +193,7 @@ export class UserBehaviorService {
     await this.rbacService.requirePermission(requestingUserId, PermissionName.VIEW_USER_BEHAVIOR);
 
     // This would need to be implemented in the repository
-    throw new Error('getUsersWithStrikes not implemented in repository');
+    throw new AppError('INTERNAL_SERVER_ERROR', { message: 'getUsersWithStrikes not implemented in repository' });
   }
 
   // System methods for automated behavior management
@@ -277,7 +278,7 @@ export class UserBehaviorService {
     await this.rbacService.requirePermission(requestingUserId, PermissionName.VIEW_USER_BEHAVIOR);
 
     // This would need to be implemented in the repository
-    throw new Error('getUserBehaviorStats not implemented');
+    throw new AppError('INTERNAL_SERVER_ERROR', { message: 'getUserBehaviorStats not implemented' });
   }
 
   // Business-specific methods
@@ -338,12 +339,12 @@ export class UserBehaviorService {
     ]);
 
     if (!reason || reason.trim().length < 10) {
-      throw new Error('Flag reason must be at least 10 characters long');
+      throw new AppError('VALIDATION_ERROR', { message: 'Flag reason must be at least 10 characters long' });
     }
 
     // This would create a flag/report record for admin review
     // Implementation would depend on having a separate flagging system
-    throw new Error('User flagging system not implemented');
+    throw new AppError('INTERNAL_SERVER_ERROR', { message: 'User flagging system not implemented' });
   }
 
   // Utility methods

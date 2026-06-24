@@ -4,6 +4,7 @@
  */
 
 import { CustomerManagementSettings, CustomerNote, CustomerEvaluation, BirthdayReminder, CustomerLoyaltyStatus, DEFAULT_CUSTOMER_MANAGEMENT_SETTINGS } from '../../../types/customerManagement';
+import { AppError } from '../../../types/responseTypes';
 import { BusinessRepository } from '../../../repositories/businessRepository';
 import { UserBehaviorRepository } from '../../../repositories/userBehaviorRepository';
 import { PrismaClient } from '@prisma/client';
@@ -50,7 +51,7 @@ export class CustomerManagementService {
     const business = await this.businessRepository.findById(businessId);
     
     if (!business) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     const currentSettings = business.settings as Record<string, unknown> || {};
@@ -148,16 +149,16 @@ export class CustomerManagementService {
     const settings = await this.getBusinessCustomerManagementSettings(businessId);
     
     if (noteData.noteType === 'STAFF' && !settings.customerNotes.allowStaffNotes) {
-      throw new Error('Staff notes are not enabled for this business');
+      throw new AppError('OPERATION_NOT_ALLOWED', { message: 'Staff notes are not enabled for this business' });
     }
     
     if (noteData.noteType === 'INTERNAL' && !settings.customerNotes.allowInternalNotes) {
-      throw new Error('Internal notes are not enabled for this business');
+      throw new AppError('OPERATION_NOT_ALLOWED', { message: 'Internal notes are not enabled for this business' });
     }
 
     // Validate note length
     if (noteData.content.length > settings.customerNotes.maxNoteLength) {
-      throw new Error(`Note content exceeds maximum length of ${settings.customerNotes.maxNoteLength} characters`);
+      throw new AppError('VALIDATION_ERROR', { message: `Note content exceeds maximum length of ${settings.customerNotes.maxNoteLength} characters` });
     }
 
     const note = await this.prisma.customerNote.create({
@@ -371,7 +372,7 @@ export class CustomerManagementService {
     const settings = await this.getBusinessCustomerManagementSettings(businessId);
     
     if (!settings.customerEvaluations.enabled) {
-      throw new Error('Customer evaluations are not enabled for this business');
+      throw new AppError('OPERATION_NOT_ALLOWED', { message: 'Customer evaluations are not enabled for this business' });
     }
 
     // Validate required questions
@@ -380,7 +381,7 @@ export class CustomerManagementService {
     
     for (const requiredQuestion of requiredQuestions) {
       if (!answeredQuestionIds.includes(requiredQuestion.id)) {
-        throw new Error(`Required question "${requiredQuestion.question}" was not answered`);
+        throw new AppError('REQUIRED_FIELD_MISSING', { message: `Required question "${requiredQuestion.question}" was not answered`, params: { field: 'answers' } });
       }
     }
 

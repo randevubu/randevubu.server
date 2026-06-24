@@ -20,8 +20,9 @@ import { BusinessRepository } from '../../../repositories/businessRepository';
 import { RBACService } from '../rbac/rbacService';
 import { PermissionName } from '../../../types/auth';
 import { BusinessContext } from '../../../middleware/businessContext';
-import { BusinessStaffRole, AuditAction } from '@prisma/client';
+import { BusinessStaffRole, AuditAction, AppointmentStatus } from '@prisma/client';
 import { ValidationError, ForbiddenError } from '../../../types/errors';
+import { AppError } from '../../../types/responseTypes';
 import { UsageService } from '../usage/usageService';
 import { RepositoryContainer } from '../../../repositories';
 import { CancellationPolicyService } from './cancellationPolicyService';
@@ -157,7 +158,7 @@ export class BusinessService {
       );
 
       if (!hasBusinessAccess) {
-        throw new Error('Access denied: You do not have permission to view this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to view this business' });
       }
     }
 
@@ -214,7 +215,7 @@ export class BusinessService {
       );
 
       if (!hasBusinessAccess) {
-        throw new Error('Access denied: You do not have permission to view this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to view this business' });
       }
     }
 
@@ -376,7 +377,7 @@ export class BusinessService {
     const accessibleBusinessIds = businesses.map(b => b.id);
 
     if (accessibleBusinessIds.length === 0) {
-      throw new Error('No accessible businesses found');
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     let businessIds: string[] = [];
@@ -384,7 +385,7 @@ export class BusinessService {
     // If specific business is requested, validate access
     if (options.businessId) {
       if (!accessibleBusinessIds.includes(options.businessId)) {
-        throw new Error('Access denied to this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Access denied to this business' });
       }
       businessIds = [options.businessId];
     } else {
@@ -407,7 +408,7 @@ export class BusinessService {
     isSubscribed: boolean;
   }>> {
     if (businessContext.businessIds.length === 0) {
-      throw new Error('No accessible businesses found');
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     return await this.businessRepository.getMultipleBusinessStats(businessContext.businessIds);
@@ -429,13 +430,13 @@ export class BusinessService {
     const businessIds = businesses.map(b => b.id);
 
     if (businessIds.length === 0) {
-      throw new Error('No accessible businesses found');
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     // If specific business requested, validate access and return single stats
     if (businessId) {
       if (!businessIds.includes(businessId)) {
-        throw new Error('Access denied to this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Access denied to this business' });
       }
       return await this.businessRepository.getBusinessStats(businessId);
     }
@@ -491,7 +492,7 @@ export class BusinessService {
     // Get current business first (needed for both permission check and settings merge)
     const currentBusiness = await this.businessRepository.findById(businessId);
     if (!currentBusiness) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
@@ -524,7 +525,7 @@ export class BusinessService {
     // Get current business first (needed for both permission check and reading settings)
     const currentBusiness = await this.businessRepository.findById(businessId);
     if (!currentBusiness) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
@@ -542,6 +543,25 @@ export class BusinessService {
     };
   }
 
+  async updateRequireApproval(
+    userId: string,
+    businessId: string,
+    requireApproval: boolean
+  ): Promise<BusinessData> {
+    const currentBusiness = await this.businessRepository.findById(businessId);
+    if (!currentBusiness) {
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
+    }
+
+    if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
+      throw new ForbiddenError('Permission denied');
+    }
+
+    return await this.businessRepository.update(businessId, {
+      requireApproval
+    } as any);
+  }
+
   async updateStaffPrivacySettings(
     userId: string,
     businessId: string,
@@ -550,7 +570,7 @@ export class BusinessService {
     // Get current business first (needed for both permission check and settings merge)
     const currentBusiness = await this.businessRepository.findById(businessId);
     if (!currentBusiness) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
@@ -568,10 +588,10 @@ export class BusinessService {
         hideStaffNames: staffPrivacySettings.hideStaffNames ?? currentStaffPrivacy.hideStaffNames ?? false,
         staffDisplayMode: staffPrivacySettings.staffDisplayMode ?? currentStaffPrivacy.staffDisplayMode ?? 'NAMES',
         customStaffLabels: {
-          owner: staffPrivacySettings.customStaffLabels?.owner ?? currentCustomStaffLabels.owner ?? 'Owner',
-          manager: staffPrivacySettings.customStaffLabels?.manager ?? currentCustomStaffLabels.manager ?? 'Manager',
-          staff: staffPrivacySettings.customStaffLabels?.staff ?? currentCustomStaffLabels.staff ?? 'Staff',
-          receptionist: staffPrivacySettings.customStaffLabels?.receptionist ?? currentCustomStaffLabels.receptionist ?? 'Receptionist',
+          owner: staffPrivacySettings.customStaffLabels?.owner ?? currentCustomStaffLabels.owner ?? 'İşletme Sahibi',
+          manager: staffPrivacySettings.customStaffLabels?.manager ?? currentCustomStaffLabels.manager ?? 'Yönetici',
+          staff: staffPrivacySettings.customStaffLabels?.staff ?? currentCustomStaffLabels.staff ?? 'Personel',
+          receptionist: staffPrivacySettings.customStaffLabels?.receptionist ?? currentCustomStaffLabels.receptionist ?? 'Resepsiyonist',
         }
       }
     };
@@ -594,7 +614,7 @@ export class BusinessService {
     profilePrivacy: { showPhone: boolean; showEmail: boolean }
   ): Promise<{ showPhone: boolean; showEmail: boolean }> {
     const currentBusiness = await this.businessRepository.findById(businessId);
-    if (!currentBusiness) throw new Error('Business not found');
+    if (!currentBusiness) throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
       throw new ForbiddenError('Permission denied');
     }
@@ -609,7 +629,7 @@ export class BusinessService {
     businessId: string
   ): Promise<{ showPhone: boolean; showEmail: boolean }> {
     const currentBusiness = await this.businessRepository.findById(businessId);
-    if (!currentBusiness) throw new Error('Business not found');
+    if (!currentBusiness) throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     const settings = (currentBusiness.settings as Record<string, unknown>) || {};
     const p = (settings.profilePrivacy as Record<string, unknown>) || {};
     return {
@@ -636,7 +656,7 @@ export class BusinessService {
     // Get current business settings
     const currentBusiness = await this.businessRepository.findById(businessId);
     if (!currentBusiness) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     // Extract staff privacy settings from business settings
@@ -648,10 +668,10 @@ export class BusinessService {
       hideStaffNames: (staffPrivacy.hideStaffNames as boolean) || false,
       staffDisplayMode: (staffPrivacy.staffDisplayMode as 'NAMES' | 'ROLES' | 'GENERIC') || 'NAMES',
       customStaffLabels: {
-        owner: (customStaffLabels.owner as string) || 'Owner',
-        manager: (customStaffLabels.manager as string) || 'Manager',
-        staff: (customStaffLabels.staff as string) || 'Staff',
-        receptionist: (customStaffLabels.receptionist as string) || 'Receptionist',
+        owner: (customStaffLabels.owner as string) || 'İşletme Sahibi',
+        manager: (customStaffLabels.manager as string) || 'Yönetici',
+        staff: (customStaffLabels.staff as string) || 'Personel',
+        receptionist: (customStaffLabels.receptionist as string) || 'Resepsiyonist',
       }
     };
   }
@@ -761,13 +781,13 @@ export class BusinessService {
     const businessIds = businesses.map(b => b.id);
 
     if (businessIds.length === 0) {
-      throw new Error('No accessible businesses found');
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     // If specific business requested, validate access and return single stats
     if (businessId) {
       if (!businessIds.includes(businessId)) {
-        throw new Error('Access denied to this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Access denied to this business' });
       }
       return await this.businessRepository.getBusinessStats(businessId);
     }
@@ -850,7 +870,7 @@ export class BusinessService {
 
     const business = await this.businessRepository.findById(businessId);
     if (!business) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     return { businessHours: business.businessHours || {} as BusinessHours };
@@ -875,7 +895,7 @@ export class BusinessService {
   }> {
     const business = await this.businessRepository.findById(businessId);
     if (!business) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     const targetDate = date ? new Date(date) : new Date();
@@ -1046,6 +1066,175 @@ export class BusinessService {
     await this.repositories.businessRepository.deleteBusinessHoursOverride(businessId, new Date(date));
   }
 
+  async getAffectedAppointmentsForScheduleChange(
+    userId: string,
+    businessId: string,
+    params: {
+      type: 'weekly' | 'special_day';
+      date?: string;       // YYYY-MM-DD for special_day
+      dayOfWeek?: number;  // 0=Sun..6=Sat for weekly
+      isOpen: boolean;
+      newOpenTime?: string;
+      newCloseTime?: string;
+    }
+  ): Promise<{ id: string; customerName: string; serviceName: string; startTime: string }[]> {
+    const hasGlobalView = await this.rbacService.hasPermission(userId, 'business', 'view_all');
+    if (!hasGlobalView) {
+      await this.rbacService.requirePermission(userId, PermissionName.VIEW_OWN_BUSINESS, { businessId });
+    }
+
+    const timeToMinutes = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    let appointments: { id: string; customer: { firstName: string | null; lastName: string | null } | null; service: { name: string }; startTime: Date; status: string }[] = [];
+
+    if (params.type === 'special_day' && params.date) {
+      const startOfDay = new Date(`${params.date}T00:00:00.000Z`);
+      const endOfDay = new Date(`${params.date}T23:59:59.999Z`);
+      const raw = await this.repositories.prismaClient.appointment.findMany({
+        where: {
+          businessId,
+          startTime: { gte: startOfDay, lte: endOfDay },
+          status: { in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS, AppointmentStatus.PENDING] }
+        },
+        select: { id: true, customer: { select: { firstName: true, lastName: true } }, service: { select: { name: true } }, startTime: true, status: true },
+        orderBy: { startTime: 'asc' }
+      });
+      appointments = raw;
+    } else if (params.type === 'weekly' && params.dayOfWeek !== undefined) {
+      const now = new Date();
+      const ninetyDaysOut = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+      const raw = await this.repositories.prismaClient.appointment.findMany({
+        where: {
+          businessId,
+          startTime: { gte: now, lte: ninetyDaysOut },
+          status: { in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS, AppointmentStatus.PENDING] }
+        },
+        select: { id: true, customer: { select: { firstName: true, lastName: true } }, service: { select: { name: true } }, startTime: true, status: true },
+        orderBy: { startTime: 'asc' }
+      });
+      appointments = raw.filter(apt => apt.startTime.getUTCDay() === params.dayOfWeek);
+    }
+
+    // Filter appointments that are actually affected by the change
+    const affected = appointments.filter(apt => {
+      if (!params.isOpen) return true; // day being closed → all affected
+      if (!params.newOpenTime || !params.newCloseTime) return false;
+      // Istanbul time = UTC + 3h
+      const utcMinutes = apt.startTime.getUTCHours() * 60 + apt.startTime.getUTCMinutes();
+      const istanbulMinutes = (utcMinutes + 180) % (24 * 60);
+      const openMin = timeToMinutes(params.newOpenTime);
+      const closeMin = timeToMinutes(params.newCloseTime);
+      return istanbulMinutes < openMin || istanbulMinutes >= closeMin;
+    });
+
+    return affected.map(apt => ({
+      id: apt.id,
+      customerName: [apt.customer?.firstName, apt.customer?.lastName].filter(Boolean).join(' ') || 'Müşteri',
+      serviceName: apt.service.name,
+      startTime: apt.startTime.toISOString()
+    }));
+  }
+
+  async bulkCancelForScheduleChange(
+    userId: string,
+    businessId: string,
+    appointmentIds: string[],
+    reason: 'DAY_CLOSED' | 'HOURS_CHANGE'
+  ): Promise<{ cancelledCount: number }> {
+    const hasGlobalEdit = await this.rbacService.hasPermission(userId, 'business', 'edit_all');
+    if (!hasGlobalEdit) {
+      await this.rbacService.requirePermission(userId, PermissionName.EDIT_OWN_BUSINESS, { businessId });
+    }
+
+    const business = await this.repositories.businessRepository.findById(businessId);
+    if (!business) throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
+
+    const cancelReason = reason === 'DAY_CLOSED'
+      ? 'İşletme sahibi tarafından gün kapatıldı'
+      : 'İşletme sahibi tarafından çalışma saatleri değiştirildi';
+
+    // Fetch all valid appointments to cancel
+    const appointmentsToCancelData: { id: string; customerId: string; customerFirstName: string | null; customerLastName: string | null; serviceName: string; startTime: Date; customerPhone?: string }[] = [];
+
+    for (const aptId of appointmentIds) {
+      const apt = await this.repositories.prismaClient.appointment.findUnique({
+        where: { id: aptId, businessId },
+        include: { customer: { select: { id: true, firstName: true, lastName: true } }, service: { select: { name: true } } }
+      });
+      if (!apt || apt.status === AppointmentStatus.CANCELED || apt.status === AppointmentStatus.COMPLETED) continue;
+
+      const user = await this.repositories.userRepository.findById(apt.customer.id);
+      appointmentsToCancelData.push({
+        id: apt.id,
+        customerId: apt.customer.id,
+        customerFirstName: apt.customer.firstName,
+        customerLastName: apt.customer.lastName,
+        serviceName: apt.service.name,
+        startTime: apt.startTime,
+        customerPhone: user?.phoneNumber || undefined
+      });
+    }
+
+    if (appointmentsToCancelData.length === 0) {
+      return { cancelledCount: 0 };
+    }
+
+    // Cancel all appointments in a single transaction
+    await this.repositories.prismaClient.$transaction(
+      appointmentsToCancelData.map(apt =>
+        this.repositories.prismaClient.appointment.update({
+          where: { id: apt.id },
+          data: {
+            status: AppointmentStatus.CANCELED,
+            cancelReason,
+            canceledAt: new Date(),
+            cancelledBy: 'BUSINESS'
+          }
+        })
+      )
+    );
+
+    // Send SMS notifications asynchronously (don't block the response)
+    const { SMSService } = await import('../sms/smsService');
+    const smsService = new SMSService();
+    const { SMSMessageTemplates } = await import('../../../utils/smsMessageTemplates');
+
+    for (const apt of appointmentsToCancelData) {
+      if (!apt.customerPhone) continue;
+      try {
+        const appointmentDate = apt.startTime.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Istanbul' });
+        const appointmentTime = apt.startTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
+        const message = SMSMessageTemplates.appointment.businessScheduleChange({
+          businessName: business.name,
+          customerName: [apt.customerFirstName, apt.customerLastName].filter(Boolean).join(' ') || 'Değerli Müşterimiz',
+          serviceName: apt.serviceName,
+          appointmentDate,
+          appointmentTime,
+          reason
+        });
+        await smsService.sendSMS({ phoneNumber: apt.customerPhone, message });
+        logger.info({
+          msg: 'SMS sent for business-cancelled appointment',
+          appointmentId: apt.id,
+          phone: apt.customerPhone,
+          smsContent: message
+        });
+      } catch (smsError) {
+        logger.error({
+          msg: 'SMS send failed for business-cancelled appointment',
+          appointmentId: apt.id,
+          phone: apt.customerPhone,
+          error: smsError instanceof Error ? smsError.message : String(smsError)
+        });
+      }
+    }
+
+    return { cancelledCount: appointmentsToCancelData.length };
+  }
+
   async getBusinessHoursOverrides(
     userId: string,
     businessId: string,
@@ -1147,6 +1336,9 @@ export class BusinessService {
       minNotificationHours: number;
       maxDailyAppointments: number;
     };
+    cancellationPolicy: {
+      maxMonthlyCancellations: number;
+    };
     services: {
       id: string;
       name: string;
@@ -1177,20 +1369,23 @@ export class BusinessService {
     const minNotificationHours = (reservationSettings.minNotificationHours as number | undefined) ?? 0;
     const maxDailyAppointments = (reservationSettings.maxDailyAppointments as number) || 50;
 
+    const cancellationPolicies = (settings.cancellationPolicies as Record<string, unknown>) || {};
+    const maxMonthlyCancellations = (cancellationPolicies.maxDailyCancellations as number) ?? (cancellationPolicies.maxMonthlyCancellations as number) ?? 3;
+
     // Apply price visibility logic to services
     const processedServices = businessWithServices.services.map(service => {
       if (hideAllServicePrices) {
         return {
           ...service,
-          price: null, // Hide the actual price
-          showPrice: false, // Add flag to indicate price is hidden
+          price: null,
+          showPrice: false,
           priceDisplayMessage: (priceVisibility.priceDisplayMessage as string) || 'Price available on request'
         };
       }
 
       return {
         ...service,
-        showPrice: true // Add flag to indicate price is visible
+        showPrice: true
       };
     });
 
@@ -1200,6 +1395,9 @@ export class BusinessService {
         maxAdvanceBookingDays,
         minNotificationHours,
         maxDailyAppointments
+      },
+      cancellationPolicy: {
+        maxMonthlyCancellations,
       },
       services: processedServices
     };
@@ -1395,7 +1593,7 @@ export class BusinessService {
       );
 
       if (!hasBusinessAccess || business.ownerId !== userId) {
-        throw new Error('Access denied: You do not have permission to update this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to update this business' });
       }
     }
 
@@ -1429,7 +1627,7 @@ export class BusinessService {
       }
     } catch (error) {
       logger.error('Error uploading business image:', error);
-      throw new Error('Failed to upload image');
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Failed to upload image' });
     }
   }
 
@@ -1456,14 +1654,14 @@ export class BusinessService {
       );
 
       if (!hasBusinessAccess) {
-        throw new Error('Access denied: You do not have permission to update this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to update this business' });
       }
     }
 
     // Get current image URL to delete from S3
     const business = await this.businessRepository.findById(businessId);
     if (!business) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     let currentImageUrl: string | null = null;
@@ -1491,7 +1689,7 @@ export class BusinessService {
       return await this.businessRepository.deleteBusinessImage(businessId, imageType);
     } catch (error) {
       logger.error('Error deleting business image:', error);
-      throw new Error('Failed to delete image');
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Failed to delete image' });
     }
   }
 
@@ -1518,7 +1716,7 @@ export class BusinessService {
       );
 
       if (!hasBusinessAccess) {
-        throw new Error('Access denied: You do not have permission to update this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to update this business' });
       }
     }
 
@@ -1532,7 +1730,7 @@ export class BusinessService {
       return await this.businessRepository.removeGalleryImage(businessId, imageUrl);
     } catch (error) {
       logger.error('Error deleting gallery image:', error);
-      throw new Error('Failed to delete gallery image');
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Failed to delete gallery image' });
     }
   }
 
@@ -1563,7 +1761,7 @@ export class BusinessService {
       );
 
       if (!hasBusinessAccess) {
-        throw new Error('Access denied: You do not have permission to view this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to view this business' });
       }
     }
 
@@ -1593,7 +1791,7 @@ export class BusinessService {
       );
 
       if (!hasBusinessAccess) {
-        throw new Error('Access denied: You do not have permission to update this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to update this business' });
       }
     }
 
@@ -1816,7 +2014,7 @@ export class BusinessService {
     const business = await this.repositories.businessRepository.findById(businessId);
 
     if (!business) {
-      throw new Error('Business not found or access denied');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Business not found or access denied' });
     }
 
     // Get stored payment methods for the business
@@ -1833,7 +2031,7 @@ export class BusinessService {
     const business = await this.repositories.businessRepository.findById(businessId);
 
     if (!business) {
-      throw new Error('Business not found or access denied');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Business not found or access denied' });
     }
 
     // Extract payment method data
@@ -1848,7 +2046,7 @@ export class BusinessService {
 
     // Validate required fields
     if (!cardHolderName || !cardNumber || !expireMonth || !expireYear || !cvc) {
-      throw new Error('Missing required payment method fields');
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Missing required payment method fields', params: { field: 'cardNumber,expiryMonth,expiryYear' } });
     }
 
     // Get last 4 digits and detect card brand
@@ -1942,7 +2140,7 @@ export class BusinessService {
 
     const business = await this.businessRepository.findById(businessId);
     if (!business) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     // Get reservation settings from business settings JSON
@@ -1981,7 +2179,7 @@ export class BusinessService {
 
     const business = await this.businessRepository.findById(businessId);
     if (!business) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     // Merge reservation settings into existing business settings
@@ -2404,7 +2602,7 @@ export class BusinessService {
 
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
     if (!apiKey) {
-      throw new Error('Google Places API key is not configured');
+      throw new AppError('SERVICE_UNAVAILABLE', { message: 'Google Places API key is not configured' });
     }
 
     const isHexCIDFormat = placeId.includes(':') && placeId.includes('0x');
@@ -2531,7 +2729,7 @@ export class BusinessService {
     );
 
     if (!settings) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     return settings;

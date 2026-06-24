@@ -14,6 +14,7 @@ import {
   realTimeCache,
 } from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { BusinessContextMiddleware } from '../../middleware/businessContext';
 import {
   reportQuerySchema,
@@ -154,7 +155,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(20, 60 * 1000),
-    withAuth(reportsController.getBusinessOverview)
+    asyncHandler(withAuth(reportsController.getBusinessOverview))
   );
 
   /**
@@ -243,7 +244,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(20, 60 * 1000),
-    withAuth(reportsController.getRevenueReport)
+    asyncHandler(withAuth(reportsController.getRevenueReport))
   );
 
   /**
@@ -323,7 +324,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(20, 60 * 1000),
-    withAuth(reportsController.getAppointmentReport)
+    asyncHandler(withAuth(reportsController.getAppointmentReport))
   );
 
   /**
@@ -402,7 +403,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(20, 60 * 1000),
-    withAuth(reportsController.getCustomerReport)
+    asyncHandler(withAuth(reportsController.getCustomerReport))
   );
 
   /**
@@ -470,7 +471,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(10, 60 * 1000), // Lower limit for comprehensive reports
-    withAuth(reportsController.getDashboardReport)
+    asyncHandler(withAuth(reportsController.getDashboardReport))
   );
 
   /**
@@ -539,7 +540,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(5, 60 * 1000), // Stricter limit for exports
-    withAuth(reportsController.exportReport)
+    asyncHandler(withAuth(reportsController.exportReport))
   );
 
   /**
@@ -610,7 +611,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(10, 60 * 1000),
-    withAuth(reportsController.getBusinessComparison)
+    asyncHandler(withAuth(reportsController.getBusinessComparison))
   );
 
   // ADVANCED REPORTS
@@ -714,7 +715,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(15, 60 * 1000),
-    withAuth(reportsController.getFinancialReport)
+    asyncHandler(withAuth(reportsController.getFinancialReport))
   );
 
   /**
@@ -828,7 +829,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(15, 60 * 1000),
-    withAuth(reportsController.getOperationalReport)
+    asyncHandler(withAuth(reportsController.getOperationalReport))
   );
 
   /**
@@ -936,7 +937,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(15, 60 * 1000),
-    withAuth(reportsController.getCustomerAnalyticsReport)
+    asyncHandler(withAuth(reportsController.getCustomerAnalyticsReport))
   );
 
   /**
@@ -1034,7 +1035,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(10, 60 * 1000),
-    withAuth(reportsController.getTrendsAnalysisReport)
+    asyncHandler(withAuth(reportsController.getTrendsAnalysisReport))
   );
 
   /**
@@ -1140,7 +1141,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(15, 60 * 1000),
-    withAuth(reportsController.getQualityMetricsReport)
+    asyncHandler(withAuth(reportsController.getQualityMetricsReport))
   );
 
   /**
@@ -1237,7 +1238,7 @@ export function createReportsRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(reportQuerySchema),
     rateLimitByUser(5, 60 * 1000), // Most restrictive for comprehensive report
-    withAuth(reportsController.getExecutiveSummary)
+    asyncHandler(withAuth(reportsController.getExecutiveSummary))
   );
 
   /**
@@ -1301,7 +1302,7 @@ export function createReportsRoutes(): Router {
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     rateLimitByUser(60, 60 * 1000), // High limit for real-time data
-    withAuth(reportsController.getRealtimeMetrics)
+    asyncHandler(withAuth(reportsController.getRealtimeMetrics))
   );
 
   /**
@@ -1383,7 +1384,7 @@ export function createReportsRoutes(): Router {
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     rateLimitByUser(10, 60 * 1000),
-    withAuth(reportsController.generateCustomReport)
+    asyncHandler(withAuth(reportsController.generateCustomReport))
   );
 
   /**
@@ -1444,7 +1445,7 @@ export function createReportsRoutes(): Router {
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     rateLimitByUser(20, 60 * 1000),
-    withAuth(reportsController.getReportTemplates)
+    asyncHandler(withAuth(reportsController.getReportTemplates))
   );
 
   /**
@@ -1570,7 +1571,7 @@ export function createReportsRoutes(): Router {
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.MANAGE_USER_BEHAVIOR]),
     rateLimitByUser(5, 60 * 1000),
-    withAuth(reportsController.scheduleReport)
+    asyncHandler(withAuth(reportsController.scheduleReport))
   );
 
   return router;

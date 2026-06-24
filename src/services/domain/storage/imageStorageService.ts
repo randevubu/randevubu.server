@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import { getS3Client, UploadOptions } from '../../../lib/aws/s3';
+import { AppError } from '../../../types/responseTypes';
 import Logger from '../../../utils/Logger/logger';
 
 export type ImageType = 'logo' | 'cover' | 'profile' | 'gallery';
@@ -60,13 +61,13 @@ export class ImageStorageService {
   ): Promise<ImageUploadResult> {
     // Validate image type
     if (!this.validateImageType(contentType, options?.validation?.allowedTypes)) {
-      throw new Error('Invalid image type. Only JPEG, PNG, WebP and GIF are allowed.');
+      throw new AppError('INVALID_FILE_TYPE', { message: 'Invalid image type. Only JPEG, PNG, WebP and GIF are allowed.' });
     }
 
     // Validate image size
     if (!this.validateImageSize(buffer.length, options?.validation?.maxSizeMB)) {
       const maxSize = options?.validation?.maxSizeMB || this.defaultMaxSizeMB;
-      throw new Error(`Image size too large. Maximum allowed size is ${maxSize}MB.`);
+      throw new AppError('FILE_TOO_LARGE', { message: `Image size too large. Maximum allowed size is ${maxSize}MB.` });
     }
 
     // Generate key

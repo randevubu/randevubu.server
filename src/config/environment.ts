@@ -29,7 +29,8 @@ interface Config {
 
 const getConfig = (): Config => {
   const nodeEnv = process.env.NODE_ENV || 'development';
-  const port = parseInt(process.env.PORT || '3001', 10);
+  const parsedPort = parseInt(process.env.PORT || '3001', 10);
+  const port = Number.isNaN(parsedPort) ? 3001 : parsedPort;
   const apiVersion = process.env.API_VERSION || 'v1';
 
   let corsOrigins: string[];
@@ -85,6 +86,20 @@ export const validateConfig = (): void => {
     }
   }
 
+  // Non-production safety net: surface auth misconfiguration at startup instead
+  // of failing later on the first login/token request.
+  if (config.NODE_ENV !== 'production') {
+    if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
+      console.warn(
+        '⚠️ JWT_ACCESS_SECRET and/or JWT_REFRESH_SECRET are not set. Authentication will fail until they are configured (see .env.development.example).'
+      );
+    } else if (process.env.JWT_ACCESS_SECRET === process.env.JWT_REFRESH_SECRET) {
+      console.warn(
+        '⚠️ JWT_ACCESS_SECRET and JWT_REFRESH_SECRET are identical. They must differ; token operations will be rejected.'
+      );
+    }
+  }
+
   if (config.NODE_ENV === 'production') {
     const productionVars = ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'DATABASE_URL', 'AWS_REGION', 'AWS_S3_BUCKET_NAME', 'CORS_ORIGINS'];
     const missingVars = productionVars.filter(varName => !process.env[varName]);
@@ -99,6 +114,11 @@ export const validateConfig = (): void => {
       if (val.includes('CHANGE_ME') || val.includes('change_me') || val.length < 32) {
         throw new Error(`${key} must be a strong secret of at least 32 characters in production (run: openssl rand -hex 64)`);
       }
+    }
+
+    // Access and refresh tokens must use different secrets for security
+    if (process.env.JWT_ACCESS_SECRET === process.env.JWT_REFRESH_SECRET) {
+      throw new Error('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different in production');
     }
 
     // Validate DATABASE_URL format

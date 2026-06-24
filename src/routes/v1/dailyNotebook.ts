@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { DailyNotebookController } from '../../controllers/dailyNotebookController';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { requireAuth } from '../../middleware/authUtils';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
@@ -52,7 +53,7 @@ export function createDailyNotebookRoutes(controller: DailyNotebookController): 
   router.get(
     '/businesses/:businessId/daily-notebook/:year/:month',
     requireAuth,
-    (req, res) => controller.getNotebook(req, res)
+    asyncHandler((req, res) => controller.getNotebook(req, res))
   );
 
   /**
@@ -110,7 +111,7 @@ export function createDailyNotebookRoutes(controller: DailyNotebookController): 
   router.put(
     '/businesses/:businessId/daily-notebook/:year/:month/entries',
     requireAuth,
-    (req, res) => controller.updateDailyEntries(req, res)
+    asyncHandler((req, res) => controller.updateDailyEntries(req, res))
   );
 
   /**
@@ -171,7 +172,7 @@ export function createDailyNotebookRoutes(controller: DailyNotebookController): 
   router.patch(
     '/businesses/:businessId/daily-notebook/:year/:month/entries/single',
     requireAuth,
-    (req, res) => controller.updateSingleEntry(req, res)
+    asyncHandler((req, res) => controller.updateSingleEntry(req, res))
   );
 
   /**
@@ -198,7 +199,7 @@ export function createDailyNotebookRoutes(controller: DailyNotebookController): 
   router.get(
     '/businesses/:businessId/revenue-columns',
     requireAuth,
-    (req, res) => controller.getColumns(req, res)
+    asyncHandler((req, res) => controller.getColumns(req, res))
   );
 
   /**
@@ -254,7 +255,7 @@ export function createDailyNotebookRoutes(controller: DailyNotebookController): 
   router.post(
     '/businesses/:businessId/revenue-columns',
     requireAuth,
-    (req, res) => controller.createColumn(req, res)
+    asyncHandler((req, res) => controller.createColumn(req, res))
   );
 
   /**
@@ -309,7 +310,7 @@ export function createDailyNotebookRoutes(controller: DailyNotebookController): 
   router.put(
     '/businesses/:businessId/revenue-columns/:columnId',
     requireAuth,
-    (req, res) => controller.updateColumn(req, res)
+    asyncHandler((req, res) => controller.updateColumn(req, res))
   );
 
   /**
@@ -343,7 +344,7 @@ export function createDailyNotebookRoutes(controller: DailyNotebookController): 
   router.delete(
     '/businesses/:businessId/revenue-columns/:columnId',
     requireAuth,
-    (req, res) => controller.deleteColumn(req, res)
+    asyncHandler((req, res) => controller.deleteColumn(req, res))
   );
 
   /**
@@ -384,7 +385,7 @@ export function createDailyNotebookRoutes(controller: DailyNotebookController): 
   router.get(
     '/businesses/:businessId/appointment-revenue/:year/:month',
     requireAuth,
-    (req, res) => controller.getAppointmentRevenue(req, res)
+    asyncHandler((req, res) => controller.getAppointmentRevenue(req, res))
   );
 
   /**
@@ -488,9 +489,8 @@ export function createDailyNotebookRoutes(controller: DailyNotebookController): 
   router.get(
     '/businesses/:businessId/financial-summary',
     requireAuth,
-    (req, res) => controller.getFinancialSummary(req, res)
+    asyncHandler((req, res) => controller.getFinancialSummary(req, res))
   );
 
   return router;
 }
-

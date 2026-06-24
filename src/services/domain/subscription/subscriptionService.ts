@@ -10,6 +10,7 @@ import { PermissionName } from '../../../types/auth';
 import { PricingTierService, LocationBasedPricing } from '../pricing/pricingTierService';
 import { DiscountCodeService } from '../discount/discountCodeService';
 import logger from "../../../utils/Logger/logger";
+import { AppError } from '../../../types/responseTypes';
 export class SubscriptionService {
   constructor(
     private subscriptionRepository: SubscriptionRepository,
@@ -161,19 +162,19 @@ export class SubscriptionService {
     // Check if business already has an active subscription
     const existingSubscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
     if (existingSubscription) {
-      throw new Error('Business already has an active subscription');
+      throw new AppError('RESOURCE_CONFLICT', { message: 'Business already has an active subscription' });
     }
 
     // Check if business already used its free trial (trialStart set on any past subscription)
     const anyPastSubscription = await this.subscriptionRepository.findByBusinessId(businessId);
     if (anyPastSubscription?.trialStart) {
-      throw new Error('Free trial has already been used for this business');
+      throw new AppError('RESOURCE_CONFLICT', { message: 'Free trial has already been used for this business' });
     }
 
     // Validate the plan exists
     const plan = await this.subscriptionRepository.findPlanById(data.planId);
     if (!plan || !plan.isActive) {
-      throw new Error('Invalid or inactive subscription plan');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Invalid or inactive subscription plan' });
     }
 
     // Calculate subscription period
@@ -208,7 +209,7 @@ export class SubscriptionService {
           discountCodeId: validation.discountCode.id
         };
       } else if (validation.errorMessage) {
-        throw new Error(`Invalid discount code: ${validation.errorMessage}`);
+        throw new AppError('VALIDATION_ERROR', { message: `Invalid discount code: ${validation.errorMessage}` });
       }
     }
 
@@ -311,18 +312,18 @@ export class SubscriptionService {
 
     const currentSubscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
     if (!currentSubscription) {
-      throw new Error('No active subscription found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'No active subscription found' });
     }
 
     const newPlan = await this.subscriptionRepository.findPlanById(newPlanId);
     if (!newPlan || !newPlan.isActive) {
-      throw new Error('Invalid or inactive subscription plan');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Invalid or inactive subscription plan' });
     }
 
     // Validate upgrade (new plan should be more expensive or have more features)
     const currentPlan = await this.subscriptionRepository.findPlanById(currentSubscription.planId);
     if (currentPlan && newPlan.price <= currentPlan.price) {
-      throw new Error('New plan must be an upgrade (higher price)');
+      throw new AppError('VALIDATION_ERROR', { message: 'New plan must be an upgrade (higher price)' });
     }
 
     // Calculate prorated end date
@@ -364,23 +365,23 @@ export class SubscriptionService {
 
     const currentSubscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
     if (!currentSubscription) {
-      throw new Error('No active subscription found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'No active subscription found' });
     }
 
     const newPlan = await this.subscriptionRepository.findPlanById(newPlanId);
     if (!newPlan || !newPlan.isActive) {
-      throw new Error('Invalid or inactive subscription plan');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Invalid or inactive subscription plan' });
     }
 
     // Check if downgrade is valid (validate usage against new plan limits)
     const limits = await this.subscriptionRepository.checkSubscriptionLimits(businessId);
     
     if (newPlan.maxBusinesses !== -1 && limits.usage.currentBusinesses > newPlan.maxBusinesses) {
-      throw new Error('Cannot downgrade: too many businesses for new plan');
+      throw new AppError('PLAN_LIMIT_REACHED', { message: 'Cannot downgrade: too many businesses for new plan' });
     }
 
     if (newPlan.maxStaffPerBusiness !== -1 && limits.usage.currentStaff > newPlan.maxStaffPerBusiness) {
-      throw new Error('Cannot downgrade: too many staff members for new plan');
+      throw new AppError('PLAN_LIMIT_REACHED', { message: 'Cannot downgrade: too many staff members for new plan' });
     }
 
     // Downgrade takes effect at end of current period
@@ -410,7 +411,7 @@ export class SubscriptionService {
 
     const subscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
     if (!subscription) {
-      throw new Error('No active subscription found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'No active subscription found' });
     }
 
     return await this.subscriptionRepository.cancelSubscription(subscription.id, cancelAtPeriodEnd);
@@ -438,7 +439,7 @@ export class SubscriptionService {
     );
 
     if (!canceledSubscription) {
-      throw new Error('No canceled subscription found to reactivate');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'No canceled subscription found to reactivate' });
     }
 
     // Reactivate by removing the cancel flag
@@ -464,12 +465,12 @@ export class SubscriptionService {
 
     const subscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
     if (!subscription || subscription.status !== SubscriptionStatus.TRIAL) {
-      throw new Error('No active trial subscription found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'No active trial subscription found' });
     }
 
     const plan = await this.subscriptionRepository.findPlanById(subscription.planId);
     if (!plan) {
-      throw new Error('Subscription plan not found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Subscription plan not found' });
     }
 
     // Calculate new period end based on plan billing interval
@@ -548,7 +549,7 @@ export class SubscriptionService {
     await this.rbacService.requirePermission(userId, PermissionName.VIEW_ALL_SUBSCRIPTIONS);
 
     // This would need to be implemented in the repository
-    throw new Error('getAllSubscriptions not implemented in repository');
+    throw new AppError('INTERNAL_SERVER_ERROR', { message: 'getAllSubscriptions not implemented in repository' });
   }
 
   async getSubscriptionStats(
@@ -701,7 +702,7 @@ export class SubscriptionService {
     ]);
 
     if (!currentPlan || !newPlan) {
-      throw new Error('Plans not found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Plans not found' });
     }
 
     const now = new Date();
@@ -781,18 +782,18 @@ export class SubscriptionService {
     // Get current subscription
     const subscription = await this.subscriptionRepository.findSubscriptionById(subscriptionId);
     if (!subscription) {
-      throw new Error('Subscription not found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Subscription not found' });
     }
 
     if (subscription.businessId !== businessId) {
-      throw new Error('Subscription does not belong to this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Subscription does not belong to this business' });
     }
 
     const currentPlan = await this.subscriptionRepository.findPlanById(subscription.planId);
     const newPlan = await this.subscriptionRepository.findPlanById(newPlanId);
 
     if (!currentPlan || !newPlan) {
-      throw new Error('Plan not found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Plan not found' });
     }
 
     // Determine change type
@@ -851,12 +852,12 @@ export class SubscriptionService {
 
     const subscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
     if (!subscription) {
-      throw new Error('No active subscription found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'No active subscription found' });
     }
 
     // If enabling auto-renewal, ensure a payment method is provided
     if (autoRenewal && !paymentMethodId && !subscription.paymentMethodId) {
-      throw new Error('Payment method required for auto-renewal');
+      throw new AppError('PAYMENT_METHOD_NOT_FOUND', { message: 'Payment method required for auto-renewal' });
     }
 
     const updateData: any = {
@@ -893,7 +894,7 @@ export class SubscriptionService {
 
     const subscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
     if (!subscription) {
-      throw new Error('No active subscription found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'No active subscription found' });
     }
 
     return await this.subscriptionRepository.updateSubscriptionSettings(
@@ -934,7 +935,7 @@ export class SubscriptionService {
 
     const subscription = await this.subscriptionRepository.findActiveSubscriptionByBusinessId(businessId);
     if (!subscription) {
-      throw new Error('No active subscription found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'No active subscription found' });
     }
 
     const paymentMethod = subscription.paymentMethodId 
@@ -1025,7 +1026,7 @@ export class SubscriptionService {
     const subscription = await this.subscriptionRepository.findSubscriptionById(subscriptionId);
 
     if (!subscription || subscription.businessId !== businessId) {
-      throw new Error('Subscription not found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Subscription not found' });
     }
 
     // Verify user has permission (reuse existing permission check)
@@ -1043,7 +1044,7 @@ export class SubscriptionService {
     // Get the new plan details
     const newPlan = await this.subscriptionRepository.findPlanById(changeData.newPlanId);
     if (!newPlan) {
-      throw new Error('New plan not found');
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'New plan not found' });
     }
 
     // Calculate the change (reuse existing logic)
@@ -1057,7 +1058,7 @@ export class SubscriptionService {
     // Validate payment method exists
     const paymentMethod = await this.subscriptionRepository.getPaymentMethod(changeData.paymentMethodId);
     if (!paymentMethod) {
-      throw new Error('Payment method not found');
+      throw new AppError('PAYMENT_METHOD_NOT_FOUND', { message: 'Payment method not found' });
     }
 
     // Calculate the change and update subscription

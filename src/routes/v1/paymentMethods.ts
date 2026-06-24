@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { PaymentMethodController } from '../../controllers/paymentMethodController';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { withAuth, requireAny } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
 
@@ -76,7 +77,7 @@ export function createPaymentMethodRoutes(paymentMethodController: PaymentMethod
   router.post(
     '/business/:businessId/update',
     requireAny([PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    withAuth(paymentMethodController.updatePaymentMethod.bind(paymentMethodController))
+    asyncHandler(withAuth(paymentMethodController.updatePaymentMethod.bind(paymentMethodController)))
   );
 
   /**
@@ -103,7 +104,7 @@ export function createPaymentMethodRoutes(paymentMethodController: PaymentMethod
   router.get(
     '/business/:businessId',
     requireAny([PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    withAuth(paymentMethodController.getPaymentMethod.bind(paymentMethodController))
+    asyncHandler(withAuth(paymentMethodController.getPaymentMethod.bind(paymentMethodController)))
   );
 
   /**
@@ -132,7 +133,7 @@ export function createPaymentMethodRoutes(paymentMethodController: PaymentMethod
   router.post(
     '/business/:businessId/retry-payment',
     requireAny([PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    withAuth(paymentMethodController.retryFailedPayment.bind(paymentMethodController))
+    asyncHandler(withAuth(paymentMethodController.retryFailedPayment.bind(paymentMethodController)))
   );
 
   return router;

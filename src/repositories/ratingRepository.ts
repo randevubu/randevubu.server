@@ -30,6 +30,17 @@ export class RatingRepository {
       };
     }
 
+    // Ratings can only be submitted within 1 week of appointment completion
+    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const completionReference = appointment.completedAt ?? appointment.endTime;
+    if (Date.now() - completionReference.getTime() > ONE_WEEK_MS) {
+      return {
+        canRate: false,
+        reason: 'Rating period has expired. You can only rate within 1 week of your appointment',
+        appointment
+      };
+    }
+
     // Check if already rated
     const existingRating = await this.prisma.customerEvaluation.findFirst({
       where: { appointmentId }

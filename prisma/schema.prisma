@@ -117,6 +117,7 @@ model User {
   pushSubscriptions      PushSubscription[]
   refreshTokens          RefreshToken[]
   behavior               UserBehavior?
+  businessBans           BusinessBan[]
   grantedRoles           UserRole[]              @relation("UserRoleGrantedBy")
   userRoles              UserRole[]
 
@@ -375,6 +376,7 @@ model Business {
   googleIntegrationEnabled Boolean                       @default(false)
   googleMapEnabled         Boolean                       @default(false)
   reviewsHidden            Boolean                       @default(false)
+  requireApproval          Boolean                       @default(false)
   googleLinkedAt           DateTime?
   googleLinkedBy           String?
   googlePlaceId            String?                       @unique
@@ -408,6 +410,7 @@ model Business {
   workingHours             WorkingHours[]
   dailyNotebooks           BusinessDailyNotebook[]
   revenueColumns           RevenueColumn[]
+  businessBans             BusinessBan[]
 
   @@index([ownerId])
   @@index([googlePlaceId])
@@ -509,10 +512,15 @@ model Appointment {
   completedAt           DateTime?
   canceledAt            DateTime?
   cancelReason          String?
+  cancelledBy           CancelledBy?
   reminderSent          Boolean                @default(false)
   reminderSentAt        DateTime?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
+  // Maintained by a DB trigger (see migration restore_appointment_overlap_constraint).
+  // Declared here so Prisma does not treat it as drift and drop it (which is what
+  // silently disabled the appointments_no_overlap_per_staff exclusion constraint before).
+  time_range            Unsupported("tsrange")?
   appointment_payments  appointment_payments[]
   business              Business               @relation(fields: [businessId], references: [id])
   customer              User                   @relation(fields: [customerId], references: [id])
@@ -643,6 +651,26 @@ model UserBehavior {
   @@index([currentStrikes])
   @@index([bannedUntil])
   @@map("user_behavior")
+}
+
+model BusinessBan {
+  id           String    @id
+  userId       String
+  businessId   String
+  reason       String
+  bannedUntil  DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business     Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessId])
+  @@index([userId])
+  @@index([businessId])
+  @@index([isActive])
+  @@map("business_bans")
 }
 
 model CustomerNote {
@@ -1162,13 +1190,23 @@ enum BusinessStaffRole {
 
 enum AppointmentStatus {
   PENDING
+  PENDING_APPROVAL
   CONFIRMED
   IN_PROGRESS
   COMPLETED
   CANCELED
   NO_SHOW
+  REJECTED_BY_BUSINESS
 
   @@map("appointment_status")
+}
+
+enum CancelledBy {
+  CUSTOMER
+  BUSINESS
+  SYSTEM
+
+  @@map("cancelled_by")
 }
 
 enum PaymentStatus {

@@ -4,6 +4,7 @@
  */
 
 import { CancellationPolicySettings } from '../../../types/businessSettings';
+import { AppError } from '../../../types/responseTypes';
 import { 
   PolicyViolationResult, 
   CustomerPolicyStatus, 
@@ -13,6 +14,10 @@ import {
 } from '../../../types/cancellationPolicy';
 import { UserBehaviorRepository } from '../../../repositories/userBehaviorRepository';
 import { BusinessRepository } from '../../../repositories/businessRepository';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
 export class CancellationPolicyService {
   constructor(
     private userBehaviorRepository: UserBehaviorRepository,
@@ -69,7 +74,7 @@ export class CancellationPolicyService {
     const business = await this.businessRepository.findById(businessId);
     
     if (!business) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     const currentSettings = business.settings as Record<string, unknown> || {};
@@ -105,29 +110,28 @@ export class CancellationPolicyService {
     ]);
 
     if (!userBehavior) {
-      // Create new behavior record if it doesn't exist
       await this.userBehaviorRepository.createOrUpdate(customerId);
       const newBehavior = await this.userBehaviorRepository.findByUserId(customerId);
       if (!newBehavior) {
-        throw new Error('Failed to create user behavior record');
+        throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Failed to create user behavior record' });
       }
-      const cancellationsToday = await this.userBehaviorRepository.countCanceledTodayIstanbul(customerId);
-      return this.buildCustomerPolicyStatus(
+      const cancelledThisMonth = await this.userBehaviorRepository.countCanceledThisMonthIstanbul(customerId);
+      return await this.buildCustomerPolicyStatus(
         customerId,
         businessId,
         newBehavior,
         policySettings,
-        cancellationsToday
+        cancelledThisMonth
       );
     }
 
-    const cancellationsToday = await this.userBehaviorRepository.countCanceledTodayIstanbul(customerId);
-    return this.buildCustomerPolicyStatus(
+    const cancelledThisMonth = await this.userBehaviorRepository.countCanceledThisMonthIstanbul(customerId);
+    return await this.buildCustomerPolicyStatus(
       customerId,
       businessId,
       userBehavior,
       policySettings,
-      cancellationsToday
+      cancelledThisMonth
     );
   }
 
@@ -195,7 +199,7 @@ export class CancellationPolicyService {
       const cancellationViolation: PolicyViolationResult = {
         isViolation: true,
         violationType: 'DAILY_CANCELLATIONS',
-        message: `Günlük maksimum iptal sayısına ulaştığınız için yeni randevu alamazsınız (${customerStatus.policySettings.maxDailyCancellations})`,
+        message: `Bu ay ${customerStatus.policySettings.maxDailyCancellations} iptal hakkınızı kullandınız. Yeni randevu almak için gelecek ayı bekleyiniz.`,
         remainingCount: 0,
         canBookAppointment: false,
         canCancelAppointment: true
@@ -221,7 +225,7 @@ export class CancellationPolicyService {
       const noShowViolation: PolicyViolationResult = {
         isViolation: true,
         violationType: 'MONTHLY_NO_SHOWS',
-        message: `Aylık maksimum gelmeme sayısına ulaştığınız için yeni randevu alamazsınız`,
+        message: `Bu ay ${customerStatus.policySettings.maxMonthlyNoShows} gelmeme limitinize ulaştınız. Yeni randevu almak için gelecek ayı bekleyiniz.`,
         remainingCount: 0,
         canBookAppointment: false,
         canCancelAppointment: true
@@ -271,27 +275,34 @@ export class CancellationPolicyService {
   /**
    * Build customer policy status from user behavior data
    */
-  private buildCustomerPolicyStatus(
+  private async buildCustomerPolicyStatus(
     customerId: string,
     businessId: string,
     userBehavior: any,
     policySettings: CancellationPolicySettings,
     cancellationsToday: number
-  ): CustomerPolicyStatus {
+  ): Promise<CustomerPolicyStatus> {
     const now = new Date();
     const gracePeriodEndsAt = new Date(userBehavior.createdAt);
     gracePeriodEndsAt.setDate(gracePeriodEndsAt.getDate() + (policySettings.gracePeriodDays || 0));
     
     const gracePeriodActive = (policySettings.gracePeriodDays || 0) > 0 && now < gracePeriodEndsAt;
 
+    // Check per-business ban (replaces global UserBehavior.isBanned)
+    const now2 = new Date();
+    const businessBan = await prisma.businessBan.findUnique({
+      where: { userId_businessId: { userId: customerId, businessId } },
+    });
+    const isBusinessBanned = !!(businessBan?.isActive && (!businessBan.bannedUntil || businessBan.bannedUntil > now2));
+
     return {
       customerId,
       businessId,
       currentCancellations: cancellationsToday,
       currentNoShows: userBehavior.noShowsThisMonth || 0,
-      isBanned: userBehavior.isBanned || false,
-      bannedUntil: userBehavior.bannedUntil,
-      banReason: userBehavior.banReason,
+      isBanned: isBusinessBanned,
+      bannedUntil: isBusinessBanned ? (businessBan?.bannedUntil ?? undefined) : undefined,
+      banReason: isBusinessBanned ? businessBan?.reason : undefined,
       gracePeriodActive,
       gracePeriodEndsAt: gracePeriodActive ? gracePeriodEndsAt : undefined,
       policySettings,

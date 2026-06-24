@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { ClosureType } from '../../../types/business';
+import { AppError } from '../../../types/responseTypes';
 
 export interface DateRange {
   startDate: Date;
@@ -120,7 +121,7 @@ export class ClosureAnalyticsService {
 
       return analytics;
     } catch (error) {
-      throw new Error(`Failed to calculate closure analytics: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: `Failed to calculate closure analytics: ${error instanceof Error ? error.message : 'Unknown error'}` });
     }
   }
 
@@ -134,7 +135,7 @@ export class ClosureAnalyticsService {
       });
 
       if (!closure) {
-        throw new Error('Closure not found');
+        throw new AppError('CLOSURE_NOT_FOUND', { message: 'Closure not found' });
       }
 
       // Get affected appointments
@@ -229,7 +230,7 @@ export class ClosureAnalyticsService {
         notificationStats
       };
     } catch (error) {
-      throw new Error(`Failed to generate customer impact report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: `Failed to generate customer impact report: ${error instanceof Error ? error.message : 'Unknown error'}` });
     }
   }
 
@@ -302,7 +303,7 @@ export class ClosureAnalyticsService {
         comparisonWithPreviousPeriod: previousPeriodComparison
       };
     } catch (error) {
-      throw new Error(`Failed to calculate revenue impact: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: `Failed to calculate revenue impact: ${error instanceof Error ? error.message : 'Unknown error'}` });
     }
   }
 

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { UserBehaviorController } from '../../controllers/userBehaviorController';
 import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
@@ -32,7 +33,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/my/behavior',
     dynamicCache,
-    withAuth(userBehaviorController.getMyBehavior.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.getMyBehavior.bind(userBehaviorController)))
   );
 
   /**
@@ -52,7 +53,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/my/status',
     realTimeCache,
-    withAuth(userBehaviorController.checkUserStatus.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.checkUserStatus.bind(userBehaviorController)))
   );
 
   /**
@@ -72,7 +73,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/my/summary',
     dynamicCache,
-    withAuth(userBehaviorController.getUserSummary.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.getUserSummary.bind(userBehaviorController)))
   );
 
   /**
@@ -91,7 +92,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
    */
   router.get(
     '/my/risk-assessment',
-    withAuth(userBehaviorController.getUserRiskAssessment.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.getUserRiskAssessment.bind(userBehaviorController)))
   );
 
   /**
@@ -110,7 +111,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
    */
   router.get(
     '/my/reliability-score',
-    withAuth(userBehaviorController.calculateReliabilityScore.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.calculateReliabilityScore.bind(userBehaviorController)))
   );
 
   // User behavior management (requires permissions)
@@ -139,7 +140,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/:userId/behavior',
     requirePermission(PermissionName.VIEW_USER_BEHAVIOR),
-    withAuth(userBehaviorController.getUserBehavior.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.getUserBehavior.bind(userBehaviorController)))
   );
 
   /**
@@ -167,7 +168,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/:userId/summary',
     requirePermission(PermissionName.VIEW_USER_BEHAVIOR),
-    withAuth(userBehaviorController.getUserSummary.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.getUserSummary.bind(userBehaviorController)))
   );
 
   /**
@@ -195,7 +196,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/:userId/status',
     requireAny([PermissionName.VIEW_USER_BEHAVIOR, PermissionName.VIEW_OWN_CUSTOMERS]),
-    withAuth(userBehaviorController.checkUserStatus.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.checkUserStatus.bind(userBehaviorController)))
   );
 
   /**
@@ -223,7 +224,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/:userId/risk-assessment',
     requirePermission(PermissionName.VIEW_USER_BEHAVIOR),
-    withAuth(userBehaviorController.getUserRiskAssessment.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.getUserRiskAssessment.bind(userBehaviorController)))
   );
 
   /**
@@ -251,7 +252,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/:userId/reliability-score',
     requirePermission(PermissionName.VIEW_USER_BEHAVIOR),
-    withAuth(userBehaviorController.calculateReliabilityScore.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.calculateReliabilityScore.bind(userBehaviorController)))
   );
 
   // Strike management
@@ -280,7 +281,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.post(
     '/:userId/strikes',
     requireAny([PermissionName.MANAGE_USER_BEHAVIOR, PermissionName.MANAGE_STRIKES]),
-    withAuth(userBehaviorController.addStrike.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.addStrike.bind(userBehaviorController)))
   );
 
   /**
@@ -308,7 +309,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.delete(
     '/:userId/strikes',
     requirePermission(PermissionName.MANAGE_STRIKES),
-    withAuth(userBehaviorController.removeStrike.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.removeStrike.bind(userBehaviorController)))
   );
 
   // Ban management
@@ -337,7 +338,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.post(
     '/:userId/ban',
     requirePermission(PermissionName.BAN_USERS),
-    withAuth(userBehaviorController.banUser.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.banUser.bind(userBehaviorController)))
   );
 
   /**
@@ -365,7 +366,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.delete(
     '/:userId/ban',
     requirePermission(PermissionName.BAN_USERS),
-    withAuth(userBehaviorController.unbanUser.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.unbanUser.bind(userBehaviorController)))
   );
 
   // User flagging
@@ -394,7 +395,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.post(
     '/:userId/flag',
     requireAny([PermissionName.MANAGE_USER_BEHAVIOR, PermissionName.FLAG_USERS]),
-    withAuth(userBehaviorController.flagUserForReview.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.flagUserForReview.bind(userBehaviorController)))
   );
 
   // Business-specific customer behavior
@@ -428,7 +429,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/business/:businessId/customer/:customerId',
     requireAny([PermissionName.VIEW_USER_BEHAVIOR, PermissionName.VIEW_OWN_CUSTOMERS]),
-    withAuth(userBehaviorController.getCustomerBehaviorForBusiness.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.getCustomerBehaviorForBusiness.bind(userBehaviorController)))
   );
 
   // Admin and reporting routes
@@ -451,7 +452,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/admin/problematic',
     requirePermission(PermissionName.VIEW_USER_BEHAVIOR),
-    withAuth(userBehaviorController.getProblematicUsers.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.getProblematicUsers.bind(userBehaviorController)))
   );
 
   /**
@@ -473,7 +474,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.get(
     '/admin/stats',
     requirePermission(PermissionName.VIEW_USER_BEHAVIOR),
-    withAuth(userBehaviorController.getUserBehaviorStats.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.getUserBehaviorStats.bind(userBehaviorController)))
   );
 
   // System maintenance routes
@@ -496,7 +497,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.post(
     '/admin/process-automatic-strikes',
     requirePermission(PermissionName.MANAGE_USER_BEHAVIOR),
-    withAuth(userBehaviorController.processAutomaticStrikes.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.processAutomaticStrikes.bind(userBehaviorController)))
   );
 
   /**
@@ -518,7 +519,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.post(
     '/admin/reset-expired-strikes',
     requirePermission(PermissionName.MANAGE_STRIKES),
-    withAuth(userBehaviorController.resetExpiredStrikes.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.resetExpiredStrikes.bind(userBehaviorController)))
   );
 
   /**
@@ -540,7 +541,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.post(
     '/admin/unban-expired',
     requirePermission(PermissionName.BAN_USERS),
-    withAuth(userBehaviorController.unbanExpiredBans.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.unbanExpiredBans.bind(userBehaviorController)))
   );
 
   // Batch operations
@@ -563,7 +564,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.post(
     '/admin/batch-strikes',
     requirePermission(PermissionName.MANAGE_STRIKES),
-    withAuth(userBehaviorController.batchAddStrikes.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.batchAddStrikes.bind(userBehaviorController)))
   );
 
   /**
@@ -585,7 +586,7 @@ export function createUserBehaviorRoutes(userBehaviorController: UserBehaviorCon
   router.post(
     '/admin/batch-ban',
     requirePermission(PermissionName.BAN_USERS),
-    withAuth(userBehaviorController.batchBanUsers.bind(userBehaviorController))
+    asyncHandler(withAuth(userBehaviorController.batchBanUsers.bind(userBehaviorController)))
   );
 
   return router;

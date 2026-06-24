@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ContactController } from '../../controllers/contactController';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { createUserRateLimiter } from '../../middleware/userRateLimit';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
@@ -131,7 +132,7 @@ export function createContactRoutes(controller: ContactController): Router {
   router.post(
     '/',
     rateLimiter.middleware,
-    controller.sendContactMessage.bind(controller)
+    asyncHandler(controller.sendContactMessage.bind(controller))
   );
 
   return router;

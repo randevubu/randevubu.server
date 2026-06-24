@@ -1,14 +1,7 @@
 import { Request, Response } from 'express';
 import { BusinessTypeService } from '../services/domain/offering';
 import { ResponseHelper } from '../utils/responseHelper';
-import {
-  handleRouteError,
-  sendSuccessResponse,
-  createErrorContext,
-  sendAppErrorResponse,
-} from '../utils/responseUtils';
 import { AppError } from '../types/responseTypes';
-import { ERROR_CODES } from '../constants/errorCodes';
 
 export class BusinessTypeController {
   constructor(
@@ -16,204 +9,70 @@ export class BusinessTypeController {
     private responseHelper: ResponseHelper
   ) {}
 
-  /**
-   * Get all active business types
-   * GET /api/v1/business-types
-   */
   async getAllActiveBusinessTypes(req: Request, res: Response): Promise<void> {
-    try {
-      const businessTypes = await this.businessTypeService.getAllActiveBusinessTypes();
-      await this.responseHelper.success(
-        res,
-        'success.businessType.retrieved',
-        businessTypes,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    const businessTypes = await this.businessTypeService.getAllActiveBusinessTypes();
+    await this.responseHelper.success(res, 'success.businessType.retrieved', businessTypes, 200, req);
   }
 
-  /**
-   * Get all business types (including inactive)
-   * GET /api/v1/business-types/all
-   */
   async getAllBusinessTypes(req: Request, res: Response): Promise<void> {
-    try {
-      const businessTypes = await this.businessTypeService.getAllBusinessTypes();
-      await this.responseHelper.success(
-        res,
-        'success.businessType.allRetrieved',
-        businessTypes,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    const businessTypes = await this.businessTypeService.getAllBusinessTypes();
+    await this.responseHelper.success(res, 'success.businessType.allRetrieved', businessTypes, 200, req);
   }
 
-  /**
-   * Get business types by category
-   * GET /api/v1/business-types/category/:category
-   */
   async getBusinessTypesByCategory(req: Request, res: Response): Promise<void> {
-    try {
-      const { category } = req.params;
+    const { category } = req.params;
 
-      // Validate category parameter
-      if (!category || typeof category !== 'string') {
-        const error = new AppError(
-          'Category parameter is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Sanitize category parameter
-      const sanitizedCategory = category.trim().toLowerCase();
-      if (sanitizedCategory.length < 2 || sanitizedCategory.length > 50) {
-        const error = new AppError(
-          'Category must be between 2 and 50 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      const businessTypes =
-        await this.businessTypeService.getBusinessTypesByCategory(sanitizedCategory);
-
-      if (businessTypes.length === 0) {
-        const error = new AppError(
-          `No business types found for category: ${sanitizedCategory}`,
-          404,
-          ERROR_CODES.BUSINESS_NOT_FOUND
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      await this.responseHelper.success(
-        res,
-        'success.businessType.byCategoryRetrieved',
-        businessTypes,
-        200,
-        req,
-        { category: sanitizedCategory }
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!category || typeof category !== 'string') {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Category parameter is required', params: { field: 'category' } });
     }
+
+    const sanitizedCategory = category.trim().toLowerCase();
+    if (sanitizedCategory.length < 2 || sanitizedCategory.length > 50) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Category must be between 2 and 50 characters' });
+    }
+
+    const businessTypes = await this.businessTypeService.getBusinessTypesByCategory(sanitizedCategory);
+
+    if (businessTypes.length === 0) {
+      throw new AppError('BUSINESS_TYPE_NOT_FOUND', { message: `No business types found for category: ${sanitizedCategory}` });
+    }
+
+    await this.responseHelper.success(res, 'success.businessType.byCategoryRetrieved', businessTypes, 200, req, { category: sanitizedCategory });
   }
 
-  /**
-   * Get business type by ID
-   * GET /api/v1/business-types/:id
-   */
   async getBusinessTypeById(req: Request, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
+    const { id } = req.params;
 
-      // Validate ID parameter
-      if (!id || typeof id !== 'string') {
-        const error = new AppError(
-          'Business type ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate ID format (UUID or numeric)
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
-        const error = new AppError(
-          'Invalid business type ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      const businessType = await this.businessTypeService.getBusinessTypeById(id);
-
-      if (!businessType) {
-        const error = new AppError('Business type not found', 404, ERROR_CODES.BUSINESS_NOT_FOUND);
-        return sendAppErrorResponse(res, error);
-      }
-
-      await this.responseHelper.success(
-        res,
-        'success.businessType.retrievedSingle',
-        businessType,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!id || typeof id !== 'string') {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Business type ID is required', params: { field: 'id' } });
     }
+
+    const idRegex = /^[a-zA-Z0-9-_]+$/;
+    if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+      throw new AppError('INVALID_ID_FORMAT', { message: 'Invalid business type ID format', params: { field: 'id' } });
+    }
+
+    const businessType = await this.businessTypeService.getBusinessTypeById(id);
+
+    if (!businessType) {
+      throw new AppError('BUSINESS_TYPE_NOT_FOUND', { message: 'Business type not found' });
+    }
+
+    await this.responseHelper.success(res, 'success.businessType.retrievedSingle', businessType, 200, req);
   }
 
-  /**
-   * Get business types with business count
-   * GET /api/v1/business-types/with-count
-   */
   async getBusinessTypesWithCount(req: Request, res: Response): Promise<void> {
-    try {
-      const businessTypes = await this.businessTypeService.getBusinessTypesWithCount();
-
-      await this.responseHelper.success(
-        res,
-        'success.businessType.withCountRetrieved',
-        businessTypes,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    const businessTypes = await this.businessTypeService.getBusinessTypesWithCount();
+    await this.responseHelper.success(res, 'success.businessType.withCountRetrieved', businessTypes, 200, req);
   }
 
-  /**
-   * Get all categories
-   * GET /api/v1/business-types/categories
-   */
   async getCategories(req: Request, res: Response): Promise<void> {
-    try {
-      const categories = await this.businessTypeService.getCategories();
-
-      await this.responseHelper.success(
-        res,
-        'success.businessType.categoriesRetrieved',
-        categories,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    const categories = await this.businessTypeService.getCategories();
+    await this.responseHelper.success(res, 'success.businessType.categoriesRetrieved', categories, 200, req);
   }
 
-  /**
-   * Get business types grouped by category
-   * GET /api/v1/business-types/grouped
-   */
   async getBusinessTypesGroupedByCategory(req: Request, res: Response): Promise<void> {
-    try {
-      const groupedBusinessTypes =
-        await this.businessTypeService.getBusinessTypesGroupedByCategory();
-
-      await this.responseHelper.success(
-        res,
-        'success.businessType.groupedRetrieved',
-        groupedBusinessTypes,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    const groupedBusinessTypes = await this.businessTypeService.getBusinessTypesGroupedByCategory();
+    await this.responseHelper.success(res, 'success.businessType.groupedRetrieved', groupedBusinessTypes, 200, req);
   }
 }

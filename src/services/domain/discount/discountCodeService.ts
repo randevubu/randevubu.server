@@ -2,6 +2,7 @@ import { DiscountType } from '@prisma/client';
 import { DiscountCodeRepository, DiscountCodeData, CreateDiscountCodeRequest, DiscountValidationResult } from '../../../repositories/discountCodeRepository';
 import { RBACService } from '../rbac';
 import { PermissionName } from '../../../types/auth';
+import { AppError } from '../../../types/responseTypes';
 import logger from "../../../utils/Logger/logger";
 export interface CreateDiscountCodeServiceRequest extends Omit<CreateDiscountCodeRequest, 'code'> {
   code?: string; // Optional - will be auto-generated if not provided
@@ -26,21 +27,21 @@ export class DiscountCodeService {
     // Validate code uniqueness
     const existingCode = await this.discountCodeRepository.findByCode(code);
     if (existingCode) {
-      throw new Error('Discount code already exists');
+      throw new AppError('RESOURCE_CONFLICT', { message: 'Discount code already exists' });
     }
 
     // Validate discount value
     if (data.discountType === DiscountType.PERCENTAGE && data.discountValue > 100) {
-      throw new Error('Percentage discount cannot exceed 100%');
+      throw new AppError('VALIDATION_ERROR', { message: 'Percentage discount cannot exceed 100%' });
     }
 
     if (data.discountValue <= 0) {
-      throw new Error('Discount value must be positive');
+      throw new AppError('VALIDATION_ERROR', { message: 'Discount value must be positive' });
     }
 
     // Validate dates
     if (data.validUntil && data.validFrom && data.validUntil <= data.validFrom) {
-      throw new Error('Valid until date must be after valid from date');
+      throw new AppError('VALIDATION_ERROR', { message: 'Valid until date must be after valid from date' });
     }
 
     return await this.discountCodeRepository.create({
@@ -60,29 +61,29 @@ export class DiscountCodeService {
 
     const existingCode = await this.discountCodeRepository.findById(discountCodeId);
     if (!existingCode) {
-      throw new Error('Discount code not found');
+      throw new AppError('DISCOUNT_CODE_NOT_FOUND', { message: 'Discount code not found' });
     }
 
     // Check if code is being changed and validate uniqueness
     if (data.code && data.code !== existingCode.code) {
       const codeExists = await this.discountCodeRepository.findByCode(data.code);
       if (codeExists) {
-        throw new Error('Discount code already exists');
+        throw new AppError('RESOURCE_CONFLICT', { message: 'Discount code already exists' });
       }
     }
 
     // Validate discount value
     if (data.discountType === DiscountType.PERCENTAGE && data.discountValue && data.discountValue > 100) {
-      throw new Error('Percentage discount cannot exceed 100%');
+      throw new AppError('VALIDATION_ERROR', { message: 'Percentage discount cannot exceed 100%' });
     }
 
     if (data.discountValue !== undefined && data.discountValue <= 0) {
-      throw new Error('Discount value must be positive');
+      throw new AppError('VALIDATION_ERROR', { message: 'Discount value must be positive' });
     }
 
     const updatedCode = await this.discountCodeRepository.update(discountCodeId, data);
     if (!updatedCode) {
-      throw new Error('Failed to update discount code');
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Failed to update discount code' });
     }
 
     return updatedCode;
@@ -97,7 +98,7 @@ export class DiscountCodeService {
 
     const discountCode = await this.discountCodeRepository.findById(discountCodeId);
     if (!discountCode) {
-      throw new Error('Discount code not found');
+      throw new AppError('DISCOUNT_CODE_NOT_FOUND', { message: 'Discount code not found' });
     }
 
     return discountCode;
@@ -213,12 +214,12 @@ export class DiscountCodeService {
 
     const discountCode = await this.discountCodeRepository.findById(discountCodeId);
     if (!discountCode) {
-      throw new Error('Discount code not found');
+      throw new AppError('DISCOUNT_CODE_NOT_FOUND', { message: 'Discount code not found' });
     }
 
     // Prevent deletion if code has been used
     if (discountCode.currentUsages > 0) {
-      throw new Error('Cannot delete discount code that has been used. Deactivate it instead.');
+      throw new AppError('VALIDATION_ERROR', { message: 'Cannot delete discount code that has been used. Deactivate it instead.' });
     }
 
     return await this.discountCodeRepository.delete(discountCodeId);
@@ -237,7 +238,7 @@ export class DiscountCodeService {
 
     const discountCode = await this.discountCodeRepository.findById(discountCodeId);
     if (!discountCode) {
-      throw new Error('Discount code not found');
+      throw new AppError('DISCOUNT_CODE_NOT_FOUND', { message: 'Discount code not found' });
     }
 
     return await this.discountCodeRepository.getUsageHistory(discountCodeId, params);
@@ -269,7 +270,7 @@ export class DiscountCodeService {
     await this.rbacService.requirePermission(userId, PermissionName.MANAGE_ALL_SUBSCRIPTIONS);
 
     if (params.count > 1000) {
-      throw new Error('Cannot generate more than 1000 codes at once');
+      throw new AppError('VALIDATION_ERROR', { message: 'Cannot generate more than 1000 codes at once' });
     }
 
     const codes: DiscountCodeData[] = [];

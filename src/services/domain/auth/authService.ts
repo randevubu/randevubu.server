@@ -1,4 +1,6 @@
-import { AuditAction, VerificationPurpose } from "@prisma/client";
+import { AuditAction, VerificationPurpose, PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 import { parsePhoneNumber } from "libphonenumber-js";
 import { RepositoryContainer } from "../../../repositories";
 import {
@@ -498,10 +500,16 @@ export class AuthService {
     deviceInfo?: DeviceInfo,
     context?: ErrorContext
   ): Promise<void> {
+    // The DB stores the opaque token value embedded in the refresh JWT, not the
+    // JWT itself. Verify + extract via the token service; if that fails (expired
+    // or malformed token) revoke ALL of the user's sessions so logout can never
+    // silently leave a stolen refresh token active.
+    let revoked = false;
     if (refreshToken) {
-      await this.repositories.refreshTokenRepository.revokeByToken(
-        refreshToken
-      );
+      revoked = await this.tokenService.revokeRefreshToken(refreshToken, context);
+    }
+    if (!revoked) {
+      await this.tokenService.revokeAllUserTokens(userId, context);
     }
 
     // Log audit event
@@ -928,11 +936,18 @@ export class AuthService {
 
     const reliabilityScore = reliabilityResult.score;
 
-    // Check if user is currently banned
+    // Check per-business ban for this owner's business
     const now = new Date();
-    const isBanned =
-      userBehavior?.isBanned &&
-      (!userBehavior.bannedUntil || userBehavior.bannedUntil > now);
+    const ownerBusiness = await prisma.business.findFirst({
+      where: { ownerId: userId },
+      select: { id: true }
+    });
+    const businessBan = ownerBusiness
+      ? await prisma.businessBan.findUnique({
+          where: { userId_businessId: { userId: customerId, businessId: ownerBusiness.id } }
+        })
+      : null;
+    const isBanned = !!(businessBan?.isActive && (!businessBan.bannedUntil || businessBan.bannedUntil > now));
 
     return {
       id: customer.id,
@@ -950,10 +965,9 @@ export class AuthService {
       noShowCount,
       reliabilityScore: reliabilityScore,
       lastAppointmentDate,
-      // Ban status information
-      isBanned: isBanned || false,
-      bannedUntil: userBehavior?.bannedUntil || null,
-      banReason: isBanned ? userBehavior?.banReason || null : null,
+      isBanned,
+      bannedUntil: isBanned ? (businessBan?.bannedUntil ?? null) : null,
+      banReason: isBanned ? (businessBan?.reason ?? null) : null,
       currentStrikes: userBehavior?.currentStrikes || 0,
     };
   }

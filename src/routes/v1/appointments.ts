@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { AppointmentController } from '../../controllers/appointmentController';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { dynamicCache, realTimeCache, cache } from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import { initializeCacheInvalidationMiddleware } from '../../middleware/cacheInvalidation';
@@ -120,7 +121,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
     '/my-appointments',
     realTimeCache,
     requireBusinessAccess,
-    appointmentController.getMyAppointments.bind(appointmentController)
+    asyncHandler(appointmentController.getMyAppointments.bind(appointmentController))
   );
 
   // Appointment CRUD operations
@@ -218,7 +219,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
     '/',
     cacheInvalidation.invalidateAppointmentCache,
     reservationValidation.validateReservationRules,
-    appointmentController.createAppointment.bind(appointmentController)
+    asyncHandler(appointmentController.createAppointment.bind(appointmentController))
   );
 
   // Customer appointments - MUST be before /:id route to avoid route conflicts
@@ -465,14 +466,14 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/customer',
     realTimeCache,
-    appointmentController.getCustomerAppointments.bind(appointmentController)
+    asyncHandler(appointmentController.getCustomerAppointments.bind(appointmentController))
   );
 
   // Explicit route for specific customerId (admin/staff)
   router.get(
     '/customer/:customerId',
     realTimeCache,
-    appointmentController.getCustomerAppointments.bind(appointmentController)
+    asyncHandler(appointmentController.getCustomerAppointments.bind(appointmentController))
   );
 
   /**
@@ -500,7 +501,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/:id',
     realTimeCache,
-    appointmentController.getAppointmentById.bind(appointmentController)
+    asyncHandler(appointmentController.getAppointmentById.bind(appointmentController))
   );
 
   /**
@@ -529,7 +530,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
     '/:id',
     cacheInvalidation.invalidateAppointmentCache,
     reservationValidation.validateAdvanceBooking,
-    appointmentController.updateAppointment.bind(appointmentController)
+    asyncHandler(appointmentController.updateAppointment.bind(appointmentController))
   );
 
   /**
@@ -615,7 +616,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.put(
     '/:id/status',
     cacheInvalidation.invalidateAppointmentCache,
-    appointmentController.updateAppointmentStatus.bind(appointmentController)
+    asyncHandler(appointmentController.updateAppointmentStatus.bind(appointmentController))
   );
 
   // Appointment status management
@@ -774,7 +775,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.post(
     '/:id/cancel',
     cacheInvalidation.invalidateAppointmentCache,
-    appointmentController.cancelAppointment.bind(appointmentController)
+    asyncHandler(appointmentController.cancelAppointment.bind(appointmentController))
   );
 
   /**
@@ -815,7 +816,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
         action: 'edit_all',
       })
     ),
-    appointmentController.confirmAppointment.bind(appointmentController)
+    asyncHandler(appointmentController.confirmAppointment.bind(appointmentController))
   );
 
   /**
@@ -856,7 +857,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
         action: 'edit_all',
       })
     ),
-    appointmentController.completeAppointment.bind(appointmentController)
+    asyncHandler(appointmentController.completeAppointment.bind(appointmentController))
   );
 
   /**
@@ -897,7 +898,27 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
         action: 'edit_all',
       })
     ),
-    appointmentController.markNoShow.bind(appointmentController)
+    asyncHandler(appointmentController.markNoShow.bind(appointmentController))
+  );
+
+  router.patch(
+    '/:id/approve',
+    cacheInvalidation.invalidateAppointmentCache,
+    authorizationMiddleware.requirePermission({
+      resource: 'appointment',
+      action: 'edit_all',
+    }),
+    asyncHandler(appointmentController.approveAppointment.bind(appointmentController))
+  );
+
+  router.patch(
+    '/:id/reject',
+    cacheInvalidation.invalidateAppointmentCache,
+    authorizationMiddleware.requirePermission({
+      resource: 'appointment',
+      action: 'edit_all',
+    }),
+    asyncHandler(appointmentController.rejectAppointment.bind(appointmentController))
   );
 
   /**
@@ -916,7 +937,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
    */
   router.get(
     '/my/upcoming',
-    appointmentController.getUpcomingAppointments.bind(appointmentController)
+    asyncHandler(appointmentController.getUpcomingAppointments.bind(appointmentController))
   );
 
   // Business appointments
@@ -946,7 +967,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/business/:businessId',
     requireBusinessOwnershipAccess,
-    appointmentController.getBusinessAppointments.bind(appointmentController)
+    asyncHandler(appointmentController.getBusinessAppointments.bind(appointmentController))
   );
 
   /**
@@ -975,7 +996,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/business/:businessId/today',
     requireBusinessOwnershipAccess,
-    appointmentController.getTodaysAppointments.bind(appointmentController)
+    asyncHandler(appointmentController.getTodaysAppointments.bind(appointmentController))
   );
 
   // Context-based today's appointments for user's businesses
@@ -1065,7 +1086,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/my/today',
     requireBusinessAccess,
-    appointmentController.getMyTodaysAppointments.bind(appointmentController)
+    asyncHandler(appointmentController.getMyTodaysAppointments.bind(appointmentController))
   );
 
   /**
@@ -1094,7 +1115,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/business/:businessId/stats',
     requireBusinessOwnershipAccess,
-    appointmentController.getAppointmentStats.bind(appointmentController)
+    asyncHandler(appointmentController.getAppointmentStats.bind(appointmentController))
   );
 
   // Context-based stats for user's businesses
@@ -1178,7 +1199,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/my/stats',
     requireBusinessAccess,
-    appointmentController.getAppointmentStats.bind(appointmentController)
+    asyncHandler(appointmentController.getAppointmentStats.bind(appointmentController))
   );
 
   /**
@@ -1205,7 +1226,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/business/:businessId/date-range',
     requireBusinessOwnershipAccess,
-    appointmentController.getAppointmentsByDateRange.bind(appointmentController)
+    asyncHandler(appointmentController.getAppointmentsByDateRange.bind(appointmentController))
   );
 
   /**
@@ -1239,7 +1260,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/business/:businessId/status/:status',
     requireBusinessOwnershipAccess,
-    appointmentController.getAppointmentsByStatus.bind(appointmentController)
+    asyncHandler(appointmentController.getAppointmentsByStatus.bind(appointmentController))
   );
 
   // Service and staff appointments
@@ -1278,7 +1299,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
         action: 'view_own',
       })
     ),
-    appointmentController.getAppointmentsByService.bind(appointmentController)
+    asyncHandler(appointmentController.getAppointmentsByService.bind(appointmentController))
   );
 
   /**
@@ -1316,7 +1337,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
         action: 'view_own',
       })
     ),
-    appointmentController.getAppointmentsByStaff.bind(appointmentController)
+    asyncHandler(appointmentController.getAppointmentsByStaff.bind(appointmentController))
   );
 
   // Search appointments
@@ -1334,7 +1355,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
    *       401:
    *         description: Unauthorized
    */
-  router.get('/search', appointmentController.searchAppointments.bind(appointmentController));
+  router.get('/search', asyncHandler(appointmentController.searchAppointments.bind(appointmentController)));
 
   // Admin routes
   /**
@@ -1360,7 +1381,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
       resource: 'appointment',
       action: 'view_all',
     }),
-    appointmentController.getAllAppointments.bind(appointmentController)
+    asyncHandler(appointmentController.getAllAppointments.bind(appointmentController))
   );
 
   /**
@@ -1386,7 +1407,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
       resource: 'appointment',
       action: 'edit_all',
     }),
-    appointmentController.batchUpdateAppointmentStatus.bind(appointmentController)
+    asyncHandler(appointmentController.batchUpdateAppointmentStatus.bind(appointmentController))
   );
 
   /**
@@ -1412,7 +1433,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
       resource: 'appointment',
       action: 'cancel_all',
     }),
-    appointmentController.batchCancelAppointments.bind(appointmentController)
+    asyncHandler(appointmentController.batchCancelAppointments.bind(appointmentController))
   );
 
   /**
@@ -1474,7 +1495,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/nearest-current-hour',
     realTimeCache,
-    appointmentController.getNearestCurrentHour.bind(appointmentController)
+    asyncHandler(appointmentController.getNearestCurrentHour.bind(appointmentController))
   );
 
   /**
@@ -1628,13 +1649,13 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
       skipCache: (req: Request) => req.query.live === 'true',
     }),
     requireBusinessOwnershipAccess,
-    (req: Request, res: Response, next: NextFunction) => {
+    asyncHandler((req: Request, res: Response, next: NextFunction) => {
       return appointmentController.getMonitorAppointments(
         req as BusinessOwnershipRequest,
         res,
         next
       );
-    }
+    })
   );
 
   /**
@@ -1692,7 +1713,7 @@ export function createAppointmentRoutes(appointmentController: AppointmentContro
   router.get(
     '/current-hour',
     realTimeCache,
-    appointmentController.getCurrentHourAppointments.bind(appointmentController)
+    asyncHandler(appointmentController.getCurrentHourAppointments.bind(appointmentController))
   );
 
   return router;

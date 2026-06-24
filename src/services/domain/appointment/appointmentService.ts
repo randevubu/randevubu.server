@@ -16,6 +16,7 @@ import { BusinessRepository } from '../../../repositories/businessRepository';
 import { ServiceRepository } from '../../../repositories/serviceRepository';
 import { UserBehaviorRepository } from '../../../repositories/userBehaviorRepository';
 import { ERROR_CODES } from '../../../constants/errorCodes';
+import { ACTIVE_APPOINTMENT_STATUSES } from '../../../constants/appointmentStatus';
 import { PermissionName } from '../../../types/auth';
 import { AppError } from '../../../types/responseTypes';
 import { PolicyEnforcementContext } from '../../../types/cancellationPolicy';
@@ -29,6 +30,28 @@ import { NotificationService } from '../notification';
 import { UnifiedNotificationGateway } from '../notification/unifiedNotificationGateway';
 import { RBACService } from '../rbac';
 import { UsageService } from '../usage';
+
+const OVERLAP_CONSTRAINT_NAME = 'appointments_no_overlap_per_staff';
+
+/**
+ * Translates the DB-level exclusion constraint violation (double-booking) into a
+ * clean, localizable 409 so every write path (create, reschedule, update) returns
+ * the same APPOINTMENT_TIME_CONFLICT code instead of leaking a raw Prisma error.
+ * If the error is unrelated, it is rethrown unchanged.
+ */
+function rethrowOnOverlapConflict(e: unknown): never {
+  const message = String((e as { message?: unknown })?.message || '');
+  const cause = String((e as { meta?: { cause?: unknown } })?.meta?.cause || '');
+  if (message.includes(OVERLAP_CONSTRAINT_NAME) || cause.includes(OVERLAP_CONSTRAINT_NAME)) {
+    throw new AppError(
+      'This time slot was just booked by another customer',
+      409,
+      ERROR_CODES.APPOINTMENT_TIME_CONFLICT
+    );
+  }
+  throw e;
+}
+
 export class AppointmentService {
   constructor(
     private readonly appointmentRepository: AppointmentRepository,
@@ -361,11 +384,9 @@ export class AppointmentService {
     }
 
     if (!customer.firstName || !customer.lastName) {
-      throw new AppError(
-        'First name and last name are required to book an appointment',
-        400,
-        ERROR_CODES.VALIDATION_ERROR
-      );
+      throw new AppError('CUSTOMER_PROFILE_INCOMPLETE', {
+        message: 'First name and last name are required to book an appointment',
+      });
     }
 
     // If booking for another customer, check permissions
@@ -392,18 +413,26 @@ export class AppointmentService {
       throw new AppError('Account is disabled', 403, ERROR_CODES.ACCOUNT_DISABLED);
     }
 
-    // Check if user is banned (only check for the actual customer, not the person creating)
-    const userBehavior = await this.userBehaviorRepository.findByUserId(customerId);
-    if (userBehavior?.isBanned) {
-      const banMessage = userBehavior.bannedUntil
-        ? `Booking blocked: ban active until ${userBehavior.bannedUntil.toISOString().split('T')[0]}`
-        : 'Booking blocked: account permanently banned';
-      const detail = userBehavior.banReason ? ` Reason: ${userBehavior.banReason}` : '';
-      throw new AppError(
-        `${banMessage}${detail}`,
-        403,
-        ERROR_CODES.ACCESS_DENIED
-      );
+    // Check if customer is banned from this specific business
+    const banCheckTime = new Date();
+    const businessBan = await this.prisma!.businessBan.findUnique({
+      where: { userId_businessId: { userId: customerId, businessId: data.businessId } },
+    });
+
+    if (businessBan?.isActive) {
+      const isExpired = businessBan.bannedUntil && businessBan.bannedUntil <= banCheckTime;
+      if (isExpired) {
+        // Auto-lift expired ban
+        await this.prisma!.businessBan.update({
+          where: { userId_businessId: { userId: customerId, businessId: data.businessId } },
+          data: { isActive: false },
+        });
+      } else {
+        const banMessage = businessBan.bannedUntil
+          ? `Booking blocked: ban active until ${businessBan.bannedUntil.toISOString().split('T')[0]}`
+          : 'Booking blocked: account permanently banned';
+        throw new AppError(`${banMessage}`, 403, ERROR_CODES.ACCESS_DENIED);
+      }
     }
 
     // Check cancellation policies before allowing appointment booking
@@ -423,15 +452,15 @@ export class AppointmentService {
         .map(v => v.message)
         .join(' ');
       throw new AppError(
-        violationMessages
-          ? `Booking policy violation: ${violationMessages}`
-          : 'Booking blocked by business policy',
+        violationMessages || 'Booking blocked by business policy',
         409,
-        ERROR_CODES.APPOINTMENT_BOOKING_POLICY_VIOLATION
+        ERROR_CODES.APPOINTMENT_BOOKING_POLICY_VIOLATION,
+        true,
+        { detail: violationMessages }
       );
     }
 
-    // Check if business is closed
+    // Check if business is closed via BusinessClosure
     const { isClosed, closure } = await this.businessClosureRepository.isBusinessClosed(
       data.businessId,
       new Date(data.date)
@@ -442,6 +471,22 @@ export class AppointmentService {
         closure?.reason
           ? `Business is closed on this date: ${closure.reason}`
           : 'Business is closed on this date',
+        400,
+        ERROR_CODES.BUSINESS_CLOSED
+      );
+    }
+
+    // Check if business has a special-day override that marks this date as closed
+    const specialDayOverride = await this.businessRepository.findBusinessHoursOverride(
+      data.businessId,
+      data.date
+    );
+
+    if (specialDayOverride && !specialDayOverride.isOpen) {
+      throw new AppError(
+        specialDayOverride.reason
+          ? `Business is closed on this date: ${specialDayOverride.reason}`
+          : 'Business is closed on this date (special day)',
         400,
         ERROR_CODES.BUSINESS_CLOSED
       );
@@ -588,7 +633,7 @@ export class AppointmentService {
             businessId: data.businessId,
             ...(staffId ? { staffId } : {}),
             date: createDateTimeInIstanbul(data.date, '00:00'),
-            status: { in: [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS] },
+            status: { in: ACTIVE_APPOINTMENT_STATUSES },
             OR: [
               { AND: [{ startTime: { lte: startDateTime } }, { endTime: { gt: startDateTime } }] },
               { AND: [{ startTime: { lt: endDateTime } }, { endTime: { gte: endDateTime } }] },
@@ -616,7 +661,10 @@ export class AppointmentService {
             startTime: startDateTime,
             endTime: endDateTime,
             duration: service.duration,
-            status: AppointmentStatus.CONFIRMED,
+            status: await (async () => {
+              const biz = await tx.business.findUnique({ where: { id: data.businessId }, select: { requireApproval: true } });
+              return biz?.requireApproval ? AppointmentStatus.PENDING_APPROVAL : AppointmentStatus.CONFIRMED;
+            })(),
             price: service.price,
             currency: service.currency,
             customerNotes: data.customerNotes,
@@ -652,17 +700,8 @@ export class AppointmentService {
           updatedAt: result.updatedAt
         };
       });
-    } catch (e: any) {
-      const msg = String(e?.message || '');
-      const cause = String((e as any)?.meta?.cause || '');
-      if (msg.includes('appointments_no_overlap_per_staff') || cause.includes('appointments_no_overlap_per_staff')) {
-        throw new AppError(
-          'This time slot was just booked by another customer',
-          409,
-          ERROR_CODES.APPOINTMENT_TIME_CONFLICT
-        );
-      }
-      throw e;
+    } catch (e: unknown) {
+      rethrowOnOverlapConflict(e);
     }
 
     // Record appointment usage for subscription tracking
@@ -896,6 +935,13 @@ export class AppointmentService {
       await this.appointmentRepository.finalizeEndedAppointmentsIfStale();
     }
 
+    if (filters.staffId && filters.businessId) {
+      const staffMember = await this.repositories.staffRepository.findById(filters.staffId);
+      if (!staffMember || staffMember.businessId !== filters.businessId) {
+        throw new AppError('Staff member does not belong to specified business', 400, ERROR_CODES.STAFF_NOT_FOUND);
+      }
+    }
+
     return await this.appointmentRepository.search(filters, page, limit);
   }
 
@@ -1014,7 +1060,14 @@ export class AppointmentService {
       }
     }
 
-    const updatedAppointment = await this.appointmentRepository.update(appointmentId, data);
+    let updatedAppointment: AppointmentData;
+    try {
+      updatedAppointment = await this.appointmentRepository.update(appointmentId, data);
+    } catch (e: unknown) {
+      // Pre-check above can miss a staff-specific or racing booking; the DB
+      // exclusion constraint is the last line of defense. Surface it as a clean 409.
+      rethrowOnOverlapConflict(e);
+    }
 
     // Handle status changes
     if (data.status) {
@@ -1101,14 +1154,131 @@ export class AppointmentService {
       }
     }
 
-    const cancelledAppointment = await this.appointmentRepository.cancel(appointmentId, reason);
+    const cancelledBy = isCustomer ? 'CUSTOMER' as const : 'BUSINESS' as const;
+    const cancelledAppointment = await this.appointmentRepository.cancel(appointmentId, reason, cancelledBy);
 
-    // Update user behavior if customer cancelled (strikes for late cancel; sync stats)
+    // Update user behavior only if customer cancelled (strikes for late cancel; sync stats)
+    // Business-initiated cancellations must NOT penalize the customer
     if (isCustomer) {
       await this.handleCustomerCancellation(userId, appointment);
     }
 
     return cancelledAppointment;
+  }
+
+  async approveAppointment(
+    userId: string,
+    appointmentId: string
+  ): Promise<AppointmentData> {
+    const appointment = await this.appointmentRepository.findById(appointmentId);
+    if (!appointment) {
+      throw new AppError('Appointment not found', 404, ERROR_CODES.APPOINTMENT_NOT_FOUND);
+    }
+
+    if (appointment.status !== AppointmentStatus.PENDING_APPROVAL) {
+      throw new AppError(
+        'Only pending-approval appointments can be approved',
+        400,
+        ERROR_CODES.APPOINTMENT_NOT_PENDING_APPROVAL
+      );
+    }
+
+    const { resource, action } = this.splitPermissionName(PermissionName.EDIT_ALL_APPOINTMENTS);
+    const hasPermission = await this.rbacService.hasPermission(userId, resource, action, { businessId: appointment.businessId });
+    if (!hasPermission) {
+      throw new AppError('Access denied', 403, ERROR_CODES.APPOINTMENT_ACCESS_DENIED);
+    }
+
+    if (!this.prisma) {
+      throw new AppError('Prisma client not available', 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
+    }
+
+    const result = await this.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        status: AppointmentStatus.CONFIRMED,
+        confirmedAt: new Date()
+      }
+    });
+
+    const mapped = await this.appointmentRepository.findById(appointmentId);
+    return mapped!;
+  }
+
+  async rejectAppointment(
+    userId: string,
+    appointmentId: string
+  ): Promise<AppointmentData> {
+    const appointment = await this.appointmentRepository.findById(appointmentId);
+    if (!appointment) {
+      throw new AppError('Appointment not found', 404, ERROR_CODES.APPOINTMENT_NOT_FOUND);
+    }
+
+    if (appointment.status !== AppointmentStatus.PENDING_APPROVAL) {
+      throw new AppError(
+        'Only pending-approval appointments can be rejected',
+        400,
+        ERROR_CODES.APPOINTMENT_NOT_PENDING_APPROVAL
+      );
+    }
+
+    const { resource, action } = this.splitPermissionName(PermissionName.EDIT_ALL_APPOINTMENTS);
+    const hasPermission = await this.rbacService.hasPermission(userId, resource, action, { businessId: appointment.businessId });
+    if (!hasPermission) {
+      throw new AppError('Access denied', 403, ERROR_CODES.APPOINTMENT_ACCESS_DENIED);
+    }
+
+    if (!this.prisma) {
+      throw new AppError('Prisma client not available', 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
+    }
+
+    await this.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        status: 'REJECTED_BY_BUSINESS',
+        canceledAt: new Date(),
+        cancelReason: 'İşletme tarafından reddedildi',
+        cancelledBy: 'BUSINESS'
+      }
+    });
+
+    // Send rejection SMS to customer
+    try {
+      const customer = await this.repositories?.userRepository?.findById(appointment.customerId);
+      const business = await this.businessRepository.findById(appointment.businessId);
+      const service = await this.serviceRepository.findById(appointment.serviceId);
+
+      if (customer?.phoneNumber && business && service) {
+        const { AppointmentMessages } = await import('../../../utils/smsMessageTemplates');
+        const startTime = appointment.startTime instanceof Date ? appointment.startTime : new Date(appointment.startTime);
+        const message = AppointmentMessages.rejectedByBusiness({
+          customerName: customer.firstName || '',
+          businessName: business.name,
+          serviceName: service.name,
+          appointmentDate: startTime.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Istanbul' }),
+          appointmentTime: startTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' }),
+          bookingLink: `https://randevubu.com/${business.slug}`
+        });
+
+        await this.notificationGateway.sendCriticalSMS(
+          customer.phoneNumber,
+          message,
+          { requestId: `reject-${appointmentId}` }
+        );
+
+        logger.info({
+          msg: 'SMS sent for rejected appointment',
+          appointmentId,
+          phone: customer.phoneNumber,
+          smsContent: message
+        });
+      }
+    } catch (error) {
+      logger.error('Error sending rejection SMS:', error);
+    }
+
+    const mapped = await this.appointmentRepository.findById(appointmentId);
+    return mapped!;
   }
 
   async markNoShow(
@@ -1455,7 +1625,7 @@ export class AppointmentService {
     await this.rbacService.requirePermission(userId, PermissionName.CANCEL_ALL_APPOINTMENTS);
 
     for (const appointmentId of appointmentIds) {
-      await this.appointmentRepository.cancel(appointmentId, reason);
+      await this.appointmentRepository.cancel(appointmentId, reason, 'SYSTEM');
     }
   }
 
@@ -1510,9 +1680,11 @@ export class AppointmentService {
         appointmentId: appointment.id,
       });
 
-      // For push/email: Use English titles (can be translated later)
-      const title = 'New Appointment Booking';
-      const body = `${customerName} booked ${service.name} for ${appointmentDate} at ${appointmentTime}`;
+      const isPendingApproval = appointment.status === AppointmentStatus.PENDING_APPROVAL;
+      const title = isPendingApproval ? 'Yeni Randevu İsteği' : 'Yeni Randevu';
+      const body = isPendingApproval
+        ? `${customerName}, ${service.name} için ${appointmentDate} ${appointmentTime} tarihine randevu isteği gönderdi. Onayınızı bekliyor.`
+        : `${customerName}, ${service.name} için ${appointmentDate} ${appointmentTime} tarihine randevu aldı.`;
 
       const notificationPayload = {
         businessId: appointment.businessId,
@@ -1528,7 +1700,8 @@ export class AppointmentService {
           businessName: business.name,
           appointmentDate,
           appointmentTime,
-          type: 'new_appointment'
+          type: isPendingApproval ? 'appointment_approval_request' : 'new_appointment',
+          requiresApproval: isPendingApproval,
         },
         url: `/appointments/${appointment.id}`
       };
@@ -1665,10 +1838,15 @@ export class AppointmentService {
       waitTimeMinutes: number;
       position: number;
     }>;
+    pendingApproval: Array<{
+      appointment: AppointmentWithDetails;
+      requestedTime: string;
+    }>;
     stats: {
       completedToday: number;
       inProgress: number;
       waiting: number;
+      pendingApproval: number;
       averageWaitTime: number;
       averageServiceTime: number;
       totalScheduled: number;
@@ -1778,6 +1956,10 @@ export class AppointmentService {
       });
     }
 
+    const pendingApprovalAppointments = appointmentsWithDetails.filter(
+      apt => apt.status === AppointmentStatus.PENDING_APPROVAL
+    ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
     const completedAppointments = appointmentsWithDetails.filter(
       apt => apt.status === AppointmentStatus.COMPLETED
     );
@@ -1817,6 +1999,7 @@ export class AppointmentService {
       completedToday: completedAppointments.length,
       inProgress: inProgressAppointments.length,
       waiting: confirmedAppointments.length,
+      pendingApproval: pendingApprovalAppointments.length,
       averageWaitTime: this.calculateAverageWaitTime(appointmentsWithDetails),
       averageServiceTime: this.calculateAverageServiceTime(completedAppointments),
       totalScheduled: appointmentsWithDetails.filter(
@@ -1826,6 +2009,7 @@ export class AppointmentService {
       completedToday: 0,
       inProgress: 0,
       waiting: 0,
+      pendingApproval: 0,
       averageWaitTime: 0,
       averageServiceTime: 0,
       totalScheduled: 0
@@ -1835,6 +2019,10 @@ export class AppointmentService {
       current,
       next,
       queue,
+      pendingApproval: pendingApprovalAppointments.map(apt => ({
+        appointment: apt,
+        requestedTime: formatDateTimeForAPI(apt.startTime),
+      })),
       stats,
       lastUpdated: formatDateTimeForAPI(now),
       businessInfo: {
@@ -1932,6 +2120,16 @@ export class AppointmentService {
       throw new AppError('Service not found or does not belong to this business', 404, ERROR_CODES.APPOINTMENT_SERVICE_UNAVAILABLE);
     }
 
+    if (staffId) {
+      if (!this.repositories?.staffRepository) {
+        throw new AppError('Staff repository not available', 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
+      }
+      const staffMember = await this.repositories.staffRepository.findById(staffId);
+      if (!staffMember || staffMember.businessId !== businessId) {
+        throw new AppError('Staff member does not belong to this business', 400, ERROR_CODES.STAFF_NOT_FOUND);
+      }
+    }
+
     const duration = service.duration;
     const dayOfWeek = targetDate.getDay();
     const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -1987,6 +2185,35 @@ export class AppointmentService {
         },
         closures: []
       };
+    }
+
+    // Check for a special-day override that overrides the weekly schedule for this exact date
+    const hoursOverride = await this.businessRepository.findBusinessHoursOverride(
+      businessId,
+      targetDate.toISOString().split('T')[0]
+    );
+
+    if (hoursOverride) {
+      if (!hoursOverride.isOpen) {
+        return {
+          date,
+          businessId,
+          serviceId,
+          staffId,
+          slots: [],
+          bookedRanges: [],
+          businessHours: { isOpen: false },
+          closures: [{ reason: hoursOverride.reason || 'Özel kapalı gün', type: 'SPECIAL_DAY' }]
+        };
+      }
+      if (hoursOverride.openTime && hoursOverride.closeTime) {
+        workingHours = [{
+          startTime: hoursOverride.openTime,
+          endTime: hoursOverride.closeTime,
+          dayOfWeek,
+          staffId: null
+        }];
+      }
     }
 
     // Get business closures for this date

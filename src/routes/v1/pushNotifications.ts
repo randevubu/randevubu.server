@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { PushNotificationController } from '../../controllers/pushNotificationController';
 import { requireAuth } from '../../middleware/authUtils';
 import { requirePermission } from '../../middleware/authUtils';
@@ -74,7 +75,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       503:
    *         description: Push notifications not configured
    */
-  router.get('/vapid-key', staticCache, controller.getVapidPublicKey);
+  router.get('/vapid-key', staticCache, asyncHandler(controller.getVapidPublicKey));
 
   /**
    * @swagger
@@ -87,7 +88,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       200:
    *         description: Health check successful
    */
-  router.get('/health', realTimeCache, controller.healthCheck);
+  router.get('/health', realTimeCache, asyncHandler(controller.healthCheck));
 
   /**
    * @swagger
@@ -112,7 +113,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       401:
    *         description: Unauthorized
    */
-  router.post('/subscribe', requireAuth, controller.subscribe);
+  router.post('/subscribe', requireAuth, asyncHandler(controller.subscribe));
 
   /**
    * @swagger
@@ -148,7 +149,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       401:
    *         description: Unauthorized
    */
-  router.post('/unsubscribe', requireAuth, controller.unsubscribe);
+  router.post('/unsubscribe', requireAuth, asyncHandler(controller.unsubscribe));
 
   /**
    * @swagger
@@ -172,7 +173,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       401:
    *         description: Unauthorized
    */
-  router.get('/subscriptions', dynamicCache, requireAuth, controller.getSubscriptions);
+  router.get('/subscriptions', dynamicCache, requireAuth, asyncHandler(controller.getSubscriptions));
 
   /**
    * @swagger
@@ -189,7 +190,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       401:
    *         description: Unauthorized
    */
-  router.get('/preferences', dynamicCache, requireAuth, controller.getPreferences);
+  router.get('/preferences', dynamicCache, requireAuth, asyncHandler(controller.getPreferences));
 
   /**
    * @swagger
@@ -251,7 +252,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       401:
    *         description: Unauthorized
    */
-  router.put('/preferences', requireAuth, controller.updatePreferences);
+  router.put('/preferences', requireAuth, asyncHandler(controller.updatePreferences));
 
   /**
    * @swagger
@@ -297,7 +298,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       401:
    *         description: Unauthorized
    */
-  router.post('/test', requireAuth, controller.sendTestNotification);
+  router.post('/test', requireAuth, asyncHandler(controller.sendTestNotification));
 
   /**
    * @swagger
@@ -349,7 +350,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
    *       401:
    *         description: Unauthorized
    */
-  router.get('/history', dynamicCache, requireAuth, controller.getNotificationHistory);
+  router.get('/history', dynamicCache, requireAuth, asyncHandler(controller.getNotificationHistory));
 
   // Admin-only routes
   /**
@@ -409,7 +410,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
     '/send',
     requireAuth,
     requirePermission(PermissionName.SEND_NOTIFICATIONS),
-    controller.sendNotification
+    asyncHandler(controller.sendNotification)
   );
 
   /**
@@ -467,7 +468,7 @@ export function createPushNotificationRoutes(controller: PushNotificationControl
     '/send-batch',
     requireAuth,
     requirePermission(PermissionName.SEND_NOTIFICATIONS),
-    controller.sendBatchNotification
+    asyncHandler(controller.sendBatchNotification)
   );
 
   return router;

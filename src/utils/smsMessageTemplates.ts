@@ -86,6 +86,34 @@ export class AppointmentMessages {
   }
 
   /**
+   * Business-initiated cancellation due to schedule change
+   */
+  static businessScheduleChange(params: {
+    businessName: string;
+    customerName: string;
+    serviceName: string;
+    appointmentDate: string;
+    appointmentTime: string;
+    reason: 'DAY_CLOSED' | 'HOURS_CHANGE';
+  }): string {
+    const cause = params.reason === 'DAY_CLOSED'
+      ? 'çalışma saatlerinde yapılan değişiklik'
+      : 'çalışma saatlerinde yapılan değişiklik';
+    return `Merhaba ${params.customerName}, ${params.businessName} isimli işletmedeki ${params.appointmentDate} ${params.appointmentTime} tarihli ${params.serviceName} randevunuz ${cause} nedeniyle işletme tarafından iptal edilmiştir. Bu iptal hesabınızı etkilemeyecektir. Yeni randevu almak için bizi arayabilirsiniz.`;
+  }
+
+  static rejectedByBusiness(params: {
+    customerName: string;
+    businessName: string;
+    serviceName: string;
+    appointmentDate: string;
+    appointmentTime: string;
+    bookingLink: string;
+  }): string {
+    return `Merhaba ${params.customerName}, ${params.businessName} isimli işletmede ${params.appointmentDate} ${params.appointmentTime} tarihli ${params.serviceName} randevu talebiniz onaylanamamıştır. Başka bir saat için randevu almak isterseniz: ${params.bookingLink}`;
+  }
+
+  /**
    * Appointment rescheduled message
    */
   static rescheduled(params: {

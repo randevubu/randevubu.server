@@ -7,7 +7,6 @@ import { RBACService } from '../rbac/rbacService';
 import { UsageService } from '../usage/usageService';
 import { PermissionName, CreateUserData, UpdateUserData, UserProfile, UserSecurity } from '../../../types/auth';
 import { ErrorContext, ForbiddenError, PhoneVerificationError } from '../../../types/errors';
-import { ERROR_CODES } from '../../../constants/errorCodes';
 import { AppError } from '../../../types/responseTypes';
 
 import { isValidPhoneNumber, parsePhoneNumber } from 'libphonenumber-js';
@@ -58,11 +57,9 @@ export class StaffService {
     // Check if business can add more staff members
     const canAddStaff = await this.usageService.canAddStaffMember(request.businessId);
     if (!canAddStaff.allowed) {
-      throw new AppError(
-        `Cannot invite staff member: ${canAddStaff.reason}`,
-        422,
-        ERROR_CODES.STAFF_LIMIT_EXCEEDED
-      );
+      throw new AppError('STAFF_LIMIT_EXCEEDED', {
+        message: `Cannot invite staff member: ${canAddStaff.reason}`,
+      });
     }
 
     logger.info('Staff invitation initiated', {
@@ -76,7 +73,7 @@ export class StaffService {
     // Validate phone number
     const normalizedPhone = this.normalizePhoneNumber(request.phoneNumber);
     if (!normalizedPhone) {
-      throw new AppError('Invalid phone number format', 400, ERROR_CODES.VALIDATION_ERROR);
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid phone number format' });
     }
 
     // Check if owner has permission to manage staff for this business
@@ -109,11 +106,9 @@ export class StaffService {
     // Check SMS quota before sending verification code
     const canSendSms = await this.usageService.canSendSms(request.businessId);
     if (!canSendSms.allowed) {
-      throw new AppError(
-        `Cannot send staff invitation SMS: ${canSendSms.reason}`,
-        429,
-        ERROR_CODES.SMS_QUOTA_EXCEEDED
-      );
+      throw new AppError('SMS_QUOTA_EXCEEDED', {
+        message: `Cannot send staff invitation SMS: ${canSendSms.reason}`,
+      });
     }
 
     // Send verification code to staff member's phone
@@ -163,7 +158,7 @@ export class StaffService {
 
     const normalizedPhone = this.normalizePhoneNumber(request.phoneNumber);
     if (!normalizedPhone) {
-      throw new Error('Invalid phone number format');
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid phone number format' });
     }
 
     // Verify the SMS code — verifyCode throws PhoneVerificationError subclasses on failure
@@ -218,7 +213,7 @@ export class StaffService {
       staffUser = await this.repositories.userRepository.findByPhoneNumber(normalizedPhone);
 
       if (!staffUser) {
-        throw new Error('Failed to fetch newly created user');
+        throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Failed to fetch newly created user' });
       }
 
       logger.info('New user account created for staff member', {
@@ -382,7 +377,7 @@ export class StaffService {
   ): Promise<BusinessStaffData> {
     const staff = await this.repositories.staffRepository.findById(staffId);
     if (!staff) {
-      throw new Error('Staff member not found');
+      throw new AppError('STAFF_NOT_FOUND', { message: 'Staff member not found' });
     }
 
     await this.validateBusinessOwnerPermission(userId, staff.businessId);
@@ -396,14 +391,14 @@ export class StaffService {
   ): Promise<void> {
     const staff = await this.repositories.staffRepository.findById(staffId);
     if (!staff) {
-      throw new Error('Staff member not found');
+      throw new AppError('STAFF_NOT_FOUND', { message: 'Staff member not found' });
     }
 
     await this.validateBusinessOwnerPermission(userId, staff.businessId);
 
     // Prevent removing business owner
     if (staff.role === BusinessStaffRole.OWNER) {
-      throw new Error('Cannot remove business owner');
+      throw new AppError('OPERATION_NOT_ALLOWED', { message: 'Cannot remove business owner' });
     }
 
     await this.repositories.staffRepository.deactivate(staffId);
@@ -473,7 +468,7 @@ export class StaffService {
     // Check if user is owner of this business
     const business = await this.repositories.businessRepository.findById(businessId);
     if (!business) {
-      throw new AppError('Business not found', 404, ERROR_CODES.BUSINESS_NOT_FOUND);
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     if (business.ownerId !== userId) {
@@ -494,7 +489,7 @@ export class StaffService {
   private async validateBusinessAccess(userId: string, businessId: string): Promise<void> {
     const business = await this.repositories.businessRepository.findById(businessId);
     if (!business) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     // Check if user is owner or staff member
@@ -518,22 +513,17 @@ export class StaffService {
     ]);
 
     if (!business?.subscription) {
-      throw new AppError(
-        'Business does not have an active subscription. Please activate a subscription to manage staff.',
-        422,
-        ERROR_CODES.SUBSCRIPTION_REQUIRED
-      );
+      throw new AppError('SUBSCRIPTION_REQUIRED', {
+        message: 'Business does not have an active subscription. Please activate a subscription to manage staff.',
+      });
     }
 
     const maxStaff = business.subscription.plan.maxStaffPerBusiness;
 
     if (currentStaffCount >= maxStaff) {
-      throw new AppError(
-        `Staff limit reached. Your ${business.subscription.plan.displayName} plan allows ${maxStaff} staff members (including owner). ` +
-        `Current: ${currentStaffCount}/${maxStaff}. Please upgrade your subscription to add more staff.`,
-        422,
-        ERROR_CODES.STAFF_LIMIT_EXCEEDED
-      );
+      throw new AppError('STAFF_LIMIT_EXCEEDED', {
+        message: `Staff limit reached. Your ${business.subscription.plan.displayName} plan allows ${maxStaff} staff members (including owner). Current: ${currentStaffCount}/${maxStaff}. Please upgrade your subscription to add more staff.`,
+      });
     }
   }
 
@@ -587,10 +577,10 @@ export class StaffService {
       hideStaffNames: (staffPrivacy.hideStaffNames as boolean) || false,
       staffDisplayMode: (staffPrivacy.staffDisplayMode as 'NAMES' | 'ROLES' | 'GENERIC') || 'NAMES',
       customStaffLabels: {
-        owner: (customLabels.owner as string) || 'Owner',
-        manager: (customLabels.manager as string) || 'Manager',
-        staff: (customLabels.staff as string) || 'Staff',
-        receptionist: (customLabels.receptionist as string) || 'Receptionist',
+        owner: (customLabels.owner as string) || 'İşletme Sahibi',
+        manager: (customLabels.manager as string) || 'Yönetici',
+        staff: (customLabels.staff as string) || 'Personel',
+        receptionist: (customLabels.receptionist as string) || 'Resepsiyonist',
       },
     };
   }
@@ -598,19 +588,19 @@ export class StaffService {
   private getStaffDisplayName(role: BusinessStaffRole, privacySettings: BusinessStaffPrivacySettings): string {
     if (privacySettings.staffDisplayMode === 'ROLES') {
       const roleNames: Record<string, string> = {
-        [BusinessStaffRole.OWNER]: 'Owner',
-        [BusinessStaffRole.MANAGER]: 'Manager',
-        [BusinessStaffRole.STAFF]: 'Staff Member',
+        [BusinessStaffRole.OWNER]: 'İşletme Sahibi',
+        [BusinessStaffRole.MANAGER]: 'Yönetici',
+        [BusinessStaffRole.STAFF]: 'Personel',
       };
-      return roleNames[role] || 'Staff';
+      return roleNames[role] || 'Personel';
     }
 
     if (privacySettings.staffDisplayMode === 'GENERIC') {
-      return privacySettings.customStaffLabels[role.toLowerCase() as keyof typeof privacySettings.customStaffLabels] || 'Staff';
+      return privacySettings.customStaffLabels[role.toLowerCase() as keyof typeof privacySettings.customStaffLabels] || 'Personel';
     }
 
     // Default to NAMES mode (shouldn't reach here if hideStaffNames is true)
-    return 'Staff';
+    return 'Personel';
   }
 
   async getPublicBusinessStaff(businessId: string, serviceId?: string): Promise<Array<{
@@ -626,13 +616,17 @@ export class StaffService {
   }>> {
     const business = await this.repositories.businessRepository.findByIdWithOwner(businessId);
     if (!business) {
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     let staff = await this.repositories.staffRepository.findByBusinessId(businessId);
 
     // Filter by service assignment when serviceId is provided
     if (serviceId) {
+      const service = await this.repositories.serviceRepository.findById(serviceId);
+      if (!service || service.businessId !== businessId) {
+        throw new AppError('SERVICE_ACCESS_DENIED', { message: 'Service does not belong to this business' });
+      }
       const assignedStaffIds = await this.repositories.serviceRepository.getServiceStaffIds(serviceId);
       // Only filter if the service has explicit assignments; otherwise show all (backward compat)
       if (assignedStaffIds.length > 0) {
@@ -711,11 +705,11 @@ export class StaffService {
     const targetBusiness = await this.repositories.businessRepository.findByIdWithSubscription(toBusinessId);
     
     if (!targetBusiness?.subscription) {
-      throw new Error('Target business does not have an active subscription');
+      throw new AppError('SUBSCRIPTION_REQUIRED', { message: 'Target business does not have an active subscription' });
     }
 
     if (targetStaffCount + staffIds.length > targetBusiness.subscription.plan.maxStaffPerBusiness) {
-      throw new Error('Target business does not have enough staff slots available');
+      throw new AppError('STAFF_LIMIT_EXCEEDED', { message: 'Target business does not have enough staff slots available' });
     }
 
     await this.repositories.staffRepository.transferStaffToNewBusiness(

@@ -5,8 +5,10 @@ import { ControllerContainer } from '../../controllers';
 import { validateParams } from '../../middleware/validation';
 import { businessIdParamSchema } from '../../schemas/staff.schemas';
 import { staticCache, semiDynamicCache } from '../../middleware/cacheMiddleware';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import prisma from '../../lib/prisma';
+import { sendErrorResponse } from '../../utils/responseUtils';
 
 // Initialize dependencies
 const repositories = new RepositoryContainer(prisma);
@@ -77,7 +79,7 @@ export function createPublicRoutes(): Router {
   router.get('/businesses/:businessId/staff',
     semiDynamicCache,
     validateParams(businessIdParamSchema),
-    controllers.staffController.getPublicBusinessStaff.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.getPublicBusinessStaff.bind(controllers.staffController))
   );
 
   /**
@@ -191,7 +193,26 @@ export function createPublicRoutes(): Router {
    */
   router.get('/businesses/:businessId/available-slots',
     validateParams(businessIdParamSchema),
-    controllers.appointmentController.getPublicAvailableSlots.bind(controllers.appointmentController)
+    asyncHandler(controllers.appointmentController.getPublicAvailableSlots.bind(controllers.appointmentController))
+  );
+
+  // Public endpoint: get special-day overrides for the booking calendar (no auth required)
+  router.get('/businesses/:businessId/hours/overrides',
+    validateParams(businessIdParamSchema),
+    async (req, res) => {
+      try {
+        const { businessId } = req.params;
+        const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
+        const overrides = await repositories.businessRepository.findBusinessHoursOverrides(
+          businessId,
+          startDate ? new Date(startDate) : undefined,
+          endDate ? new Date(endDate) : undefined
+        );
+        res.json({ success: true, data: overrides });
+      } catch (error) {
+        void sendErrorResponse(res, 'Bir hata oluştu, lütfen tekrar deneyin.', 500, { code: 'INTERNAL_SERVER_ERROR' });
+      }
+    }
   );
 
   return router;

@@ -12,6 +12,7 @@ import { PermissionName } from '../../../types/auth';
 import type { CacheService } from '../../core/cacheService';
 import { NotFoundError, ValidationError, OperationNotAllowedError } from '../../../types/errors';
 import { ERROR_CODES } from '../../../constants/errorCodes';
+import { AppError } from '../../../types/responseTypes';
 import logger from '../../../utils/Logger/logger';
 
 export class OfferingService {
@@ -34,7 +35,7 @@ export class OfferingService {
     const canAddService = await this.usageService.canAddService(businessId);
     if (!canAddService.allowed) {
       logger.warn('Service create blocked by usage limit', { userId, businessId, reason: canAddService.reason });
-      throw new Error(`Cannot create service: ${canAddService.reason}`);
+      throw new AppError('SERVICE_LIMIT_EXCEEDED', { message: `Cannot create service: ${canAddService.reason}` });
     }
 
     // Check permissions to manage services for this business

@@ -6,310 +6,157 @@ import {
 } from '../schemas/business.schemas';
 import { BusinessService } from '../services/domain/business';
 import { AuthenticatedRequest } from '../types/request';
-import { handleRouteError } from '../utils/responseUtils';
 import { ResponseHelper } from '../utils/responseHelper';
+import { AppError } from '../types/responseTypes';
 
-/**
- * Controller for managing various business settings
- * Handles price settings, privacy settings, reservation settings, and payment methods
- */
 export class BusinessSettingsController {
   constructor(
     private businessService: BusinessService,
     private responseHelper: ResponseHelper
   ) {}
 
-  /**
-   * Update price settings for a business
-   * PUT /api/v1/businesses/settings/price
-   */
+  private requireBusinessId(req: BusinessContextRequest): string {
+    if (!req.businessContext || req.businessContext.businessIds.length === 0) {
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'Business context required' });
+    }
+    return req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
+  }
+
   async updatePriceSettings(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const validatedData = updateBusinessPriceSettingsSchema.parse(req.body);
-      const userId = req.user!.id;
+    const validatedData = updateBusinessPriceSettingsSchema.parse(req.body);
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
 
-      if (!req.businessContext || req.businessContext.businessIds.length === 0) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
+    const updatedBusiness = await this.businessService.updateBusinessPriceSettings(userId, businessId, validatedData);
 
-      const businessId =
-        req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
-
-      const updatedBusiness = await this.businessService.updateBusinessPriceSettings(
-        userId,
-        businessId,
-        validatedData
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.priceSettingsUpdated',
-        updatedBusiness,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.priceSettingsUpdated', updatedBusiness, 200, req);
   }
 
-  /**
-   * Get price settings for a business
-   * GET /api/v1/businesses/settings/price
-   */
   async getPriceSettings(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
 
-      if (!req.businessContext || req.businessContext.businessIds.length === 0) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
+    const priceSettings = await this.businessService.getBusinessPriceSettings(userId, businessId);
 
-      const businessId =
-        req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
-
-      const priceSettings = await this.businessService.getBusinessPriceSettings(userId, businessId);
-
-      await this.responseHelper.success(
-        res,
-        'success.business.priceSettingsRetrieved',
-        priceSettings,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.priceSettingsRetrieved', priceSettings, 200, req);
   }
 
-  /**
-   * Get staff privacy settings
-   * GET /api/v1/businesses/settings/staff-privacy
-   */
   async getStaffPrivacySettings(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
+    const settings = await this.businessService.getStaffPrivacySettings(userId, businessId);
 
-      const settings = await this.businessService.getStaffPrivacySettings(userId, businessId);
-
-      await this.responseHelper.success(
-        res,
-        'success.business.staffPrivacySettingsRetrieved',
-        settings,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.staffPrivacySettingsRetrieved', settings, 200, req);
   }
 
-  /**
-   * Update staff privacy settings
-   * PUT /api/v1/businesses/settings/staff-privacy
-   */
   async updateStaffPrivacySettings(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
+    const validatedData = updateBusinessStaffPrivacySettingsSchema.parse(req.body);
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
+    const settings = await this.businessService.updateStaffPrivacySettings(userId, businessId, validatedData);
 
-      const validatedData = updateBusinessStaffPrivacySettingsSchema.parse(req.body);
-
-      const settings = await this.businessService.updateStaffPrivacySettings(
-        userId,
-        businessId,
-        validatedData
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.staffPrivacySettingsUpdated',
-        settings,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.staffPrivacySettingsUpdated', settings, 200, req);
   }
 
   async getProfilePrivacySettings(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
-      if (!businessId) { res.status(400).json({ success: false, error: 'Business context required' }); return; }
-      const settings = await this.businessService.getProfilePrivacySettings(userId, businessId);
-      await this.responseHelper.success(res, 'success.business.profilePrivacySettingsRetrieved', settings, 200, req);
-    } catch (error) { handleRouteError(error, req, res); }
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
+
+    const settings = await this.businessService.getProfilePrivacySettings(userId, businessId);
+
+    await this.responseHelper.success(res, 'success.business.profilePrivacySettingsRetrieved', settings, 200, req);
   }
 
   async updateProfilePrivacySettings(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
-      if (!businessId) { res.status(400).json({ success: false, error: 'Business context required' }); return; }
-      const { showPhone, showEmail } = req.body;
-      const settings = await this.businessService.updateProfilePrivacySettings(userId, businessId, {
-        showPhone: Boolean(showPhone),
-        showEmail: Boolean(showEmail),
-      });
-      await this.responseHelper.success(res, 'success.business.profilePrivacySettingsUpdated', settings, 200, req);
-    } catch (error) { handleRouteError(error, req, res); }
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
+    const { showPhone, showEmail } = req.body;
+
+    const settings = await this.businessService.updateProfilePrivacySettings(userId, businessId, {
+      showPhone: Boolean(showPhone),
+      showEmail: Boolean(showEmail),
+    });
+
+    await this.responseHelper.success(res, 'success.business.profilePrivacySettingsUpdated', settings, 200, req);
   }
 
-  /**
-   * Get reservation settings
-   * GET /api/v1/businesses/settings/reservation
-   */
   async getReservationSettings(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
+    const settings = await this.businessService.getBusinessReservationSettings(userId, businessId);
 
-      const settings = await this.businessService.getBusinessReservationSettings(
-        userId,
-        businessId
-      );
-
-      if (!settings) {
-        // Return default settings if none exist
-        await this.responseHelper.success(
-          res,
-          'success.business.reservationSettingsDefault',
-          {
-            businessId,
-            maxAdvanceBookingDays: 30,
-            minNotificationHours: 0,
-            maxDailyAppointments: 50,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          200,
-          req
-        );
-        return;
-      }
-
+    if (!settings) {
       await this.responseHelper.success(
         res,
-        'success.business.reservationSettingsRetrieved',
-        settings,
+        'success.business.reservationSettingsDefault',
+        {
+          businessId,
+          maxAdvanceBookingDays: 30,
+          minNotificationHours: 0,
+          maxDailyAppointments: 50,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
         200,
         req
       );
-    } catch (error) {
-      handleRouteError(error, req, res);
+      return;
     }
+
+    await this.responseHelper.success(res, 'success.business.reservationSettingsRetrieved', settings, 200, req);
   }
 
-  /**
-   * Update reservation settings
-   * PUT /api/v1/businesses/settings/reservation
-   */
   async updateReservationSettings(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
+    const settingsData = req.body;
+    const updatedSettings = await this.businessService.updateBusinessReservationSettings(userId, businessId, settingsData);
 
-      const settingsData = req.body;
-      const updatedSettings = await this.businessService.updateBusinessReservationSettings(
-        userId,
-        businessId,
-        settingsData
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.reservationSettingsUpdated',
-        updatedSettings,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.reservationSettingsUpdated', updatedSettings, 200, req);
   }
 
-  /**
-   * Get stored payment methods for a business
-   * GET /api/v1/businesses/:businessId/payment-methods
-   */
   async getPaymentMethods(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
-      const userId = req.user!.id;
+    const { businessId } = req.params;
+    const userId = req.user!.id;
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      const paymentMethods = await this.businessService.getPaymentMethods(businessId, userId);
-
-      await this.responseHelper.success(
-        res,
-        'success.business.paymentMethodsRetrieved',
-        paymentMethods,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!businessId) {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Business ID required', params: { field: 'businessId' } });
     }
+
+    const paymentMethods = await this.businessService.getPaymentMethods(businessId, userId);
+
+    await this.responseHelper.success(res, 'success.business.paymentMethodsRetrieved', paymentMethods, 200, req);
   }
 
-  /**
-   * Add a new payment method for a business
-   * POST /api/v1/businesses/:businessId/payment-methods
-   */
   async addPaymentMethod(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
-      const userId = req.user!.id;
+    const { businessId } = req.params;
+    const userId = req.user!.id;
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      const paymentMethod = await this.businessService.addPaymentMethod(
-        businessId,
-        userId,
-        req.body
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.paymentMethodAdded',
-        paymentMethod,
-        201,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!businessId) {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Business ID required', params: { field: 'businessId' } });
     }
+
+    const paymentMethod = await this.businessService.addPaymentMethod(businessId, userId, req.body);
+
+    await this.responseHelper.success(res, 'success.business.paymentMethodAdded', paymentMethod, 201, req);
+  }
+
+  async updateRequireApproval(req: BusinessContextRequest, res: Response): Promise<void> {
+    const userId = req.user!.id;
+    const { requireApproval } = req.body;
+
+    if (typeof requireApproval !== 'boolean') {
+      throw new AppError('VALIDATION_ERROR', { message: 'requireApproval must be a boolean' });
+    }
+
+    const businessId = this.requireBusinessId(req);
+
+    const updatedBusiness = await this.businessService.updateRequireApproval(userId, businessId, requireApproval);
+
+    await this.responseHelper.success(res, 'success.business.updated', updatedBusiness, 200, req);
   }
 }

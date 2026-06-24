@@ -114,6 +114,7 @@ services:
 
   # Next.js Client (Development)
   client:
+    profiles: ["docker-client"]  # Run locally instead: cd randevubu.client && npm run dev
     image: node:20-alpine
     container_name: randevubu-client-dev
     working_dir: /app
@@ -137,6 +138,7 @@ services:
   nginx:
     image: nginx:alpine
     container_name: randevubu-nginx-dev
+    profiles: ["docker-client"]
     ports:
       - "8080:80"        # HTTP only for dev (changed from 80 to avoid conflict with Apache)
     volumes:

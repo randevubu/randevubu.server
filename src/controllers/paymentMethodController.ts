@@ -1,13 +1,11 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { AppError } from '../types/responseTypes';
-import { sendAppErrorResponse } from '../utils/responseUtils';
 import { PaymentService } from '../services/domain/payment/paymentService';
 import { SubscriptionService } from '../services/domain/subscription/subscriptionService';
 import { RBACService } from '../services/domain/rbac/rbacService';
 import { PermissionName } from '../types/auth';
 import { z } from 'zod';
-import logger from '../utils/Logger/logger';
 import { ResponseHelper } from '../utils/responseHelper';
 
 const updatePaymentMethodSchema = z.object({
@@ -39,70 +37,31 @@ export class PaymentMethodController {
     private responseHelper: ResponseHelper
   ) {}
 
-  /**
-   * Update payment method for a subscription
-   * POST /api/v1/payment-methods/business/:businessId/update
-   */
   async updatePaymentMethod(req: GuaranteedAuthRequest, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
-      const userId = req.user.id;
+    const { businessId } = req.params;
+    const userId = req.user.id;
 
-      // Validate request body
-      const validationResult = updatePaymentMethodSchema.safeParse(req.body);
-      if (!validationResult.success) {
-        return sendAppErrorResponse(res, new AppError('Invalid request data', 400));
-      }
+    const validatedData = updatePaymentMethodSchema.parse(req.body);
+    const { card, buyer } = validatedData;
 
-      const { card, buyer } = validationResult.data;
+    await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SUBSCRIPTION, { businessId });
 
-      // Check permissions
-      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SUBSCRIPTION, {
-        businessId,
-      });
-
-      // Get subscription
-      const subscription = await this.subscriptionService.getBusinessSubscription(
-        userId,
-        businessId
-      );
-      if (!subscription) {
-        return sendAppErrorResponse(res, new AppError('Subscription not found', 404));
-      }
-
-      // Extract last four digits and detect card brand
-      const lastFourDigits = card.cardNumber.slice(-4);
-      const cardBrand = this.getCardBrand(card.cardNumber);
-
-      // Generate a unique ID for the payment method
-      const paymentMethodId = `pm_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-      // Update payment method using subscription service
-      const result = await this.subscriptionService.updatePaymentMethod(
-        userId,
-        businessId,
-        paymentMethodId
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.paymentMethod.updated',
-        {
-          paymentMethodId,
-          lastFourDigits,
-          cardBrand,
-          subscriptionId: result.id,
-        },
-        200,
-        req
-      );
-    } catch (error) {
-      logger.error('Update payment method error:', error);
-      sendAppErrorResponse(
-        res,
-        new AppError(error instanceof Error ? error.message : 'Internal server error', 500)
-      );
+    const subscription = await this.subscriptionService.getBusinessSubscription(userId, businessId);
+    if (!subscription) {
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Subscription not found for payment method update' });
     }
+
+    const lastFourDigits = card.cardNumber.slice(-4);
+    const cardBrand = this.getCardBrand(card.cardNumber);
+    const paymentMethodId = `pm_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    const result = await this.subscriptionService.updatePaymentMethod(userId, businessId, paymentMethodId);
+
+    await this.responseHelper.success(
+      res, 'success.paymentMethod.updated',
+      { paymentMethodId, lastFourDigits, cardBrand, subscriptionId: result.id },
+      200, req
+    );
   }
 
   private getCardBrand(cardNumber: string): string {
@@ -114,96 +73,48 @@ export class PaymentMethodController {
     return 'Unknown';
   }
 
-  /**
-   * Get current payment method for a subscription
-   * GET /api/v1/payment-methods/business/:businessId
-   */
   async getPaymentMethod(req: GuaranteedAuthRequest, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
-      const userId = req.user.id;
+    const { businessId } = req.params;
+    const userId = req.user.id;
 
-      // Check permissions
-      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SUBSCRIPTION, {
-        businessId,
-      });
+    await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SUBSCRIPTION, { businessId });
 
-      // Get subscription with payment method
-      const autoRenewalStatus = await this.subscriptionService.getAutoRenewalStatus(
-        userId,
-        businessId
-      );
+    const autoRenewalStatus = await this.subscriptionService.getAutoRenewalStatus(userId, businessId);
 
-      if (!autoRenewalStatus.paymentMethod) {
-        return sendAppErrorResponse(res, new AppError('No payment method found', 404));
-      }
-
-      await this.responseHelper.success(
-        res,
-        'success.paymentMethod.retrieved',
-        {
-          paymentMethod: autoRenewalStatus.paymentMethod,
-          autoRenewal: autoRenewalStatus.autoRenewal,
-          nextBillingDate: autoRenewalStatus.nextBillingDate,
-        },
-        200,
-        req
-      );
-    } catch (error) {
-      logger.error('Get payment method error:', error);
-      sendAppErrorResponse(
-        res,
-        new AppError(error instanceof Error ? error.message : 'Internal server error', 500)
-      );
+    if (!autoRenewalStatus.paymentMethod) {
+      throw new AppError('PAYMENT_METHOD_NOT_FOUND', { message: 'No payment method found' });
     }
+
+    await this.responseHelper.success(
+      res, 'success.paymentMethod.retrieved',
+      {
+        paymentMethod: autoRenewalStatus.paymentMethod,
+        autoRenewal: autoRenewalStatus.autoRenewal,
+        nextBillingDate: autoRenewalStatus.nextBillingDate,
+      },
+      200, req
+    );
   }
 
-  /**
-   * Retry failed payment with updated payment method
-   * POST /api/v1/payment-methods/business/:businessId/retry-payment
-   */
   async retryFailedPayment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
-      const userId = req.user.id;
+    const { businessId } = req.params;
+    const userId = req.user.id;
 
-      // Check permissions
-      await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SUBSCRIPTION, {
-        businessId,
-      });
+    await this.rbacService.requirePermission(userId, PermissionName.MANAGE_OWN_SUBSCRIPTION, { businessId });
 
-      // Get subscription
-      const subscription = await this.subscriptionService.getBusinessSubscription(
-        userId,
-        businessId
-      );
-      if (!subscription) {
-        return sendAppErrorResponse(res, new AppError('Subscription not found', 404));
-      }
-
-      // Check if subscription has failed payments
-      if (subscription.status !== 'PAST_DUE') {
-        return sendAppErrorResponse(res, new AppError('No failed payments to retry', 400));
-      }
-
-      // Retry payment - this would trigger the payment retry service
-      // For now, return success (actual implementation would use payment retry service)
-      await this.responseHelper.success(
-        res,
-        'success.paymentMethod.retryInitiated',
-        {
-          subscriptionId: subscription.id,
-          status: 'PENDING_RETRY',
-        },
-        200,
-        req
-      );
-    } catch (error) {
-      logger.error('Retry payment error:', error);
-      sendAppErrorResponse(
-        res,
-        new AppError(error instanceof Error ? error.message : 'Internal server error', 500)
-      );
+    const subscription = await this.subscriptionService.getBusinessSubscription(userId, businessId);
+    if (!subscription) {
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Subscription not found for payment retry' });
     }
+
+    if (subscription.status !== 'PAST_DUE') {
+      throw new AppError('OPERATION_NOT_ALLOWED', { message: 'No failed payments to retry' });
+    }
+
+    await this.responseHelper.success(
+      res, 'success.paymentMethod.retryInitiated',
+      { subscriptionId: subscription.id, status: 'PENDING_RETRY' },
+      200, req
+    );
   }
 }

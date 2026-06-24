@@ -1,7 +1,7 @@
 import { BusinessStaffRole } from '@prisma/client';
 import { Request, Response } from 'express';
-import { ERROR_CODES } from '../constants/errorCodes';
 import { BusinessContextRequest } from '../middleware/businessContext';
+import { requireAuthenticatedUser } from '../middleware/authUtils';
 import {
   InviteStaffRequest,
   StaffService,
@@ -9,7 +9,6 @@ import {
 } from '../services/domain/staff';
 import { AuthenticatedRequest } from '../types/request';
 import { AppError } from '../types/responseTypes';
-import { createErrorContext, handleRouteError, sendAppErrorResponse } from '../utils/responseUtils';
 import { ResponseHelper } from '../utils/responseHelper';
 
 export class StaffController {
@@ -18,105 +17,99 @@ export class StaffController {
     private responseHelper: ResponseHelper
   ) {}
 
+  private requireId(params: Record<string, string>, name: string): string {
+    const id = params[name];
+    if (!id || typeof id !== 'string') {
+      throw new AppError('REQUIRED_FIELD_MISSING', {
+        message: `${name} is required`,
+        params: { field: name },
+      });
+    }
+    const idRegex = /^[a-zA-Z0-9-_]+$/;
+    if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+      throw new AppError('INVALID_ID_FORMAT', {
+        message: `Invalid ${name} format`,
+        params: { field: name },
+      });
+    }
+    return id;
+  }
+
+  private validateName(value: unknown, fieldName: string): string {
+    if (typeof value !== 'string' || value.trim().length < 1 || value.trim().length > 50) {
+      throw new AppError('VALIDATION_ERROR', { message: `${fieldName} must be between 1 and 50 characters` });
+    }
+    return value.trim();
+  }
+
+  private validateRole(role: unknown): BusinessStaffRole {
+    if (!role || !Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid staff role' });
+    }
+    return role as BusinessStaffRole;
+  }
+
+  private validatePhoneNumber(phoneNumber: unknown): string {
+    if (!phoneNumber || typeof phoneNumber !== 'string') {
+      throw new AppError('REQUIRED_FIELD_MISSING', {
+        message: 'Phone number is required',
+        params: { field: 'phoneNumber' },
+      });
+    }
+    const cleaned = phoneNumber.replace(/\s/g, '');
+    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+    if (!phoneRegex.test(cleaned)) {
+      throw new AppError('INVALID_PHONE_FORMAT', { message: 'Invalid phone number format' });
+    }
+    return cleaned;
+  }
+
+  private validatePermissions(permissions: unknown): string[] {
+    if (!permissions) return [];
+    if (!Array.isArray(permissions) || !permissions.every((p: unknown) => typeof p === 'string')) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Permissions must be an array of strings' });
+    }
+    return permissions;
+  }
+
   /**
    * Initiate staff invitation - sends SMS code to staff member's phone
    * POST /api/v1/staff/invite
    */
   async inviteStaff(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const { businessId, phoneNumber, role, permissions, firstName, lastName } = req.body;
+    const userId = requireAuthenticatedUser(req).id;
+    const { businessId, phoneNumber, role, permissions, firstName, lastName } = req.body;
 
-      // Validate required fields
-      if (!businessId || !phoneNumber || !role || !firstName || !lastName) {
-        const error = new AppError(
-          'Business ID, phone number, role, first name, and last name are required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate businessId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate phone number format (basic validation)
-      const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-      if (!phoneRegex.test(phoneNumber.replace(/\s/g, ''))) {
-        const error = new AppError(
-          'Invalid phone number format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate role
-      if (!Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)) {
-        const error = new AppError('Invalid staff role', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate names
-      if (
-        typeof firstName !== 'string' ||
-        firstName.trim().length < 1 ||
-        firstName.trim().length > 50
-      ) {
-        const error = new AppError(
-          'First name must be between 1 and 50 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      if (
-        typeof lastName !== 'string' ||
-        lastName.trim().length < 1 ||
-        lastName.trim().length > 50
-      ) {
-        const error = new AppError(
-          'Last name must be between 1 and 50 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Normalize permissions: accept array of strings or empty/object (treat as no permissions)
-      const normalizedPermissions: string[] = Array.isArray(permissions)
-        ? permissions.filter((p: any) => typeof p === 'string')
-        : [];
-
-      const context = createErrorContext(req, 'STAFF_INVITATION');
-
-      const result = await this.staffService.inviteStaff(
-        userId,
-        {
-          businessId,
-          phoneNumber: phoneNumber.replace(/\s/g, ''),
-          role,
-          permissions: normalizedPermissions,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-        } as InviteStaffRequest,
-        context
-      );
-
-      if (result.success) {
-        await this.responseHelper.success(res, 'success.staff.invited', { success: true }, 200, req);
-      } else {
-        const error = new AppError(result.message, 400, ERROR_CODES.STAFF_ALREADY_EXISTS);
-        sendAppErrorResponse(res, error, 400);
-      }
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!businessId || !phoneNumber || !role || !firstName || !lastName) {
+      throw new AppError('REQUIRED_FIELD_MISSING', {
+        message: 'Business ID, phone number, role, first name, and last name are required',
+      });
     }
+
+    this.requireId({ businessId }, 'businessId');
+    const cleanedPhone = this.validatePhoneNumber(phoneNumber);
+    this.validateRole(role);
+    const trimmedFirst = this.validateName(firstName, 'First name');
+    const trimmedLast = this.validateName(lastName, 'Last name');
+    const normalizedPermissions = this.validatePermissions(permissions);
+
+    const result = await this.staffService.inviteStaff(
+      userId,
+      {
+        businessId,
+        phoneNumber: cleanedPhone,
+        role,
+        permissions: normalizedPermissions,
+        firstName: trimmedFirst,
+        lastName: trimmedLast,
+      } as InviteStaffRequest
+    );
+
+    if (!result.success) {
+      throw new AppError('STAFF_ALREADY_EXISTS', { message: result.message });
+    }
+
+    await this.responseHelper.success(res, 'success.staff.invited', { success: true }, 200, req);
   }
 
   /**
@@ -124,158 +117,60 @@ export class StaffController {
    * POST /api/v1/staff/verify-invitation
    */
   async verifyStaffInvitation(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const { businessId, phoneNumber, verificationCode, role, permissions, firstName, lastName } =
-        req.body;
+    const userId = requireAuthenticatedUser(req).id;
+    const { businessId, phoneNumber, verificationCode, role, permissions, firstName, lastName } =
+      req.body;
 
-      // Validate required fields
-      if (!businessId || !phoneNumber || !verificationCode || !role || !firstName || !lastName) {
-        const error = new AppError(
-          'Business ID, phone number, verification code, role, first name, and last name are required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate businessId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate phone number format
-      const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-      if (!phoneRegex.test(phoneNumber.replace(/\s/g, ''))) {
-        const error = new AppError(
-          'Invalid phone number format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate verification code format (6 digits)
-      const codeRegex = /^\d{6}$/;
-      if (!codeRegex.test(verificationCode)) {
-        const error = new AppError(
-          'Verification code must be 6 digits',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate role
-      if (!Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)) {
-        const error = new AppError('Invalid staff role', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate names
-      if (
-        typeof firstName !== 'string' ||
-        firstName.trim().length < 1 ||
-        firstName.trim().length > 50
-      ) {
-        const error = new AppError(
-          'First name must be between 1 and 50 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      if (
-        typeof lastName !== 'string' ||
-        lastName.trim().length < 1 ||
-        lastName.trim().length > 50
-      ) {
-        const error = new AppError(
-          'Last name must be between 1 and 50 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate permissions if provided
-      if (
-        permissions &&
-        (!Array.isArray(permissions) || !permissions.every((p: string) => typeof p === 'string'))
-      ) {
-        const error = new AppError(
-          'Permissions must be an array of strings',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      const context = createErrorContext(req, 'STAFF_VERIFICATION');
-
-      const result = await this.staffService.verifyStaffInvitation(
-        userId,
-        {
-          businessId,
-          phoneNumber: phoneNumber.replace(/\s/g, ''),
-          verificationCode,
-          role,
-          permissions: permissions || [],
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-        } as VerifyStaffInvitationRequest,
-        context
-      );
-
-      if (result.success) {
-        await this.responseHelper.success(res, 'success.staff.verified', result, 201, req);
-      } else {
-        const error = new AppError(result.message, 400, ERROR_CODES.INVALID_VERIFICATION_CODE);
-        sendAppErrorResponse(res, error, 400);
-      }
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!businessId || !phoneNumber || !verificationCode || !role || !firstName || !lastName) {
+      throw new AppError('REQUIRED_FIELD_MISSING', {
+        message: 'Business ID, phone number, verification code, role, first name, and last name are required',
+      });
     }
+
+    this.requireId({ businessId }, 'businessId');
+    const cleanedPhone = this.validatePhoneNumber(phoneNumber);
+    this.validateRole(role);
+    const trimmedFirst = this.validateName(firstName, 'First name');
+    const trimmedLast = this.validateName(lastName, 'Last name');
+    const normalizedPermissions = this.validatePermissions(permissions);
+
+    const codeRegex = /^\d{6}$/;
+    if (!codeRegex.test(verificationCode)) {
+      throw new AppError('INVALID_VERIFICATION_CODE', { message: 'Verification code must be 6 digits' });
+    }
+
+    const result = await this.staffService.verifyStaffInvitation(
+      userId,
+      {
+        businessId,
+        phoneNumber: cleanedPhone,
+        verificationCode,
+        role,
+        permissions: normalizedPermissions,
+        firstName: trimmedFirst,
+        lastName: trimmedLast,
+      } as VerifyStaffInvitationRequest
+    );
+
+    if (!result.success) {
+      throw new AppError('INVALID_VERIFICATION_CODE', { message: result.message });
+    }
+
+    await this.responseHelper.success(res, 'success.staff.verified', result, 201, req);
   }
 
   /**
    * Get all staff for a business
    * GET /api/v1/staff/:businessId
-   * Query params: ?includeInactive=true
    */
   async getBusinessStaff(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const { businessId } = req.params;
-      // Zod schema (getBusinessStaffQuerySchema) already transforms the string to boolean
-      const includeInactive = !!req.query.includeInactive;
+    const userId = requireAuthenticatedUser(req).id;
+    const businessId = this.requireId(req.params, 'businessId');
+    const includeInactive = !!req.query.includeInactive;
 
-      // Validate businessId parameter
-      if (!businessId || typeof businessId !== 'string') {
-        const error = new AppError(
-          'Business ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
+    const staff = await this.staffService.getBusinessStaff(userId, businessId, includeInactive);
 
-      // Validate businessId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      const staff = await this.staffService.getBusinessStaff(userId, businessId, includeInactive);
-
-      await this.responseHelper.success(res, 'success.staff.retrieved', { staff }, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.staff.retrieved', { staff }, 200, req);
   }
 
   /**
@@ -283,36 +178,16 @@ export class StaffController {
    * GET /api/v1/staff/member/:staffId
    */
   async getStaffMember(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { staffId } = req.params;
+    const userId = requireAuthenticatedUser(req).id;
+    const staffId = this.requireId(req.params, 'staffId');
 
-      // Validate staffId parameter
-      if (!staffId || typeof staffId !== 'string') {
-        const error = new AppError('Staff ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
-        return sendAppErrorResponse(res, error);
-      }
+    const staff = await this.staffService.getStaffByIdAuthorized(userId, staffId);
 
-      // Validate staffId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(staffId) || staffId.length < 1 || staffId.length > 50) {
-        const error = new AppError('Invalid staff ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Authorization: requester must be owner/staff of the same business or have global admin permission.
-      // getStaffByIdAuthorized throws ForbiddenError (403) if the check fails.
-      const staff = await this.staffService.getStaffByIdAuthorized(req.user!.id, staffId);
-
-      if (!staff) {
-        const error = new AppError('Staff member not found', 404, ERROR_CODES.STAFF_NOT_FOUND);
-        sendAppErrorResponse(res, error);
-        return;
-      }
-
-      await this.responseHelper.success(res, 'success.staff.retrievedSingle', { staff }, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!staff) {
+      throw new AppError('STAFF_NOT_FOUND', { message: 'Staff member not found' });
     }
+
+    await this.responseHelper.success(res, 'success.staff.retrievedSingle', { staff }, 200, req);
   }
 
   /**
@@ -320,94 +195,22 @@ export class StaffController {
    * PUT /api/v1/staff/member/:staffId
    */
   async updateStaffMember(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const { staffId } = req.params;
-      const updates = req.body;
+    const userId = requireAuthenticatedUser(req).id;
+    const staffId = this.requireId(req.params, 'staffId');
+    const updates = req.body;
 
-      // Validate staffId parameter
-      if (!staffId || typeof staffId !== 'string') {
-        const error = new AppError('Staff ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate staffId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(staffId) || staffId.length < 1 || staffId.length > 50) {
-        const error = new AppError('Invalid staff ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate updates object
-      if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
-        const error = new AppError(
-          'Updates must be a valid object',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate specific fields if provided
-      if (
-        updates.firstName &&
-        (typeof updates.firstName !== 'string' ||
-          updates.firstName.trim().length < 1 ||
-          updates.firstName.trim().length > 50)
-      ) {
-        const error = new AppError(
-          'First name must be between 1 and 50 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      if (
-        updates.lastName &&
-        (typeof updates.lastName !== 'string' ||
-          updates.lastName.trim().length < 1 ||
-          updates.lastName.trim().length > 50)
-      ) {
-        const error = new AppError(
-          'Last name must be between 1 and 50 characters',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      if (
-        updates.role &&
-        !Object.values(BusinessStaffRole).includes(updates.role as BusinessStaffRole)
-      ) {
-        const error = new AppError('Invalid staff role', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      if (
-        updates.permissions &&
-        (!Array.isArray(updates.permissions) ||
-          !updates.permissions.every((p: string) => typeof p === 'string'))
-      ) {
-        const error = new AppError(
-          'Permissions must be an array of strings',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Sanitize string fields
-      if (updates.firstName) updates.firstName = updates.firstName.trim();
-      if (updates.lastName) updates.lastName = updates.lastName.trim();
-
-      const staff = await this.staffService.updateStaff(userId, staffId, updates);
-
-      await this.responseHelper.success(res, 'success.staff.updated', { staff }, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Updates must be a valid object' });
     }
+
+    if (updates.firstName) updates.firstName = this.validateName(updates.firstName, 'First name');
+    if (updates.lastName) updates.lastName = this.validateName(updates.lastName, 'Last name');
+    if (updates.role) this.validateRole(updates.role);
+    if (updates.permissions) this.validatePermissions(updates.permissions);
+
+    const staff = await this.staffService.updateStaff(userId, staffId, updates);
+
+    await this.responseHelper.success(res, 'success.staff.updated', { staff }, 200, req);
   }
 
   /**
@@ -415,29 +218,12 @@ export class StaffController {
    * DELETE /api/v1/staff/member/:staffId
    */
   async removeStaffMember(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const { staffId } = req.params;
+    const userId = requireAuthenticatedUser(req).id;
+    const staffId = this.requireId(req.params, 'staffId');
 
-      // Validate staffId parameter
-      if (!staffId || typeof staffId !== 'string') {
-        const error = new AppError('Staff ID is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
-        return sendAppErrorResponse(res, error);
-      }
+    await this.staffService.removeStaff(userId, staffId);
 
-      // Validate staffId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(staffId) || staffId.length < 1 || staffId.length > 50) {
-        const error = new AppError('Invalid staff ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      await this.staffService.removeStaff(userId, staffId);
-
-      await this.responseHelper.success(res, 'success.staff.removed', undefined, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.staff.removed', undefined, 200, req);
   }
 
   /**
@@ -445,89 +231,39 @@ export class StaffController {
    * GET /api/v1/staff/:businessId/stats
    */
   async getStaffStats(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const { businessId } = req.params;
+    const userId = requireAuthenticatedUser(req).id;
+    const businessId = this.requireId(req.params, 'businessId');
 
-      // Validate businessId parameter
-      if (!businessId || typeof businessId !== 'string') {
-        const error = new AppError(
-          'Business ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
+    const stats = await this.staffService.getStaffStats(userId, businessId);
 
-      // Validate businessId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      const stats = await this.staffService.getStaffStats(userId, businessId);
-
-      await this.responseHelper.success(res, 'success.staff.statsRetrieved', { stats }, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.staff.statsRetrieved', { stats }, 200, req);
   }
 
   /**
    * Get staff by role for a business
    * GET /api/v1/staff/:businessId/role/:role
-   * Query params: ?includeInactive=true
    */
   async getStaffByRole(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const { businessId, role } = req.params;
-      // Zod schema (getStaffByRoleQuerySchema) already transforms the string to boolean
-      const includeInactive = !!req.query.includeInactive;
+    const userId = requireAuthenticatedUser(req).id;
+    const businessId = this.requireId(req.params, 'businessId');
+    const includeInactive = !!req.query.includeInactive;
 
-      // Validate businessId parameter
-      if (!businessId || typeof businessId !== 'string') {
-        const error = new AppError(
-          'Business ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate businessId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate role parameter
-      if (!role || typeof role !== 'string') {
-        const error = new AppError('Role is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate role value
-      if (!Object.values(BusinessStaffRole).includes(role as BusinessStaffRole)) {
-        const error = new AppError('Invalid staff role', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      const staff = await this.staffService.getBusinessStaff(userId, businessId, includeInactive);
-      const filteredStaff = staff.filter((s) => s.role === role);
-
-      await this.responseHelper.success(
-        res,
-        'success.staff.byRoleRetrieved',
-        { staff: filteredStaff },
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    const { role } = req.params;
+    if (!role || typeof role !== 'string') {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Role is required' });
     }
+    this.validateRole(role);
+
+    const staff = await this.staffService.getBusinessStaff(userId, businessId, includeInactive);
+    const filteredStaff = staff.filter((s) => s.role === role);
+
+    await this.responseHelper.success(
+      res,
+      'success.staff.byRoleRetrieved',
+      { staff: filteredStaff },
+      200,
+      req
+    );
   }
 
   /**
@@ -535,21 +271,17 @@ export class StaffController {
    * GET /api/v1/staff/my-positions
    */
   async getMyStaffPositions(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
+    const userId = requireAuthenticatedUser(req).id;
 
-      const positions = await this.staffService.getUserStaffPositions(userId);
+    const positions = await this.staffService.getUserStaffPositions(userId);
 
-      await this.responseHelper.success(
-        res,
-        'success.staff.positionsRetrieved',
-        { positions },
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(
+      res,
+      'success.staff.positionsRetrieved',
+      { positions },
+      200,
+      req
+    );
   }
 
   /**
@@ -557,102 +289,47 @@ export class StaffController {
    * POST /api/v1/staff/transfer
    */
   async transferStaff(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const { staffIds, fromBusinessId, toBusinessId } = req.body;
+    const userId = requireAuthenticatedUser(req).id;
+    const { staffIds, fromBusinessId, toBusinessId } = req.body;
 
-      // Validate required fields
-      if (!staffIds || !fromBusinessId || !toBusinessId) {
-        const error = new AppError(
-          'Staff IDs, from business ID, and to business ID are required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate staffIds array
-      if (!Array.isArray(staffIds)) {
-        const error = new AppError('Staff IDs must be an array', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      if (staffIds.length === 0) {
-        const error = new AppError(
-          'Staff IDs array cannot be empty',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate array size limit
-      if (staffIds.length > 50) {
-        const error = new AppError(
-          'Staff IDs array cannot exceed 50 items',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate business IDs
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (
-        !idRegex.test(fromBusinessId) ||
-        fromBusinessId.length < 1 ||
-        fromBusinessId.length > 50
-      ) {
-        const error = new AppError(
-          'Invalid from business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      if (!idRegex.test(toBusinessId) || toBusinessId.length < 1 || toBusinessId.length > 50) {
-        const error = new AppError(
-          'Invalid to business ID format',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate each staff ID
-      for (let i = 0; i < staffIds.length; i++) {
-        const staffId = staffIds[i];
-        if (!staffId || typeof staffId !== 'string') {
-          const error = new AppError(
-            `staffIds[${i}] must be a non-empty string`,
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-
-        if (!idRegex.test(staffId) || staffId.length < 1 || staffId.length > 50) {
-          const error = new AppError(
-            `staffIds[${i}] has invalid format`,
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-      }
-
-      await this.staffService.transferStaffBetweenBusinesses(
-        userId,
-        staffIds,
-        fromBusinessId,
-        toBusinessId
-      );
-
-      await this.responseHelper.success(res, 'success.staff.transferred', undefined, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!staffIds || !fromBusinessId || !toBusinessId) {
+      throw new AppError('REQUIRED_FIELD_MISSING', {
+        message: 'Staff IDs, from business ID, and to business ID are required',
+      });
     }
+
+    if (!Array.isArray(staffIds)) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Staff IDs must be an array' });
+    }
+    if (staffIds.length === 0) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Staff IDs array cannot be empty' });
+    }
+    if (staffIds.length > 50) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Staff IDs array cannot exceed 50 items' });
+    }
+
+    this.requireId({ fromBusinessId }, 'fromBusinessId');
+    this.requireId({ toBusinessId }, 'toBusinessId');
+
+    const idRegex = /^[a-zA-Z0-9-_]+$/;
+    for (let i = 0; i < staffIds.length; i++) {
+      const staffId = staffIds[i];
+      if (!staffId || typeof staffId !== 'string') {
+        throw new AppError('VALIDATION_ERROR', { message: `staffIds[${i}] must be a non-empty string` });
+      }
+      if (!idRegex.test(staffId) || staffId.length < 1 || staffId.length > 50) {
+        throw new AppError('VALIDATION_ERROR', { message: `staffIds[${i}] has invalid format` });
+      }
+    }
+
+    await this.staffService.transferStaffBetweenBusinesses(
+      userId,
+      staffIds,
+      fromBusinessId,
+      toBusinessId
+    );
+
+    await this.responseHelper.success(res, 'success.staff.transferred', undefined, 200, req);
   }
 
   /**
@@ -660,179 +337,74 @@ export class StaffController {
    * POST /api/v1/staff/bulk-invite
    */
   async bulkInviteStaff(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const { businessId, invitations } = req.body;
+    const userId = requireAuthenticatedUser(req).id;
+    const { businessId, invitations } = req.body;
 
-      // Validate required fields
-      if (!businessId || !invitations) {
-        const error = new AppError(
-          'Business ID and invitations are required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate businessId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate invitations array
-      if (!Array.isArray(invitations)) {
-        const error = new AppError(
-          'Invitations must be an array',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      if (invitations.length === 0) {
-        const error = new AppError(
-          'Invitations array cannot be empty',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate array size limit
-      if (invitations.length > 20) {
-        const error = new AppError(
-          'Invitations array cannot exceed 20 items',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate each invitation
-      for (let i = 0; i < invitations.length; i++) {
-        const invitation = invitations[i];
-        if (!invitation || typeof invitation !== 'object') {
-          const error = new AppError(
-            `invitations[${i}] must be an object`,
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-
-        if (
-          !invitation.phoneNumber ||
-          !invitation.role ||
-          !invitation.firstName ||
-          !invitation.lastName
-        ) {
-          const error = new AppError(
-            `invitations[${i}] must have phoneNumber, role, firstName, and lastName`,
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-
-        // Validate phone number format
-        const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-        if (!phoneRegex.test(invitation.phoneNumber.replace(/\s/g, ''))) {
-          const error = new AppError(
-            `invitations[${i}].phoneNumber has invalid format`,
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-
-        // Validate role
-        if (!Object.values(BusinessStaffRole).includes(invitation.role as BusinessStaffRole)) {
-          const error = new AppError(
-            `invitations[${i}].role is invalid`,
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-
-        // Validate names
-        if (
-          typeof invitation.firstName !== 'string' ||
-          invitation.firstName.trim().length < 1 ||
-          invitation.firstName.trim().length > 50
-        ) {
-          const error = new AppError(
-            `invitations[${i}].firstName must be between 1 and 50 characters`,
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-
-        if (
-          typeof invitation.lastName !== 'string' ||
-          invitation.lastName.trim().length < 1 ||
-          invitation.lastName.trim().length > 50
-        ) {
-          const error = new AppError(
-            `invitations[${i}].lastName must be between 1 and 50 characters`,
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-
-        // Validate permissions if provided
-        if (
-          invitation.permissions &&
-          (!Array.isArray(invitation.permissions) ||
-            !invitation.permissions.every((p: string) => typeof p === 'string'))
-        ) {
-          const error = new AppError(
-            `invitations[${i}].permissions must be an array of strings`,
-            400,
-            ERROR_CODES.VALIDATION_ERROR
-          );
-          return sendAppErrorResponse(res, error);
-        }
-      }
-
-      const results = [];
-      const context = createErrorContext(req, 'BULK_STAFF_INVITATION');
-
-      for (const invitation of invitations) {
-        try {
-          const result = await this.staffService.inviteStaff(
-            userId,
-            {
-              businessId,
-              phoneNumber: invitation.phoneNumber.replace(/\s/g, ''),
-              role: invitation.role,
-              permissions: invitation.permissions || [],
-              firstName: invitation.firstName.trim(),
-              lastName: invitation.lastName.trim(),
-            } as InviteStaffRequest,
-            context
-          );
-          results.push({
-            phoneNumber: invitation.phoneNumber,
-            ...result,
-          });
-        } catch (error) {
-          results.push({
-            phoneNumber: invitation.phoneNumber,
-            success: false,
-            message: error instanceof Error ? error.message : 'Unknown error',
-          });
-        }
-      }
-
-      await this.responseHelper.success(res, 'success.staff.bulkInvited', { results }, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!businessId || !invitations) {
+      throw new AppError('REQUIRED_FIELD_MISSING', {
+        message: 'Business ID and invitations are required',
+      });
     }
+
+    this.requireId({ businessId }, 'businessId');
+
+    if (!Array.isArray(invitations)) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Invitations must be an array' });
+    }
+    if (invitations.length === 0) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Invitations array cannot be empty' });
+    }
+    if (invitations.length > 20) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Invitations array cannot exceed 20 items' });
+    }
+
+    for (let i = 0; i < invitations.length; i++) {
+      const invitation = invitations[i];
+      if (!invitation || typeof invitation !== 'object') {
+        throw new AppError('VALIDATION_ERROR', { message: `invitations[${i}] must be an object` });
+      }
+      if (!invitation.phoneNumber || !invitation.role || !invitation.firstName || !invitation.lastName) {
+        throw new AppError('VALIDATION_ERROR', {
+          message: `invitations[${i}] must have phoneNumber, role, firstName, and lastName`,
+        });
+      }
+      this.validatePhoneNumber(invitation.phoneNumber);
+      this.validateRole(invitation.role);
+      this.validateName(invitation.firstName, `invitations[${i}].firstName`);
+      this.validateName(invitation.lastName, `invitations[${i}].lastName`);
+      if (invitation.permissions) this.validatePermissions(invitation.permissions);
+    }
+
+    const results = [];
+
+    // Intentional try/catch per invitation — one failure should not abort the batch
+    for (const invitation of invitations) {
+      try {
+        const result = await this.staffService.inviteStaff(
+          userId,
+          {
+            businessId,
+            phoneNumber: invitation.phoneNumber.replace(/\s/g, ''),
+            role: invitation.role,
+            permissions: invitation.permissions || [],
+            firstName: invitation.firstName.trim(),
+            lastName: invitation.lastName.trim(),
+          } as InviteStaffRequest
+        );
+        results.push({
+          phoneNumber: invitation.phoneNumber,
+          ...result,
+        });
+      } catch (error) {
+        results.push({
+          phoneNumber: invitation.phoneNumber,
+          success: false,
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    await this.responseHelper.success(res, 'success.staff.bulkInvited', { results }, 200, req);
   }
 
   /**
@@ -840,17 +412,13 @@ export class StaffController {
    * GET /api/v1/staff/roles
    */
   async getAvailableRoles(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const roles = Object.values(BusinessStaffRole).map((role) => ({
-        value: role,
-        label: this.getRoleDisplayName(role),
-        description: this.getRoleDescription(role),
-      }));
+    const roles = Object.values(BusinessStaffRole).map((role) => ({
+      value: role,
+      label: this.getRoleDisplayName(role),
+      description: this.getRoleDescription(role),
+    }));
 
-      await this.responseHelper.success(res, 'success.staff.rolesRetrieved', { roles }, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.staff.rolesRetrieved', { roles }, 200, req);
   }
 
   private getRoleDisplayName(role: BusinessStaffRole): string {
@@ -876,32 +444,11 @@ export class StaffController {
    * GET /api/v1/public/businesses/:businessId/staff
    */
   async getPublicBusinessStaff(req: Request, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
+    const businessId = this.requireId(req.params, 'businessId');
 
-      // Validate businessId parameter
-      if (!businessId || typeof businessId !== 'string') {
-        const error = new AppError(
-          'Business ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
+    const serviceId = typeof req.query.serviceId === 'string' ? req.query.serviceId : undefined;
+    const staff = await this.staffService.getPublicBusinessStaff(businessId, serviceId);
 
-      // Validate businessId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      const serviceId = typeof req.query.serviceId === 'string' ? req.query.serviceId : undefined;
-      const staff = await this.staffService.getPublicBusinessStaff(businessId, serviceId);
-
-      await this.responseHelper.success(res, 'success.staff.publicRetrieved', { staff }, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.staff.publicRetrieved', { staff }, 200, req);
   }
 }

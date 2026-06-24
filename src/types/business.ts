@@ -109,6 +109,7 @@ export interface BusinessData {
   totalRatings?: number;
   lastRatingAt?: Date | null;
   reviewsHidden?: boolean;
+  requireApproval?: boolean;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;
@@ -180,6 +181,7 @@ export interface AppointmentData {
   completedAt?: Date;
   canceledAt?: Date;
   cancelReason?: string;
+  cancelledBy?: 'CUSTOMER' | 'BUSINESS' | 'SYSTEM' | null;
   reminderSent: boolean;
   reminderSentAt?: Date;
   createdAt: Date;
@@ -376,12 +378,14 @@ export enum BusinessStaffRole {
 }
 
 export enum AppointmentStatus {
-  PENDING = 'PENDING',       // Initial status before confirmation
-  CONFIRMED = 'CONFIRMED',   // Status after confirmation
-  IN_PROGRESS = 'IN_PROGRESS', // Automatically when appointment time arrives
-  COMPLETED = 'COMPLETED',   // Automatically when service time ends
-  CANCELED = 'CANCELED',     // Manual action only
-  NO_SHOW = 'NO_SHOW'        // Manual action only
+  PENDING = 'PENDING',
+  PENDING_APPROVAL = 'PENDING_APPROVAL',
+  CONFIRMED = 'CONFIRMED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  CANCELED = 'CANCELED',
+  NO_SHOW = 'NO_SHOW',
+  REJECTED_BY_BUSINESS = 'REJECTED_BY_BUSINESS'
 }
 
 export enum SubscriptionStatus {

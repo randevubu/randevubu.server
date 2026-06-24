@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import { getRatingsQuerySchema, submitRatingSchema } from '../schemas/rating.schemas';
 import { RatingService } from '../services/domain/rating/ratingService';
 import { AuthenticatedRequest } from '../types/request';
-import { handleRouteError } from '../utils/responseUtils';
 import { ResponseHelper } from '../utils/responseHelper';
 
 export class RatingController {
@@ -11,138 +10,78 @@ export class RatingController {
     private responseHelper: ResponseHelper
   ) {}
 
-  /**
-   * Submit a rating for a business
-   * POST /api/v1/businesses/:businessId/ratings
-   */
   async submitRating(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
-      const userId = req.user!.id;
-      const validatedData = submitRatingSchema.parse(req.body);
+    const { businessId } = req.params;
+    const userId = req.user!.id;
+    const validatedData = submitRatingSchema.parse(req.body);
 
-      const rating = await this.ratingService.submitRating(userId, businessId, validatedData);
+    const rating = await this.ratingService.submitRating(userId, businessId, validatedData);
 
-      await this.responseHelper.success(res, 'success.rating.submitted', { rating }, 201, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.rating.submitted', { rating }, 201, req);
   }
 
-  /**
-   * Get ratings for a business
-   * GET /api/v1/businesses/:businessId/ratings
-   */
   async getBusinessRatings(req: Request, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
-      const validatedQuery = getRatingsQuerySchema.parse(req.query);
+    const { businessId } = req.params;
+    const validatedQuery = getRatingsQuerySchema.parse(req.query);
 
-      const result = await this.ratingService.getBusinessRatings(businessId, {
-        page: validatedQuery.page,
-        limit: validatedQuery.limit,
-        minRating: validatedQuery.minRating,
-      });
+    const result = await this.ratingService.getBusinessRatings(businessId, {
+      page: validatedQuery.page,
+      limit: validatedQuery.limit,
+      minRating: validatedQuery.minRating,
+    });
 
-      await this.responseHelper.success(
-        res,
-        'success.rating.retrieved',
-        {
-          ratings: result.ratings,
-          pagination: {
-            page: validatedQuery.page,
-            limit: validatedQuery.limit,
-            total: result.total,
-            totalPages: result.totalPages,
-          },
-          averageRating: result.averageRating,
-          totalRatings: result.totalRatings,
+    await this.responseHelper.success(
+      res,
+      'success.rating.retrieved',
+      {
+        ratings: result.ratings,
+        pagination: {
+          page: validatedQuery.page,
+          limit: validatedQuery.limit,
+          total: result.total,
+          totalPages: result.totalPages,
         },
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+        averageRating: result.averageRating,
+        totalRatings: result.totalRatings,
+      },
+      200,
+      req
+    );
   }
 
-  /**
-   * Check if user can rate an appointment
-   * GET /api/v1/businesses/:businessId/appointments/:appointmentId/can-rate
-   */
   async canUserRate(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { businessId, appointmentId } = req.params;
-      const userId = req.user!.id;
+    const { businessId, appointmentId } = req.params;
+    const userId = req.user!.id;
 
-      const result = await this.ratingService.canUserRate(userId, businessId, appointmentId);
+    const result = await this.ratingService.canUserRate(userId, businessId, appointmentId);
 
-      await this.responseHelper.success(res, 'success.rating.eligibilityChecked', result, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.rating.eligibilityChecked', result, 200, req);
   }
 
-  /**
-   * Get user's rating for an appointment
-   * GET /api/v1/appointments/:appointmentId/rating
-   */
   async getUserRating(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { appointmentId } = req.params;
-      const userId = req.user!.id;
+    const { appointmentId } = req.params;
+    const userId = req.user!.id;
 
-      const rating = await this.ratingService.getUserRatingForAppointment(userId, appointmentId);
+    const rating = await this.ratingService.getUserRatingForAppointment(userId, appointmentId);
 
-      if (!rating) {
-        return await this.responseHelper.success(
-          res,
-          'success.rating.notFound',
-          { rating: null },
-          200,
-          req
-        );
-      }
-
-      await this.responseHelper.success(
-        res,
-        'success.rating.retrievedSingle',
-        { rating },
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!rating) {
+      return await this.responseHelper.success(res, 'success.rating.notFound', { rating: null }, 200, req);
     }
+
+    await this.responseHelper.success(res, 'success.rating.retrievedSingle', { rating }, 200, req);
   }
 
-  /**
-   * Delete a rating (business owner only)
-   * DELETE /api/v1/businesses/:businessId/ratings/:ratingId
-   */
   async deleteRating(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { businessId, ratingId } = req.params;
-      await this.ratingService.deleteRating(ratingId, businessId);
-      await this.responseHelper.success(res, 'success.rating.deleted', {}, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    const { businessId, ratingId } = req.params;
+    await this.ratingService.deleteRating(ratingId, businessId);
+    await this.responseHelper.success(res, 'success.rating.deleted', {}, 200, req);
   }
 
-  /**
-   * Refresh rating cache for a business
-   * POST /api/v1/businesses/:businessId/ratings/refresh-cache
-   */
   async refreshRatingCache(req: Request, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
+    const { businessId } = req.params;
 
-      const result = await this.ratingService.refreshRatingCache(businessId);
+    const result = await this.ratingService.refreshRatingCache(businessId);
 
-      await this.responseHelper.success(res, 'success.rating.cacheRefreshed', result, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.rating.cacheRefreshed', result, 200, req);
   }
 }

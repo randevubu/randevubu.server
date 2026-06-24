@@ -5,6 +5,7 @@ import {
   UserNotFoundError,
   ValidationError,
 } from "../../../types/errors";
+import { AppError } from "../../../types/responseTypes";
 
 import { Permission, Role, UserPermissions } from '../../../types/rbac';
 import logger from "../../../utils/Logger/logger";
@@ -304,7 +305,7 @@ export class RBACService {
         );
 
       if (!result || typeof result !== "object") {
-        throw new Error("Invalid repository response");
+        throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Invalid repository response' });
       }
 
       const roleData = Array.isArray(result.roles) ? result.roles : [];

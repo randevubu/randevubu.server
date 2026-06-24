@@ -1,13 +1,12 @@
 import { Request, Response } from 'express';
-import { PaymentService, CreatePaymentRequest } from '../services/domain/payment';
+import { PaymentService } from '../services/domain/payment';
 import { SubscriptionService } from '../services/domain/subscription/subscriptionService';
 import { GuaranteedAuthRequest } from '../types/auth';
 import { z } from 'zod';
-import { handleRouteError, createErrorContext, sendAppErrorResponse } from '../utils/responseUtils';
 import { ResponseHelper } from '../utils/responseHelper';
 import { AppError } from '../types/responseTypes';
-import { ERROR_CODES } from '../constants/errorCodes';
 import logger from '../utils/Logger/logger';
+
 const createSubscriptionPaymentSchema = z.object({
   planId: z.string(),
   card: z.object({
@@ -17,18 +16,16 @@ const createSubscriptionPaymentSchema = z.object({
     expireYear: z.string().regex(/^\d{4}$/),
     cvc: z.string().regex(/^\d{3,4}$/),
   }),
-  buyer: z
-    .object({
-      name: z.string().min(1),
-      surname: z.string().min(1),
-      email: z.string().email(),
-      phone: z.string().optional(),
-      address: z.string().min(1),
-      city: z.string().min(1),
-      country: z.string().min(1),
-      zipCode: z.string().optional(),
-    })
-    .optional(),
+  buyer: z.object({
+    name: z.string().min(1),
+    surname: z.string().min(1),
+    email: z.string().email(),
+    phone: z.string().optional(),
+    address: z.string().min(1),
+    city: z.string().min(1),
+    country: z.string().min(1),
+    zipCode: z.string().optional(),
+  }).optional(),
   installment: z.string().default('1'),
   discountCode: z.string().optional(),
 });
@@ -45,356 +42,143 @@ export class PaymentController {
     private responseHelper: ResponseHelper
   ) {}
 
-  async createSubscriptionPayment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
-      const userId = req.user.id;
-
-      // Validate businessId parameter
-      if (!businessId || typeof businessId !== 'string') {
-        const error = new AppError(
-          'Business ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate businessId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      const validatedData = createSubscriptionPaymentSchema.parse(req.body);
-
-      const result = await this.paymentService.createSubscriptionForBusiness(
-        businessId,
-        validatedData.planId,
-        {
-          card: validatedData.card,
-          buyer: validatedData.buyer || {
-            name: 'Customer',
-            surname: 'User',
-            email: `user_${userId}@randevubu.com`,
-            gsmNumber: req.user.phoneNumber,
-          },
-          installment: validatedData.installment,
-          discountCode: validatedData.discountCode,
-        }
-      );
-
-      if (result.success) {
-        await this.responseHelper.success(
-          res,
-          'success.payment.subscriptionCreated',
-          {
-            subscriptionId: result.subscriptionId,
-            paymentId: result.paymentId,
-            message: result.message,
-            discountApplied: result.discountApplied,
-          },
-          201,
-          req
-        );
-      } else {
-        const error = new AppError(
-          result.error || 'Payment creation failed',
-          400,
-          ERROR_CODES.PAYMENT_PROCESSING_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const error = new AppError('Invalid request data', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      } else {
-        handleRouteError(error, req, res);
-      }
+  private requireId(params: Record<string, string>, name: string): string {
+    const id = params[name];
+    if (!id || typeof id !== 'string') {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: `${name} is required`, params: { field: name } });
     }
+    const idRegex = /^[a-zA-Z0-9-_]+$/;
+    if (!idRegex.test(id) || id.length < 1 || id.length > 50) {
+      throw new AppError('INVALID_ID_FORMAT', { message: `Invalid ${name} format`, params: { field: name } });
+    }
+    return id;
+  }
+
+  async createSubscriptionPayment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
+    const businessId = this.requireId(req.params, 'businessId');
+    const userId = req.user.id;
+    const validatedData = createSubscriptionPaymentSchema.parse(req.body);
+
+    const result = await this.paymentService.createSubscriptionForBusiness(
+      businessId, validatedData.planId, {
+        card: validatedData.card,
+        buyer: validatedData.buyer || {
+          name: 'Customer', surname: 'User',
+          email: `user_${userId}@randevubu.com`, gsmNumber: req.user.phoneNumber,
+        },
+        installment: validatedData.installment,
+        discountCode: validatedData.discountCode,
+      }
+    );
+
+    if (!result.success) {
+      throw new AppError('PAYMENT_PROCESSING_ERROR', { message: result.error || 'Payment creation failed' });
+    }
+
+    await this.responseHelper.success(res, 'success.payment.subscriptionCreated', {
+      subscriptionId: result.subscriptionId, paymentId: result.paymentId,
+      message: result.message, discountApplied: result.discountApplied,
+    }, 201, req);
   }
 
   async refundPayment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
-    try {
-      const { paymentId } = req.params;
-      const userId = req.user.id;
+    const paymentId = this.requireId(req.params, 'paymentId');
+    const validatedData = refundPaymentSchema.parse(req.body);
 
-      // Validate paymentId parameter
-      if (!paymentId || typeof paymentId !== 'string') {
-        const error = new AppError(
-          'Payment ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
+    const result = await this.paymentService.refundPayment(paymentId, validatedData.amount, validatedData.reason);
 
-      // Validate paymentId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(paymentId) || paymentId.length < 1 || paymentId.length > 50) {
-        const error = new AppError('Invalid payment ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      const validatedData = refundPaymentSchema.parse(req.body);
-
-      const result = await this.paymentService.refundPayment(
-        paymentId,
-        validatedData.amount,
-        validatedData.reason
-      );
-
-      if (result.success) {
-        await this.responseHelper.success(
-          res,
-          'success.payment.refunded',
-          {
-            refundId: result.refundId,
-            message: result.message,
-          },
-          200,
-          req
-        );
-      } else {
-        const error = new AppError(
-          result.error || 'Refund failed',
-          400,
-          ERROR_CODES.PAYMENT_PROCESSING_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const error = new AppError('Invalid request data', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      } else {
-        handleRouteError(error, req, res);
-      }
+    if (!result.success) {
+      throw new AppError('PAYMENT_PROCESSING_ERROR', { message: result.error || 'Refund failed' });
     }
+
+    await this.responseHelper.success(res, 'success.payment.refunded', {
+      refundId: result.refundId, message: result.message,
+    }, 200, req);
   }
 
   async cancelPayment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
-    try {
-      const { paymentId } = req.params;
-      const { reason } = req.body;
-      const userId = req.user.id;
+    const paymentId = this.requireId(req.params, 'paymentId');
+    const { reason } = req.body;
 
-      // Validate paymentId parameter
-      if (!paymentId || typeof paymentId !== 'string') {
-        const error = new AppError(
-          'Payment ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate paymentId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(paymentId) || paymentId.length < 1 || paymentId.length > 50) {
-        const error = new AppError('Invalid payment ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      // Validate reason if provided
-      if (reason && (typeof reason !== 'string' || reason.trim().length < 3)) {
-        const error = new AppError(
-          'Reason must be at least 3 characters long',
-          400,
-          ERROR_CODES.VALIDATION_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-
-      const result = await this.paymentService.cancelPayment(paymentId, reason);
-
-      if (result.success) {
-        await this.responseHelper.success(res, 'success.payment.cancelled', undefined, 200, req);
-      } else {
-        const error = new AppError(
-          result.error || 'Payment cancellation failed',
-          400,
-          ERROR_CODES.PAYMENT_PROCESSING_ERROR
-        );
-        return sendAppErrorResponse(res, error);
-      }
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (reason && (typeof reason !== 'string' || reason.trim().length < 3)) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Reason must be at least 3 characters long' });
     }
+
+    const result = await this.paymentService.cancelPayment(paymentId, reason);
+
+    if (!result.success) {
+      throw new AppError('PAYMENT_PROCESSING_ERROR', { message: result.error || 'Payment cancellation failed' });
+    }
+
+    await this.responseHelper.success(res, 'success.payment.cancelled', undefined, 200, req);
   }
 
   async getPayment(req: GuaranteedAuthRequest, res: Response): Promise<void> {
-    try {
-      const { paymentId } = req.params;
-      const userId = req.user.id;
+    const paymentId = this.requireId(req.params, 'paymentId');
 
-      // Validate paymentId parameter
-      if (!paymentId || typeof paymentId !== 'string') {
-        const error = new AppError(
-          'Payment ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
+    const result = await this.paymentService.retrievePayment(paymentId);
 
-      // Validate paymentId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(paymentId) || paymentId.length < 1 || paymentId.length > 50) {
-        const error = new AppError('Invalid payment ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      const result = await this.paymentService.retrievePayment(paymentId);
-
-      if (result.success) {
-        await this.responseHelper.success(
-          res,
-          'success.payment.retrieved',
-          result.payment,
-          200,
-          req
-        );
-      } else {
-        const error = new AppError(
-          result.error || 'Payment not found',
-          404,
-          ERROR_CODES.BUSINESS_NOT_FOUND
-        );
-        return sendAppErrorResponse(res, error);
-      }
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!result.success) {
+      throw new AppError('PAYMENT_NOT_FOUND', { message: result.error || 'Payment not found' });
     }
+
+    await this.responseHelper.success(res, 'success.payment.retrieved', result.payment, 200, req);
   }
 
   async getPaymentHistory(req: GuaranteedAuthRequest, res: Response): Promise<void> {
-    try {
-      const { businessId } = req.params;
-      const userId = req.user.id;
+    const businessId = this.requireId(req.params, 'businessId');
 
-      // Validate businessId parameter
-      if (!businessId || typeof businessId !== 'string') {
-        const error = new AppError(
-          'Business ID is required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        return sendAppErrorResponse(res, error);
-      }
+    const result = await this.paymentService.getSubscriptionWithPayments(businessId);
 
-      // Validate businessId format
-      const idRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!idRegex.test(businessId) || businessId.length < 1 || businessId.length > 50) {
-        const error = new AppError('Invalid business ID format', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      const result = await this.paymentService.getSubscriptionWithPayments(businessId);
-
-      if (result.success) {
-        await this.responseHelper.success(
-          res,
-          'success.payment.historyRetrieved',
-          result.subscription
-        );
-      } else {
-        const error = new AppError(
-          result.error || 'Payment history not found',
-          404,
-          ERROR_CODES.BUSINESS_NOT_FOUND
-        );
-        return sendAppErrorResponse(res, error);
-      }
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!result.success) {
+      throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: result.error || 'Subscription not found for payment history' });
     }
+
+    await this.responseHelper.success(res, 'success.payment.historyRetrieved', result.subscription);
   }
 
-  async getTestCards(req: Request, res: Response): Promise<void> {
-    try {
-      const testCards = this.paymentService.getTestCards();
+  async getTestCards(_req: Request, res: Response): Promise<void> {
+    const testCards = this.paymentService.getTestCards();
 
-      await this.responseHelper.success(
-        res,
-        'success.payment.testCardsRetrieved',
-        {
-          testCards,
-          usage: {
-            success: 'Use success card for successful test payments',
-            failure: 'Use failure card to test payment failures',
-            threeDsSuccess: 'Use for 3DS authentication test',
-          },
-        },
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.payment.testCardsRetrieved', {
+      testCards,
+      usage: {
+        success: 'Use success card for successful test payments',
+        failure: 'Use failure card to test payment failures',
+        threeDsSuccess: 'Use for 3DS authentication test',
+      },
+    }, 200);
   }
 
-  async getSubscriptionPlans(req: Request, res: Response): Promise<void> {
-    try {
-      const plans = await this.subscriptionService.getAllPlans();
+  async getSubscriptionPlans(_req: Request, res: Response): Promise<void> {
+    const plans = await this.subscriptionService.getAllPlans();
 
-      await this.responseHelper.success(
-        res,
-        'success.payment.subscriptionPlansRetrieved',
-        plans,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.payment.subscriptionPlansRetrieved', plans, 200);
   }
 
   async webhookHandler(req: Request, res: Response): Promise<void> {
-    try {
-      const iyzicoData = req.body;
+    const iyzicoData = req.body;
 
-      // Validate webhook data
-      if (!iyzicoData || typeof iyzicoData !== 'object') {
-        const error = new AppError('Invalid webhook data', 400, ERROR_CODES.VALIDATION_ERROR);
-        return sendAppErrorResponse(res, error);
-      }
-
-      if (iyzicoData.status === 'success') {
-        const paymentId = iyzicoData.paymentId;
-
-        if (!paymentId) {
-          const error = new AppError(
-            'Payment ID is required in webhook data',
-            400,
-            ERROR_CODES.REQUIRED_FIELD_MISSING
-          );
-          return sendAppErrorResponse(res, error);
-        }
-
-        const payment = await this.paymentService.retrievePayment(paymentId);
-
-        if (payment.success) {
-          // Process successful payment webhook
-          // Add your webhook processing logic here
-          logger.info('Payment webhook processed successfully:', paymentId);
-        } else {
-          logger.error('Failed to retrieve payment for webhook:', paymentId);
-        }
-      }
-
-      await this.responseHelper.success(
-        res,
-        'success.payment.webhookProcessed',
-        { status: 'success' },
-        200,
-        req
-      );
-    } catch (error) {
-      logger.error('Webhook processing error:', error);
-      handleRouteError(error, req, res);
+    if (!iyzicoData || typeof iyzicoData !== 'object') {
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid webhook data' });
     }
+
+    if (iyzicoData.status === 'success') {
+      const paymentId = iyzicoData.paymentId;
+
+      if (!paymentId) {
+        throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Payment ID is required in webhook data', params: { field: 'paymentId' } });
+      }
+
+      const payment = await this.paymentService.retrievePayment(paymentId);
+
+      if (payment.success) {
+        logger.info('Payment webhook processed successfully:', paymentId);
+      } else {
+        logger.error('Failed to retrieve payment for webhook:', paymentId);
+      }
+    }
+
+    await this.responseHelper.success(res, 'success.payment.webhookProcessed', { status: 'success' }, 200, req);
   }
 }

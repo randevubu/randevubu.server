@@ -10,6 +10,7 @@ import { NotificationChannel, NotificationStatus } from '../../../types/business
 import { NotificationPayload, SecureNotificationRequest, SecureNotificationResult } from '../../../types/notification';
 import { RepositoryContainer } from '../../../repositories';
 import { UsageService } from '../usage/usageService';
+import { AppError } from '../../../types/responseTypes';
 import logger from "../../../utils/Logger/logger";
 export interface BroadcastNotificationRequest {
   businessId: string;
@@ -354,11 +355,11 @@ export class SecureNotificationService {
       });
 
       if (!closure) {
-        throw new Error('Closure not found');
+        throw new AppError('CLOSURE_NOT_FOUND', { message: 'Closure not found' });
       }
 
       if (closure.businessId !== businessId) {
-        throw new Error('Closure does not belong to this business');
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Closure does not belong to this business' });
       }
 
       // 3. Get affected appointments
@@ -648,7 +649,7 @@ export class SecureNotificationService {
         { businessId },
         {}
       );
-      throw new Error('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     if (!business.isActive) {
@@ -660,7 +661,7 @@ export class SecureNotificationService {
         { businessId },
         {}
       );
-      throw new Error('Business is inactive');
+      throw new AppError('BUSINESS_INACTIVE', { message: 'Business is inactive' });
     }
 
     if (business.ownerId !== userId) {
@@ -672,7 +673,7 @@ export class SecureNotificationService {
         { businessId, ownerId: business.ownerId },
         {}
       );
-      throw new Error('Unauthorized: You can only send notifications for your own business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You can only send notifications for your own business' });
     }
   }
 
@@ -729,7 +730,7 @@ export class SecureNotificationService {
 
     } catch (error) {
       logger.error('Error getting notification stats:', error);
-      throw new Error('Failed to get notification statistics');
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Failed to get notification statistics' });
     }
   }
 
@@ -751,7 +752,7 @@ export class SecureNotificationService {
 
     } catch (error) {
       logger.error('Error getting security alerts:', error);
-      throw new Error('Failed to get security alerts');
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Failed to get security alerts' });
     }
   }
 

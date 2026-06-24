@@ -8,6 +8,7 @@ import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import { AuthMiddleware, rateLimitByUser } from '../../middleware/auth';
 import { validateBody, validateQuery } from '../../middleware/validation';
 import { requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { PermissionName } from '../../types/auth';
 import { updateProfileSchema, changePhoneSchema } from '../../schemas/auth.schemas';
 import {
@@ -36,7 +37,8 @@ const authController = new AuthController(
 );
 const userBehaviorController = new UserBehaviorController(
   services.userBehaviorService,
-  responseHelper
+  responseHelper,
+  services.notificationGateway
 );
 const authMiddleware = new AuthMiddleware(
   repositories,
@@ -77,7 +79,7 @@ export function createUserRoutes(): Router {
     '/profile',
     dynamicCache,
     authMiddleware.authenticate,
-    withAuth(authController.getProfile)
+    asyncHandler(withAuth(authController.getProfile))
   );
 
   /**
@@ -125,7 +127,7 @@ export function createUserRoutes(): Router {
     authMiddleware.authenticate,
     rateLimitByUser(20, 15 * 60 * 1000),
     validateBody(updateProfileSchema),
-    withAuth(authController.updateProfile)
+    asyncHandler(withAuth(authController.updateProfile))
   );
 
   /**
@@ -168,7 +170,7 @@ export function createUserRoutes(): Router {
     authMiddleware.authenticate,
     rateLimitByUser(5, 15 * 60 * 1000),
     validateBody(changePhoneSchema),
-    withAuth(authController.changePhone)
+    asyncHandler(withAuth(authController.changePhone))
   );
 
   /**
@@ -198,7 +200,7 @@ export function createUserRoutes(): Router {
     '/account',
     authMiddleware.authenticate,
     rateLimitByUser(3, 15 * 60 * 1000),
-    withAuth(authController.deleteAccount)
+    asyncHandler(withAuth(authController.deleteAccount))
   );
 
   /**
@@ -229,7 +231,7 @@ export function createUserRoutes(): Router {
     dynamicCache,
     authMiddleware.authenticate,
     rateLimitByUser(5, 60 * 1000),
-    withAuth(authController.getStats)
+    asyncHandler(withAuth(authController.getStats))
   );
 
   /**
@@ -356,7 +358,7 @@ export function createUserRoutes(): Router {
     authMiddleware.authenticate,
     validateQuery(customerSearchSchema),
     rateLimitByUser(20, 60 * 1000),
-    withAuth(authController.getMyCustomers)
+    asyncHandler(withAuth(authController.getMyCustomers))
   );
 
   // Customer Management Endpoints
@@ -424,7 +426,7 @@ export function createUserRoutes(): Router {
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     validateQuery(customerSearchSchema),
     rateLimitByUser(30, 60 * 1000),
-    withAuth(authController.getMyCustomers)
+    asyncHandler(withAuth(authController.getMyCustomers))
   );
 
   /**
@@ -551,7 +553,7 @@ export function createUserRoutes(): Router {
     authMiddleware.authenticate,
     requireAny([PermissionName.VIEW_OWN_CUSTOMERS, PermissionName.VIEW_USER_BEHAVIOR]),
     rateLimitByUser(20, 60 * 1000),
-    withAuth(authController.getCustomerDetails)
+    asyncHandler(withAuth(authController.getCustomerDetails))
   );
 
   /**
@@ -611,7 +613,7 @@ export function createUserRoutes(): Router {
    *         description: Customer not found
    */
   router.post(
-    '/customers/:customerId/ban',
+    '/customers/:userId/ban',
     authMiddleware.authenticate,
     requirePermission(PermissionName.BAN_USERS),
     validateBody(banCustomerSchema),
@@ -667,7 +669,7 @@ export function createUserRoutes(): Router {
    *         description: Customer not found or not banned
    */
   router.post(
-    '/customers/:customerId/unban',
+    '/customers/:userId/unban',
     authMiddleware.authenticate,
     requirePermission(PermissionName.BAN_USERS),
     validateBody(unbanCustomerSchema),

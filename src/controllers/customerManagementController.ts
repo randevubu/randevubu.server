@@ -1,273 +1,112 @@
 import { Response } from 'express';
 import { BusinessContextRequest } from '../middleware/businessContext';
 import { BusinessService } from '../services/domain/business';
-import { handleRouteError } from '../utils/responseUtils';
 import { ResponseHelper } from '../utils/responseHelper';
+import { AppError } from '../types/responseTypes';
 
-/**
- * Controller for managing customer-related business features
- * Handles customer management settings, notes, loyalty, and evaluations
- */
 export class CustomerManagementController {
   constructor(
     private businessService: BusinessService,
     private responseHelper: ResponseHelper
   ) {}
 
-  /**
-   * Get customer management settings
-   * GET /api/v1/businesses/customer-management/settings
-   */
+  private requireBusinessId(req: BusinessContextRequest): string {
+    const businessId = req.businessContext?.primaryBusinessId;
+    if (!businessId) {
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'Business context required' });
+    }
+    return businessId;
+  }
+
   async getCustomerManagementSettings(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
+    const settings = await this.businessService.getBusinessCustomerManagementSettings(userId, businessId);
 
-      const settings = await this.businessService.getBusinessCustomerManagementSettings(
-        userId,
-        businessId
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.customerManagementSettingsRetrieved',
-        settings,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.customerManagementSettingsRetrieved', settings, 200, req);
   }
 
-  /**
-   * Update customer management settings
-   * PUT /api/v1/businesses/customer-management/settings
-   */
-  async updateCustomerManagementSettings(
-    req: BusinessContextRequest,
-    res: Response
-  ): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
+  async updateCustomerManagementSettings(req: BusinessContextRequest, res: Response): Promise<void> {
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
+    const settingsData = req.body;
+    const updatedSettings = await this.businessService.updateBusinessCustomerManagementSettings(userId, businessId, settingsData);
 
-      const settingsData = req.body;
-      const updatedSettings = await this.businessService.updateBusinessCustomerManagementSettings(
-        userId,
-        businessId,
-        settingsData
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.customerManagementSettingsUpdated',
-        updatedSettings,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.customerManagementSettingsUpdated', updatedSettings, 200, req);
   }
 
-  /**
-   * Get customer notes
-   * GET /api/v1/businesses/customer-management/customers/:customerId/notes
-   */
   async getCustomerNotes(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
-      const customerId = req.params.customerId;
-      const noteType = req.query.noteType as 'STAFF' | 'INTERNAL' | 'CUSTOMER' | undefined;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
+    const customerId = req.params.customerId;
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      if (!customerId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      const notes = await this.businessService.getCustomerNotes(
-        userId,
-        businessId,
-        customerId,
-        noteType
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.customerNotesRetrieved',
-        notes,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!customerId) {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Customer ID required', params: { field: 'customerId' } });
     }
+
+    const noteType = req.query.noteType as 'STAFF' | 'INTERNAL' | 'CUSTOMER' | undefined;
+    const notes = await this.businessService.getCustomerNotes(userId, businessId, customerId, noteType);
+
+    await this.responseHelper.success(res, 'success.business.customerNotesRetrieved', notes, 200, req);
   }
 
-  /**
-   * Add customer note
-   * POST /api/v1/businesses/customer-management/customers/:customerId/notes
-   */
   async addCustomerNote(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
-      const customerId = req.params.customerId;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
+    const customerId = req.params.customerId;
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      if (!customerId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      const noteData = req.body;
-      const note = await this.businessService.addCustomerNote(
-        userId,
-        businessId,
-        customerId,
-        noteData
-      );
-
-      await this.responseHelper.success(res, 'success.business.customerNoteAdded', note, 201, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!customerId) {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Customer ID required', params: { field: 'customerId' } });
     }
+
+    const noteData = req.body;
+    const note = await this.businessService.addCustomerNote(userId, businessId, customerId, noteData);
+
+    await this.responseHelper.success(res, 'success.business.customerNoteAdded', note, 201, req);
   }
 
-  /**
-   * Get customer loyalty status
-   * GET /api/v1/businesses/customer-management/customers/:customerId/loyalty
-   */
   async getCustomerLoyaltyStatus(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
-      const customerId = req.params.customerId;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
+    const customerId = req.params.customerId;
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      if (!customerId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      const loyaltyStatus = await this.businessService.getCustomerLoyaltyStatus(
-        userId,
-        businessId,
-        customerId
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.customerLoyaltyStatusRetrieved',
-        loyaltyStatus,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!customerId) {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Customer ID required', params: { field: 'customerId' } });
     }
+
+    const loyaltyStatus = await this.businessService.getCustomerLoyaltyStatus(userId, businessId, customerId);
+
+    await this.responseHelper.success(res, 'success.business.customerLoyaltyStatusRetrieved', loyaltyStatus, 200, req);
   }
 
-  /**
-   * Get customer evaluation
-   * GET /api/v1/businesses/customer-management/appointments/:appointmentId/evaluation
-   */
   async getCustomerEvaluation(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
-      const appointmentId = req.params.appointmentId;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
+    const appointmentId = req.params.appointmentId;
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      if (!appointmentId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      const evaluation = await this.businessService.getCustomerEvaluation(
-        userId,
-        businessId,
-        appointmentId
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.customerEvaluationRetrieved',
-        evaluation,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!appointmentId) {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Appointment ID required', params: { field: 'appointmentId' } });
     }
+
+    const evaluation = await this.businessService.getCustomerEvaluation(userId, businessId, appointmentId);
+
+    await this.responseHelper.success(res, 'success.business.customerEvaluationRetrieved', evaluation, 200, req);
   }
 
-  /**
-   * Submit customer evaluation
-   * POST /api/v1/businesses/customer-management/appointments/:appointmentId/evaluation
-   */
   async submitCustomerEvaluation(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const businessId = req.businessContext?.primaryBusinessId;
-      const appointmentId = req.params.appointmentId;
+    const userId = req.user!.id;
+    const businessId = this.requireBusinessId(req);
+    const appointmentId = req.params.appointmentId;
 
-      if (!businessId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      if (!appointmentId) {
-        res.status(400).json({ success: false, error: 'Business context required' });
-        return;
-      }
-
-      const evaluationData = req.body;
-      const evaluation = await this.businessService.submitCustomerEvaluation(
-        userId,
-        businessId,
-        appointmentId,
-        evaluationData
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.customerEvaluationSubmitted',
-        evaluation,
-        201,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!appointmentId) {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Appointment ID required', params: { field: 'appointmentId' } });
     }
+
+    const evaluationData = req.body;
+    const evaluation = await this.businessService.submitCustomerEvaluation(userId, businessId, appointmentId, evaluationData);
+
+    await this.responseHelper.success(res, 'success.business.customerEvaluationSubmitted', evaluation, 201, req);
   }
 }

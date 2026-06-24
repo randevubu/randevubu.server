@@ -360,29 +360,44 @@ export class PrismaUserRepository implements UserRepository {
           lastLoginAt: true,
           behavior: {
             select: {
-              isBanned: true,
-              bannedUntil: true,
-              banReason: true,
               currentStrikes: true
             }
+          },
+          businessBans: {
+            where: {
+              business: { ownerId: userId },
+              isActive: true
+            },
+            select: {
+              isActive: true,
+              bannedUntil: true,
+              reason: true,
+              businessId: true
+            },
+            take: 1
           }
         },
         orderBy,
         skip,
         take: limit,
-        distinct: ['id'] // Remove duplicates if customer has multiple appointments
+        distinct: ['id']
       }),
       this.prisma.user.count({ where: whereClause })
     ]);
 
+    const now = new Date();
     return {
-      customers: customers.map(customer => ({
-        ...customer,
-        isBanned: customer.behavior?.isBanned ?? false,
-        bannedUntil: customer.behavior?.bannedUntil ?? null,
-        banReason: customer.behavior?.banReason ?? null,
-        currentStrikes: customer.behavior?.currentStrikes ?? 0
-      })),
+      customers: customers.map(customer => {
+        const activeBan = customer.businessBans?.[0];
+        const isBanned = !!(activeBan && (!activeBan.bannedUntil || activeBan.bannedUntil > now));
+        return {
+          ...customer,
+          isBanned,
+          bannedUntil: isBanned ? (activeBan?.bannedUntil ?? null) : null,
+          banReason: isBanned ? (activeBan?.reason ?? null) : null,
+          currentStrikes: customer.behavior?.currentStrikes ?? 0
+        };
+      }),
       total,
       page,
       totalPages: Math.ceil(total / limit)

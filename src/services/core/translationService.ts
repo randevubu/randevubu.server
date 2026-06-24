@@ -74,6 +74,8 @@ export class TranslationService {
         'success.appointment.completed': 'Randevu başarıyla tamamlandı',
         'success.appointment.markedNoShow': 'Randevu gelmedi olarak işaretlendi',
         'success.appointment.statusUpdated': 'Randevu durumu başarıyla güncellendi',
+        'success.appointment.approved': 'Randevu onaylandı',
+        'success.appointment.rejected': 'Randevu talebi reddedildi',
         'success.appointment.customerRetrieved': 'Müşteri randevuları başarıyla getirildi',
         'success.appointment.staffRetrieved': 'Personel randevuları başarıyla getirildi',
         'success.appointment.searchCompleted': 'Randevu araması başarıyla tamamlandı',
@@ -331,7 +333,7 @@ export class TranslationService {
         // Appointment Errors
         'errors.appointment.notFound': 'Randevu bulunamadı',
         'errors.appointment.accessDenied': 'Randevuya erişim reddedildi',
-        'errors.appointment.timeConflict': 'Randevu zamanı çakışıyor',
+        'errors.appointment.timeConflict': 'Seçtiğiniz saat dolu.',
         'errors.appointment.pastDate': 'Geçmiş tarih seçilemez',
         'errors.appointment.tooFarFuture': 'Çok ileri bir tarih seçildi',
         'errors.appointment.outsideHours': 'İş yeri çalışma saatleri dışında',
@@ -342,6 +344,9 @@ export class TranslationService {
         'errors.appointment.noShowNotAllowed': 'Gelmedi olarak işaretlenemez',
         'errors.appointment.staffNotAvailable': 'Personel müsait değil',
         'errors.appointment.serviceUnavailable': 'Hizmet müsait değil',
+        'errors.appointment.insufficientAdvance': 'Son rezervasyon süresi geçmiş.',
+        'errors.appointment.dailyLimitReached': 'Günlük randevu kontenjanı dolu.',
+        'errors.appointment.bookingPolicyViolation': 'Randevu kuralları karşılanmıyor.',
         
         // Service Errors
         'errors.service.notFound': 'Hizmet bulunamadı',
@@ -388,7 +393,7 @@ export class TranslationService {
         
         // System Errors
         'errors.system.internalError': 'Bir hata oluştu. Lütfen daha sonra tekrar deneyin',
-        'errors.system.databaseError': 'Veritabanı hatası oluştu',
+        'errors.system.databaseError': 'Bir hata oluştu, lütfen tekrar deneyin.',
         'errors.system.externalServiceError': 'Harici servis hatası',
         'errors.system.rateLimitExceeded': 'İstek limiti aşıldı. Lütfen {{retryAfter}} saniye sonra tekrar deneyin',
         'errors.system.maintenanceMode': 'Sistem bakımda',
@@ -446,6 +451,8 @@ export class TranslationService {
         'success.appointment.completed': 'Appointment completed successfully',
         'success.appointment.markedNoShow': 'Appointment marked as no-show',
         'success.appointment.statusUpdated': 'Appointment status updated successfully',
+        'success.appointment.approved': 'Appointment approved',
+        'success.appointment.rejected': 'Appointment request rejected',
         'success.appointment.customerRetrieved': 'Customer appointments retrieved successfully',
         'success.appointment.staffRetrieved': 'Staff appointments retrieved successfully',
         'success.appointment.searchCompleted': 'Appointments search completed successfully',
@@ -706,7 +713,7 @@ export class TranslationService {
         // Appointment Errors
         'errors.appointment.notFound': 'Appointment not found',
         'errors.appointment.accessDenied': 'Appointment access denied',
-        'errors.appointment.timeConflict': 'Appointment time conflict',
+        'errors.appointment.timeConflict': 'Selected time is unavailable.',
         'errors.appointment.pastDate': 'Past date cannot be selected',
         'errors.appointment.tooFarFuture': 'Date is too far in the future',
         'errors.appointment.outsideHours': 'Outside business hours',
@@ -717,6 +724,9 @@ export class TranslationService {
         'errors.appointment.noShowNotAllowed': 'Cannot mark as no-show',
         'errors.appointment.staffNotAvailable': 'Staff not available',
         'errors.appointment.serviceUnavailable': 'Service unavailable',
+        'errors.appointment.insufficientAdvance': 'Booking window has passed.',
+        'errors.appointment.dailyLimitReached': 'Daily appointment limit reached.',
+        'errors.appointment.bookingPolicyViolation': 'Booking rules not satisfied.',
         
         // Service Errors
         'errors.service.notFound': 'Service not found',
@@ -763,7 +773,7 @@ export class TranslationService {
         
         // System Errors
         'errors.system.internalError': 'An error occurred. Please try again later',
-        'errors.system.databaseError': 'Database error occurred',
+        'errors.system.databaseError': 'Something went wrong. Please try again.',
         'errors.system.externalServiceError': 'External service error',
         'errors.system.rateLimitExceeded': 'Rate limit exceeded. Please try again after {{retryAfter}} seconds',
         'errors.system.maintenanceMode': 'System under maintenance',

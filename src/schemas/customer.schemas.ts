@@ -51,8 +51,9 @@ export const banCustomerSchema = z.object({
 
 export const unbanCustomerSchema = z.object({
   reason: z.string()
-    .min(5, 'Unban reason must be at least 5 characters')
-    .max(500, 'Unban reason must be less than 500 characters'),
+    .max(500, 'Unban reason must be less than 500 characters')
+    .optional()
+    .default('Engel kaldırıldı'),
   
   notifyCustomer: z.boolean().default(true),
   

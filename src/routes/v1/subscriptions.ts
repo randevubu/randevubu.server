@@ -3,6 +3,7 @@ import { SubscriptionController } from '../../controllers/subscriptionController
 import { requireAuth, requirePermission, requireAny, withAuth } from '../../middleware/authUtils';
 import { PermissionName } from '../../types/auth';
 import { staticCache, dynamicCache } from '../../middleware/cacheMiddleware';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
 export function createSubscriptionRoutes(subscriptionController: SubscriptionController): Router {
@@ -67,7 +68,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    *                 message:
    *                   type: string
    */
-  router.get('/plans', staticCache, subscriptionController.getAllPlans.bind(subscriptionController));
+  router.get('/plans', staticCache, asyncHandler(subscriptionController.getAllPlans.bind(subscriptionController)));
   /**
    * @swagger
    * /api/v1/subscriptions/plans/{id}:
@@ -86,7 +87,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    *       404:
    *         description: Not found
    */
-  router.get('/plans/:id', staticCache, subscriptionController.getPlanById.bind(subscriptionController));
+  router.get('/plans/:id', staticCache, asyncHandler(subscriptionController.getPlanById.bind(subscriptionController)));
   /**
    * @swagger
    * /api/v1/subscriptions/plans/billing/{interval}:
@@ -104,7 +105,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    *       200:
    *         description: Plans list
    */
-  router.get('/plans/billing/:interval', staticCache, subscriptionController.getPlansByBillingInterval.bind(subscriptionController));
+  router.get('/plans/billing/:interval', staticCache, asyncHandler(subscriptionController.getPlansByBillingInterval.bind(subscriptionController)));
 
   // Protected routes
   router.use(requireAuth);
@@ -135,7 +136,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/subscribe',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.subscribeBusiness.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.subscribeBusiness.bind(subscriptionController)))
   );
 
   /**
@@ -181,7 +182,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/apply-discount',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.applyDiscountCode.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.applyDiscountCode.bind(subscriptionController)))
   );
 
   /**
@@ -210,7 +211,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
     '/business/:businessId',
     dynamicCache,
     requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.getBusinessSubscription.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.getBusinessSubscription.bind(subscriptionController)))
   );
 
   /**
@@ -239,7 +240,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
     '/business/:businessId/history',
     dynamicCache,
     requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.getSubscriptionHistory.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.getSubscriptionHistory.bind(subscriptionController)))
   );
 
   /**
@@ -267,7 +268,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/business/:businessId/limits',
     requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.checkSubscriptionLimits.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.checkSubscriptionLimits.bind(subscriptionController)))
   );
 
   // Plan changes
@@ -296,7 +297,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/upgrade',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.upgradePlan.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.upgradePlan.bind(subscriptionController)))
   );
 
   /**
@@ -324,7 +325,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/downgrade',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.downgradePlan.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.downgradePlan.bind(subscriptionController)))
   );
 
   // Subscription lifecycle
@@ -455,7 +456,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/cancel',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.CANCEL_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.cancelSubscription.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.cancelSubscription.bind(subscriptionController)))
   );
 
   /**
@@ -483,7 +484,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/reactivate',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.reactivateSubscription.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.reactivateSubscription.bind(subscriptionController)))
   );
 
   /**
@@ -511,7 +512,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/business/:businessId/convert-trial',
     requireAny([PermissionName.MANAGE_ALL_SUBSCRIPTIONS, PermissionName.MANAGE_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.convertTrialToActive.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.convertTrialToActive.bind(subscriptionController)))
   );
 
   // Utility endpoints
@@ -527,7 +528,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
    */
   router.get(
     '/calculate-proration',
-    withAuth(subscriptionController.calculateUpgradeProration.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.calculateUpgradeProration.bind(subscriptionController)))
   );
 
   /**
@@ -560,7 +561,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/business/:businessId/validate-plan/:planId',
     requireAny([PermissionName.VIEW_ALL_SUBSCRIPTIONS, PermissionName.VIEW_OWN_SUBSCRIPTION]),
-    withAuth(subscriptionController.validatePlanLimits.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.validatePlanLimits.bind(subscriptionController)))
   );
 
   // Admin routes
@@ -583,7 +584,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/all',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    withAuth(subscriptionController.getAllSubscriptions.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.getAllSubscriptions.bind(subscriptionController)))
   );
 
   /**
@@ -605,7 +606,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/stats',
     requirePermission(PermissionName.VIEW_ALL_ANALYTICS),
-    withAuth(subscriptionController.getSubscriptionStats.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.getSubscriptionStats.bind(subscriptionController)))
   );
 
   /**
@@ -627,7 +628,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/trials-ending',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    withAuth(subscriptionController.getTrialsEndingSoon.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.getTrialsEndingSoon.bind(subscriptionController)))
   );
 
   /**
@@ -649,7 +650,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/expired',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    withAuth(subscriptionController.getExpiredSubscriptions.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.getExpiredSubscriptions.bind(subscriptionController)))
   );
 
   /**
@@ -677,7 +678,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/status/:status',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    withAuth(subscriptionController.getSubscriptionsByStatus.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.getSubscriptionsByStatus.bind(subscriptionController)))
   );
 
   /**
@@ -705,7 +706,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/plan/:planId',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    withAuth(subscriptionController.getSubscriptionsByPlan.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.getSubscriptionsByPlan.bind(subscriptionController)))
   );
 
   /**
@@ -727,7 +728,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/businesses-without-subscription',
     requirePermission(PermissionName.VIEW_ALL_SUBSCRIPTIONS),
-    withAuth(subscriptionController.getBusinessesWithoutSubscription.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.getBusinessesWithoutSubscription.bind(subscriptionController)))
   );
 
   /**
@@ -749,7 +750,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.get(
     '/admin/revenue-analytics',
     requirePermission(PermissionName.VIEW_ALL_ANALYTICS),
-    withAuth(subscriptionController.getRevenueAnalytics.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.getRevenueAnalytics.bind(subscriptionController)))
   );
 
   // Admin subscription management
@@ -780,7 +781,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.put(
     '/admin/:subscriptionId/status',
     requirePermission(PermissionName.MANAGE_ALL_SUBSCRIPTIONS),
-    withAuth(subscriptionController.forceUpdateSubscriptionStatus.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.forceUpdateSubscriptionStatus.bind(subscriptionController)))
   );
 
   // System maintenance endpoints
@@ -803,7 +804,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/admin/process-expired',
     requirePermission(PermissionName.MANAGE_ALL_SUBSCRIPTIONS),
-    withAuth(subscriptionController.processExpiredSubscriptions.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.processExpiredSubscriptions.bind(subscriptionController)))
   );
 
   /**
@@ -825,7 +826,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/admin/process-renewals',
     requirePermission(PermissionName.MANAGE_ALL_SUBSCRIPTIONS),
-    withAuth(subscriptionController.processSubscriptionRenewals.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.processSubscriptionRenewals.bind(subscriptionController)))
   );
 
   /**
@@ -847,7 +848,7 @@ export function createSubscriptionRoutes(subscriptionController: SubscriptionCon
   router.post(
     '/admin/send-trial-notifications',
     requirePermission(PermissionName.MANAGE_ALL_SUBSCRIPTIONS),
-    withAuth(subscriptionController.sendTrialEndingNotifications.bind(subscriptionController))
+    asyncHandler(withAuth(subscriptionController.sendTrialEndingNotifications.bind(subscriptionController)))
   );
 
   return router;

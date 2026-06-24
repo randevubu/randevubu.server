@@ -71,7 +71,7 @@ export function logError(
   const logLevel = isExpectedError ? "warn" : "error";
   Logger[logLevel](message, errorLog);
 
-  // Logging only — never send responses or call next(error) here; handleControllerError owns the HTTP reply.
+  // Logging only — never send responses or call next(error) here; global error middleware owns the HTTP reply.
 }
 
 // Service-level logging functions

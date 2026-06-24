@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { PaymentController } from '../../controllers/paymentController';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { staticCache, dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
 import { strictRateLimit } from '../../middleware/userRateLimit';
@@ -8,60 +9,54 @@ import { verifyIyzicoWebhook } from '../../middleware/verifyIyzicoWebhook';
 export function createPaymentRoutes(paymentController: PaymentController): Router {
   const router = Router();
 
-  // Create subscription payment for business
   router.post(
     '/businesses/:businessId/payments',
     requireAuth,
     strictRateLimit,
-    withAuth((req, res) => paymentController.createSubscriptionPayment(req, res))
+    asyncHandler(withAuth((req, res) => paymentController.createSubscriptionPayment(req, res)))
   );
 
-  // Get payment history for business
   router.get(
     '/businesses/:businessId/payments',
     dynamicCache,
     requireAuth,
-    withAuth((req, res) => paymentController.getPaymentHistory(req, res))
+    asyncHandler(withAuth((req, res) => paymentController.getPaymentHistory(req, res)))
   );
 
-  // Get payment details
   router.get(
     '/payments/:paymentId',
     realTimeCache,
     requireAuth,
-    withAuth((req, res) => paymentController.getPayment(req, res))
+    asyncHandler(withAuth((req, res) => paymentController.getPayment(req, res)))
   );
 
-  // Refund a payment
   router.post(
     '/payments/:paymentId/refund',
     requireAuth,
     strictRateLimit,
-    withAuth((req, res) => paymentController.refundPayment(req, res))
+    asyncHandler(withAuth((req, res) => paymentController.refundPayment(req, res)))
   );
 
-  // Cancel a payment
   router.post(
     '/payments/:paymentId/cancel',
     requireAuth,
     strictRateLimit,
-    withAuth((req, res) => paymentController.cancelPayment(req, res))
+    asyncHandler(withAuth((req, res) => paymentController.cancelPayment(req, res)))
   );
 
-  // Get all available subscription plans
-  router.get('/payments/subscription-plans', dynamicCache, (req, res) =>
-    paymentController.getSubscriptionPlans(req, res)
+  router.get('/payments/subscription-plans', dynamicCache,
+    asyncHandler((req, res) => paymentController.getSubscriptionPlans(req, res))
   );
 
-  // Get test credit cards for Iyzico sandbox — dev/staging only
   if (process.env.NODE_ENV !== 'production') {
-    router.get('/payments/test-cards', staticCache, (req, res) =>
-      paymentController.getTestCards(req, res)
+    router.get('/payments/test-cards', staticCache,
+      asyncHandler((req, res) => paymentController.getTestCards(req, res))
     );
   }
 
-  // Handle Iyzico webhook notifications — signature is verified before the handler runs
-  router.post('/payments/webhook', verifyIyzicoWebhook, (req, res) => paymentController.webhookHandler(req, res));
+  router.post('/payments/webhook', verifyIyzicoWebhook,
+    asyncHandler((req, res) => paymentController.webhookHandler(req, res))
+  );
 
   return router;
 }

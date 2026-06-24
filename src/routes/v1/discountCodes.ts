@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { DiscountCodeController } from '../../controllers/discountCodeController';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { validateBody } from '../../middleware/validation';
@@ -22,7 +23,7 @@ export function createDiscountCodeRoutes(discountCodeController: DiscountCodeCon
   router.post(
     '/validate',
     validateBody(validateDiscountCodeSchema),
-    withAuth(discountCodeController.validateDiscountCode.bind(discountCodeController))
+    asyncHandler(withAuth(discountCodeController.validateDiscountCode.bind(discountCodeController)))
   );
   
   // Apply admin authorization to all management routes
@@ -32,53 +33,53 @@ export function createDiscountCodeRoutes(discountCodeController: DiscountCodeCon
   router.post(
     '/',
     validateBody(createDiscountCodeSchema),
-    withAuth(discountCodeController.createDiscountCode.bind(discountCodeController))
+    asyncHandler(withAuth(discountCodeController.createDiscountCode.bind(discountCodeController)))
   );
 
   router.get(
     '/',
     staticCache,
-    withAuth(discountCodeController.getAllDiscountCodes.bind(discountCodeController))
+    asyncHandler(withAuth(discountCodeController.getAllDiscountCodes.bind(discountCodeController)))
   );
 
   router.get(
     '/statistics',
     dynamicCache,
-    withAuth(discountCodeController.getDiscountCodeStatistics.bind(discountCodeController))
+    asyncHandler(withAuth(discountCodeController.getDiscountCodeStatistics.bind(discountCodeController)))
   );
 
   router.post(
     '/bulk',
     validateBody(bulkDiscountCodeSchema),
-    withAuth(discountCodeController.generateBulkDiscountCodes.bind(discountCodeController))
+    asyncHandler(withAuth(discountCodeController.generateBulkDiscountCodes.bind(discountCodeController)))
   );
 
   router.get(
     '/:id',
     staticCache,
-    withAuth(discountCodeController.getDiscountCode.bind(discountCodeController))
+    asyncHandler(withAuth(discountCodeController.getDiscountCode.bind(discountCodeController)))
   );
 
   router.put(
     '/:id',
     validateBody(createDiscountCodeSchema),
-    withAuth(discountCodeController.updateDiscountCode.bind(discountCodeController))
+    asyncHandler(withAuth(discountCodeController.updateDiscountCode.bind(discountCodeController)))
   );
 
   router.patch(
     '/:id/deactivate',
-    withAuth(discountCodeController.deactivateDiscountCode.bind(discountCodeController))
+    asyncHandler(withAuth(discountCodeController.deactivateDiscountCode.bind(discountCodeController)))
   );
 
   router.delete(
     '/:id',
-    withAuth(discountCodeController.deleteDiscountCode.bind(discountCodeController))
+    asyncHandler(withAuth(discountCodeController.deleteDiscountCode.bind(discountCodeController)))
   );
 
   router.get(
     '/:id/usage',
     dynamicCache,
-    withAuth(discountCodeController.getDiscountCodeUsageHistory.bind(discountCodeController))
+    asyncHandler(withAuth(discountCodeController.getDiscountCodeUsageHistory.bind(discountCodeController)))
   );
 
   return router;

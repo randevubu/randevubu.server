@@ -3,6 +3,7 @@ import { AuthController } from '../../controllers/authController';
 import prisma from '../../lib/prisma';
 import { AuthMiddleware } from '../../middleware/auth';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { csrfMiddleware } from '../../middleware/csrf';
 import { authRateLimit, strictRateLimit, refreshRateLimit } from '../../middleware/userRateLimit';
 import { validateBody } from '../../middleware/validation';
@@ -16,6 +17,7 @@ import {
 } from '../../schemas/auth.schemas';
 import { ServiceContainer } from '../../services';
 import { ResponseHelper } from '../../utils/responseHelper';
+import { sendErrorResponse } from '../../utils/responseUtils';
 
 // Initialize dependencies
 const repositories = new RepositoryContainer(prisma);
@@ -96,7 +98,7 @@ router.post(
   '/send-verification',
   strictRateLimit,
   validateBody(sendVerificationSchema),
-  authController.sendVerificationCode
+  asyncHandler(authController.sendVerificationCode)
 );
 
 /**
@@ -151,7 +153,7 @@ router.post(
   '/verify-login',
   authRateLimit,
   validateBody(verifyLoginSchema),
-  authController.verifyLogin
+  asyncHandler(authController.verifyLogin)
 );
 
 /**
@@ -191,7 +193,7 @@ router.post(
   '/refresh',
   refreshRateLimit,
   // No validation middleware - we handle token validation manually in controller
-  authController.refreshToken
+  asyncHandler(authController.refreshToken)
 );
 
 /**
@@ -228,9 +230,7 @@ router.post(
   requireAuth,
   csrfMiddleware.verifyOriginHeader,
   validateBody(logoutSchema),
-  withAuth((req, res, next) => {
-    return authController.logout(req, res).catch(next);
-  })
+  asyncHandler(withAuth(authController.logout))
 );
 
 // DEV ONLY: Get latest verification code for a phone number
@@ -238,7 +238,7 @@ if (isDevelopment) {
   router.get('/dev/latest-code', async (req, res) => {
     const { phone } = req.query;
     if (!phone) {
-      res.status(400).json({ error: 'phone query param required' });
+      await sendErrorResponse(res, 'Telefon (phone) parametresi gerekli.', 400, { code: 'VALIDATION_ERROR' });
       return;
     }
     const record = await prisma.phoneVerification.findFirst({
@@ -246,7 +246,7 @@ if (isDevelopment) {
       orderBy: { createdAt: 'desc' },
     });
     if (!record) {
-      res.status(404).json({ error: 'No active code found' });
+      await sendErrorResponse(res, 'Aktif doğrulama kodu bulunamadı.', 404, { code: 'NOT_FOUND' });
       return;
     }
     res.json({

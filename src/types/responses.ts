@@ -41,6 +41,7 @@ export interface AppointmentDetails extends AppointmentListItem {
   completedAt?: Date;
   canceledAt?: Date;
   cancelReason?: string;
+  cancelledBy?: 'CUSTOMER' | 'BUSINESS' | 'SYSTEM' | null;
   reminderSent: boolean;
   reminderSentAt?: Date;
 }

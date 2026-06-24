@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { UsageController } from '../../controllers/usageController';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { requireAuth, withAuth } from '../../middleware/authUtils';
 import { attachBusinessContext, requireBusinessAccess } from '../../middleware/attachBusinessContext';
 import { dynamicCache, realTimeCache } from '../../middleware/cacheMiddleware';
@@ -82,7 +83,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,
-    withAuth(usageController.getUsageSummary.bind(usageController))
+    asyncHandler(withAuth(usageController.getUsageSummary.bind(usageController)))
   );
 
   /**
@@ -140,7 +141,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,
-    withAuth(usageController.getUsageAlerts.bind(usageController))
+    asyncHandler(withAuth(usageController.getUsageAlerts.bind(usageController)))
   );
 
   /**
@@ -195,7 +196,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,
-    withAuth(usageController.getDailySmsUsage.bind(usageController))
+    asyncHandler(withAuth(usageController.getDailySmsUsage.bind(usageController)))
   );
 
   /**
@@ -232,7 +233,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,
-    withAuth(usageController.getMonthlyUsageHistory.bind(usageController))
+    asyncHandler(withAuth(usageController.getMonthlyUsageHistory.bind(usageController)))
   );
 
   /**
@@ -304,7 +305,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,
-    withAuth(usageController.checkLimits.bind(usageController))
+    asyncHandler(withAuth(usageController.checkLimits.bind(usageController)))
   );
 
   /**
@@ -358,7 +359,7 @@ export function createUsageRoutes(usageController: UsageController): Router {
     requireAuth,
     attachBusinessContext,
     requireBusinessAccess,
-    withAuth(usageController.refreshUsageCounters.bind(usageController))
+    asyncHandler(withAuth(usageController.refreshUsageCounters.bind(usageController)))
   );
 
   return router;

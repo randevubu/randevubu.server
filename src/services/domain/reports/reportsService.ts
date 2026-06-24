@@ -1,5 +1,6 @@
 import { RepositoryContainer } from "../../../repositories";
 import { AppointmentStatus } from "../../../types/business";
+import { AppError } from "../../../types/responseTypes";
 import { ReliabilityScoreCalculator } from "../userBehavior/reliabilityScoreCalculator";
 
 import { BusinessOverviewReport } from '../../../types/reports';
@@ -307,7 +308,7 @@ export class ReportsService {
     // Get user's businesses
     const businesses = await this.getUserBusinesses(userId, businessId);
     if (businesses.length === 0) {
-      throw new Error("No accessible businesses found");
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     const targetBusiness = businesses[0];
@@ -483,7 +484,7 @@ export class ReportsService {
   ): Promise<RevenueReport> {
     const businesses = await this.getUserBusinesses(userId, businessId);
     if (businesses.length === 0) {
-      throw new Error("No accessible businesses found");
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     const targetBusiness = businesses[0];
@@ -611,7 +612,7 @@ export class ReportsService {
   ): Promise<AppointmentReport> {
     const businesses = await this.getUserBusinesses(userId, businessId);
     if (businesses.length === 0) {
-      throw new Error("No accessible businesses found");
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     const targetBusiness = businesses[0];
@@ -700,7 +701,7 @@ export class ReportsService {
   ): Promise<CustomerReport> {
     const businesses = await this.getUserBusinesses(userId, businessId);
     if (businesses.length === 0) {
-      throw new Error("No accessible businesses found");
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     const targetBusiness = businesses[0];
@@ -1047,7 +1048,7 @@ export class ReportsService {
   ): Promise<FinancialReport> {
     const businesses = await this.getUserBusinesses(userId, businessId);
     if (businesses.length === 0) {
-      throw new Error("No accessible businesses found");
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     const targetBusiness = businesses[0];
@@ -1125,7 +1126,7 @@ export class ReportsService {
   ): Promise<OperationalReport> {
     const businesses = await this.getUserBusinesses(userId, businessId);
     if (businesses.length === 0) {
-      throw new Error("No accessible businesses found");
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     const targetBusiness = businesses[0];
@@ -1255,7 +1256,7 @@ export class ReportsService {
   ): Promise<CustomerAnalyticsReport> {
     const businesses = await this.getUserBusinesses(userId, businessId);
     if (businesses.length === 0) {
-      throw new Error("No accessible businesses found");
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     const targetBusiness = businesses[0];
@@ -1354,7 +1355,7 @@ export class ReportsService {
   ): Promise<TrendsAnalysisReport> {
     const businesses = await this.getUserBusinesses(userId, businessId);
     if (businesses.length === 0) {
-      throw new Error("No accessible businesses found");
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     const targetBusiness = businesses[0];
@@ -1447,7 +1448,7 @@ export class ReportsService {
   ): Promise<QualityMetricsReport> {
     const businesses = await this.getUserBusinesses(userId, businessId);
     if (businesses.length === 0) {
-      throw new Error("No accessible businesses found");
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No accessible businesses found' });
     }
 
     const targetBusiness = businesses[0];

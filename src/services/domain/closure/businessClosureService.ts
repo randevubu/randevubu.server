@@ -8,6 +8,7 @@ import { BusinessClosureRepository } from '../../../repositories/businessClosure
 import { AppointmentRepository } from '../../../repositories/appointmentRepository';
 import { RBACService } from '../rbac/rbacService';
 import { PermissionName } from '../../../types/auth';
+import { AppError } from '../../../types/responseTypes';
 import { getCurrentTimeInIstanbul } from '../../../utils/timezoneHelper';
 import logger from "../../../utils/Logger/logger";
 export class BusinessClosureService {
@@ -57,11 +58,15 @@ export class BusinessClosureService {
     const minimumAllowedTime = new Date(now.getTime() - bufferMs);
 
     if (startDate < minimumAllowedTime) {
-      throw new Error('Closure start date cannot be in the past');
+      throw new AppError('CLOSURE_START_IN_PAST', {
+        message: 'Closure start date cannot be in the past',
+      });
     }
 
     if (endDate && endDate < startDate) {
-      throw new Error('Closure end date must be at or after start date');
+      throw new AppError('CLOSURE_END_BEFORE_START', {
+        message: 'Closure end date must be at or after start date',
+      });
     }
 
     // Check for conflicting closures
@@ -72,7 +77,9 @@ export class BusinessClosureService {
     );
 
     if (conflicts.length > 0) {
-      throw new Error('Closure period conflicts with existing closure');
+      throw new AppError('CLOSURE_CONFLICT', {
+        message: 'Closure period conflicts with existing closure',
+      });
     }
 
     // Check for existing appointments in the closure period
@@ -173,7 +180,7 @@ export class BusinessClosureService {
   ): Promise<BusinessClosureData> {
     const closure = await this.businessClosureRepository.findById(closureId);
     if (!closure) {
-      throw new Error('Closure not found');
+      throw new AppError('CLOSURE_NOT_FOUND', { message: 'Closure not found' });
     }
 
     // Check permissions to manage business closures
@@ -193,7 +200,7 @@ export class BusinessClosureService {
       const newEndDate = data.endDate ? new Date(data.endDate) : closure.endDate;
 
       if (newEndDate && newEndDate <= newStartDate) {
-        throw new Error('Closure end date must be after start date');
+        throw new AppError('CLOSURE_END_BEFORE_START', { message: 'Closure end date must be after start date' });
       }
 
       // Check for conflicts with other closures
@@ -205,7 +212,7 @@ export class BusinessClosureService {
       );
 
       if (conflicts.length > 0) {
-        throw new Error('Updated closure period conflicts with existing closure');
+        throw new AppError('CLOSURE_CONFLICT', { message: 'Updated closure period conflicts with existing closure' });
       }
     }
 
@@ -218,7 +225,7 @@ export class BusinessClosureService {
   ): Promise<void> {
     const closure = await this.businessClosureRepository.findById(closureId);
     if (!closure) {
-      throw new Error('Closure not found');
+      throw new AppError('CLOSURE_NOT_FOUND', { message: 'Closure not found' });
     }
 
     // Check permissions to manage business closures
@@ -253,7 +260,7 @@ export class BusinessClosureService {
   ): Promise<BusinessClosureData> {
     const closure = await this.businessClosureRepository.findById(closureId);
     if (!closure) {
-      throw new Error('Closure not found');
+      throw new AppError('CLOSURE_NOT_FOUND', { message: 'Closure not found' });
     }
 
     // Check permissions to manage business closures
@@ -268,7 +275,7 @@ export class BusinessClosureService {
     }
 
     if (newEndDate <= closure.startDate) {
-      throw new Error('New end date must be after closure start date');
+      throw new AppError('CLOSURE_END_BEFORE_START', { message: 'New end date must be after closure start date' });
     }
 
     // Check for conflicts
@@ -280,7 +287,7 @@ export class BusinessClosureService {
     );
 
     if (conflicts.length > 0) {
-      throw new Error('Extended closure period conflicts with existing closure');
+      throw new AppError('CLOSURE_CONFLICT', { message: 'Extended closure period conflicts with existing closure' });
     }
 
     return await this.businessClosureRepository.extendClosure(closureId, newEndDate);
@@ -293,7 +300,7 @@ export class BusinessClosureService {
   ): Promise<BusinessClosureData> {
     const closure = await this.businessClosureRepository.findById(closureId);
     if (!closure) {
-      throw new Error('Closure not found');
+      throw new AppError('CLOSURE_NOT_FOUND', { message: 'Closure not found' });
     }
 
     // Check permissions to manage business closures
@@ -308,7 +315,7 @@ export class BusinessClosureService {
     }
 
     if (endDate < closure.startDate) {
-      throw new Error('End date cannot be before closure start date');
+      throw new AppError('CLOSURE_END_BEFORE_START', { message: 'End date cannot be before closure start date' });
     }
 
     return await this.businessClosureRepository.endClosureEarly(closureId, endDate);

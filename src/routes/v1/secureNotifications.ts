@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { SecureNotificationController } from '../../controllers/secureNotificationController';
 import { requireAuth } from '../../middleware/authUtils';
 import { requirePermission } from '../../middleware/authUtils';
@@ -152,7 +153,7 @@ export function createSecureNotificationRoutes(controller: SecureNotificationCon
    *       429:
    *         description: Rate limit exceeded
    */
-  router.post('/send', requireAuth, controller.sendSecureNotification);
+  router.post('/send', requireAuth, asyncHandler(controller.sendSecureNotification));
 
   /**
    * @swagger
@@ -181,7 +182,7 @@ export function createSecureNotificationRoutes(controller: SecureNotificationCon
    *       429:
    *         description: Rate limit exceeded
    */
-  router.post('/broadcast', requireAuth, controller.sendBroadcastNotification);
+  router.post('/broadcast', requireAuth, asyncHandler(controller.sendBroadcastNotification));
 
   /**
    * @swagger
@@ -237,7 +238,7 @@ export function createSecureNotificationRoutes(controller: SecureNotificationCon
    *       404:
    *         description: Closure not found
    */
-  router.post('/closure/:businessId/:closureId', requireAuth, controller.sendClosureNotification);
+  router.post('/closure/:businessId/:closureId', requireAuth, asyncHandler(controller.sendClosureNotification));
 
   /**
    * @swagger
@@ -297,7 +298,7 @@ export function createSecureNotificationRoutes(controller: SecureNotificationCon
    *       403:
    *         description: Insufficient permissions
    */
-  router.get('/stats/:businessId', dynamicCache, requireAuth, controller.getNotificationStats);
+  router.get('/stats/:businessId', dynamicCache, requireAuth, asyncHandler(controller.getNotificationStats));
 
   /**
    * @swagger
@@ -366,7 +367,7 @@ export function createSecureNotificationRoutes(controller: SecureNotificationCon
    *       403:
    *         description: Insufficient permissions
    */
-  router.get('/alerts/:businessId', dynamicCache, requireAuth, controller.getSecurityAlerts);
+  router.get('/alerts/:businessId', dynamicCache, requireAuth, asyncHandler(controller.getSecurityAlerts));
 
   /**
    * @swagger
@@ -415,7 +416,7 @@ export function createSecureNotificationRoutes(controller: SecureNotificationCon
    *       403:
    *         description: Insufficient permissions
    */
-  router.post('/test', requireAuth, controller.sendTestNotification);
+  router.post('/test', requireAuth, asyncHandler(controller.sendTestNotification));
 
   /**
    * @swagger
@@ -480,7 +481,7 @@ export function createSecureNotificationRoutes(controller: SecureNotificationCon
    *       500:
    *         description: Internal server error
    */
-  router.get('/health', realTimeCache, requireAuth, controller.getSystemHealth);
+  router.get('/health', realTimeCache, requireAuth, asyncHandler(controller.getSystemHealth));
 
   return router;
 }

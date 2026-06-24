@@ -11,7 +11,6 @@ import {
 import { AuthService, PhoneVerificationService, TokenService } from '../services';
 import { RBACService } from '../services/domain/rbac';
 import {
-  ApiResponse,
   ChangePhoneRequest,
   DeviceInfo,
   LogoutRequest,
@@ -19,19 +18,10 @@ import {
   UpdateProfileRequest,
   VerifyLoginRequest,
 } from '../types/auth';
-import {
-  BaseError,
-  ErrorContext,
-  InternalServerError,
-  ForbiddenError,
-  UserNotFoundError,
-  UnauthorizedError,
-  InvalidTokenError,
-  TokenExpiredError,
-} from '../types/errors';
+import { ErrorContext } from '../types/errors';
+import { AppError } from '../types/responseTypes';
 
 import { extractDeviceInfo, createErrorContext } from '../utils/requestUtils';
-import { sendBaseErrorResponse } from '../utils/responseUtils';
 import { ResponseHelper } from '../utils/responseHelper';
 import logger from '../utils/Logger/logger';
 export class AuthController {
@@ -88,85 +78,54 @@ export class AuthController {
    * POST /api/v1/auth/send-verification
    */
   sendVerificationCode = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const body = sendVerificationSchema.parse(req.body) as SendVerificationRequest;
-      const deviceInfo = extractDeviceInfo(req);
-      const context = createErrorContext(req);
+    const body = sendVerificationSchema.parse(req.body) as SendVerificationRequest;
+    const deviceInfo = extractDeviceInfo(req);
+    const context = createErrorContext(req);
 
-      // Auto-detect purpose: check if user exists in database
-      const { isValidPhoneNumber, parsePhoneNumber } = require('libphonenumber-js');
-      let purpose: 'LOGIN' | 'REGISTRATION' = 'REGISTRATION';
+    // Auto-detect purpose: check if user exists in database
+    const { isValidPhoneNumber, parsePhoneNumber } = require('libphonenumber-js');
+    let purpose: 'LOGIN' | 'REGISTRATION' = 'REGISTRATION';
 
-      if (isValidPhoneNumber(body.phoneNumber)) {
-        try {
-          const parsed = parsePhoneNumber(body.phoneNumber);
-          const normalizedPhone = parsed?.format('E.164') || body.phoneNumber;
-          const repositories = (this.phoneVerificationService as any).repositories;
-          const existingUser = await repositories.userRepository.findByPhoneNumber(normalizedPhone);
-          purpose = existingUser ? 'LOGIN' : 'REGISTRATION';
-        } catch (error) {
-          logger.warn('Failed to check if user exists, defaulting to REGISTRATION', {
-            error: error instanceof Error ? error.message : String(error),
-            requestId: context.requestId,
-          });
-        }
-      }
-
-      logger.info('Verification code request', {
-        phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
-        purpose: purpose,
-        ip: context.ipAddress,
-        requestId: context.requestId,
-      });
-
-      const result = await this.phoneVerificationService.sendVerificationCode({
-        phoneNumber: body.phoneNumber,
-        purpose: purpose as any,
-        ipAddress: deviceInfo.ipAddress,
-        userAgent: deviceInfo.userAgent,
-      });
-
-      if (!result.success) {
-        res.status(429).json({
-          success: false,
-          message: result.message,
-          error: {
-            message: result.message,
-            ...(result.cooldownSeconds && { retryAfter: result.cooldownSeconds }),
-          },
+    if (isValidPhoneNumber(body.phoneNumber)) {
+      try {
+        const parsed = parsePhoneNumber(body.phoneNumber);
+        const normalizedPhone = parsed?.format('E.164') || body.phoneNumber;
+        const repositories = (this.phoneVerificationService as any).repositories;
+        const existingUser = await repositories.userRepository.findByPhoneNumber(normalizedPhone);
+        purpose = existingUser ? 'LOGIN' : 'REGISTRATION';
+      } catch (error) {
+        logger.warn('Failed to check if user exists, defaulting to REGISTRATION', {
+          error: error instanceof Error ? error.message : String(error),
+          requestId: context.requestId,
         });
-        return;
-      }
-
-      await this.responseHelper.success(
-        res,
-        'success.auth.verificationCodeSent',
-        {
-          phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
-          expiresIn: 600, // 10 minutes
-          purpose: purpose,
-        },
-        200,
-        req
-      );
-    } catch (error) {
-      logger.error('Send verification code error', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        requestId: createErrorContext(req).requestId,
-      });
-
-      if (error instanceof BaseError) {
-        sendBaseErrorResponse(res, error);
-      } else {
-        const internalError = new InternalServerError(
-          'Failed to send verification code',
-          error instanceof Error ? error : new Error(String(error)),
-          createErrorContext(req)
-        );
-        sendBaseErrorResponse(res, internalError);
       }
     }
+
+    logger.info('Verification code request', {
+      phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
+      purpose: purpose,
+      ip: context.ipAddress,
+      requestId: context.requestId,
+    });
+
+    await this.phoneVerificationService.sendVerificationCode({
+      phoneNumber: body.phoneNumber,
+      purpose: purpose as any,
+      ipAddress: deviceInfo.ipAddress,
+      userAgent: deviceInfo.userAgent,
+    });
+
+    await this.responseHelper.success(
+      res,
+      'success.auth.verificationCodeSent',
+      {
+        phoneNumber: body.phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
+        expiresIn: 600, // 10 minutes
+        purpose: purpose,
+      },
+      200,
+      req
+    );
   };
 
   /**
@@ -174,8 +133,7 @@ export class AuthController {
    * POST /api/v1/auth/verify-login
    */
   verifyLogin = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const body = verifyLoginSchema.parse(req.body) as VerifyLoginRequest;
+    const body = verifyLoginSchema.parse(req.body) as VerifyLoginRequest;
       const deviceInfo = extractDeviceInfo(req);
       const context = createErrorContext(req);
 
@@ -261,24 +219,6 @@ export class AuthController {
         result.isNewUser ? 201 : 200,
         req
       );
-    } catch (error) {
-      logger.error('Verify login error', {
-        error: error instanceof Error ? error.message : String(error),
-        phoneNumber: req.body.phoneNumber?.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
-        requestId: createErrorContext(req).requestId,
-      });
-
-      if (error instanceof BaseError) {
-        sendBaseErrorResponse(res, error);
-      } else {
-        const internalError = new InternalServerError(
-          'Login verification failed',
-          error instanceof Error ? error : new Error(String(error)),
-          createErrorContext(req)
-        );
-        sendBaseErrorResponse(res, internalError);
-      }
-    }
   };
 
   /**
@@ -305,48 +245,19 @@ export class AuthController {
 
     if (!refreshToken) {
       this.clearAuthCookies(res, context, req);
-      res.status(400).json({
-        success: false,
-        error: {
-          message: 'Refresh token is required. Provide it in cookie or request body.',
-          code: 'REFRESH_TOKEN_MISSING',
-        },
-      });
-      return;
+      throw new AppError('UNAUTHORIZED', { message: 'Refresh token is required' });
     }
 
     if (typeof refreshToken !== 'string' || refreshToken.trim() === '') {
-      logger.error('Invalid refresh token type or empty', {
-        tokenType: typeof refreshToken,
-        requestId: context.requestId,
-      });
       this.clearAuthCookies(res, context, req);
-      res.status(401).json({
-        success: false,
-        error: {
-          message: 'Invalid refresh token format',
-          code: 'INVALID_REFRESH_TOKEN_FORMAT',
-        },
-      });
-      return;
+      throw new AppError('INVALID_TOKEN', { message: 'Invalid refresh token format' });
     }
 
     // Basic JWT format validation (should have 3 parts separated by dots)
     const tokenParts = refreshToken.split('.');
     if (tokenParts.length !== 3) {
-      logger.error('Refresh token does not have JWT structure', {
-        tokenParts: tokenParts.length,
-        requestId: context.requestId,
-      });
       this.clearAuthCookies(res, context, req);
-      res.status(401).json({
-        success: false,
-        error: {
-          message: 'Invalid refresh token format',
-          code: 'INVALID_REFRESH_TOKEN_STRUCTURE',
-        },
-      });
-      return;
+      throw new AppError('INVALID_TOKEN', { message: 'Invalid refresh token format' });
     }
 
     try {
@@ -423,49 +334,10 @@ export class AuthController {
         );
       }
     } catch (error) {
-      logger.error('Refresh token error', {
-        error: error instanceof Error ? error.message : String(error),
-        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
-        requestId: context.requestId,
-      });
-
       // Clear HttpOnly cookies when refresh token is invalid/revoked/expired
-      // This is critical for web clients to prevent infinite refresh loops
-      logger.info('About to clear authentication cookies', {
-        requestId: context.requestId,
-      });
+      // Critical for web clients to prevent infinite refresh loops
       this.clearAuthCookies(res, context, req);
-
-      // Handle specific token error types with appropriate status codes
-      if (error instanceof BaseError) {
-        // For revoked/invalid/expired tokens, return 401 to trigger re-authentication
-        if (
-          error instanceof UnauthorizedError ||
-          error instanceof InvalidTokenError ||
-          error instanceof TokenExpiredError
-        ) {
-          res.status(401).json({
-            success: false,
-            message: 'Authentication required. Please login again.',
-            error: {
-              message: error.message,
-              code: error.code,
-              details: error.details,
-              requestId: context.requestId,
-            },
-          });
-          return;
-        }
-
-        sendBaseErrorResponse(res, error);
-      } else {
-        const internalError = new InternalServerError(
-          'Token refresh failed',
-          error instanceof Error ? error : new Error(String(error)),
-          context
-        );
-        sendBaseErrorResponse(res, internalError);
-      }
+      throw error;
     }
   };
 
@@ -474,8 +346,7 @@ export class AuthController {
    * POST /api/v1/auth/logout
    */
   logout = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
-    try {
-      const body = logoutSchema.parse(req.body) as LogoutRequest;
+    const body = logoutSchema.parse(req.body) as LogoutRequest;
       const deviceInfo = extractDeviceInfo(req);
       const context = createErrorContext(req, req.user.id);
 
@@ -506,24 +377,6 @@ export class AuthController {
       });
 
       await this.responseHelper.success(res, 'success.auth.logout', undefined, 200, req);
-    } catch (error) {
-      logger.error('Logout error', {
-        error: error instanceof Error ? error.message : String(error),
-        userId: req.user.id,
-        requestId: createErrorContext(req, req.user.id).requestId,
-      });
-
-      if (error instanceof BaseError) {
-        sendBaseErrorResponse(res, error);
-      } else {
-        const internalError = new InternalServerError(
-          'Logout failed',
-          error instanceof Error ? error : new Error(String(error)),
-          createErrorContext(req, req.user.id)
-        );
-        sendBaseErrorResponse(res, internalError);
-      }
-    }
   };
 
   /**
@@ -531,8 +384,7 @@ export class AuthController {
    * GET /api/v1/auth/profile?includeBusinessSummary=true
    */
   getProfile = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
-    try {
-      const context = createErrorContext(req, req.user.id);
+    const context = createErrorContext(req, req.user.id);
       const includeBusinessSummary = req.query.includeBusinessSummary === 'true';
       const forceRefresh = req.headers['x-role-update'] === 'true';
 
@@ -563,24 +415,6 @@ export class AuthController {
         200,
         req
       );
-    } catch (error) {
-      logger.error('Get profile error', {
-        error: error instanceof Error ? error.message : String(error),
-        userId: req.user.id,
-        requestId: createErrorContext(req, req.user.id).requestId,
-      });
-
-      if (error instanceof BaseError) {
-        sendBaseErrorResponse(res, error);
-      } else {
-        const internalError = new InternalServerError(
-          'Failed to retrieve profile',
-          error instanceof Error ? error : new Error(String(error)),
-          createErrorContext(req, req.user.id)
-        );
-        sendBaseErrorResponse(res, internalError);
-      }
-    }
   };
 
   /**
@@ -588,8 +422,7 @@ export class AuthController {
    * PATCH /api/v1/auth/profile
    */
   updateProfile = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
-    try {
-      const body = updateProfileSchema.parse(req.body) as UpdateProfileRequest;
+    const body = updateProfileSchema.parse(req.body) as UpdateProfileRequest;
       const deviceInfo = extractDeviceInfo(req);
       const context = createErrorContext(req, req.user.id);
 
@@ -614,25 +447,6 @@ export class AuthController {
         200,
         req
       );
-    } catch (error) {
-      logger.error('Update profile error', {
-        error: error instanceof Error ? error.message : String(error),
-        userId: req.user.id,
-        updates: Object.keys(req.body),
-        requestId: createErrorContext(req, req.user.id).requestId,
-      });
-
-      if (error instanceof BaseError) {
-        sendBaseErrorResponse(res, error);
-      } else {
-        const internalError = new InternalServerError(
-          'Failed to update profile',
-          error instanceof Error ? error : new Error(String(error)),
-          createErrorContext(req, req.user.id)
-        );
-        sendBaseErrorResponse(res, internalError);
-      }
-    }
   };
 
   /**
@@ -640,8 +454,7 @@ export class AuthController {
    * POST /api/v1/auth/change-phone
    */
   changePhone = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
-    try {
-      const body = changePhoneSchema.parse(req.body) as ChangePhoneRequest;
+    const body = changePhoneSchema.parse(req.body) as ChangePhoneRequest;
       const deviceInfo = extractDeviceInfo(req);
       const context = createErrorContext(req, req.user.id);
 
@@ -661,25 +474,6 @@ export class AuthController {
       });
 
       await this.responseHelper.success(res, 'success.auth.phoneChanged', undefined, 200, req);
-    } catch (error) {
-      logger.error('Change phone error', {
-        error: error instanceof Error ? error.message : String(error),
-        userId: req.user.id,
-        newPhone: req.body.newPhoneNumber?.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
-        requestId: createErrorContext(req, req.user.id).requestId,
-      });
-
-      if (error instanceof BaseError) {
-        sendBaseErrorResponse(res, error);
-      } else {
-        const internalError = new InternalServerError(
-          'Failed to change phone number',
-          error instanceof Error ? error : new Error(String(error)),
-          createErrorContext(req, req.user.id)
-        );
-        sendBaseErrorResponse(res, internalError);
-      }
-    }
   };
 
   /**
@@ -687,8 +481,7 @@ export class AuthController {
    * DELETE /api/v1/auth/account
    */
   deleteAccount = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
-    try {
-      const deviceInfo = extractDeviceInfo(req);
+    const deviceInfo = extractDeviceInfo(req);
       const context = createErrorContext(req, req.user.id);
 
       await this.authService.deactivateUser(requireAuthenticatedUser(req).id, deviceInfo, context);
@@ -706,24 +499,6 @@ export class AuthController {
         200,
         req
       );
-    } catch (error) {
-      logger.error('Account deactivation error', {
-        error: error instanceof Error ? error.message : String(error),
-        userId: req.user.id,
-        requestId: createErrorContext(req, req.user.id).requestId,
-      });
-
-      if (error instanceof BaseError) {
-        sendBaseErrorResponse(res, error);
-      } else {
-        const internalError = new InternalServerError(
-          'Failed to deactivate account',
-          error instanceof Error ? error : new Error(String(error)),
-          createErrorContext(req, req.user.id)
-        );
-        sendBaseErrorResponse(res, internalError);
-      }
-    }
   };
 
   /**
@@ -731,8 +506,7 @@ export class AuthController {
    * GET /api/v1/auth/my-customers
    */
   getMyCustomers = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
-    try {
-      const userId = requireAuthenticatedUser(req).id;
+    const userId = requireAuthenticatedUser(req).id;
       const { search, page, limit, status, sortBy, sortOrder } = req.query;
 
       const allowedStatus = new Set(['all', 'banned', 'flagged', 'active']);
@@ -770,33 +544,6 @@ export class AuthController {
       const result = await this.authService.getMyCustomers(userId, filters);
 
       await this.responseHelper.success(res, 'success.auth.customersRetrieved', result, 200, req);
-    } catch (error) {
-      logger.error('Get my customers error', {
-        error: error instanceof Error ? error.message : String(error),
-        userId: req.user.id,
-        requestId: createErrorContext(req, req.user.id).requestId,
-      });
-
-      if (error instanceof Error && error.message.includes('Access denied')) {
-        const response: ApiResponse = {
-          success: false,
-          message: 'Access denied. Business role required.',
-          error: {
-            message: 'Access denied. Business role required.',
-            code: 'CUSTOMER_ACCESS_DENIED',
-            requestId: createErrorContext(req, req.user.id).requestId,
-          },
-        };
-        res.status(403).json(response);
-      } else {
-        const internalError = new InternalServerError(
-          'Failed to retrieve customers',
-          error instanceof Error ? error : new Error(String(error)),
-          createErrorContext(req, req.user.id)
-        );
-        sendBaseErrorResponse(res, internalError);
-      }
-    }
   };
 
   /**
@@ -804,8 +551,7 @@ export class AuthController {
    * GET /api/v1/users/customers/:customerId/details
    */
   getCustomerDetails = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
-    try {
-      const userId = requireAuthenticatedUser(req).id;
+    const userId = requireAuthenticatedUser(req).id;
       const { customerId } = req.params;
 
       const customerDetails = await this.authService.getCustomerDetails(userId, customerId);
@@ -817,37 +563,6 @@ export class AuthController {
         200,
         req
       );
-    } catch (error) {
-      logger.error('Get customer details error', {
-        error: error instanceof Error ? error.message : String(error),
-        userId: req.user.id,
-        customerId: req.params.customerId,
-        requestId: createErrorContext(req, req.user.id).requestId,
-      });
-
-      if (error instanceof Error && error.message.includes('not found')) {
-        const notFoundError = new UserNotFoundError(
-          'Customer not found or not accessible',
-          createErrorContext(req, req.user.id)
-        );
-        sendBaseErrorResponse(res, notFoundError);
-      } else if (error instanceof Error && error.message.includes('Access denied')) {
-        const accessError = new ForbiddenError(
-          'Access denied. You can only view customers from your own businesses.',
-          createErrorContext(req, req.user.id)
-        );
-        sendBaseErrorResponse(res, accessError);
-      } else if (error instanceof BaseError) {
-        sendBaseErrorResponse(res, error);
-      } else {
-        const internalError = new InternalServerError(
-          'Failed to retrieve customer details',
-          error instanceof Error ? error : undefined,
-          createErrorContext(req, req.user.id)
-        );
-        sendBaseErrorResponse(res, internalError);
-      }
-    }
   };
 
   /**
@@ -855,29 +570,10 @@ export class AuthController {
    * GET /api/v1/auth/stats
    */
   getStats = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
-    try {
-      const context = createErrorContext(req, req.user.id);
+    const context = createErrorContext(req, req.user.id);
 
-      const stats = await this.authService.getUserStats(context);
+    const stats = await this.authService.getUserStats(context);
 
-      await this.responseHelper.success(res, 'success.auth.statsRetrieved', { stats }, 200, req);
-    } catch (error) {
-      logger.error('Get stats error', {
-        error: error instanceof Error ? error.message : String(error),
-        userId: req.user.id,
-        requestId: createErrorContext(req, req.user.id).requestId,
-      });
-
-      if (error instanceof BaseError) {
-        sendBaseErrorResponse(res, error);
-      } else {
-        const internalError = new InternalServerError(
-          'Failed to retrieve stats',
-          error instanceof Error ? error : new Error(String(error)),
-          createErrorContext(req, req.user.id)
-        );
-        sendBaseErrorResponse(res, internalError);
-      }
-    }
+    await this.responseHelper.success(res, 'success.auth.statsRetrieved', { stats }, 200, req);
   };
 }

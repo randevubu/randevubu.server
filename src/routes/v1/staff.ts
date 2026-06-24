@@ -10,6 +10,7 @@ import { PermissionName } from '../../types/auth';
 import { staticCache, dynamicCache, semiDynamicCache } from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import { initializeCacheInvalidationMiddleware } from '../../middleware/cacheInvalidation';
+import { asyncHandler } from '../../utils/asyncHandler';
 import {
   inviteStaffSchema,
   verifyStaffInvitationSchema,
@@ -99,7 +100,7 @@ export function createStaffRoutes(): Router {
     cacheInvalidation.invalidateBusinessCache,
     rateLimitByUser(5, 60_000),
     validateBody(inviteStaffSchema),
-    controllers.staffController.inviteStaff.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.inviteStaff.bind(controllers.staffController))
   );
 
   /**
@@ -153,7 +154,7 @@ export function createStaffRoutes(): Router {
     cacheInvalidation.invalidateBusinessCache,
     rateLimitByUser(3, 60_000),
     validateBody(verifyStaffInvitationSchema),
-    controllers.staffController.verifyStaffInvitation.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.verifyStaffInvitation.bind(controllers.staffController))
   );
 
   /**
@@ -188,7 +189,7 @@ export function createStaffRoutes(): Router {
     attachBusinessContext,
     validateParams(businessIdParamSchema),
     validateQuery(getBusinessStaffQuerySchema),
-    controllers.staffController.getBusinessStaff.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.getBusinessStaff.bind(controllers.staffController))
   );
 
   /**
@@ -215,7 +216,7 @@ export function createStaffRoutes(): Router {
     dynamicCache,
     attachBusinessContext,
     validateParams(businessIdParamSchema),
-    controllers.staffController.getStaffStats.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.getStaffStats.bind(controllers.staffController))
   );
 
   /**
@@ -253,7 +254,7 @@ export function createStaffRoutes(): Router {
     attachBusinessContext,
     validateParams(staffRoleAndBusinessParamSchema),
     validateQuery(getStaffByRoleQuerySchema),
-    controllers.staffController.getStaffByRole.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.getStaffByRole.bind(controllers.staffController))
   );
 
   /**
@@ -280,7 +281,7 @@ export function createStaffRoutes(): Router {
     '/member/:staffId',
     dynamicCache,
     validateParams(staffIdParamSchema),
-    controllers.staffController.getStaffMember.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.getStaffMember.bind(controllers.staffController))
   );
 
   /**
@@ -323,7 +324,7 @@ export function createStaffRoutes(): Router {
     cacheInvalidation.invalidateBusinessCache,
     validateParams(staffIdParamSchema),
     validateBody(updateStaffSchema),
-    controllers.staffController.updateStaffMember.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.updateStaffMember.bind(controllers.staffController))
   );
 
   /**
@@ -351,7 +352,7 @@ export function createStaffRoutes(): Router {
     '/member/:staffId',
     cacheInvalidation.invalidateBusinessCache,
     validateParams(staffIdParamSchema),
-    controllers.staffController.removeStaffMember.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.removeStaffMember.bind(controllers.staffController))
   );
 
   /**
@@ -370,7 +371,7 @@ export function createStaffRoutes(): Router {
   router.get(
     '/my-positions',
     dynamicCache,
-    controllers.staffController.getMyStaffPositions.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.getMyStaffPositions.bind(controllers.staffController))
   );
 
   /**
@@ -421,7 +422,7 @@ export function createStaffRoutes(): Router {
     '/bulk-invite',
     rateLimitByUser(2, 300_000), // 2 requests per 5 minutes for bulk operations
     validateBody(bulkInviteStaffSchema),
-    controllers.staffController.bulkInviteStaff.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.bulkInviteStaff.bind(controllers.staffController))
   );
 
   /**
@@ -459,7 +460,7 @@ export function createStaffRoutes(): Router {
   router.post(
     '/transfer',
     validateBody(transferStaffSchema),
-    controllers.staffController.transferStaff.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.transferStaff.bind(controllers.staffController))
   );
 
   /**
@@ -478,7 +479,7 @@ export function createStaffRoutes(): Router {
   router.get(
     '/roles',
     staticCache,
-    controllers.staffController.getAvailableRoles.bind(controllers.staffController)
+    asyncHandler(controllers.staffController.getAvailableRoles.bind(controllers.staffController))
   );
 
   return router;

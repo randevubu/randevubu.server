@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { BusinessTypeController } from '../../controllers/businessTypeController';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { staticCache } from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 
@@ -55,7 +56,7 @@ export function createBusinessTypeRoutes(businessTypeController: BusinessTypeCon
    *                   type: string
    *                   example: "Failed to retrieve business types"
    */
-  router.get('/', staticCache, businessTypeController.getAllActiveBusinessTypes.bind(businessTypeController));
+  router.get('/', staticCache, asyncHandler(businessTypeController.getAllActiveBusinessTypes.bind(businessTypeController)));
 
   /**
    * @swagger
@@ -96,7 +97,7 @@ export function createBusinessTypeRoutes(businessTypeController: BusinessTypeCon
    *                   type: string
    *                   example: "Failed to retrieve business types"
    */
-  router.get('/all', staticCache, businessTypeController.getAllBusinessTypes.bind(businessTypeController));
+  router.get('/all', staticCache, asyncHandler(businessTypeController.getAllBusinessTypes.bind(businessTypeController)));
 
   /**
    * @swagger
@@ -146,7 +147,7 @@ export function createBusinessTypeRoutes(businessTypeController: BusinessTypeCon
    *                   type: string
    *                   example: "Failed to retrieve categories"
    */
-  router.get('/categories', staticCache, businessTypeController.getCategories.bind(businessTypeController));
+  router.get('/categories', staticCache, asyncHandler(businessTypeController.getCategories.bind(businessTypeController)));
 
   /**
    * @swagger
@@ -219,7 +220,7 @@ export function createBusinessTypeRoutes(businessTypeController: BusinessTypeCon
    *                   type: string
    *                   example: "Failed to retrieve grouped business types"
    */
-  router.get('/grouped', staticCache, businessTypeController.getBusinessTypesGroupedByCategory.bind(businessTypeController));
+  router.get('/grouped', staticCache, asyncHandler(businessTypeController.getBusinessTypesGroupedByCategory.bind(businessTypeController)));
 
   /**
    * @swagger
@@ -267,7 +268,7 @@ export function createBusinessTypeRoutes(businessTypeController: BusinessTypeCon
    *                   type: string
    *                   example: "Failed to retrieve business types with count"
    */
-  router.get('/with-count', staticCache, businessTypeController.getBusinessTypesWithCount.bind(businessTypeController));
+  router.get('/with-count', staticCache, asyncHandler(businessTypeController.getBusinessTypesWithCount.bind(businessTypeController)));
 
   /**
    * @swagger
@@ -329,7 +330,7 @@ export function createBusinessTypeRoutes(businessTypeController: BusinessTypeCon
    *                   type: string
    *                   example: "Failed to retrieve business types by category"
    */
-  router.get('/category/:category', staticCache, businessTypeController.getBusinessTypesByCategory.bind(businessTypeController));
+  router.get('/category/:category', staticCache, asyncHandler(businessTypeController.getBusinessTypesByCategory.bind(businessTypeController)));
 
   /**
    * @swagger
@@ -389,7 +390,7 @@ export function createBusinessTypeRoutes(businessTypeController: BusinessTypeCon
    *                   type: string
    *                   example: "Failed to retrieve business type"
    */
-  router.get('/:id', staticCache, businessTypeController.getBusinessTypeById.bind(businessTypeController));
+  router.get('/:id', staticCache, asyncHandler(businessTypeController.getBusinessTypeById.bind(businessTypeController)));
 
   return router;
 }

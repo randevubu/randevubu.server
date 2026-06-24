@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { NewsletterController } from '../../controllers/newsletterController';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import { createUserRateLimiter } from '../../middleware/userRateLimit';
 
@@ -65,7 +66,7 @@ export function createNewsletterRoutes(controller: NewsletterController): Router
    *       500:
    *         description: Internal server error
    */
-  router.post('/', rateLimiter.middleware, controller.subscribe.bind(controller));
+  router.post('/', rateLimiter.middleware, asyncHandler(controller.subscribe.bind(controller)));
 
   return router;
 }

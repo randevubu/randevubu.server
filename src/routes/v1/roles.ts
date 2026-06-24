@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { RoleController } from '../../controllers/roleController';
+import { asyncHandler } from '../../utils/asyncHandler';
 import {
   requireAuth,
   requirePermission,
@@ -86,28 +87,21 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(createRoleSchema),
-    withAuth(async (req, res, next) => {
-      try {
-        await roleController.createRole(req, res, next);
-        // Cache invalidation handled by middleware
-      } catch (error) {
-        next(error);
-      }
-    })
+    asyncHandler(withAuth((req, res) => roleController.createRole(req, res)))
   );
 
   router.get(
     '/',
     staticCache,
     requireRole(RoleName.ADMIN),
-    withAuth(roleController.getRoles.bind(roleController))
+    asyncHandler(withAuth(roleController.getRoles.bind(roleController)))
   );
 
   router.get(
     '/:id',
     staticCache,
     requireRole(RoleName.ADMIN),
-    withAuth(roleController.getRoleById.bind(roleController))
+    asyncHandler(withAuth(roleController.getRoleById.bind(roleController)))
   );
 
   router.patch(
@@ -115,14 +109,14 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(updateRoleSchema),
-    withAuth(roleController.updateRole.bind(roleController))
+    asyncHandler(withAuth(roleController.updateRole.bind(roleController)))
   );
 
   router.delete(
     '/:id',
     adminRateLimit,
     requireRole(RoleName.ADMIN),
-    withAuth(roleController.deleteRole.bind(roleController))
+    asyncHandler(withAuth(roleController.deleteRole.bind(roleController)))
   );
 
   // Permission Management Routes
@@ -131,21 +125,21 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(createPermissionSchema),
-    withAuth(roleController.createPermission.bind(roleController))
+    asyncHandler(withAuth(roleController.createPermission.bind(roleController)))
   );
 
   router.get(
     '/permissions',
     staticCache,
     requireRole(RoleName.ADMIN),
-    withAuth(roleController.getPermissions.bind(roleController))
+    asyncHandler(withAuth(roleController.getPermissions.bind(roleController)))
   );
 
   router.get(
     '/permissions/:id',
     staticCache,
     requireRole(RoleName.ADMIN),
-    withAuth(roleController.getPermissionById.bind(roleController))
+    asyncHandler(withAuth(roleController.getPermissionById.bind(roleController)))
   );
 
   router.patch(
@@ -153,7 +147,7 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(updatePermissionSchema),
-    withAuth(roleController.updatePermission.bind(roleController))
+    asyncHandler(withAuth(roleController.updatePermission.bind(roleController)))
   );
 
   // Role-Permission Assignment Routes
@@ -162,21 +156,21 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(assignPermissionsToRoleSchema),
-    withAuth(roleController.assignPermissionsToRole.bind(roleController))
+    asyncHandler(withAuth(roleController.assignPermissionsToRole.bind(roleController)))
   );
 
   router.get(
     '/:roleId/permissions',
     staticCache,
     requireRole(RoleName.ADMIN),
-    withAuth(roleController.getRolePermissions.bind(roleController))
+    asyncHandler(withAuth(roleController.getRolePermissions.bind(roleController)))
   );
 
   router.delete(
     '/:roleId/permissions/:permissionId',
     adminRateLimit,
     requireRole(RoleName.ADMIN),
-    withAuth(roleController.revokePermissionFromRole.bind(roleController))
+    asyncHandler(withAuth(roleController.revokePermissionFromRole.bind(roleController)))
   );
 
   // User-Role Assignment Routes
@@ -185,21 +179,21 @@ export function createRoleRoutes(roleController: RoleController): Router {
     adminRateLimit,
     requireRole(RoleName.ADMIN),
     validateBody(assignRoleSchema),
-    withAuth(roleController.assignRoleToUser.bind(roleController))
+    asyncHandler(withAuth(roleController.assignRoleToUser.bind(roleController)))
   );
 
   router.delete(
     '/revoke/:userId/:roleId',
     adminRateLimit,
     requireRole(RoleName.ADMIN),
-    withAuth(roleController.revokeRoleFromUser.bind(roleController))
+    asyncHandler(withAuth(roleController.revokeRoleFromUser.bind(roleController)))
   );
 
   router.get(
     '/users/:userId/permissions',
     staticCache,
     requireAny([PermissionName.MANAGE_ROLES, PermissionName.VIEW_OWN_PROFILE]),
-    withAuth(roleController.getUserPermissions.bind(roleController))
+    asyncHandler(withAuth(roleController.getUserPermissions.bind(roleController)))
   );
 
   /**
@@ -220,7 +214,7 @@ export function createRoleRoutes(roleController: RoleController): Router {
   router.get(
     '/my-permissions',
     staticCache,
-    withAuth(roleController.getMyPermissions.bind(roleController))
+    asyncHandler(withAuth(roleController.getMyPermissions.bind(roleController)))
   );
 
   // Statistics Routes
@@ -228,7 +222,7 @@ export function createRoleRoutes(roleController: RoleController): Router {
     '/statistics',
     staticCache,
     requireRole(RoleName.ADMIN),
-    withAuth(roleController.getRoleStatistics.bind(roleController))
+    asyncHandler(withAuth(roleController.getRoleStatistics.bind(roleController)))
   );
 
   return router;

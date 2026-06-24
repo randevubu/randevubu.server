@@ -57,7 +57,7 @@ export interface DefaultPolicySettings {
 }
 
 export const DEFAULT_CANCELLATION_POLICIES: DefaultPolicySettings = {
-  minCancellationHours: 4,
+  minCancellationHours: 0,
   maxDailyCancellations: 3,
   maxMonthlyNoShows: 2,
   enablePolicyEnforcement: true,

@@ -399,16 +399,20 @@ app.use(metricsMiddleware);
 app.get('/metrics', getMetrics);
 
 // API Documentation - Scalar (Modern API Documentation UI)
-app.get('/api-docs', (req: Request, res: Response) => {
-  const html = generateScalarHTML('/api-docs.json', scalarConfig);
-  res.send(html);
-});
+// SECURITY: the docs expose the full API surface (routes, schemas). Keep them
+// out of production so they can't be used for reconnaissance.
+if (config.NODE_ENV !== 'production') {
+  app.get('/api-docs', (req: Request, res: Response) => {
+    const html = generateScalarHTML('/api-docs.json', scalarConfig);
+    res.send(html);
+  });
 
-// OpenAPI Specification (JSON format)
-app.get('/api-docs.json', (req: Request, res: Response) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerSpec);
-});
+  // OpenAPI Specification (JSON format)
+  app.get('/api-docs.json', (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+  });
+}
 
 // Initialize dependencies
 const repositories = new RepositoryContainer(prisma);
@@ -501,5 +505,26 @@ const shutdownHandler = async () => {
 
 process.on('SIGTERM', shutdownHandler);
 process.on('SIGINT', shutdownHandler);
+
+// Last-resort crash handlers so failures are logged (not silently swallowed)
+// and the process exits cleanly for the orchestrator to restart a fresh worker.
+process.on('unhandledRejection', (reason: unknown) => {
+  logger.error('Unhandled promise rejection', {
+    reason: reason instanceof Error ? reason.stack || reason.message : String(reason),
+  });
+});
+
+process.on('uncaughtException', (error: Error) => {
+  logger.error('Uncaught exception — shutting down', {
+    error: error.stack || error.message,
+  });
+  // Process state is undefined after an uncaught exception; drain and exit so a
+  // healthy instance can take over.
+  shutdownHandler()
+    .catch(() => {
+      /* shutdown best-effort */
+    })
+    .finally(() => process.exit(1));
+});
 
 export default app;

@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import crypto from "crypto";
+import { config } from "../config/environment";
 import { ErrorContext, ForbiddenError } from "../types/errors";
 import logger from "../utils/Logger/logger";
 export interface CSRFOptions {
@@ -166,12 +167,14 @@ export class CSRFMiddleware {
 
       if (!requestOrigin) return next();
 
-      const allowedOrigins = (process.env.CORS_ORIGINS || '')
-        .split(',')
-        .map((o) => o.trim())
-        .filter(Boolean);
+      // Use the centralized CORS config so development localhost defaults are
+      // honored and production stays in sync with the CORS middleware.
+      const normalizedRequestOrigin = requestOrigin.toLowerCase().replace(/\/$/, '');
+      const allowedOrigins = config.CORS_ORIGINS.map((o) =>
+        o.toLowerCase().replace(/\/$/, '')
+      );
 
-      if (!allowedOrigins.includes(requestOrigin)) {
+      if (!allowedOrigins.includes(normalizedRequestOrigin)) {
         const context = this.createErrorContext(req);
         logger.warn('CSRF origin check failed', {
           requestOrigin,

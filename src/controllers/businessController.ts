@@ -11,10 +11,8 @@ import { TokenService } from '../services/domain/token';
 import { AuthenticatedRequest } from '../types/request';
 import { BusinessData } from '../types/business';
 import { TokenPair } from '../types/auth';
-import { handleRouteError, createErrorContext } from '../utils/responseUtils';
 import { ResponseHelper } from '../utils/responseHelper';
 import { AppError } from '../types/responseTypes';
-import { ERROR_CODES } from '../constants/errorCodes';
 import logger from '../utils/Logger/logger';
 
 interface BusinessCreationResponse {
@@ -42,8 +40,7 @@ export class BusinessController {
    * Query params: ?includeSubscription=true to include subscription info
    */
   async getMyBusiness(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
+    const userId = req.user!.id;
       const includeSubscription = req.query.includeSubscription === 'true';
 
       if (!req.businessContext || req.businessContext.businessIds.length === 0) {
@@ -117,6 +114,17 @@ export class BusinessController {
               averageRating: business.averageRating ?? null,
               totalRatings: business.totalRatings ?? 0,
               lastRatingAt: business.lastRatingAt ?? null,
+              requireApproval: business.requireApproval ?? false,
+              settings: business.settings,
+              priceSettings: (() => {
+                const s = (business.settings as Record<string, any>) || {};
+                const pv = s.priceVisibility;
+                if (!pv) return undefined;
+                return {
+                  hideAllServicePrices: pv.hideAllServicePrices ?? false,
+                  showPriceOnBooking: pv.showPriceOnBooking ?? true,
+                };
+              })(),
             };
 
             if (includeSubscription && 'subscription' in business && business.subscription) {
@@ -166,9 +174,6 @@ export class BusinessController {
         200,
         req
       );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
   }
 
   /**
@@ -176,21 +181,14 @@ export class BusinessController {
    * GET /api/v1/businesses/my-services
    */
   async getMyServices(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
+    const userId = req.user!.id;
 
-      if (
-        !req.businessContext ||
-        (req.businessContext.businessIds.length === 0 && !req.businessContext.isOwner)
-      ) {
-        const context = createErrorContext(req, userId);
-        const error = new AppError('Access denied', 403, ERROR_CODES.ACCESS_DENIED);
-        res.status(403).json({
-          success: false,
-          error: error.message,
-        });
-        return;
-      }
+    if (
+      !req.businessContext ||
+      (req.businessContext.businessIds.length === 0 && !req.businessContext.isOwner)
+    ) {
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'No business access for services' });
+    }
 
       if (req.businessContext.businessIds.length === 0) {
         await this.responseHelper.success(
@@ -226,9 +224,6 @@ export class BusinessController {
         200,
         req
       );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
   }
 
   /**
@@ -236,8 +231,7 @@ export class BusinessController {
    * POST /api/v1/businesses
    */
   async createBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const validatedData = createBusinessSchema.parse(req.body);
+    const validatedData = createBusinessSchema.parse(req.body);
       const userId = req.user!.id;
       const userRolesBefore = req.user?.roles?.map((role) => role.name) || [];
 
@@ -263,7 +257,7 @@ export class BusinessController {
         const retryRoles = retryPermissions.roles.map((role) => role.name);
 
         if (!retryRoles.includes('OWNER')) {
-          throw new Error('Role assignment failed: OWNER role not found after business creation');
+          throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Role assignment failed: OWNER role not found after business creation' });
         }
       }
 
@@ -298,9 +292,6 @@ export class BusinessController {
       res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
 
       res.status(201).json(response);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
   }
 
   /**
@@ -308,33 +299,28 @@ export class BusinessController {
    * GET /api/v1/businesses/:id
    */
   async getBusinessById(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
-      const { includeDetails, includeSubscription } = req.query;
-      const userId = req.user!.id;
+    const { id } = req.params;
+    const { includeDetails, includeSubscription } = req.query;
+    const userId = req.user!.id;
 
-      let business;
-      if (includeSubscription === 'true') {
-        business = await this.businessService.getBusinessByIdWithSubscription(userId, id);
-      } else {
-        business = await this.businessService.getBusinessById(
-          userId,
-          id,
-          includeDetails === 'true'
-        );
-      }
-
-      if (!business) {
-        await this.responseHelper.success(res, 'error.business.notFound', null, 404, req);
-        return;
-      }
-
-      await this.responseHelper.success(res, 'success.business.retrieved', business, 200, req, {
-        includesSubscriptionInfo: includeSubscription === 'true',
-      });
-    } catch (error) {
-      handleRouteError(error, req, res);
+    let business;
+    if (includeSubscription === 'true') {
+      business = await this.businessService.getBusinessByIdWithSubscription(userId, id);
+    } else {
+      business = await this.businessService.getBusinessById(
+        userId,
+        id,
+        includeDetails === 'true'
+      );
     }
+
+    if (!business) {
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
+    }
+
+    await this.responseHelper.success(res, 'success.business.retrieved', business, 200, req, {
+      includesSubscriptionInfo: includeSubscription === 'true',
+    });
   }
 
   /**
@@ -342,26 +328,15 @@ export class BusinessController {
    * GET /api/v1/businesses/slug/:slug
    */
   async getBusinessBySlug(req: Request, res: Response): Promise<void> {
-    try {
-      const { slug } = req.params;
+    const { slug } = req.params;
 
-      const business = await this.businessService.getBusinessBySlugWithServices(slug);
+    const business = await this.businessService.getBusinessBySlugWithServices(slug);
 
-      if (!business) {
-        res.status(404).json({
-          success: false,
-          error: 'Business not found',
-        });
-        return;
-      }
-
-      await this.responseHelper.success(res, 'success.business.retrieved', business, 200, req);
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error',
-      });
+    if (!business) {
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
+
+    await this.responseHelper.success(res, 'success.business.retrieved', business, 200, req);
   }
 
   /**
@@ -369,19 +344,15 @@ export class BusinessController {
    * GET /api/v1/businesses/owner/:ownerId
    */
   async getUserBusinesses(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const { ownerId } = req.params;
-      const targetUserId = ownerId || userId;
+    const userId = req.user!.id;
+    const { ownerId } = req.params;
+    const targetUserId = ownerId || userId;
 
-      const businesses = await this.businessService.getBusinessesByOwner(userId, targetUserId);
+    const businesses = await this.businessService.getBusinessesByOwner(userId, targetUserId);
 
-      await this.responseHelper.success(res, 'success.business.retrieved', businesses, 200, req, {
-        total: businesses.length,
-      });
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.retrieved', businesses, 200, req, {
+      total: businesses.length,
+    });
   }
 
   /**
@@ -389,17 +360,13 @@ export class BusinessController {
    * PUT /api/v1/businesses/:id
    */
   async updateBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
-      const validatedData = updateBusinessSchema.parse(req.body);
-      const userId = req.user!.id;
+    const { id } = req.params;
+    const validatedData = updateBusinessSchema.parse(req.body);
+    const userId = req.user!.id;
 
-      const business = await this.businessService.updateBusiness(userId, id, validatedData);
+    const business = await this.businessService.updateBusiness(userId, id, validatedData);
 
-      await this.responseHelper.success(res, 'success.business.updated', business, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.updated', business, 200, req);
   }
 
   /**
@@ -407,27 +374,19 @@ export class BusinessController {
    * PUT /api/v1/businesses/my-business
    */
   async updateMyBusiness(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const validatedData = updateBusinessSchema.parse(req.body);
-      const userId = req.user!.id;
+    const validatedData = updateBusinessSchema.parse(req.body);
+    const userId = req.user!.id;
 
-      if (!req.businessContext || req.businessContext.businessIds.length === 0) {
-        res.status(404).json({
-          success: false,
-          error: 'No business found to update',
-        });
-        return;
-      }
-
-      const businessId =
-        req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
-
-      const business = await this.businessService.updateBusiness(userId, businessId, validatedData);
-
-      await this.responseHelper.success(res, 'success.business.updated', business, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!req.businessContext || req.businessContext.businessIds.length === 0) {
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'No business found to update' });
     }
+
+    const businessId =
+      req.businessContext.primaryBusinessId || req.businessContext.businessIds[0];
+
+    const business = await this.businessService.updateBusiness(userId, businessId, validatedData);
+
+    await this.responseHelper.success(res, 'success.business.updated', business, 200, req);
   }
 
   /**
@@ -435,16 +394,12 @@ export class BusinessController {
    * DELETE /api/v1/businesses/:id
    */
   async deleteBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.id;
+    const { id } = req.params;
+    const userId = req.user!.id;
 
-      await this.businessService.deleteBusiness(userId, id);
+    await this.businessService.deleteBusiness(userId, id);
 
-      await this.responseHelper.success(res, 'success.business.deleted', undefined, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.deleted', undefined, 200, req);
   }
 
   /**
@@ -452,8 +407,7 @@ export class BusinessController {
    * GET /api/v1/businesses/search
    */
   async searchBusinesses(req: Request, res: Response): Promise<void> {
-    try {
-      const validatedQuery = businessSearchSchema.parse(req.query);
+    const validatedQuery = businessSearchSchema.parse(req.query);
       const userId = (req as AuthenticatedRequest).user?.id;
 
       const { page = 1, limit = 20, ...filters } = validatedQuery;
@@ -475,9 +429,6 @@ export class BusinessController {
         200,
         req
       );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
   }
 
   /**
@@ -485,70 +436,45 @@ export class BusinessController {
    * GET /api/v1/businesses/nearby
    */
   async getNearbyBusinesses(req: Request, res: Response): Promise<void> {
-    try {
-      const { latitude, longitude, radius = 10, limit = 10 } = req.query;
+    const { latitude, longitude, radius = 10, limit = 10 } = req.query;
 
-      if (!latitude || !longitude) {
-        const error = new AppError(
-          'Latitude and longitude are required',
-          400,
-          ERROR_CODES.REQUIRED_FIELD_MISSING
-        );
-        res.status(400).json({
-          success: false,
-          error: error.message,
-        });
-        return;
-      }
-
-      const lat = parseFloat(latitude as string);
-      const lng = parseFloat(longitude as string);
-      const rad = parseFloat(radius as string);
-      const lmt = parseInt(limit as string);
-
-      if (isNaN(lat) || isNaN(lng) || isNaN(rad) || isNaN(lmt)) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid coordinates, radius, or limit format',
-        });
-        return;
-      }
-
-      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-        res.status(400).json({
-          success: false,
-          error: 'Coordinates are out of valid range',
-        });
-        return;
-      }
-
-      if (rad < 0 || rad > 1000 || lmt < 1 || lmt > 100) {
-        res.status(400).json({
-          success: false,
-          error: 'Radius must be between 0-1000km and limit between 1-100',
-        });
-        return;
-      }
-
-      const businesses = await this.businessService.findNearbyBusinesses(lat, lng, rad, lmt);
-
-      await this.responseHelper.success(
-        res,
-        'success.business.nearbyRetrieved',
-        {
-          businesses,
-          meta: {
-            total: businesses.length,
-            radius: rad,
-            limit: lmt,
-          },
-        },
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!latitude || !longitude) {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Latitude and longitude are required', params: { field: 'latitude,longitude' } });
     }
+
+    const lat = parseFloat(latitude as string);
+    const lng = parseFloat(longitude as string);
+    const rad = parseFloat(radius as string);
+    const lmt = parseInt(limit as string);
+
+    if (isNaN(lat) || isNaN(lng) || isNaN(rad) || isNaN(lmt)) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid coordinates, radius, or limit format' });
+    }
+
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Coordinates are out of valid range' });
+    }
+
+    if (rad < 0 || rad > 1000 || lmt < 1 || lmt > 100) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Radius must be between 0-1000km and limit between 1-100' });
+    }
+
+    const businesses = await this.businessService.findNearbyBusinesses(lat, lng, rad, lmt);
+
+    await this.responseHelper.success(
+      res,
+      'success.business.nearbyRetrieved',
+      {
+        businesses,
+        meta: {
+          total: businesses.length,
+          radius: rad,
+          limit: lmt,
+        },
+      },
+      200,
+      req
+    );
   }
 
   /**
@@ -556,54 +482,37 @@ export class BusinessController {
    * GET /api/v1/businesses/slug/:slug/availability
    */
   async checkSlugAvailability(req: Request, res: Response): Promise<void> {
-    try {
-      const { slug } = req.params;
-      const { excludeId } = req.query;
+    const { slug } = req.params;
+    const { excludeId } = req.query;
 
-      if (!slug || typeof slug !== 'string') {
-        const error = new AppError('Slug is required', 400, ERROR_CODES.REQUIRED_FIELD_MISSING);
-        res.status(400).json({
-          success: false,
-          error: error.message,
-        });
-        return;
-      }
-
-      const slugRegex = /^[a-zA-Z0-9-_]+$/;
-      if (!slugRegex.test(slug)) {
-        res.status(400).json({
-          success: false,
-          error: 'Slug must contain only letters, numbers, hyphens, and underscores',
-        });
-        return;
-      }
-
-      if (slug.length < 3 || slug.length > 50) {
-        res.status(400).json({
-          success: false,
-          error: 'Slug must be between 3 and 50 characters',
-        });
-        return;
-      }
-
-      const isAvailable = await this.businessService.checkSlugAvailability(
-        slug,
-        excludeId as string
-      );
-
-      await this.responseHelper.success(
-        res,
-        'success.business.slugChecked',
-        {
-          slug,
-          available: isAvailable,
-        },
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!slug || typeof slug !== 'string') {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Slug is required', params: { field: 'slug' } });
     }
+
+    const slugRegex = /^[a-zA-Z0-9-_]+$/;
+    if (!slugRegex.test(slug)) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Slug must contain only letters, numbers, hyphens, and underscores' });
+    }
+
+    if (slug.length < 3 || slug.length > 50) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Slug must be between 3 and 50 characters' });
+    }
+
+    const isAvailable = await this.businessService.checkSlugAvailability(
+      slug,
+      excludeId as string
+    );
+
+    await this.responseHelper.success(
+      res,
+      'success.business.slugChecked',
+      {
+        slug,
+        available: isAvailable,
+      },
+      200,
+      req
+    );
   }
 
   /**
@@ -611,17 +520,13 @@ export class BusinessController {
    * GET /api/v1/businesses/:id/stats
    */
   async getBusinessStats(req: BusinessContextRequest, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.id;
+    const { id } = req.params;
+    const userId = req.user!.id;
 
-      const businessId = id === 'my' ? undefined : id;
-      const stats = await this.businessService.getMyBusinessStats(userId, businessId);
+    const businessId = id === 'my' ? undefined : id;
+    const stats = await this.businessService.getMyBusinessStats(userId, businessId);
 
-      await this.responseHelper.success(res, 'success.business.statsRetrieved', stats, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.statsRetrieved', stats, 200, req);
   }
 
   // Admin endpoints
@@ -631,16 +536,12 @@ export class BusinessController {
    * POST /api/v1/businesses/:id/verify
    */
   async verifyBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.id;
+    const { id } = req.params;
+    const userId = req.user!.id;
 
-      const business = await this.businessService.verifyBusiness(userId, id);
+    const business = await this.businessService.verifyBusiness(userId, id);
 
-      await this.responseHelper.success(res, 'success.business.verified', business, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.verified', business, 200, req);
   }
 
   /**
@@ -648,16 +549,12 @@ export class BusinessController {
    * POST /api/v1/businesses/:id/unverify
    */
   async unverifyBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.id;
+    const { id } = req.params;
+    const userId = req.user!.id;
 
-      const business = await this.businessService.unverifyBusiness(userId, id);
+    const business = await this.businessService.unverifyBusiness(userId, id);
 
-      await this.responseHelper.success(res, 'success.business.unverified', business, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.unverified', business, 200, req);
   }
 
   /**
@@ -665,22 +562,18 @@ export class BusinessController {
    * POST /api/v1/businesses/:id/close
    */
   async closeBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
-      const { closedUntil, reason } = req.body;
-      const userId = req.user!.id;
+    const { id } = req.params;
+    const { closedUntil, reason } = req.body;
+    const userId = req.user!.id;
 
-      const business = await this.businessService.closeBusiness(
-        userId,
-        id,
-        closedUntil ? new Date(closedUntil) : undefined,
-        reason
-      );
+    const business = await this.businessService.closeBusiness(
+      userId,
+      id,
+      closedUntil ? new Date(closedUntil) : undefined,
+      reason
+    );
 
-      await this.responseHelper.success(res, 'success.business.closed', business, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.closed', business, 200, req);
   }
 
   /**
@@ -688,16 +581,12 @@ export class BusinessController {
    * POST /api/v1/businesses/:id/reopen
    */
   async reopenBusiness(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.id;
+    const { id } = req.params;
+    const userId = req.user!.id;
 
-      const business = await this.businessService.reopenBusiness(userId, id);
+    const business = await this.businessService.reopenBusiness(userId, id);
 
-      await this.responseHelper.success(res, 'success.business.reopened', business, 200, req);
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(res, 'success.business.reopened', business, 200, req);
   }
 
   /**
@@ -705,26 +594,22 @@ export class BusinessController {
    * GET /api/v1/businesses/admin/all
    */
   async getAllBusinesses(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user!.id;
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+    const userId = req.user!.id;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
 
-      const result = await this.businessService.getAllBusinesses(userId, page, limit);
+    const result = await this.businessService.getAllBusinesses(userId, page, limit);
 
-      await this.responseHelper.paginated(
-        res,
-        'success.business.allRetrieved',
-        result.businesses,
-        result.total,
-        result.page,
-        limit,
-        200,
-        req
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.paginated(
+      res,
+      'success.business.allRetrieved',
+      result.businesses,
+      result.total,
+      result.page,
+      limit,
+      200,
+      req
+    );
   }
 
   /**
@@ -732,22 +617,18 @@ export class BusinessController {
    * GET /api/v1/businesses/type/:businessTypeId
    */
   async getBusinessesByType(req: Request, res: Response): Promise<void> {
-    try {
-      const { businessTypeId } = req.params;
+    const { businessTypeId } = req.params;
 
-      const businesses = await this.businessService.getBusinessesByType(businessTypeId);
+    const businesses = await this.businessService.getBusinessesByType(businessTypeId);
 
-      await this.responseHelper.success(
-        res,
-        'success.business.byTypeRetrieved',
-        businesses,
-        200,
-        req,
-        { total: businesses.length, businessTypeId }
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
+    await this.responseHelper.success(
+      res,
+      'success.business.byTypeRetrieved',
+      businesses,
+      200,
+      req,
+      { total: businesses.length, businessTypeId }
+    );
   }
 
   /**
@@ -755,31 +636,23 @@ export class BusinessController {
    * POST /api/v1/businesses/admin/batch-verify
    */
   async batchVerifyBusinesses(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { businessIds } = req.body;
-      const userId = req.user!.id;
+    const { businessIds } = req.body;
+    const userId = req.user!.id;
 
-      if (!Array.isArray(businessIds) || businessIds.length === 0) {
-        res.status(400).json({
-          success: false,
-          error: 'businessIds array is required',
-        });
-        return;
-      }
-
-      await this.businessService.batchVerifyBusinesses(userId, businessIds);
-
-      await this.responseHelper.success(
-        res,
-        'success.business.batchVerified',
-        undefined,
-        200,
-        req,
-        { count: businessIds.length }
-      );
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!Array.isArray(businessIds) || businessIds.length === 0) {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'businessIds array is required', params: { field: 'businessIds' } });
     }
+
+    await this.businessService.batchVerifyBusinesses(userId, businessIds);
+
+    await this.responseHelper.success(
+      res,
+      'success.business.batchVerified',
+      undefined,
+      200,
+      req,
+      { count: businessIds.length }
+    );
   }
 
   /**
@@ -787,34 +660,22 @@ export class BusinessController {
    * POST /api/v1/businesses/admin/batch-close
    */
   async batchCloseBusinesses(req: AuthenticatedRequest, res: Response): Promise<void> {
-    try {
-      const { businessIds, reason } = req.body;
-      const userId = req.user!.id;
+    const { businessIds, reason } = req.body;
+    const userId = req.user!.id;
 
-      if (!Array.isArray(businessIds) || businessIds.length === 0) {
-        res.status(400).json({
-          success: false,
-          error: 'businessIds array is required',
-        });
-        return;
-      }
-
-      if (!reason || reason.trim().length < 5) {
-        res.status(400).json({
-          success: false,
-          error: 'Reason must be at least 5 characters long',
-        });
-        return;
-      }
-
-      await this.businessService.batchCloseBusinesses(userId, businessIds, reason);
-
-      await this.responseHelper.success(res, 'success.business.batchClosed', undefined, 200, req, {
-        count: businessIds.length,
-      });
-    } catch (error) {
-      handleRouteError(error, req, res);
+    if (!Array.isArray(businessIds) || businessIds.length === 0) {
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'businessIds array is required', params: { field: 'businessIds' } });
     }
+
+    if (!reason || reason.trim().length < 5) {
+      throw new AppError('VALIDATION_ERROR', { message: 'Reason must be at least 5 characters long' });
+    }
+
+    await this.businessService.batchCloseBusinesses(userId, businessIds, reason);
+
+    await this.responseHelper.success(res, 'success.business.batchClosed', undefined, 200, req, {
+      count: businessIds.length,
+    });
   }
 
   /**
@@ -822,8 +683,7 @@ export class BusinessController {
    * GET /api/v1/businesses/minimal
    */
   async getAllBusinessesMinimalDetails(req: Request, res: Response): Promise<void> {
-    try {
-      const page = parseInt(req.query.page as string) || 1;
+    const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
 
       const result = await this.businessService.getAllBusinessesMinimalDetails(page, limit);
@@ -842,8 +702,5 @@ export class BusinessController {
         200,
         req
       );
-    } catch (error) {
-      handleRouteError(error, req, res);
-    }
   }
 }

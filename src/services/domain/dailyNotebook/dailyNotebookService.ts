@@ -1,4 +1,5 @@
 import { DailyNotebookRepository } from '../../../repositories/dailyNotebookRepository';
+import { AppError } from '../../../types/responseTypes';
 import {
   DailyNotebook,
   RevenueColumn,
@@ -26,15 +27,15 @@ export class DailyNotebookService {
     // Verify business ownership
     const hasAccess = await this.repository.verifyBusinessOwnership(businessId, userId);
     if (!hasAccess) {
-      throw new Error('Access denied: You do not have permission to access this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to access this business' });
     }
 
     // Validate month and year
     if (month < 1 || month > 12) {
-      throw new Error('Invalid month: Month must be between 1 and 12');
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid month: Month must be between 1 and 12' });
     }
     if (year < 2000 || year > 2100) {
-      throw new Error('Invalid year: Year must be between 2000 and 2100');
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid year: Year must be between 2000 and 2100' });
     }
 
     // Get or create notebook
@@ -261,7 +262,7 @@ export class DailyNotebookService {
     // Verify business ownership
     const hasAccess = await this.repository.verifyBusinessOwnership(businessId, userId);
     if (!hasAccess) {
-      throw new Error('Access denied: You do not have permission to access this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to access this business' });
     }
 
     // Get or create notebook
@@ -299,19 +300,19 @@ export class DailyNotebookService {
     // Verify business ownership
     const hasAccess = await this.repository.verifyBusinessOwnership(businessId, userId);
     if (!hasAccess) {
-      throw new Error('Access denied: You do not have permission to access this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to access this business' });
     }
 
     // Validate day
     const daysInMonth = new Date(year, month, 0).getDate();
     if (data.day < 1 || data.day > daysInMonth) {
-      throw new Error(`Invalid day: Day must be between 1 and ${daysInMonth} for the selected month`);
+      throw new AppError('VALIDATION_ERROR', { message: `Invalid day: Day must be between 1 and ${daysInMonth} for the selected month` });
     }
 
     // Verify column belongs to business
     const column = await this.repository.findColumnById(data.columnId);
     if (!column || column.businessId !== businessId) {
-      throw new Error('Invalid column: Column does not belong to this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Column does not belong to this business' });
     }
 
     // Get or create notebook
@@ -335,7 +336,7 @@ export class DailyNotebookService {
   async getColumns(businessId: string, userId: string): Promise<RevenueColumn[]> {
     const hasAccess = await this.repository.verifyBusinessOwnership(businessId, userId);
     if (!hasAccess) {
-      throw new Error('Access denied: You do not have permission to access this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to access this business' });
     }
 
     let columns = await this.repository.findColumnsByBusinessId(businessId);
@@ -359,15 +360,15 @@ export class DailyNotebookService {
   ): Promise<RevenueColumn> {
     const hasAccess = await this.repository.verifyBusinessOwnership(businessId, userId);
     if (!hasAccess) {
-      throw new Error('Access denied: You do not have permission to access this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to access this business' });
     }
 
     // Validate column name
     if (!data.name || data.name.trim().length === 0) {
-      throw new Error('Column name is required');
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Column name is required', params: { field: 'name' } });
     }
     if (data.name.length > 100) {
-      throw new Error('Column name must be less than 100 characters');
+      throw new AppError('VALIDATION_ERROR', { message: 'Column name must be less than 100 characters' });
     }
 
     // Set sort order if not provided
@@ -389,30 +390,30 @@ export class DailyNotebookService {
   ): Promise<RevenueColumn> {
     const hasAccess = await this.repository.verifyBusinessOwnership(businessId, userId);
     if (!hasAccess) {
-      throw new Error('Access denied: You do not have permission to access this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to access this business' });
     }
 
     // Verify column belongs to business
     const column = await this.repository.findColumnById(columnId);
     if (!column) {
-      throw new Error('Column not found');
+      throw new AppError('SERVICE_NOT_FOUND', { message: 'Column not found' });
     }
     if (column.businessId !== businessId) {
-      throw new Error('Column does not belong to this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Column does not belong to this business' });
     }
 
     // Don't allow updating system columns' type or name
     if (column.isSystem && (data.name !== undefined || data.type !== undefined)) {
-      throw new Error('Cannot modify name or type of system columns');
+      throw new AppError('OPERATION_NOT_ALLOWED', { message: 'Cannot modify name or type of system columns' });
     }
 
     // Validate column name if provided
     if (data.name !== undefined) {
       if (data.name.trim().length === 0) {
-        throw new Error('Column name cannot be empty');
+        throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Column name cannot be empty', params: { field: 'name' } });
       }
       if (data.name.length > 100) {
-        throw new Error('Column name must be less than 100 characters');
+        throw new AppError('VALIDATION_ERROR', { message: 'Column name must be less than 100 characters' });
       }
     }
 
@@ -429,21 +430,21 @@ export class DailyNotebookService {
   ): Promise<void> {
     const hasAccess = await this.repository.verifyBusinessOwnership(businessId, userId);
     if (!hasAccess) {
-      throw new Error('Access denied: You do not have permission to access this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to access this business' });
     }
 
     // Verify column belongs to business
     const column = await this.repository.findColumnById(columnId);
     if (!column) {
-      throw new Error('Column not found');
+      throw new AppError('SERVICE_NOT_FOUND', { message: 'Column not found' });
     }
     if (column.businessId !== businessId) {
-      throw new Error('Column does not belong to this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Column does not belong to this business' });
     }
 
     // Don't allow deleting system columns
     if (column.isSystem) {
-      throw new Error('Cannot delete system columns');
+      throw new AppError('OPERATION_NOT_ALLOWED', { message: 'Cannot delete system columns' });
     }
 
     // Delete all entries associated with this column
@@ -464,7 +465,7 @@ export class DailyNotebookService {
   ): Promise<{ [day: number]: number }> {
     const hasAccess = await this.repository.verifyBusinessOwnership(businessId, userId);
     if (!hasAccess) {
-      throw new Error('Access denied: You do not have permission to access this business');
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to access this business' });
     }
 
     return await this.repository.getAppointmentRevenue(businessId, year, month);

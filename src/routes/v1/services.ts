@@ -9,6 +9,7 @@ import {
 import { semiDynamicCache, dynamicCache, serviceCache } from '../../middleware/cacheMiddleware';
 import { trackCachePerformance } from '../../middleware/cacheMonitoring';
 import { initializeCacheInvalidationMiddleware } from '../../middleware/cacheInvalidation';
+import { asyncHandler } from '../../utils/asyncHandler';
 import prisma from '../../lib/prisma';
 import { RepositoryContainer } from '../../repositories';
 
@@ -43,7 +44,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
   router.get(
     '/business/:businessId/public',
     semiDynamicCache,
-    serviceController.getPublicBusinessServices.bind(serviceController)
+    asyncHandler(serviceController.getPublicBusinessServices.bind(serviceController))
   );
   /**
    * @swagger
@@ -64,7 +65,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
   router.get(
     '/:id/availability',
     dynamicCache,
-    serviceController.checkServiceAvailability.bind(serviceController)
+    asyncHandler(serviceController.checkServiceAvailability.bind(serviceController))
   );
 
   // Protected routes
@@ -152,7 +153,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    withAuth(serviceController.createService.bind(serviceController))
+    asyncHandler(withAuth(serviceController.createService.bind(serviceController)))
   );
 
   /**
@@ -182,14 +183,14 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
   router.get(
     '/:id/assignment-status',
     requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),
-    serviceController.getServiceAssignmentStatus.bind(serviceController)
+    asyncHandler(serviceController.getServiceAssignmentStatus.bind(serviceController))
   );
 
   router.get(
     '/:id',
     serviceCache,
     requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),
-    serviceController.getServiceById.bind(serviceController)
+    asyncHandler(serviceController.getServiceById.bind(serviceController))
   );
 
   /**
@@ -365,7 +366,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
     '/:id',
     cacheInvalidation.invalidateServiceCache,
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    serviceController.updateService.bind(serviceController)
+    asyncHandler(serviceController.updateService.bind(serviceController))
   );
 
   /**
@@ -503,7 +504,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
     '/:id',
     cacheInvalidation.invalidateServiceCache,
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    serviceController.deleteService.bind(serviceController)
+    asyncHandler(serviceController.deleteService.bind(serviceController))
   );
 
   // Business services management
@@ -535,7 +536,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.VIEW_ALL_SERVICES, PermissionName.VIEW_OWN_SERVICES]),
-    serviceController.getBusinessServices.bind(serviceController)
+    asyncHandler(serviceController.getBusinessServices.bind(serviceController))
   );
 
   /**
@@ -565,7 +566,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    serviceController.reorderServices.bind(serviceController)
+    asyncHandler(serviceController.reorderServices.bind(serviceController))
   );
 
   /**
@@ -596,7 +597,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
-    serviceController.getPopularServices.bind(serviceController)
+    asyncHandler(serviceController.getPopularServices.bind(serviceController))
   );
 
   // Service management
@@ -626,7 +627,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
     '/:id/stats',
     serviceCache,
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
-    serviceController.getServiceStats.bind(serviceController)
+    asyncHandler(serviceController.getServiceStats.bind(serviceController))
   );
 
   /**
@@ -654,7 +655,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
   router.post(
     '/:id/toggle-status',
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    serviceController.toggleServiceStatus.bind(serviceController)
+    asyncHandler(serviceController.toggleServiceStatus.bind(serviceController))
   );
 
   /**
@@ -682,7 +683,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
   router.post(
     '/:id/duplicate',
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    serviceController.duplicateService.bind(serviceController)
+    asyncHandler(serviceController.duplicateService.bind(serviceController))
   );
 
   // Bulk operations
@@ -713,7 +714,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    serviceController.bulkUpdatePrices.bind(serviceController)
+    asyncHandler(serviceController.bulkUpdatePrices.bind(serviceController))
   );
 
   /**
@@ -743,7 +744,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    serviceController.batchToggleServices.bind(serviceController)
+    asyncHandler(serviceController.batchToggleServices.bind(serviceController))
   );
 
   /**
@@ -773,7 +774,7 @@ export function createServiceRoutes(serviceController: any, cacheInvalidation?: 
     attachBusinessContext,
     requireSpecificBusinessAccess('businessId'),
     requireAny([PermissionName.MANAGE_ALL_SERVICES, PermissionName.MANAGE_OWN_SERVICES]),
-    serviceController.batchDeleteServices.bind(serviceController)
+    asyncHandler(serviceController.batchDeleteServices.bind(serviceController))
   );
 
   return router;

@@ -7,7 +7,9 @@ const STATUS_LABEL_TR: Record<AppointmentStatus, string> = {
   [AppointmentStatus.IN_PROGRESS]: 'Devam ediyor',
   [AppointmentStatus.COMPLETED]: 'Tamamlandı',
   [AppointmentStatus.CANCELED]: 'İptal Edildi',
-  [AppointmentStatus.NO_SHOW]: 'Gelmedi'
+  [AppointmentStatus.NO_SHOW]: 'Gelmedi',
+  [AppointmentStatus.PENDING_APPROVAL]: 'Onay Bekliyor',
+  [AppointmentStatus.REJECTED_BY_BUSINESS]: 'Reddedildi',
 };
 
 export function getAppointmentStatusLabelTr(status: AppointmentStatus | string): string {

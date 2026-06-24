@@ -15,7 +15,8 @@ import {
   StaffDisplayInfo,
   FilteredAppointmentData
 } from '../types/businessSettings';
-import { createDateTimeInIstanbul, getCurrentTimeInIstanbul, createDateRangeFilter } from '../utils/timezoneHelper';
+import { createDateTimeInIstanbul, getCurrentTimeInIstanbul, createDateRangeFilter, formatDateForAPI } from '../utils/timezoneHelper';
+import { ACTIVE_APPOINTMENT_STATUSES } from '../constants/appointmentStatus';
 
 export class AppointmentRepository {
   constructor(private prisma: PrismaClient) { }
@@ -34,23 +35,23 @@ export class AppointmentRepository {
   // Helper method to get staff display name based on privacy settings
   private getStaffDisplayName(role: string, businessSettings: BusinessSettings | null): string {
     const privacySettings = businessSettings?.staffPrivacy;
-    if (!privacySettings) return 'Staff';
+    if (!privacySettings) return 'Personel';
 
     if (privacySettings.staffDisplayMode === 'ROLES') {
       const roleNames: Record<string, string> = {
-        'OWNER': 'Owner',
-        'MANAGER': 'Manager',
-        'STAFF': 'Staff Member',
+        'OWNER': 'İşletme Sahibi',
+        'MANAGER': 'Yönetici',
+        'STAFF': 'Personel',
       };
-      return roleNames[role] || 'Staff';
+      return roleNames[role] || 'Personel';
     }
 
     if (privacySettings.staffDisplayMode === 'GENERIC') {
       const customLabels = privacySettings.customStaffLabels || {};
-      return customLabels[role.toLowerCase()] || 'Staff';
+      return customLabels[role.toLowerCase()] || 'Personel';
     }
 
-    return 'Staff';
+    return 'Personel';
   }
 
   // Helper method to filter price information from appointment data
@@ -122,6 +123,9 @@ export class AppointmentRepository {
       currency: result.currency,
       customerNotes: result.customerNotes,
       internalNotes: undefined,
+      canceledAt: result.canceledAt || undefined,
+      cancelReason: result.cancelReason || undefined,
+      cancelledBy: result.cancelledBy || null,
       bookedAt: result.bookedAt,
       reminderSent: result.reminderSent,
       createdAt: result.createdAt,
@@ -370,11 +374,15 @@ export class AppointmentRepository {
         }
       }),
 
-      // Cancelled appointments
+      // Cancelled appointments (exclude business-initiated cancellations from customer score)
       this.prisma.appointment.count({
         where: {
           ...whereClause,
-          status: AppointmentStatus.CANCELED
+          status: AppointmentStatus.CANCELED,
+          OR: [
+            { cancelledBy: null },
+            { cancelledBy: { not: 'BUSINESS' } }
+          ]
         }
       }),
 
@@ -743,16 +751,38 @@ export class AppointmentRepository {
   async update(id: string, data: UpdateAppointmentRequest): Promise<AppointmentData> {
     const updateData: Record<string, unknown> = { ...data };
 
-    if (data.date && data.startTime) {
-      const startDateTime = new Date(`${data.date}T${data.startTime}`);
-      updateData.startTime = startDateTime;
-      updateData.date = new Date(data.date);
-
-      // Update end time based on service duration
+    // Whenever the start time changes, startTime, endTime and the denormalized
+    // `date` column MUST be recalculated together. `startTime` can arrive as:
+    //   - 'HH:MM' wall-clock with a separate `date` (edit form), or
+    //   - 'HH:MM' wall-clock with no date (time-only edit → keep existing day), or
+    //   - a full ISO datetime (reschedule flows).
+    // The previous implementation only handled the first case, so reschedule
+    // left a stale endTime/date and corrupted the appointment.
+    if (data.startTime) {
       const appointment = await this.findById(id);
-      if (appointment) {
-        updateData.endTime = new Date(startDateTime.getTime() + appointment.duration * 60000);
+      if (!appointment) {
+        throw new Error(`Appointment ${id} not found`);
       }
+
+      const isWallClock = /^\d{1,2}:\d{2}$/.test(data.startTime);
+      let startDateTime: Date;
+      if (isWallClock) {
+        const dateStr = data.date ?? formatDateForAPI(appointment.date);
+        startDateTime = createDateTimeInIstanbul(dateStr, data.startTime);
+      } else {
+        startDateTime = new Date(data.startTime);
+      }
+
+      if (isNaN(startDateTime.getTime())) {
+        throw new Error('Invalid startTime provided for appointment update');
+      }
+
+      updateData.startTime = startDateTime;
+      updateData.endTime = new Date(startDateTime.getTime() + appointment.duration * 60000);
+      updateData.date = createDateTimeInIstanbul(formatDateForAPI(startDateTime), '00:00');
+    } else if (data.date) {
+      // Date-only change: normalize to midnight to match how bookings store `date`.
+      updateData.date = createDateTimeInIstanbul(data.date, '00:00');
     }
 
     if (data.status) {
@@ -777,13 +807,14 @@ export class AppointmentRepository {
     return this.mapPrismaResultToAppointmentData(result);
   }
 
-  async cancel(id: string, cancelReason?: string): Promise<AppointmentData> {
+  async cancel(id: string, cancelReason?: string, cancelledBy?: 'CUSTOMER' | 'BUSINESS' | 'SYSTEM'): Promise<AppointmentData> {
     const result = await this.prisma.appointment.update({
       where: { id },
       data: {
         status: AppointmentStatus.CANCELED,
         canceledAt: new Date(),
-        cancelReason
+        cancelReason,
+        cancelledBy: cancelledBy || null
       }
     });
     return this.mapPrismaResultToAppointmentData(result);
@@ -1203,7 +1234,7 @@ export class AppointmentRepository {
     const where: Record<string, unknown> = {
       businessId,
       date,
-      status: { in: [AppointmentStatus.CONFIRMED] },
+      status: { in: ACTIVE_APPOINTMENT_STATUSES },
       OR: [
         {
           AND: [

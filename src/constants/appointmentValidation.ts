@@ -124,12 +124,14 @@ export const APPOINTMENT_ERROR_MESSAGES = {
 
 // Appointment status transitions
 export const APPOINTMENT_STATUS_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
-  [AppointmentStatus.PENDING]: [AppointmentStatus.CONFIRMED, AppointmentStatus.CANCELED], // Initial status - can be confirmed or canceled
+  [AppointmentStatus.PENDING]: [AppointmentStatus.CONFIRMED, AppointmentStatus.CANCELED],
+  [AppointmentStatus.PENDING_APPROVAL]: [AppointmentStatus.CONFIRMED, AppointmentStatus.REJECTED_BY_BUSINESS, AppointmentStatus.CANCELED],
   [AppointmentStatus.CONFIRMED]: [AppointmentStatus.IN_PROGRESS, AppointmentStatus.COMPLETED, AppointmentStatus.CANCELED, AppointmentStatus.NO_SHOW],
   [AppointmentStatus.IN_PROGRESS]: [AppointmentStatus.COMPLETED, AppointmentStatus.CANCELED, AppointmentStatus.NO_SHOW],
-  [AppointmentStatus.COMPLETED]: [], // Terminal state
-  [AppointmentStatus.CANCELED]: [], // Terminal state
-  [AppointmentStatus.NO_SHOW]: [AppointmentStatus.CONFIRMED] // Can be rescheduled
+  [AppointmentStatus.COMPLETED]: [],
+  [AppointmentStatus.CANCELED]: [],
+  [AppointmentStatus.NO_SHOW]: [AppointmentStatus.CONFIRMED],
+  [AppointmentStatus.REJECTED_BY_BUSINESS]: [],
 };
 
 // Time constraints

@@ -304,14 +304,14 @@ export class BusinessRepository {
   }
 
   // Business Hours Override methods
+  private toUtcDate(date: Date | string): Date {
+    const d = typeof date === 'string' ? date.split('T')[0] : date.toISOString().split('T')[0];
+    return new Date(`${d}T00:00:00.000Z`);
+  }
+
   async findBusinessHoursOverride(businessId: string, date: string): Promise<BusinessHoursOverride | null> {
-    const result = await this.prisma.businessHoursOverride.findUnique({
-      where: {
-        businessId_date: {
-          businessId,
-          date: new Date(date)
-        }
-      }
+    const result = await this.prisma.businessHoursOverride.findFirst({
+      where: { businessId, date: this.toUtcDate(date) }
     });
 
     return result ? this.mapPrismaResultToBusinessHoursOverride(result) : null;
@@ -338,9 +338,11 @@ export class BusinessRepository {
       throw new Error(`Business with ID ${data.businessId} not found`);
     }
 
-    // Validate date is not in the past
-    if (data.date < new Date()) {
-      throw new Error('Cannot create business hours override for past dates');
+    // Reject past dates (today is allowed — compare date-only, not time)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    if (data.date < todayStart) {
+      throw new ValidationError('Geçmiş tarihler için özel gün eklenemez');
     }
 
     const result = await this.prisma.businessHoursOverride.create({
@@ -376,31 +378,24 @@ export class BusinessRepository {
       recurringPattern?: RecurringPattern;
     }
   ): Promise<BusinessHoursOverride> {
-    // Check if override exists
-    const existingOverride = await this.prisma.businessHoursOverride.findUnique({
-      where: {
-        businessId_date: {
-          businessId,
-          date
-        }
-      }
+    const existingOverride = await this.prisma.businessHoursOverride.findFirst({
+      where: { businessId, date: this.toUtcDate(date) }
     });
 
     if (!existingOverride) {
-      throw new Error(`Business hours override not found for business ${businessId} on date ${date.toISOString().split('T')[0]}`);
+      throw new NotFoundError('Özel gün bulunamadı');
     }
 
     const result = await this.prisma.businessHoursOverride.update({
-      where: {
-        businessId_date: {
-          businessId,
-          date
-        }
-      },
+      where: { id: existingOverride.id },
       data: {
-        ...data,
-        breaks: data.breaks as Prisma.InputJsonValue,
-        recurringPattern: data.recurringPattern as Prisma.InputJsonValue,
+        isOpen: data.isOpen,
+        openTime: data.openTime,
+        closeTime: data.closeTime,
+        reason: data.reason,
+        isRecurring: data.isRecurring,
+        breaks: data.breaks as Prisma.InputJsonValue ?? undefined,
+        recurringPattern: data.recurringPattern as Prisma.InputJsonValue ?? undefined,
         updatedAt: new Date()
       }
     });
@@ -409,26 +404,16 @@ export class BusinessRepository {
   }
 
   async deleteBusinessHoursOverride(businessId: string, date: Date): Promise<void> {
-    const existingOverride = await this.prisma.businessHoursOverride.findUnique({
-      where: {
-        businessId_date: {
-          businessId,
-          date
-        }
-      }
+    const existingOverride = await this.prisma.businessHoursOverride.findFirst({
+      where: { businessId, date: this.toUtcDate(date) }
     });
 
     if (!existingOverride) {
-      throw new Error(`Business hours override not found for business ${businessId} on date ${date.toISOString().split('T')[0]}`);
+      throw new NotFoundError('Özel gün bulunamadı');
     }
 
     await this.prisma.businessHoursOverride.delete({
-      where: {
-        businessId_date: {
-          businessId,
-          date
-        }
-      }
+      where: { id: existingOverride.id }
     });
   }
 
@@ -693,6 +678,7 @@ export class BusinessRepository {
         averageRating: true,
         totalRatings: true,
         lastRatingAt: true,
+        requireApproval: true,
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
@@ -760,6 +746,7 @@ export class BusinessRepository {
         averageRating: true,
         totalRatings: true,
         lastRatingAt: true,
+        requireApproval: true,
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
@@ -794,7 +781,7 @@ export class BusinessRepository {
         primaryColor: true, theme: true, settings: true, isActive: true,
         isVerified: true, verifiedAt: true, isClosed: true, closedUntil: true,
         closureReason: true, tags: true, averageRating: true, totalRatings: true,
-        lastRatingAt: true, createdAt: true, updatedAt: true, deletedAt: true,
+        lastRatingAt: true, requireApproval: true, createdAt: true, updatedAt: true, deletedAt: true,
         businessType: { select: { id: true, name: true, displayName: true, icon: true, category: true } },
         subscription: {
           select: {
@@ -1446,6 +1433,7 @@ export class BusinessRepository {
         averageRating: true,
         totalRatings: true,
         lastRatingAt: true,
+        requireApproval: true,
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
@@ -1760,6 +1748,7 @@ export class BusinessRepository {
       totalRatings: prismaResult.totalRatings ?? 0,
       lastRatingAt: prismaResult.lastRatingAt ?? null,
       reviewsHidden: prismaResult.reviewsHidden ?? false,
+      requireApproval: prismaResult.requireApproval ?? false,
       createdAt: prismaResult.createdAt,
       updatedAt: prismaResult.updatedAt,
       deletedAt: prismaResult.deletedAt,

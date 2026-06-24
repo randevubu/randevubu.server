@@ -347,15 +347,55 @@ export class TokenService {
     }
   }
 
+  /**
+   * Revoke a refresh token given its JWT.
+   *
+   * The database stores the opaque `tokenValue` embedded in the refresh JWT,
+   * NOT the JWT itself. We must verify the JWT and extract `tokenValue` before
+   * revoking, otherwise the DB lookup never matches and revocation is a no-op.
+   *
+   * @returns true if a token value was extracted and revoked, false otherwise
+   * (e.g. the JWT is expired/invalid and the opaque value cannot be recovered).
+   */
   async revokeRefreshToken(
     token: string,
     context?: ErrorContext
-  ): Promise<void> {
-    await this.repositories.refreshTokenRepository.revokeByToken(token);
+  ): Promise<boolean> {
+    try {
+      const { refreshSecret } = this.validateSecretsAndGetKeys(context);
 
-    logger.info("Refresh token revoked", {
-      requestId: context?.requestId,
-    });
+      const { payload } = await jose.jwtVerify(token, refreshSecret, {
+        issuer: "randevubu-server",
+        audience: "randevubu-client",
+        algorithms: ["HS256"],
+      });
+
+      const decoded = payload as unknown as JWTPayload & { tokenValue?: string };
+
+      if (decoded.type !== "refresh" || !decoded.tokenValue) {
+        logger.warn("revokeRefreshToken: not a valid refresh token", {
+          requestId: context?.requestId,
+        });
+        return false;
+      }
+
+      await this.repositories.refreshTokenRepository.revokeByToken(
+        decoded.tokenValue
+      );
+
+      logger.info("Refresh token revoked", {
+        requestId: context?.requestId,
+      });
+      return true;
+    } catch (error) {
+      // Expired/invalid JWT: the opaque tokenValue cannot be recovered, so the
+      // caller should fall back to a broader revocation strategy.
+      logger.warn("revokeRefreshToken: failed to verify refresh token", {
+        error: error instanceof Error ? error.message : String(error),
+        requestId: context?.requestId,
+      });
+      return false;
+    }
   }
 
   async revokeAllUserTokens(

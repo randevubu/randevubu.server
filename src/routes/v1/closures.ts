@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { asyncHandler } from '../../utils/asyncHandler';
 import { BusinessClosureController } from '../../controllers/businessClosureController';
 import { requireAuth, requirePermission, requireAny } from '../../middleware/authUtils';
 import { attachBusinessContext, requireBusinessAccess } from '../../middleware/attachBusinessContext';
@@ -29,7 +30,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
    *       200:
    *         description: Closure status
    */
-  router.get('/business/:businessId/check', realTimeCache, businessClosureController.isBusinessClosed.bind(businessClosureController));
+  router.get('/business/:businessId/check', realTimeCache, asyncHandler(businessClosureController.isBusinessClosed.bind(businessClosureController)));
 
   // Protected routes
   router.use(requireAuth);
@@ -78,7 +79,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/my',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.createMyBusinessClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.createMyBusinessClosure.bind(businessClosureController))
   );
 
   /**
@@ -107,7 +108,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
     '/my',
     dynamicCache,
     requireAny([PermissionName.VIEW_ALL_CLOSURES, PermissionName.VIEW_OWN_CLOSURES]),
-    businessClosureController.getMyBusinessClosures.bind(businessClosureController)
+    asyncHandler(businessClosureController.getMyBusinessClosures.bind(businessClosureController))
   );
 
   /**
@@ -143,7 +144,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/my/emergency',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.createMyEmergencyClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.createMyEmergencyClosure.bind(businessClosureController))
   );
 
   /**
@@ -184,7 +185,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/my/maintenance',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.createMyMaintenanceClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.createMyMaintenanceClosure.bind(businessClosureController))
   );
 
   // Closure CRUD operations
@@ -213,7 +214,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/business/:businessId',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.createClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.createClosure.bind(businessClosureController))
   );
 
   /**
@@ -243,7 +244,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/:id',
     requireAny([PermissionName.VIEW_ALL_CLOSURES, PermissionName.VIEW_OWN_CLOSURES]),
-    businessClosureController.getClosureById.bind(businessClosureController)
+    asyncHandler(businessClosureController.getClosureById.bind(businessClosureController))
   );
 
   /**
@@ -273,7 +274,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.put(
     '/:id',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.updateClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.updateClosure.bind(businessClosureController))
   );
 
   /**
@@ -303,7 +304,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.delete(
     '/:id',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.deleteClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.deleteClosure.bind(businessClosureController))
   );
 
   // Business closure management
@@ -332,7 +333,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/business/:businessId',
     requireAny([PermissionName.VIEW_ALL_CLOSURES, PermissionName.VIEW_OWN_CLOSURES]),
-    businessClosureController.getBusinessClosures.bind(businessClosureController)
+    asyncHandler(businessClosureController.getBusinessClosures.bind(businessClosureController))
   );
 
   /**
@@ -360,7 +361,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/business/:businessId/stats',
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
-    businessClosureController.getClosureStats.bind(businessClosureController)
+    asyncHandler(businessClosureController.getClosureStats.bind(businessClosureController))
   );
 
   /**
@@ -388,7 +389,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/business/:businessId/calendar',
     requireAny([PermissionName.VIEW_ALL_CLOSURES, PermissionName.VIEW_OWN_CLOSURES]),
-    businessClosureController.getClosuresCalendar.bind(businessClosureController)
+    asyncHandler(businessClosureController.getClosuresCalendar.bind(businessClosureController))
   );
 
   /**
@@ -416,7 +417,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/business/:businessId/date-range',
     requireAny([PermissionName.VIEW_ALL_CLOSURES, PermissionName.VIEW_OWN_CLOSURES]),
-    businessClosureController.getClosuresByDateRange.bind(businessClosureController)
+    asyncHandler(businessClosureController.getClosuresByDateRange.bind(businessClosureController))
   );
 
   /**
@@ -449,7 +450,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/business/:businessId/type/:type',
     requireAny([PermissionName.VIEW_ALL_CLOSURES, PermissionName.VIEW_OWN_CLOSURES]),
-    businessClosureController.getClosuresByType.bind(businessClosureController)
+    asyncHandler(businessClosureController.getClosuresByType.bind(businessClosureController))
   );
 
   // Closure actions
@@ -480,7 +481,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/:id/extend',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.extendClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.extendClosure.bind(businessClosureController))
   );
 
   /**
@@ -510,7 +511,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/:id/end-early',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.endClosureEarly.bind(businessClosureController)
+    asyncHandler(businessClosureController.endClosureEarly.bind(businessClosureController))
   );
 
   // Holiday management
@@ -539,7 +540,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/business/:businessId/holidays',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.createRecurringHoliday.bind(businessClosureController)
+    asyncHandler(businessClosureController.createRecurringHoliday.bind(businessClosureController))
   );
 
   /**
@@ -567,7 +568,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/business/:businessId/holidays',
     requireAny([PermissionName.VIEW_ALL_CLOSURES, PermissionName.VIEW_OWN_CLOSURES]),
-    businessClosureController.getRecurringHolidays.bind(businessClosureController)
+    asyncHandler(businessClosureController.getRecurringHolidays.bind(businessClosureController))
   );
 
   // Emergency and maintenance closures
@@ -596,7 +597,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/business/:businessId/emergency',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.createEmergencyClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.createEmergencyClosure.bind(businessClosureController))
   );
 
   /**
@@ -624,7 +625,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/business/:businessId/maintenance',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.createMaintenanceClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.createMaintenanceClosure.bind(businessClosureController))
   );
 
   // Impact assessment
@@ -669,7 +670,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/impact-preview',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.getClosureImpactPreview.bind(businessClosureController)
+    asyncHandler(businessClosureController.getClosureImpactPreview.bind(businessClosureController))
   );
 
   /**
@@ -697,7 +698,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/business/:businessId/affected-appointments',
     requireAny([PermissionName.VIEW_ALL_APPOINTMENTS, PermissionName.VIEW_OWN_APPOINTMENTS]),
-    businessClosureController.getAffectedAppointments.bind(businessClosureController)
+    asyncHandler(businessClosureController.getAffectedAppointments.bind(businessClosureController))
   );
 
   // System maintenance
@@ -720,7 +721,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/admin/auto-expire',
     requirePermission(PermissionName.MANAGE_ALL_CLOSURES),
-    businessClosureController.autoExpireClosures.bind(businessClosureController)
+    asyncHandler(businessClosureController.autoExpireClosures.bind(businessClosureController))
   );
 
   // Enhanced Closure System Routes
@@ -797,7 +798,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/business/:businessId/enhanced',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.createEnhancedClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.createEnhancedClosure.bind(businessClosureController))
   );
 
   /**
@@ -840,7 +841,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/:closureId/notifications',
     requireAny([PermissionName.MANAGE_ALL_CLOSURES, PermissionName.MANAGE_OWN_CLOSURES]),
-    businessClosureController.sendClosureNotifications.bind(businessClosureController)
+    asyncHandler(businessClosureController.sendClosureNotifications.bind(businessClosureController))
   );
 
   /**
@@ -864,7 +865,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/:closureId/affected-appointments',
     requireAny([PermissionName.VIEW_ALL_APPOINTMENTS, PermissionName.VIEW_OWN_APPOINTMENTS]),
-    businessClosureController.getAffectedAppointmentsForClosure.bind(businessClosureController)
+    asyncHandler(businessClosureController.getAffectedAppointmentsForClosure.bind(businessClosureController))
   );
 
   /**
@@ -888,7 +889,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/:closureId/reschedule-suggestions',
     requireAny([PermissionName.EDIT_ALL_APPOINTMENTS, PermissionName.EDIT_OWN_APPOINTMENTS]),
-    businessClosureController.generateRescheduleSuggestions.bind(businessClosureController)
+    asyncHandler(businessClosureController.generateRescheduleSuggestions.bind(businessClosureController))
   );
 
   /**
@@ -936,7 +937,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.post(
     '/:closureId/auto-reschedule',
     requireAny([PermissionName.EDIT_ALL_APPOINTMENTS, PermissionName.EDIT_OWN_APPOINTMENTS]),
-    businessClosureController.autoRescheduleAppointments.bind(businessClosureController)
+    asyncHandler(businessClosureController.autoRescheduleAppointments.bind(businessClosureController))
   );
 
   /**
@@ -972,7 +973,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/business/:businessId/analytics',
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
-    businessClosureController.getClosureAnalytics.bind(businessClosureController)
+    asyncHandler(businessClosureController.getClosureAnalytics.bind(businessClosureController))
   );
 
   /**
@@ -996,7 +997,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/:closureId/customer-impact',
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
-    businessClosureController.getCustomerImpactReport.bind(businessClosureController)
+    asyncHandler(businessClosureController.getCustomerImpactReport.bind(businessClosureController))
   );
 
   /**
@@ -1025,7 +1026,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/business/:businessId/revenue-impact',
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
-    businessClosureController.getRevenueImpactAnalysis.bind(businessClosureController)
+    asyncHandler(businessClosureController.getRevenueImpactAnalysis.bind(businessClosureController))
   );
 
   /**
@@ -1076,7 +1077,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
    */
   router.post(
     '/availability-alerts',
-    businessClosureController.createAvailabilityAlert.bind(businessClosureController)
+    asyncHandler(businessClosureController.createAvailabilityAlert.bind(businessClosureController))
   );
 
   /**
@@ -1099,7 +1100,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
    */
   router.delete(
     '/availability-alerts/:alertId',
-    businessClosureController.deactivateAvailabilityAlert.bind(businessClosureController)
+    asyncHandler(businessClosureController.deactivateAvailabilityAlert.bind(businessClosureController))
   );
 
   /**
@@ -1123,7 +1124,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/:closureId/notification-stats',
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
-    businessClosureController.getNotificationDeliveryStats.bind(businessClosureController)
+    asyncHandler(businessClosureController.getNotificationDeliveryStats.bind(businessClosureController))
   );
 
   /**
@@ -1147,7 +1148,7 @@ export function createBusinessClosureRoutes(businessClosureController: BusinessC
   router.get(
     '/:closureId/reschedule-stats',
     requireAny([PermissionName.VIEW_ALL_ANALYTICS, PermissionName.VIEW_OWN_ANALYTICS]),
-    businessClosureController.getRescheduleStatistics.bind(businessClosureController)
+    asyncHandler(businessClosureController.getRescheduleStatistics.bind(businessClosureController))
   );
 
   return router;

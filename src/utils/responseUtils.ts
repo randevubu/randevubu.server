@@ -7,11 +7,68 @@ import logger from './Logger/logger';
 
 import { Request, Response } from 'express';
 import { ErrorResponse, SuccessResponse } from '../types/responseTypes';
-import { BaseError } from '../types/errors';
 import { TranslationService } from '../services/core/translationService';
 import { translateMessage } from './translationUtils';
 import { getLanguageFromRequest } from '../middleware/language';
 import { getTranslationKey, ErrorCode } from '../constants/errorCodes';
+
+// Reuse the existing translation service/util. The error helpers translate the
+// same way `sendSuccessResponse` does (translateMessage + request language),
+// instead of introducing a separate mechanism.
+const errorTranslationService = new TranslationService();
+
+/**
+ * Localize an error message on the backend using its translation key, reusing
+ * the existing `translateMessage` util and request language. Returns the
+ * localized string when a translation exists; otherwise returns the original
+ * (caller-provided) message so specific/ad-hoc messages are preserved.
+ */
+/**
+ * Collect safe interpolation params for error translations from an error's
+ * `params`/`details`. Only whitelisted, primitive fields are forwarded.
+ */
+function collectTranslationParams(error?: any): Record<string, string | number | boolean | Date> {
+  const params: Record<string, string | number | boolean | Date> = {
+    ...(error?.params || {}),
+  };
+  if (error?.details && typeof error.details === 'object') {
+    const d = error.details as Record<string, unknown>;
+    for (const field of ['field', 'attemptCount', 'maxAttempts', 'retryAfter']) {
+      const value = d[field];
+      if (value !== undefined && (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value instanceof Date)) {
+        params[field] = value;
+      }
+    }
+  }
+  return params;
+}
+
+async function localizeError(
+  res: Response,
+  errorKey: string,
+  originalMessage: string,
+  params: Record<string, string | number | boolean | Date> = {}
+): Promise<string> {
+  try {
+    const req = res.req as Request | undefined;
+    const language = req ? getLanguageFromRequest(req) : 'tr';
+    const translated = await translateMessage(
+      errorTranslationService,
+      errorKey,
+      params,
+      language,
+      req
+    );
+    // Skip when the key was not found (translate returns the key itself) or when
+    // a required interpolation param was missing (leaves "{{...}}" placeholders).
+    if (translated && translated !== errorKey && !translated.includes('{{')) {
+      return translated;
+    }
+  } catch {
+    // Fall through to the original message on any translation failure.
+  }
+  return originalMessage;
+}
 
 /**
  * Send a standardized success response
@@ -76,12 +133,12 @@ export async function sendSuccessResponse<T>(
 /**
  * Send a standardized error response
  */
-export function sendErrorResponse(
+export async function sendErrorResponse(
   res: Response,
   message: string,
   statusCode: number = 400,
   error?: any
-): void {
+): Promise<void> {
   let errorCode = 'INTERNAL_SERVER_ERROR';
   let errorKey: string = 'errors.system.internalError';
 
@@ -95,37 +152,26 @@ export function sendErrorResponse(
     errorKey = `errors.${error.name.toLowerCase()}.${statusCode}`;
   }
 
+  // Backend-side localization (same approach as sendSuccessResponse): translate
+  // the message into the request language using the resolved error key, so the
+  // frontend can simply display error.message.
+  const translationParams = collectTranslationParams(error);
+  const localizedMessage = await localizeError(res, errorKey, message, translationParams);
+
   const response: ErrorResponse = {
     success: false,
     statusCode,
-    message,
+    message: localizedMessage,
     error: {
       code: errorCode as any,
       key: errorKey as any,
-      message,
-      details: message,
+      message: localizedMessage,
+      details: localizedMessage,
       ...(error?.params && { params: error.params }),
       ...(error?.data && { data: error.data }),
     },
   };
   res.status(statusCode).json(response);
-}
-
-/**
- * Send a BaseError response with proper error handling
- */
-export function sendBaseErrorResponse(res: Response, error: BaseError): void {
-  const response: ErrorResponse = {
-    success: false,
-    statusCode: error.statusCode,
-    error: {
-      code: error.code as any, // Type assertion needed due to enum vs string type mismatch
-      key: `errors.${error.code.toLowerCase()}` as any,
-      details: error.details,
-      message: error.message,
-    },
-  };
-  res.status(error.statusCode).json(response);
 }
 
 /**
@@ -243,117 +289,5 @@ export async function sendSuccessWithMeta<T>(
   res.status(statusCode).json(response);
 }
 
-/**
- * Handle route errors with standardized error response
- */
-export function handleRouteError(error: any, req: any, res: Response, next?: any): void {
-  logger.error('Route error:', error);
 
-  const statusCode = error.statusCode || error.status || 500;
-  const message = error.message || 'Internal server error';
 
-  const errorResponse: ErrorResponse = {
-    success: false,
-    statusCode,
-    message,
-    error: {
-      code: error.code || 'INTERNAL_ERROR',
-      key: error.key || 'INTERNAL_ERROR',
-      // Never expose internal details (Prisma errors, stack fragments) on server errors
-      details: statusCode < 500 ? (error.details ?? undefined) : undefined,
-    },
-  };
-
-  res.status(statusCode).json(errorResponse);
-}
-
-/**
- * Create error context for logging
- */
-export function createErrorContext(req: any, userId?: string): any {
-  return {
-    userId,
-    requestId: req.id,
-    userAgent: req.get('User-Agent'),
-    ip: req.ip,
-    url: req.originalUrl,
-    method: req.method,
-    timestamp: new Date().toISOString(),
-  };
-}
-
-/**
- * Get error message from error object
- */
-export function getErrorMessage(error: any): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === 'string') {
-    return error;
-  }
-  return 'An unknown error occurred';
-}
-
-/**
- * Send simple error response
- */
-export function sendSimpleErrorResponse(
-  res: Response,
-  message: string,
-  statusCode: number = 400
-): void {
-  res.status(statusCode).json({
-    success: false,
-    message,
-    statusCode,
-  });
-}
-
-/**
- * Send standard success response
- * Automatically translates messages if they are translation keys (start with "success.")
- */
-export async function sendStandardSuccessResponse<T>(
-  res: Response,
-  message: string,
-  data?: T,
-  statusCode: number = 200,
-  req?: Request,
-  params?: Record<string, string | number | boolean | Date>,
-  translationService?: TranslationService
-): Promise<void> {
-  await sendSuccessResponse(res, message, data, statusCode, req, params, translationService);
-}
-
-/**
- * Send app error response
- */
-export function sendAppErrorResponse(res: Response, error: any, statusCode?: number): void {
-  const message = getErrorMessage(error);
-  const status = statusCode ?? error?.statusCode ?? 500;
-  sendErrorResponse(res, message, status, error);
-}
-
-/**
- * Business error constants
- */
-export const BusinessErrors = {
-  BUSINESS_NOT_FOUND: 'BUSINESS_NOT_FOUND',
-  BUSINESS_ALREADY_EXISTS: 'BUSINESS_ALREADY_EXISTS',
-  INSUFFICIENT_PERMISSIONS: 'INSUFFICIENT_PERMISSIONS',
-  BUSINESS_LIMIT_EXCEEDED: 'BUSINESS_LIMIT_EXCEEDED',
-  notFound: 'BUSINESS_NOT_FOUND',
-  noAccess: 'INSUFFICIENT_PERMISSIONS',
-} as const;
-
-/**
- * Validation error constants
- */
-export const ValidationErrors = {
-  INVALID_INPUT: 'INVALID_INPUT',
-  MISSING_REQUIRED_FIELD: 'MISSING_REQUIRED_FIELD',
-  INVALID_FORMAT: 'INVALID_FORMAT',
-  VALUE_OUT_OF_RANGE: 'VALUE_OUT_OF_RANGE',
-  general: 'INVALID_INPUT',
-} as const;

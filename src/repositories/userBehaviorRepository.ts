@@ -48,7 +48,22 @@ export class UserBehaviorRepository {
       WHERE "customerId" = ${customerId}
         AND status = 'CANCELED'
         AND "canceledAt" IS NOT NULL
+        AND ("cancelledBy" IS NULL OR "cancelledBy" != 'BUSINESS')
         AND (timezone('Europe/Istanbul', "canceledAt"))::date = (timezone('Europe/Istanbul', now()))::date
+    `;
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  async countCanceledThisMonthIstanbul(customerId: string): Promise<number> {
+    const rows = await this.prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count
+      FROM appointments
+      WHERE "customerId" = ${customerId}
+        AND status = 'CANCELED'
+        AND "canceledAt" IS NOT NULL
+        AND ("cancelledBy" IS NULL OR "cancelledBy" != 'BUSINESS')
+        AND date_trunc('month', timezone('Europe/Istanbul', "canceledAt")) =
+            date_trunc('month', timezone('Europe/Istanbul', now()))
     `;
     return Number(rows[0]?.count ?? 0);
   }
@@ -59,13 +74,20 @@ export class UserBehaviorRepository {
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - now.getDay());
 
+    // Exclude business-initiated cancellations from customer penalty counts
+    const customerCancelFilter = {
+      customerId: userId,
+      status: 'CANCELED' as const,
+      OR: [{ cancelledBy: null }, { cancelledBy: { not: 'BUSINESS' as const } }]
+    };
+
     // Get appointment statistics
     const [total, canceled, noShow, completed] = await Promise.all([
       this.prisma.appointment.count({
         where: { customerId: userId }
       }),
       this.prisma.appointment.count({
-        where: { customerId: userId, status: 'CANCELED' }
+        where: customerCancelFilter
       }),
       this.prisma.appointment.count({
         where: { customerId: userId, status: 'NO_SHOW' }
@@ -75,19 +97,17 @@ export class UserBehaviorRepository {
       })
     ]);
 
-    // Get recent cancellations and no-shows
+    // Get recent cancellations and no-shows (excluding business-initiated)
     const [monthlyCancel, weeklyCancel, monthlyNoShow, weeklyNoShow] = await Promise.all([
       this.prisma.appointment.count({
         where: {
-          customerId: userId,
-          status: 'CANCELED',
+          ...customerCancelFilter,
           canceledAt: { gte: startOfMonth }
         }
       }),
       this.prisma.appointment.count({
         where: {
-          customerId: userId,
-          status: 'CANCELED',
+          ...customerCancelFilter,
           canceledAt: { gte: startOfWeek }
         }
       }),
@@ -107,10 +127,10 @@ export class UserBehaviorRepository {
       })
     ]);
 
-    // Get last cancellation and no-show dates
+    // Get last cancellation and no-show dates (excluding business-initiated)
     const [lastCancel, lastNoShow] = await Promise.all([
       this.prisma.appointment.findFirst({
-        where: { customerId: userId, status: 'CANCELED' },
+        where: customerCancelFilter,
         orderBy: { canceledAt: 'desc' },
         select: { canceledAt: true }
       }),
