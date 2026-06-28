@@ -6,7 +6,7 @@ import { PhoneVerificationService } from '../sms/phoneVerificationService';
 import { RBACService } from '../rbac/rbacService';
 import { UsageService } from '../usage/usageService';
 import { PermissionName, CreateUserData, UpdateUserData, UserProfile, UserSecurity } from '../../../types/auth';
-import { ErrorContext, ForbiddenError, PhoneVerificationError } from '../../../types/errors';
+import { ErrorContext, PhoneVerificationError } from '../../../utils/errors/baseError';
 import { AppError } from '../../../types/responseTypes';
 
 import { isValidPhoneNumber, parsePhoneNumber } from 'libphonenumber-js';
@@ -481,7 +481,7 @@ export class StaffService {
       );
 
       if (!hasPermission) {
-        throw new ForbiddenError('Access denied: Only business owners can manage staff');
+        throw new AppError('BUSINESS_OWNER_REQUIRED', { message: 'Only business owners can manage staff' });
       }
     }
   }
@@ -500,9 +500,7 @@ export class StaffService {
     );
 
     if (!isOwner && !isStaffMember) {
-      throw new ForbiddenError(
-        'You do not have access to this business'
-      );
+      throw new AppError('NO_BUSINESS_ACCESS', { message: 'You do not have access to this business' });
     }
   }
 

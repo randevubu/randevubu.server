@@ -106,7 +106,8 @@ export class ControllerContainer {
       services.businessClosureService,
       services.notificationService,
       services.closureAnalyticsService,
-      services.appointmentRescheduleService
+      services.appointmentRescheduleService,
+      responseHelper
     );
     this.subscriptionController = new SubscriptionController(
       services.subscriptionService,

@@ -21,7 +21,6 @@ import { RBACService } from '../rbac/rbacService';
 import { PermissionName } from '../../../types/auth';
 import { BusinessContext } from '../../../middleware/businessContext';
 import { BusinessStaffRole, AuditAction, AppointmentStatus } from '@prisma/client';
-import { ValidationError, ForbiddenError } from '../../../types/errors';
 import { AppError } from '../../../types/responseTypes';
 import { UsageService } from '../usage/usageService';
 import { RepositoryContainer } from '../../../repositories';
@@ -456,7 +455,7 @@ export class BusinessService {
     if (!hasGlobalEdit) {
       const business = await this.businessRepository.findById(businessId);
       if (!business || business.ownerId !== userId) {
-        throw new ForbiddenError('Permission denied');
+        throw new AppError('ACCESS_DENIED', { message: 'Permission denied' });
       }
     }
 
@@ -496,7 +495,7 @@ export class BusinessService {
     }
 
     if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
-      throw new ForbiddenError('Permission denied');
+      throw new AppError('ACCESS_DENIED', { message: 'Permission denied' });
     }
 
     // Merge price settings into existing business settings
@@ -529,7 +528,7 @@ export class BusinessService {
     }
 
     if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
-      throw new ForbiddenError('Permission denied');
+      throw new AppError('ACCESS_DENIED', { message: 'Permission denied' });
     }
 
     // Extract price visibility settings
@@ -554,7 +553,7 @@ export class BusinessService {
     }
 
     if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
-      throw new ForbiddenError('Permission denied');
+      throw new AppError('ACCESS_DENIED', { message: 'Permission denied' });
     }
 
     return await this.businessRepository.update(businessId, {
@@ -574,7 +573,7 @@ export class BusinessService {
     }
 
     if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
-      throw new ForbiddenError('Permission denied');
+      throw new AppError('ACCESS_DENIED', { message: 'Permission denied' });
     }
 
     // Merge staff privacy settings into existing business settings
@@ -616,7 +615,7 @@ export class BusinessService {
     const currentBusiness = await this.businessRepository.findById(businessId);
     if (!currentBusiness) throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     if (!await this.canEditBusiness(userId, businessId, currentBusiness.ownerId)) {
-      throw new ForbiddenError('Permission denied');
+      throw new AppError('ACCESS_DENIED', { message: 'Permission denied' });
     }
     const currentSettings = (currentBusiness.settings as Record<string, unknown>) || {};
     const updatedSettings = { ...currentSettings, profilePrivacy };
@@ -1572,7 +1571,7 @@ export class BusinessService {
     const business = await this.businessRepository.findById(businessId);
 
     if (!business) {
-      throw new ValidationError('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     // Check permissions - user must have either global business edit permission or own this specific business
@@ -1816,7 +1815,7 @@ export class BusinessService {
       );
 
       if (!hasBusinessAccess) {
-        throw new ForbiddenError('Bu işletmenin bildirim ayarlarını görüntüleme yetkiniz bulunmuyor');
+        throw new AppError('ACCESS_DENIED', { message: 'No permission to view notification settings' });
       }
     }
 
@@ -1848,14 +1847,14 @@ export class BusinessService {
     // Only MANAGER (level 250) or OWNER (level 300) and above can update notification settings
     const userPermissions = await this.rbacService.getUserPermissions(userId);
     if (userPermissions.effectiveLevel < 250) {
-      throw new ForbiddenError('Bildirim ayarlarını değiştirme yetkiniz bulunmamaktadır. Bu işlem yalnızca işletme sahibi veya yöneticisi tarafından yapılabilir.');
+      throw new AppError('ACCESS_DENIED', { message: 'No permission to update notification settings' });
     }
 
     // Verify business exists
     const business = await this.repositories.businessRepository.findById(businessId);
 
     if (!business) {
-      throw new ValidationError('Business not found');
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     // Get current settings for smart validation
@@ -2466,7 +2465,7 @@ export class BusinessService {
     // Quick ownership check first (faster than full RBAC)
     const business = await this.businessRepository.findById(businessId);
     if (!business || business.ownerId !== userId) {
-      throw new ForbiddenError("You don't have permission to edit this business");
+      throw new AppError('ACCESS_DENIED', { message: 'No permission to edit business' });
     }
 
     let finalPlaceId: string | undefined = data.googlePlaceId;
@@ -2499,9 +2498,7 @@ export class BusinessService {
     if (data.enabled && finalPlaceId && !data.googleUrl) {
       const { GooglePlaceIdExtractor } = await import('../../../utils/googlePlaceIdExtractor');
       if (!GooglePlaceIdExtractor.isValidPlaceId(finalPlaceId)) {
-        throw new ValidationError(
-          'Geçersiz Place ID formatı. "Ch" ile başlayan bir Place ID veya geçerli bir Google Haritalar URL\'si girin.'
-        );
+        throw new AppError('VALIDATION_ERROR', { message: 'Invalid Place ID format' });
       }
 
       // Check if it's not used by another business
@@ -2510,9 +2507,7 @@ export class BusinessService {
       );
 
       if (existing && existing.id !== businessId) {
-        throw new ValidationError(
-          'This Google Place ID is already linked to another business'
-        );
+        throw new AppError('GOOGLE_PLACE_ALREADY_LINKED', { message: 'Google Place ID already linked to another business' });
       }
     }
 
@@ -2576,7 +2571,7 @@ export class BusinessService {
       return await this.businessRepository.updateGoogleIntegration(businessId, updateData);
     } catch (error: any) {
       if (error?.code === 'P2002' && error?.meta?.target?.includes('googlePlaceId')) {
-        throw new ValidationError('Bu Google konumu başka bir işletmeye bağlı. Lütfen farklı bir URL veya Place ID kullanın.');
+        throw new AppError('GOOGLE_PLACE_ALREADY_LINKED', { message: 'Google location linked to another business' });
       }
       throw error;
     }
@@ -2592,12 +2587,12 @@ export class BusinessService {
       select: { id: true, ownerId: true, googlePlaceId: true, googleIntegrationEnabled: true, googleOriginalUrl: true, latitude: true, longitude: true },
     });
     if (!business || business.ownerId !== userId) {
-      throw new ForbiddenError("You don't have permission to edit this business");
+      throw new AppError('ACCESS_DENIED', { message: 'No permission to edit business' });
     }
 
     const placeId = business.googlePlaceId as string | null;
     if (!placeId) {
-      throw new ValidationError('Bu işletmeye bağlı bir Google Place ID bulunamadı');
+      throw new AppError('GOOGLE_PLACE_NOT_FOUND', { message: 'No Google Place ID found for this business' });
     }
 
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -2624,7 +2619,7 @@ export class BusinessService {
     if (!response.ok) {
       const bodyText = await response.text();
       logger.error('Google Places API error', { status: response.status, body: bodyText, placeId });
-      throw new ValidationError(`Google Places API hatası: ${response.status}`);
+      throw new AppError('GOOGLE_PLACES_API_ERROR', { message: `Google Places API error: ${response.status}` });
     }
 
     const legacyData = await response.json() as {
@@ -2645,11 +2640,11 @@ export class BusinessService {
 
     if (legacyData.status === 'REQUEST_DENIED') {
       logger.error('Google Places REQUEST_DENIED', { legacyData, placeId });
-      throw new ValidationError('Places API Google Cloud\'da etkin değil veya API anahtarı bu servise izin vermiyor. Google Cloud Console\'dan "Places API" servisinin etkin olduğunu kontrol edin.');
+      throw new AppError('GOOGLE_PLACES_API_ERROR', { message: 'Places API not enabled on Google Cloud or API key does not have permission for this service' });
     }
     if (legacyData.status !== 'OK' || !legacyData.result) {
       logger.error('Google Places API status error', { status: legacyData.status, placeId });
-      throw new ValidationError(`Google Places API hatası: ${legacyData.status}`);
+      throw new AppError('GOOGLE_PLACES_API_ERROR', { message: `Google Places API error: ${legacyData.status}` });
     }
 
     const data = {

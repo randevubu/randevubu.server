@@ -5,11 +5,9 @@ import { TokenService } from "../services/domain/token";
 import { JWTPayload } from "../types/auth";
 import {
   ErrorContext,
-  UnauthorizedError,
-  UserDeactivatedError,
-  UserLockedError,
   UserNotVerifiedError,
-} from "../types/errors";
+} from "../utils/errors/baseError";
+import { AppError } from '../types/responseTypes';
 import { AuthenticatedRequest } from "../types/request";
 
 import { updateLanguageFromUser } from "./language";
@@ -46,15 +44,11 @@ export class AuthMiddleware {
     });
 
     try {
-      const context = this.createErrorContext(req);
       const authHeader = req.headers.authorization;
 
       if (!authHeader) {
         logger.debug('No authorization header provided');
-        throw new UnauthorizedError(
-          "Authorization header is required",
-          context
-        );
+        throw new AppError('UNAUTHORIZED', { message: 'Authorization header is required' });
       }
 
       const token = authHeader.startsWith("Bearer ")
@@ -63,11 +57,11 @@ export class AuthMiddleware {
 
       if (!token) {
         logger.debug('No token provided in authorization header');
-        throw new UnauthorizedError("Access token is required", context);
+        throw new AppError('UNAUTHORIZED', { message: 'Access token is required' });
       }
 
       logger.debug('Verifying access token');
-      const decoded = await this.tokenService.verifyAccessToken(token, context);
+      const decoded = await this.tokenService.verifyAccessToken(token);
       logger.debug('Token verified successfully', { userId: decoded.userId });
 
       // Get user with security information in a single query
@@ -79,12 +73,12 @@ export class AuthMiddleware {
 
       if (!user) {
         logger.debug('User not found in database', { userId: decoded.userId });
-        throw new UnauthorizedError("User not found", context);
+        throw new AppError('USER_NOT_FOUND', { message: 'User not found' });
       }
 
       if (!user.isActive) {
         logger.debug('User account is not active', { userId: user.id });
-        throw new UserDeactivatedError("Account is deactivated", context);
+        throw new AppError('USER_DEACTIVATED', { message: 'Account is deactivated' });
       }
 
       // Check for account lockout
@@ -93,13 +87,7 @@ export class AuthMiddleware {
         const retryAfter = Math.ceil(
           (user.lockedUntil.getTime() - Date.now()) / 1000
         );
-        throw new UserLockedError(
-          "Account is temporarily locked due to multiple failed attempts",
-          context,
-          {
-            retryAfter,
-          }
-        );
+        throw new AppError('USER_LOCKED', { message: 'Account is temporarily locked', params: { retryAfter } });
       }
 
       // Get user roles and permissions if RBAC service is available
@@ -162,15 +150,13 @@ export class AuthMiddleware {
       next();
     } catch (error) {
       logger.debug('Authentication failed', { error: error instanceof Error ? error.message : String(error) });
-      const context = this.createErrorContext(req);
 
       logger.warn("Authentication failed", {
-        ip: context.ipAddress,
-        userAgent: context.userAgent,
-        url: context.endpoint,
-        method: context.method,
+        ip: req.ip,
+        userAgent: req.get("user-agent"),
+        url: req.path,
+        method: req.method,
         error: error instanceof Error ? error.message : String(error),
-        requestId: context.requestId,
       });
 
       next(error);

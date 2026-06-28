@@ -30,7 +30,7 @@ import { TimeSlot, RescheduleSuggestion } from '../../../types/appointment';
 import { getEmailService } from '../../../lib/aws/email';
 import logger from '../../../utils/Logger/logger';
 import { PushDeliveryWorker } from './pushDeliveryWorker';
-import { ValidationError } from '../../../types/errors';
+import { AppError } from '../../../types/responseTypes';
 import { ERROR_CODES } from '../../../constants/errorCodes';
 import pLimit from 'p-limit';
 export class NotificationService {
@@ -1107,12 +1107,7 @@ export class NotificationService {
     subscriptionId?: string
   ): Promise<boolean> {
     if (!subscriptionId && !endpoint) {
-      throw new ValidationError(
-        'Either endpoint or subscriptionId must be provided',
-        undefined,
-        undefined,
-        undefined
-      );
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Either endpoint or subscriptionId must be provided' });
     }
 
     return await this.repositories.notificationRepository.deactivatePushSubscription(

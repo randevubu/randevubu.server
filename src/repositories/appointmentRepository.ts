@@ -1466,7 +1466,7 @@ export class AppointmentRepository {
           lte: endOfDay
         },
         status: {
-          in: [$Enums.AppointmentStatus.CONFIRMED, $Enums.AppointmentStatus.IN_PROGRESS, $Enums.AppointmentStatus.PENDING]
+          in: [$Enums.AppointmentStatus.CONFIRMED, $Enums.AppointmentStatus.IN_PROGRESS, $Enums.AppointmentStatus.PENDING, $Enums.AppointmentStatus.PENDING_APPROVAL]
         }
       },
       include: {
@@ -1603,6 +1603,37 @@ export class AppointmentRepository {
           : undefined
       };
 
+      return this.mapPrismaResultToAppointmentWithDetails(sanitized);
+    });
+  }
+
+  async findByBusinessAndStatus(
+    businessId: string,
+    status: string,
+    staffIds?: string[]
+  ): Promise<AppointmentWithDetails[]> {
+    const staffFilter = staffIds && staffIds.length > 0 ? { staffId: { in: staffIds } } : {};
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        businessId,
+        status: status as any,
+        ...staffFilter,
+        startTime: { gte: new Date() },
+      },
+      include: {
+        customer: { select: { id: true, firstName: true, lastName: true, phoneNumber: true } },
+        service: { select: { id: true, name: true, duration: true, price: true, currency: true, showPrice: true } },
+        staff: { select: { id: true, userId: true, role: true, user: { select: { firstName: true, lastName: true } } } },
+        business: { select: { id: true, name: true, settings: true } }
+      },
+      orderBy: { startTime: 'asc' }
+    });
+
+    return appointments.map(apt => {
+      const businessSettings = this.extractBusinessSettings(apt.business?.settings);
+      const shouldHide = this.shouldHidePrice(businessSettings, apt.service.showPrice);
+      const filtered = this.filterPriceInfo(apt, shouldHide);
+      const sanitized = { ...filtered, business: filtered.business ? { ...filtered.business, settings: undefined } : undefined };
       return this.mapPrismaResultToAppointmentWithDetails(sanitized);
     });
   }

@@ -12,19 +12,8 @@ import {
   UserStats,
 } from "../../../types/auth";
 import { BusinessSubscriptionData } from "../../../types/business";
-import {
-  BusinessRuleViolationError,
-  ErrorContext,
-  InternalServerError,
-  PhoneAlreadyExistsError,
-  UnauthorizedError,
-  UserDeactivatedError,
-  UserLockedError,
-  UserNotFoundError,
-  VerificationCodeExpiredError,
-  VerificationCodeInvalidError,
-  VerificationMaxAttemptsError,
-} from "../../../types/errors";
+import { ErrorContext } from "../../../utils/errors/baseError";
+import { AppError } from "../../../types/responseTypes";
 import { ReliabilityScoreCalculator } from "../userBehavior/reliabilityScoreCalculator";
 import { PhoneVerificationService } from "../sms/phoneVerificationService";
 import { RBACService } from "../rbac/rbacService";
@@ -80,13 +69,11 @@ export class AuthService {
 
       if (!verificationResult.success) {
         await this.logFailedLoginAttempt(normalizedPhone, deviceInfo, context);
-        throw new UnauthorizedError(verificationResult.message, context);
+        throw new AppError('UNAUTHORIZED', { message: verificationResult.message });
       }
     } catch (error) {
       // Handle verification service exceptions
-      if (error instanceof VerificationCodeExpiredError || 
-          error instanceof VerificationCodeInvalidError || 
-          error instanceof VerificationMaxAttemptsError) {
+      if (error instanceof AppError && ['VERIFICATION_CODE_EXPIRED', 'VERIFICATION_CODE_INVALID', 'VERIFICATION_MAX_ATTEMPTS'].includes(error.code)) {
         await this.logFailedLoginAttempt(normalizedPhone, deviceInfo, context);
         throw error; // Re-throw the verification error
       }
@@ -116,10 +103,7 @@ export class AuthService {
             normalizedPhone
           );
           if (!user) {
-            throw new UnauthorizedError(
-              "User creation failed due to concurrent access",
-              context
-            );
+            throw new AppError('RESOURCE_CONFLICT', { message: 'User creation failed due to concurrent access' });
           }
           isNewUser = false;
         } else {
@@ -218,7 +202,7 @@ export class AuthService {
     const user = await this.repositories.userRepository.findById(userId);
 
     if (!user) {
-      throw new UserNotFoundError("User profile not found", context);
+      throw new AppError('USER_NOT_FOUND', { message: 'User profile not found' });
     }
 
     // Include role information if RBAC service is available
@@ -328,7 +312,7 @@ export class AuthService {
     );
 
     if (!existingUser) {
-      throw new UserNotFoundError("User not found", context);
+      throw new AppError('USER_NOT_FOUND', { message: 'User not found' });
     }
 
     // Validate update constraints
@@ -400,7 +384,7 @@ export class AuthService {
     const existingUser =
       await this.repositories.userRepository.findByPhoneNumber(normalizedPhone);
     if (existingUser && existingUser.id !== userId) {
-      throw new PhoneAlreadyExistsError(context);
+      throw new AppError('PHONE_ALREADY_EXISTS');
     }
 
     // Verify the phone verification code for the new number
@@ -412,12 +396,12 @@ export class AuthService {
     );
 
     if (!verificationResult.success) {
-      throw new UnauthorizedError(verificationResult.message, context);
+      throw new AppError('INVALID_VERIFICATION_CODE', { message: verificationResult.message });
     }
 
     const user = await this.repositories.userRepository.findById(userId);
     if (!user) {
-      throw new UserNotFoundError("User not found", context);
+      throw new AppError('USER_NOT_FOUND', { message: 'User not found' });
     }
 
     const oldPhone = user.phoneNumber;
@@ -462,7 +446,7 @@ export class AuthService {
     const user = await this.repositories.userRepository.findById(userId);
 
     if (!user) {
-      throw new UserNotFoundError("User not found", context);
+      throw new AppError('USER_NOT_FOUND', { message: 'User not found' });
     }
 
     // Deactivate user account
@@ -566,11 +550,7 @@ export class AuthService {
         userId: user.id,
         requestId: context?.requestId,
       });
-      throw new InternalServerError(
-        "System configuration error: RBAC service unavailable",
-        undefined,
-        context
-      );
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: 'System configuration error: RBAC service unavailable' });
     }
 
     try {
@@ -611,11 +591,7 @@ export class AuthService {
         });
       }
 
-      throw new InternalServerError(
-        "Failed to set up user account. Please try again.",
-        error instanceof Error ? error : new Error(String(error)),
-        context
-      );
+      throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Failed to set up user account', details: error instanceof Error ? error : undefined });
     }
 
     logger.info("New user created with CUSTOMER role", {
@@ -640,20 +616,14 @@ export class AuthService {
     context?: ErrorContext
   ): Promise<void> {
     if (!user.isActive) {
-      throw new UserDeactivatedError("Account is deactivated", context);
+      throw new AppError('USER_DEACTIVATED', { message: 'Account is deactivated' });
     }
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       const retryAfter = Math.ceil(
         (user.lockedUntil.getTime() - Date.now()) / 1000
       );
-      throw new UserLockedError(
-        "Account is temporarily locked due to multiple failed attempts",
-        context,
-        {
-          retryAfter,
-        }
-      );
+      throw new AppError('USER_LOCKED', { message: 'Account is temporarily locked', params: { retryAfter } });
     }
 
     // Auto-unlock if lock period has expired
@@ -716,35 +686,19 @@ export class AuthService {
   ): void {
     // Business rule validations
     if (updates.firstName && updates.firstName.length < 1) {
-      throw new BusinessRuleViolationError(
-        "first_name_length",
-        "First name cannot be empty",
-        context
-      );
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'First name cannot be empty', params: { field: 'firstName' } });
     }
 
     if (updates.lastName && updates.lastName.length < 1) {
-      throw new BusinessRuleViolationError(
-        "last_name_length",
-        "Last name cannot be empty",
-        context
-      );
+      throw new AppError('REQUIRED_FIELD_MISSING', { message: 'Last name cannot be empty', params: { field: 'lastName' } });
     }
 
     if (updates.timezone && !this.isValidTimezone(updates.timezone)) {
-      throw new BusinessRuleViolationError(
-        "invalid_timezone",
-        "Invalid timezone provided",
-        context
-      );
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid timezone provided' });
     }
 
     if (updates.language && !this.isValidLanguageCode(updates.language)) {
-      throw new BusinessRuleViolationError(
-        "invalid_language",
-        "Invalid language code provided",
-        context
-      );
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid language code provided' });
     }
   }
 

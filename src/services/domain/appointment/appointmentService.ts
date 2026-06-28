@@ -21,7 +21,6 @@ import { PermissionName } from '../../../types/auth';
 import { AppError } from '../../../types/responseTypes';
 import { PolicyEnforcementContext } from '../../../types/cancellationPolicy';
 import { BusinessSettings, ReservationSettings } from '../../../types/reservationSettings';
-import { AuthorizationError } from '../../../utils/errors/customError';
 import logger from "../../../utils/Logger/logger";
 import { createDateTimeInIstanbul, formatDateTimeForAPI, getCurrentTimeInIstanbul } from '../../../utils/timezoneHelper';
 import { BusinessService } from '../business';
@@ -724,23 +723,22 @@ export class AppointmentService {
       logger.error('❌ APPOINTMENT CREATION - Failed to send business owner notification:', notificationError);
     }
 
-    // Send booking confirmation SMS to customer
+    // Send SMS to customer based on appointment status
     try {
-      if (process.env.NODE_ENV === 'development') {
-        logger.info('🔍 APPOINTMENT CREATION - Sending booking confirmation to customer:', customer.id);
-      }
-      await this.sendCustomerBookingConfirmation(appointment, service, {
+      const customerData = {
         id: customer.id,
         firstName: customer.firstName ?? null,
         lastName: customer.lastName ?? null,
         phoneNumber: customer.phoneNumber
-      });
-      if (process.env.NODE_ENV === 'development') {
-        logger.info('🔍 APPOINTMENT CREATION - Customer confirmation sent for appointment:', appointment.id);
+      };
+
+      if (appointment.status === AppointmentStatus.PENDING_APPROVAL) {
+        await this.sendCustomerRequestReceived(appointment, service, customerData);
+      } else {
+        await this.sendCustomerBookingConfirmation(appointment, service, customerData);
       }
     } catch (notificationError) {
-      // Log notification error but don't fail the appointment creation
-      logger.error('❌ APPOINTMENT CREATION - Failed to send customer confirmation:', notificationError);
+      logger.error('❌ APPOINTMENT CREATION - Failed to send customer SMS:', notificationError);
     }
 
     return appointment;
@@ -821,7 +819,7 @@ export class AppointmentService {
     const hasBusinessRole = roleNames.some(role => ['OWNER', 'STAFF', 'ADMIN'].includes(role));
 
     if (!hasBusinessRole) {
-      throw new AuthorizationError('Access denied. Business role required.');
+      throw new AppError('ACCESS_DENIED', { message: 'Business role required' });
     }
 
     await this.appointmentRepository.finalizeEndedAppointmentsIfStale();
@@ -1202,6 +1200,13 @@ export class AppointmentService {
     });
 
     const mapped = await this.appointmentRepository.findById(appointmentId);
+
+    try {
+      await this.sendApprovalNotificationToCustomer(mapped!);
+    } catch (error) {
+      logger.error('❌ Failed to send approval SMS:', error);
+    }
+
     return mapped!;
   }
 
@@ -1802,10 +1807,110 @@ export class AppointmentService {
 
     } catch (error) {
       logger.error('❌ Error sending customer booking confirmation:', error);
-      // Don't throw - we don't want to fail appointment creation if notification fails
     }
   }
 
+  private async sendCustomerRequestReceived(
+    appointment: AppointmentData,
+    service: { name: string; duration: number },
+    customer: { id: string; firstName: string | null; lastName: string | null; phoneNumber: string }
+  ): Promise<void> {
+    try {
+      const business = await this.businessRepository.findById(appointment.businessId);
+      if (!business || !customer.phoneNumber) return;
+
+      const appointmentDate = appointment.startTime.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const appointmentTime = appointment.startTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+
+      const { SMSMessageTemplates } = await import('../../../utils/smsMessageTemplates');
+      const message = SMSMessageTemplates.appointment.requestReceived({
+        businessName: business.name,
+        serviceName: service.name,
+        appointmentDate,
+        appointmentTime,
+      });
+
+      const result = await this.notificationGateway.sendCriticalSMS(customer.phoneNumber, message, { requestId: `request-${appointment.id}` });
+      if (result.success) {
+        logger.info(`✅ Request received SMS sent to customer: ${customer.phoneNumber.slice(0, 3)}***${customer.phoneNumber.slice(-3)}`);
+      } else {
+        logger.error(`❌ Failed to send request received SMS: ${result.error}`);
+      }
+    } catch (error) {
+      logger.error('❌ Error sending request received SMS:', error);
+    }
+  }
+
+  private async sendApprovalNotificationToCustomer(appointment: AppointmentData): Promise<void> {
+    try {
+      if (!this.prisma) return;
+      const customer = await this.prisma.user.findUnique({ where: { id: appointment.customerId }, select: { phoneNumber: true } });
+      if (!customer?.phoneNumber) return;
+
+      const business = await this.businessRepository.findById(appointment.businessId);
+      if (!business) return;
+
+      const service = await this.serviceRepository.findById(appointment.serviceId);
+      if (!service) return;
+
+      const appointmentDate = appointment.startTime.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const appointmentTime = appointment.startTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+
+      const { SMSMessageTemplates } = await import('../../../utils/smsMessageTemplates');
+      const message = SMSMessageTemplates.appointment.approvedByBusiness({
+        businessName: business.name,
+        serviceName: service.name,
+        appointmentDate,
+        appointmentTime,
+        appointmentId: appointment.id,
+      });
+
+      const result = await this.notificationGateway.sendCriticalSMS(customer.phoneNumber, message, { requestId: `approved-${appointment.id}` });
+      if (result.success) {
+        logger.info(`✅ Approval SMS sent to customer for appointment: ${appointment.id}`);
+      } else {
+        logger.error(`❌ Failed to send approval SMS: ${result.error}`);
+      }
+    } catch (error) {
+      logger.error('❌ Error sending approval SMS:', error);
+    }
+  }
+
+  private async sendRejectionNotificationToCustomer(appointment: AppointmentData): Promise<void> {
+    try {
+      if (!this.prisma) return;
+      const customer = await this.prisma.user.findUnique({ where: { id: appointment.customerId }, select: { phoneNumber: true, firstName: true, lastName: true } });
+      if (!customer?.phoneNumber) return;
+
+      const business = await this.businessRepository.findById(appointment.businessId);
+      if (!business) return;
+
+      const service = await this.serviceRepository.findById(appointment.serviceId);
+      if (!service) return;
+
+      const appointmentDate = appointment.startTime.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const appointmentTime = appointment.startTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+
+      const { SMSMessageTemplates } = await import('../../../utils/smsMessageTemplates');
+      const message = SMSMessageTemplates.appointment.rejectedByBusiness({
+        customerName: `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Değerli Müşterimiz',
+        businessName: business.name,
+        serviceName: service.name,
+        appointmentDate,
+        appointmentTime,
+        bookingLink: `https://randevubu.com/${business.slug}`,
+      });
+
+      const result = await this.notificationGateway.sendCriticalSMS(customer.phoneNumber, message, { requestId: `rejected-${appointment.id}` });
+      if (result.success) {
+        logger.info(`✅ Rejection SMS sent to customer for appointment: ${appointment.id}`);
+      } else {
+        logger.error(`❌ Failed to send rejection SMS: ${result.error}`);
+      }
+    } catch (error) {
+      logger.error('❌ Error sending rejection SMS:', error);
+    }
+  }
 
   /**
    * Get monitor appointments - Optimized endpoint for real-time queue display
@@ -1956,9 +2061,26 @@ export class AppointmentService {
       });
     }
 
-    const pendingApprovalAppointments = appointmentsWithDetails.filter(
+    // Pending approval: include ALL pending requests, not just today's
+    let pendingApprovalAppointments = appointmentsWithDetails.filter(
       apt => apt.status === AppointmentStatus.PENDING_APPROVAL
-    ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    );
+
+    // Also fetch future pending approval appointments not in today's range
+    try {
+      const allPendingApproval = await this.appointmentRepository.findByBusinessAndStatus(
+        businessId,
+        AppointmentStatus.PENDING_APPROVAL,
+        staffIds ?? undefined
+      );
+      const todayIds = new Set(pendingApprovalAppointments.map(a => a.id));
+      const futurePending = allPendingApproval.filter(a => !todayIds.has(a.id));
+      pendingApprovalAppointments = [...pendingApprovalAppointments, ...futurePending];
+    } catch {
+      // Fallback to today-only if the query fails
+    }
+
+    pendingApprovalAppointments.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
     const completedAppointments = appointmentsWithDetails.filter(
       apt => apt.status === AppointmentStatus.COMPLETED

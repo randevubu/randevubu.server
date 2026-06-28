@@ -1,7 +1,7 @@
 import { RatingRepository } from '../../../repositories/ratingRepository';
 import { BusinessRepository } from '../../../repositories/businessRepository';
 import { CustomerEvaluationData, SubmitRatingRequest } from '../../../types/business';
-import { ValidationError } from '../../../types/errors';
+import { AppError } from '../../../types/responseTypes';
 
 export class RatingService {
   constructor(
@@ -22,9 +22,7 @@ export class RatingService {
     );
 
     if (!validation.canRate) {
-      throw new ValidationError(
-        validation.reason || 'Cannot rate this business'
-      );
+      throw new AppError('RATING_NOT_ALLOWED', { message: validation.reason || 'Cannot rate this business' });
     }
 
     // Create rating
@@ -100,7 +98,7 @@ export class RatingService {
     const ratings = await this.businessRepository.getBusinessRatings(businessId, { page: 1, limit: 1000 });
     const rating = ratings.ratings.find(r => r.id === ratingId);
     if (!rating) {
-      throw new ValidationError('Rating not found');
+      throw new AppError('RATING_NOT_FOUND', { message: 'Rating not found' });
     }
     await this.ratingRepository.deleteRating(ratingId, businessId);
     await this.businessRepository.updateRatingCache(businessId);

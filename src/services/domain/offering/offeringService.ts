@@ -10,8 +10,6 @@ import { RBACService } from '../rbac/rbacService';
 import { UsageService } from '../usage/usageService';
 import { PermissionName } from '../../../types/auth';
 import type { CacheService } from '../../core/cacheService';
-import { NotFoundError, ValidationError, OperationNotAllowedError } from '../../../types/errors';
-import { ERROR_CODES } from '../../../constants/errorCodes';
 import { AppError } from '../../../types/responseTypes';
 import logger from '../../../utils/Logger/logger';
 
@@ -51,7 +49,7 @@ export class OfferingService {
     const nameExists = await this.serviceRepository.existsByNameAndBusiness(data.name, businessId);
     if (nameExists) {
       logger.warn('Service create blocked: duplicate name', { userId, businessId, name: data.name });
-      throw new ValidationError('Bu isimde bir hizmet zaten mevcut', 'name', undefined, undefined);
+      throw new AppError('SERVICE_NAME_DUPLICATE', { message: 'Service name already exists', params: { field: 'name' } });
     }
 
     const service = await this.serviceRepository.create(businessId, data);
@@ -165,9 +163,7 @@ export class OfferingService {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
       logger.warn('Service update failed: not found', { userId, serviceId });
-      throw new NotFoundError('Service not found', undefined, {
-        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
-      });
+      throw new AppError('SERVICE_NOT_FOUND', { message: 'Service not found' });
     }
 
     // Check permissions to manage services for this business
@@ -186,7 +182,7 @@ export class OfferingService {
       const nameExists = await this.serviceRepository.existsByNameAndBusiness(updateData.name, service.businessId, serviceId);
       if (nameExists) {
         logger.warn('Service update blocked: duplicate name', { userId, serviceId, name: updateData.name });
-        throw new ValidationError('Bu isimde bir hizmet zaten mevcut', 'name', undefined, undefined);
+        throw new AppError('SERVICE_NAME_DUPLICATE', { message: 'Service name already exists', params: { field: 'name' } });
       }
     }
 
@@ -210,9 +206,7 @@ export class OfferingService {
   ): Promise<{ assignedCount: number; totalActiveStaff: number; assignedToAll: boolean }> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new NotFoundError('Service not found', undefined, {
-        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
-      });
+      throw new AppError('SERVICE_NOT_FOUND', { message: 'Service not found' });
     }
 
     const [resource, action] = PermissionName.VIEW_ALL_SERVICES.split(':');
@@ -232,9 +226,7 @@ export class OfferingService {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
       logger.warn('Service delete failed: not found', { userId, serviceId });
-      throw new NotFoundError('Service not found', undefined, {
-        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
-      });
+      throw new AppError('SERVICE_NOT_FOUND', { message: 'Service not found' });
     }
 
     // Check permissions to manage services for this business
@@ -284,9 +276,7 @@ export class OfferingService {
   }> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new NotFoundError('Service not found', undefined, {
-        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
-      });
+      throw new AppError('SERVICE_NOT_FOUND', { message: 'Service not found' });
     }
 
     // Check permissions to view analytics for this business
@@ -318,12 +308,7 @@ export class OfferingService {
     }
 
     if (priceMultiplier <= 0) {
-      throw new ValidationError(
-        'Price multiplier must be positive',
-        'priceMultiplier',
-        undefined,
-        undefined
-      );
+      throw new AppError('VALIDATION_ERROR', { message: 'Price multiplier must be positive', params: { field: 'priceMultiplier' } });
     }
 
     await this.serviceRepository.bulkUpdatePrices(businessId, priceMultiplier);
@@ -386,11 +371,7 @@ export class OfferingService {
 
     // This would need to be implemented in the repository
     // For now, we'll throw an error
-    throw new OperationNotAllowedError(
-      'getAllServices',
-      'Admin service listing not implemented',
-      undefined
-    );
+    throw new AppError('INTERNAL_SERVER_ERROR', { message: 'Admin service listing not implemented' });
   }
 
   async toggleServiceStatus(
@@ -400,9 +381,7 @@ export class OfferingService {
   ): Promise<ServiceData> {
     const service = await this.serviceRepository.findById(serviceId);
     if (!service) {
-      throw new NotFoundError('Service not found', undefined, {
-        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
-      });
+      throw new AppError('SERVICE_NOT_FOUND', { message: 'Service not found' });
     }
 
     // Check permissions to manage services for this business
@@ -421,9 +400,7 @@ export class OfferingService {
   async duplicateService(userId: string, serviceId: string, newName: string): Promise<ServiceData> {
     const originalService = await this.serviceRepository.findById(serviceId);
     if (!originalService) {
-      throw new NotFoundError('Service not found', undefined, {
-        additionalData: { errorCode: ERROR_CODES.SERVICE_NOT_FOUND },
-      });
+      throw new AppError('SERVICE_NOT_FOUND', { message: 'Service not found' });
     }
 
     // Check permissions to manage services for this business

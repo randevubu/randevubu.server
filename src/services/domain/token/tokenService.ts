@@ -14,8 +14,8 @@ import {
   ErrorContext,
   InvalidTokenError,
   TokenExpiredError,
-  UnauthorizedError,
-} from "../../../types/errors";
+} from "../../../utils/errors/baseError";
+import { AppError } from "../../../types/responseTypes";
 import logger from "../../../utils/Logger/logger";
 
 export class TokenService {
@@ -259,15 +259,15 @@ export class TokenService {
           now: new Date(),
           requestId: context?.requestId,
         });
-        throw new UnauthorizedError('Refresh token is invalid or expired', context);
+        throw new AppError('REFRESH_TOKEN_INVALID', { message: 'Refresh token is invalid or expired' });
       }
 
       if (storedToken.userId !== decoded.userId) {
-        throw new UnauthorizedError("Token user mismatch", context);
+        throw new AppError('INVALID_TOKEN', { message: 'Token user mismatch' });
       }
 
       if (!storedToken.user.isActive) {
-        throw new UnauthorizedError("User account is deactivated", context);
+        throw new AppError('USER_DEACTIVATED', { message: 'User account is deactivated' });
       }
 
       // Update last used timestamp

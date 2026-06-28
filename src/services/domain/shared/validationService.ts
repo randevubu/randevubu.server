@@ -1,18 +1,14 @@
 import { PrismaClient } from '@prisma/client';
 import { RepositoryContainer } from '../../../repositories';
-import { 
-  NotFoundError, 
-  ValidationError,
-  ErrorContext 
-} from '../../../types/errors';
+import { AppError } from '../../../types/responseTypes';
 import { secureLoggingService } from './secureLoggingService';
 
 /**
  * ValidationService
- * 
+ *
  * Enterprise Pattern: Centralized validation logic
  * Following Amazon/Google patterns for data validation
- * 
+ *
  * Responsibilities:
  * - Entity existence validation
  * - Business rule validation
@@ -30,16 +26,16 @@ export class ValidationService {
    * Industry Standard: Business validation
    */
   async validateBusinessExists(
-    businessId: string, 
-    context?: ErrorContext
+    businessId: string,
+    context?: Record<string, unknown>
   ): Promise<{ id: string; name: string; ownerId: string; isActive: boolean }> {
     try {
       const business = await this.prisma.business.findUnique({
         where: { id: businessId },
-        select: { 
-          id: true, 
+        select: {
+          id: true,
           name: true,
-          ownerId: true, 
+          ownerId: true,
           isActive: true
         }
       });
@@ -49,23 +45,23 @@ export class ValidationService {
           businessId,
           ...(context && { context })
         });
-        throw new NotFoundError('Business not found', context);
+        throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
       }
 
-      secureLoggingService.logBusinessOperation('BUSINESS_VALIDATED', businessId, context?.userId || 'system', {
+      secureLoggingService.logBusinessOperation('BUSINESS_VALIDATED', businessId, context?.userId as string || 'system', {
         businessName: business.name,
         isActive: business.isActive
       });
 
       return business;
     } catch (error) {
-      if (error instanceof NotFoundError) {
+      if (error instanceof AppError) {
         throw error;
       }
 
       secureLoggingService.logErrorEvent('BUSINESS_VALIDATION_FAILED', error as Error, context);
 
-      throw new ValidationError('Business validation failed', undefined, undefined, context);
+      throw new AppError('VALIDATION_ERROR', { message: 'Business validation failed' });
     }
   }
 
@@ -74,14 +70,14 @@ export class ValidationService {
    * Industry Standard: User validation
    */
   async validateUserExists(
-    userId: string, 
-    context?: ErrorContext
+    userId: string,
+    context?: Record<string, unknown>
   ): Promise<{ id: string; phoneNumber: string; isActive: boolean }> {
     try {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { 
-          id: true, 
+        select: {
+          id: true,
           phoneNumber: true,
           isActive: true
         }
@@ -92,7 +88,7 @@ export class ValidationService {
           userId,
           ...(context && { context })
         });
-        throw new NotFoundError('User not found', context);
+        throw new AppError('USER_NOT_FOUND', { message: 'User not found' });
       }
 
       if (!user.isActive) {
@@ -100,7 +96,7 @@ export class ValidationService {
           userId,
           ...(context && { context })
         });
-        throw new ValidationError('User account is inactive', undefined, undefined, context);
+        throw new AppError('VALIDATION_ERROR', { message: 'User account is inactive' });
       }
 
       secureLoggingService.logUserOperation('USER_VALIDATED', userId, {
@@ -109,13 +105,13 @@ export class ValidationService {
 
       return user;
     } catch (error) {
-      if (error instanceof NotFoundError || error instanceof ValidationError) {
+      if (error instanceof AppError) {
         throw error;
       }
 
       secureLoggingService.logErrorEvent('USER_VALIDATION_FAILED', error as Error, context);
 
-      throw new ValidationError('User validation failed', undefined, undefined, context);
+      throw new AppError('VALIDATION_ERROR', { message: 'User validation failed' });
     }
   }
 
@@ -124,14 +120,14 @@ export class ValidationService {
    * Industry Standard: Service validation
    */
   async validateServiceExists(
-    serviceId: string, 
-    context?: ErrorContext
+    serviceId: string,
+    context?: Record<string, unknown>
   ): Promise<{ id: string; name: string; businessId: string; isActive: boolean }> {
     try {
       const service = await this.prisma.service.findUnique({
         where: { id: serviceId },
-        select: { 
-          id: true, 
+        select: {
+          id: true,
           name: true,
           businessId: true,
           isActive: true
@@ -143,7 +139,7 @@ export class ValidationService {
           serviceId,
           ...(context && { context })
         });
-        throw new NotFoundError('Service not found', context);
+        throw new AppError('SERVICE_NOT_FOUND', { message: 'Service not found' });
       }
 
       if (!service.isActive) {
@@ -152,10 +148,10 @@ export class ValidationService {
           serviceName: service.name,
           ...(context && { context })
         });
-        throw new ValidationError('Service is not active', undefined, undefined, context);
+        throw new AppError('VALIDATION_ERROR', { message: 'Service is not active' });
       }
 
-      secureLoggingService.logBusinessOperation('SERVICE_VALIDATED', service.businessId, context?.userId || 'system', {
+      secureLoggingService.logBusinessOperation('SERVICE_VALIDATED', service.businessId, context?.userId as string || 'system', {
         serviceId,
         serviceName: service.name,
         isActive: service.isActive
@@ -163,13 +159,13 @@ export class ValidationService {
 
       return service;
     } catch (error) {
-      if (error instanceof NotFoundError || error instanceof ValidationError) {
+      if (error instanceof AppError) {
         throw error;
       }
 
       secureLoggingService.logErrorEvent('SERVICE_VALIDATION_FAILED', error as Error, context);
 
-      throw new ValidationError('Service validation failed', undefined, undefined, context);
+      throw new AppError('VALIDATION_ERROR', { message: 'Service validation failed' });
     }
   }
 
@@ -179,7 +175,7 @@ export class ValidationService {
    */
   async validateStaffExists(
     staffId: string,
-    context?: ErrorContext
+    context?: Record<string, unknown>
   ): Promise<{ id: string; userId: string; businessId: string; isActive: boolean }> {
     try {
       const staff = await this.prisma.businessStaff.findUnique({
@@ -197,7 +193,7 @@ export class ValidationService {
           staffId,
           ...(context && { context })
         });
-        throw new NotFoundError('Staff member not found', context);
+        throw new AppError('STAFF_NOT_FOUND', { message: 'Staff member not found' });
       }
 
       if (!staff.isActive) {
@@ -207,7 +203,7 @@ export class ValidationService {
           businessId: staff.businessId,
           ...(context && { context })
         });
-        throw new ValidationError('Staff member is not active', undefined, undefined, context);
+        throw new AppError('VALIDATION_ERROR', { message: 'Staff member is not active' });
       }
 
       secureLoggingService.logBusinessOperation('STAFF_VALIDATED', staff.businessId, staff.userId, {
@@ -217,13 +213,13 @@ export class ValidationService {
 
       return staff;
     } catch (error) {
-      if (error instanceof NotFoundError || error instanceof ValidationError) {
+      if (error instanceof AppError) {
         throw error;
       }
 
       secureLoggingService.logErrorEvent('STAFF_VALIDATION_FAILED', error as Error, context);
 
-      throw new ValidationError('Staff validation failed', undefined, undefined, context);
+      throw new AppError('VALIDATION_ERROR', { message: 'Staff validation failed' });
     }
   }
 
@@ -232,14 +228,14 @@ export class ValidationService {
    * Industry Standard: Appointment validation
    */
   async validateAppointmentExists(
-    appointmentId: string, 
-    context?: ErrorContext
+    appointmentId: string,
+    context?: Record<string, unknown>
   ): Promise<{ id: string; customerId: string; businessId: string; status: string }> {
     try {
       const appointment = await this.prisma.appointment.findUnique({
         where: { id: appointmentId },
-        select: { 
-          id: true, 
+        select: {
+          id: true,
           customerId: true,
           businessId: true,
           status: true
@@ -251,7 +247,7 @@ export class ValidationService {
           appointmentId,
           ...(context && { context })
         });
-        throw new NotFoundError('Appointment not found', context);
+        throw new AppError('APPOINTMENT_NOT_FOUND', { message: 'Appointment not found' });
       }
 
       secureLoggingService.logAppointmentOperation(
@@ -266,13 +262,13 @@ export class ValidationService {
 
       return appointment;
     } catch (error) {
-      if (error instanceof NotFoundError) {
+      if (error instanceof AppError) {
         throw error;
       }
 
       secureLoggingService.logErrorEvent('APPOINTMENT_VALIDATION_FAILED', error as Error, context);
 
-      throw new ValidationError('Appointment validation failed', undefined, undefined, context);
+      throw new AppError('VALIDATION_ERROR', { message: 'Appointment validation failed' });
     }
   }
 
@@ -282,7 +278,7 @@ export class ValidationService {
    */
   async validateSubscriptionExists(
     subscriptionId: string,
-    context?: ErrorContext
+    context?: Record<string, unknown>
   ): Promise<{ id: string; businessId: string; status: string; isActive: boolean }> {
     try {
       const subscription = await this.prisma.businessSubscription.findUnique({
@@ -299,7 +295,7 @@ export class ValidationService {
           subscriptionId,
           ...(context && { context })
         });
-        throw new NotFoundError('Subscription not found', context);
+        throw new AppError('SUBSCRIPTION_NOT_FOUND', { message: 'Subscription not found' });
       }
 
       // Check if subscription is active based on status
@@ -312,10 +308,10 @@ export class ValidationService {
           status: subscription.status,
           ...(context && { context })
         });
-        throw new ValidationError('Subscription is not active', undefined, undefined, context);
+        throw new AppError('VALIDATION_ERROR', { message: 'Subscription is not active' });
       }
 
-      secureLoggingService.logBusinessOperation('SUBSCRIPTION_VALIDATED', subscription.businessId, context?.userId || 'system', {
+      secureLoggingService.logBusinessOperation('SUBSCRIPTION_VALIDATED', subscription.businessId, context?.userId as string || 'system', {
         subscriptionId,
         status: subscription.status,
         isActive
@@ -323,13 +319,13 @@ export class ValidationService {
 
       return { ...subscription, isActive };
     } catch (error) {
-      if (error instanceof NotFoundError || error instanceof ValidationError) {
+      if (error instanceof AppError) {
         throw error;
       }
 
       secureLoggingService.logErrorEvent('SUBSCRIPTION_VALIDATION_FAILED', error as Error, context);
 
-      throw new ValidationError('Subscription validation failed', undefined, undefined, context);
+      throw new AppError('VALIDATION_ERROR', { message: 'Subscription validation failed' });
     }
   }
 
@@ -337,33 +333,33 @@ export class ValidationService {
    * Validate business hours
    * Industry Standard: Business hours validation
    */
-  validateBusinessHours(hours: any, context?: ErrorContext): void {
+  validateBusinessHours(hours: any, context?: Record<string, unknown>): void {
     try {
       if (!hours) {
-        throw new ValidationError('Business hours are required', undefined, undefined, context);
+        throw new AppError('VALIDATION_ERROR', { message: 'Business hours are required' });
       }
 
       const requiredDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
       for (const day of requiredDays) {
         if (!hours[day]) {
-          throw new ValidationError(`Business hours for ${day} are required`, day, undefined, context);
+          throw new AppError('VALIDATION_ERROR', { message: `Business hours for ${day} are required`, params: { field: day } });
         }
 
         const dayHours = hours[day];
         if (!dayHours.isOpen && !dayHours.isClosed) {
-          throw new ValidationError(`Business hours for ${day} must specify if open or closed`, day, undefined, context);
+          throw new AppError('VALIDATION_ERROR', { message: `Business hours for ${day} must specify if open or closed`, params: { field: day } });
         }
 
         if (dayHours.isOpen) {
           if (!dayHours.openTime || !dayHours.closeTime) {
-            throw new ValidationError(`Open and close times are required for ${day}`, day, undefined, context);
+            throw new AppError('VALIDATION_ERROR', { message: `Open and close times are required for ${day}`, params: { field: day } });
           }
 
           // Validate time format (HH:MM)
           const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
           if (!timeRegex.test(dayHours.openTime) || !timeRegex.test(dayHours.closeTime)) {
-            throw new ValidationError(`Invalid time format for ${day}. Use HH:MM format`, day, undefined, context);
+            throw new AppError('INVALID_TIME_FORMAT', { message: `Invalid time format for ${day}. Use HH:MM format`, params: { field: day } });
           }
 
           // Validate that open time is before close time
@@ -371,7 +367,7 @@ export class ValidationService {
           const closeTime = this.parseTime(dayHours.closeTime);
 
           if (openTime >= closeTime) {
-            throw new ValidationError(`Open time must be before close time for ${day}`, day, undefined, context);
+            throw new AppError('VALIDATION_ERROR', { message: `Open time must be before close time for ${day}`, params: { field: day } });
           }
         }
       }
@@ -381,13 +377,13 @@ export class ValidationService {
       });
 
     } catch (error) {
-      if (error instanceof ValidationError) {
+      if (error instanceof AppError) {
         throw error;
       }
 
       secureLoggingService.logErrorEvent('BUSINESS_HOURS_VALIDATION_FAILED', error as Error, context);
 
-      throw new ValidationError('Business hours validation failed', undefined, undefined, context);
+      throw new AppError('VALIDATION_ERROR', { message: 'Business hours validation failed' });
     }
   }
 
@@ -400,7 +396,7 @@ export class ValidationService {
     startTime: string,
     endTime: string,
     minAdvanceBooking: number,
-    context?: ErrorContext
+    context?: Record<string, unknown>
   ): void {
     try {
       const now = new Date();
@@ -412,24 +408,21 @@ export class ValidationService {
 
       // Check if appointment is in the past
       if (appointmentDateTime <= now) {
-        throw new ValidationError('Appointment cannot be scheduled in the past', 'appointmentDate', undefined, context);
+        throw new AppError('APPOINTMENT_PAST_DATE', { message: 'Appointment cannot be scheduled in the past' });
       }
 
       // Check minimum advance booking
       const hoursUntilAppointment = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
       if (hoursUntilAppointment < minAdvanceBooking) {
-        throw new ValidationError(
-          `Appointments must be booked at least ${minAdvanceBooking} hours in advance`,
-          'appointmentDate',
-          undefined,
-          context
-        );
+        throw new AppError('APPOINTMENT_INSUFFICIENT_ADVANCE', {
+          message: `Appointments must be booked at least ${minAdvanceBooking} hours in advance`
+        });
       }
 
       // Validate time format
       const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
       if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
-        throw new ValidationError('Invalid time format. Use HH:MM format', 'time', undefined, context);
+        throw new AppError('INVALID_TIME_FORMAT', { message: 'Invalid time format. Use HH:MM format' });
       }
 
       // Validate that start time is before end time
@@ -437,7 +430,7 @@ export class ValidationService {
       const endTimeMinutes = this.parseTime(endTime);
 
       if (startTimeMinutes >= endTimeMinutes) {
-        throw new ValidationError('Start time must be before end time', 'time', undefined, context);
+        throw new AppError('VALIDATION_ERROR', { message: 'Start time must be before end time' });
       }
 
       secureLoggingService.logServiceCall('ValidationService', 'validateAppointmentTime', {
@@ -448,13 +441,13 @@ export class ValidationService {
       });
 
     } catch (error) {
-      if (error instanceof ValidationError) {
+      if (error instanceof AppError) {
         throw error;
       }
 
       secureLoggingService.logErrorEvent('APPOINTMENT_TIME_VALIDATION_FAILED', error as Error, context);
 
-      throw new ValidationError('Appointment time validation failed', undefined, undefined, context);
+      throw new AppError('VALIDATION_ERROR', { message: 'Appointment time validation failed' });
     }
   }
 
@@ -471,10 +464,10 @@ export class ValidationService {
    * Validate phone number format
    * Industry Standard: Phone number validation
    */
-  validatePhoneNumber(phoneNumber: string, context?: ErrorContext): void {
+  validatePhoneNumber(phoneNumber: string, context?: Record<string, unknown>): void {
     try {
       if (!phoneNumber) {
-        throw new ValidationError('Phone number is required', 'phoneNumber', undefined, context);
+        throw new AppError('INVALID_PHONE_FORMAT', { message: 'Phone number is required', params: { field: 'phoneNumber' } });
       }
 
       // Remove all non-digit characters
@@ -482,12 +475,12 @@ export class ValidationService {
 
       // Check if it's a valid Turkish phone number
       if (cleanNumber.length < 10 || cleanNumber.length > 15) {
-        throw new ValidationError('Invalid phone number format', 'phoneNumber', undefined, context);
+        throw new AppError('INVALID_PHONE_FORMAT', { message: 'Invalid phone number format', params: { field: 'phoneNumber' } });
       }
 
       // Check if it starts with valid country code or local format
       if (!cleanNumber.startsWith('90') && !cleanNumber.startsWith('0')) {
-        throw new ValidationError('Phone number must start with country code (90) or local format (0)', 'phoneNumber', undefined, context);
+        throw new AppError('INVALID_PHONE_FORMAT', { message: 'Phone number must start with country code (90) or local format (0)', params: { field: 'phoneNumber' } });
       }
 
       secureLoggingService.logServiceCall('ValidationService', 'validatePhoneNumber', {
@@ -495,13 +488,13 @@ export class ValidationService {
       });
 
     } catch (error) {
-      if (error instanceof ValidationError) {
+      if (error instanceof AppError) {
         throw error;
       }
 
       secureLoggingService.logErrorEvent('PHONE_NUMBER_VALIDATION_FAILED', error as Error, context);
 
-      throw new ValidationError('Phone number validation failed', 'phoneNumber', undefined, context);
+      throw new AppError('INVALID_PHONE_FORMAT', { message: 'Phone number validation failed', params: { field: 'phoneNumber' } });
     }
   }
 

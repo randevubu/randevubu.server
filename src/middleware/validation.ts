@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
-import { ErrorContext, ValidationError } from "../types/errors";
+import { ErrorContext, ValidationError } from "../utils/errors/baseError";
 import logger from "../utils/Logger/logger";
 export interface ValidationOptions {
   body?: z.ZodSchema;

@@ -33,7 +33,7 @@ export enum VerificationPurpose {
   PASSWORD_RESET = 'PASSWORD_RESET'
 }
 
-// Re-export ErrorContext from errors for convenience
-export type { ErrorContext } from './errors';
+// Re-export ErrorContext from baseError for convenience
+export type { ErrorContext } from '../utils/errors/baseError';
 
 

@@ -6,7 +6,7 @@
  */
 
 import { Request } from 'express';
-import { ErrorContext } from '../types/errors';
+import { ErrorContext } from '../utils/errors/baseError';
 import { DeviceInfo } from '../types/auth';
 
 /**

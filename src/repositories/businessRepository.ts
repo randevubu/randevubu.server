@@ -17,8 +17,7 @@ import {
   SubscriptionStatus
 } from '../types/business';
 import logger from "../utils/Logger/logger";
-import { NotFoundError, ValidationError } from '../types/errors';
-import { ERROR_CODES } from '../constants/errorCodes';
+import { AppError } from '../types/responseTypes';
 export interface BusinessQueryOptions {
   includeInactive?: boolean;
   includeDeleted?: boolean;
@@ -249,7 +248,7 @@ export class BusinessRepository {
       });
 
       if (!ownerRole || !ownerRole.isActive) {
-        throw new NotFoundError('OWNER role not found or inactive', undefined, { additionalData: { errorCode: ERROR_CODES.ROLE_NOT_FOUND } });
+        throw new AppError('ROLE_NOT_FOUND', { message: 'OWNER role not found or inactive' });
       }
 
       // Assign the role within the same transaction (upsert to handle existing roles)
@@ -342,7 +341,7 @@ export class BusinessRepository {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     if (data.date < todayStart) {
-      throw new ValidationError('Geçmiş tarihler için özel gün eklenemez');
+      throw new AppError('SPECIAL_DAY_PAST_DATE', { message: 'Cannot add special day for past dates' });
     }
 
     const result = await this.prisma.businessHoursOverride.create({
@@ -383,7 +382,7 @@ export class BusinessRepository {
     });
 
     if (!existingOverride) {
-      throw new NotFoundError('Özel gün bulunamadı');
+      throw new AppError('SPECIAL_DAY_NOT_FOUND', { message: 'Special day not found' });
     }
 
     const result = await this.prisma.businessHoursOverride.update({
@@ -409,7 +408,7 @@ export class BusinessRepository {
     });
 
     if (!existingOverride) {
-      throw new NotFoundError('Özel gün bulunamadı');
+      throw new AppError('SPECIAL_DAY_NOT_FOUND', { message: 'Special day not found' });
     }
 
     await this.prisma.businessHoursOverride.delete({
@@ -1643,13 +1642,13 @@ export class BusinessRepository {
       // Row missing, limit hit, or duplicate — distinguish by re-reading
       const business = await this.findById(businessId);
       if (!business) {
-        throw new NotFoundError('Business not found', undefined, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
+        throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
       }
       const currentGallery = business.galleryImages || [];
       if (currentGallery.includes(imageUrl)) {
-        throw new ValidationError('Image already exists in gallery', undefined, undefined, undefined);
+        throw new AppError('GALLERY_IMAGE_EXISTS', { message: 'Image already exists in gallery' });
       }
-      throw new ValidationError('Maximum 10 gallery images allowed', undefined, undefined, undefined);
+      throw new AppError('GALLERY_LIMIT_EXCEEDED', { message: 'Maximum 10 gallery images allowed' });
     }
 
     const result = await this.findById(businessId);
@@ -1659,7 +1658,7 @@ export class BusinessRepository {
   async removeGalleryImage(businessId: string, imageUrl: string): Promise<BusinessData> {
     const business = await this.findById(businessId);
     if (!business) {
-      throw new NotFoundError('Business not found', undefined, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     const currentGallery = business.galleryImages || [];
@@ -1675,7 +1674,7 @@ export class BusinessRepository {
 
   async updateGalleryImages(businessId: string, imageUrls: string[]): Promise<BusinessData> {
     if (imageUrls.length > 10) {
-      throw new ValidationError('Maximum 10 gallery images allowed', undefined, undefined, undefined);
+      throw new AppError('GALLERY_LIMIT_EXCEEDED', { message: 'Maximum 10 gallery images allowed' });
     }
 
     const result = await this.prisma.business.update({
@@ -1698,7 +1697,7 @@ export class BusinessRepository {
     });
 
     if (!result) {
-      throw new NotFoundError('Business not found', undefined, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
+      throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
     }
 
     return {

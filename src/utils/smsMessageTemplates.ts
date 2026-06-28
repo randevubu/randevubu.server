@@ -60,6 +60,25 @@ export class AppointmentMessages {
     return `Randevunuz onaylandı!\n\n${params.businessName}\n${params.serviceName}\n${params.appointmentDate} - ${params.appointmentTime}\n\nİptal için: https://randevubu.com/appointments/${params.appointmentId}`;
   }
 
+  static requestReceived(params: {
+    businessName: string;
+    serviceName: string;
+    appointmentDate: string;
+    appointmentTime: string;
+  }): string {
+    return `Randevu talebiniz alındı!\n\n${params.businessName}\n${params.serviceName}\n${params.appointmentDate} - ${params.appointmentTime}\n\nİşletme talebinizi inceleyecek, sonucu size bildireceğiz.`;
+  }
+
+  static approvedByBusiness(params: {
+    businessName: string;
+    serviceName: string;
+    appointmentDate: string;
+    appointmentTime: string;
+    appointmentId: string;
+  }): string {
+    return `Randevu talebiniz onaylandı!\n\n${params.businessName}\n${params.serviceName}\n${params.appointmentDate} - ${params.appointmentTime}\n\nİptal için: https://randevubu.com/appointments/${params.appointmentId}`;
+  }
+
   /**
    * Appointment reminder message
    */

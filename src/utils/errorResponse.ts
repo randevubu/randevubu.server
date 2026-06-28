@@ -5,13 +5,13 @@
  */
 
 import { Response } from "express";
-import { ErrorContext } from "../types/errors";
+import { ErrorContext } from "../utils/errors/baseError";
 import { 
   BaseError, 
   BusinessRuleViolationError, 
   InternalServerError,
   createSecureErrorResponse 
-} from "../types/errors";
+} from "../utils/errors/baseError";
 
 /**
  * Send a standardized app error response

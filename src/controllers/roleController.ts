@@ -147,14 +147,14 @@ export class RoleController {
       ? await this.roleService.getPermissionsByResource(resource as string)
       : await this.roleService.getAllPermissions();
 
-    res.json({ success: true, data: { permissions } });
+    await this.responseHelper.success(res, 'success.role.permissionsRetrieved', { permissions }, 200, req);
   };
 
   getPermissionById = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     const { id } = req.params;
     const permission = await this.roleService.getPermissionById(id);
 
-    res.json({ success: true, data: { permission } });
+    await this.responseHelper.success(res, 'success.role.permissionRetrieved', { permission }, 200, req);
   };
 
   updatePermission = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
@@ -163,7 +163,7 @@ export class RoleController {
 
     const permission = await this.roleService.updatePermission(id, data);
 
-    res.json({ success: true, data: { permission } });
+    await this.responseHelper.success(res, 'success.role.permissionUpdated', { permission }, 200, req);
   };
 
   assignPermissionsToRole = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
@@ -198,14 +198,14 @@ export class RoleController {
 
     await this.roleService.revokePermissionFromRole(roleId, permissionId);
 
-    res.json({ success: true, message: 'Permission revoked from role successfully' });
+    await this.responseHelper.success(res, 'success.role.permissionRevoked', undefined, 200, req);
   };
 
   getRolePermissions = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     const { roleId } = req.params;
     const permissions = await this.roleService.getRolePermissions(roleId);
 
-    res.json({ success: true, data: { permissions } });
+    await this.responseHelper.success(res, 'success.role.rolePermissionsRetrieved', { permissions }, 200, req);
   };
 
   assignRoleToUser = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
@@ -233,7 +233,7 @@ export class RoleController {
 
     await this.roleService.revokeRoleFromUser(userId, roleId);
 
-    res.json({ success: true, message: 'Role revoked from user successfully' });
+    await this.responseHelper.success(res, 'success.role.revokedFromUser', undefined, 200, req);
   };
 
   getUserPermissions = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
@@ -241,18 +241,18 @@ export class RoleController {
 
     const permissions = await this.roleService.getUserPermissionSummary(userId);
 
-    res.json({ success: true, data: { permissions } });
+    await this.responseHelper.success(res, 'success.role.userPermissionsRetrieved', { permissions }, 200, req);
   };
 
   getMyPermissions = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     const permissions = await this.roleService.getUserPermissionSummary(req.user.id);
 
-    res.json({ success: true, data: { permissions } });
+    await this.responseHelper.success(res, 'success.role.myPermissionsRetrieved', { permissions }, 200, req);
   };
 
   getRoleStatistics = async (req: GuaranteedAuthRequest, res: Response): Promise<void> => {
     const statistics = await this.roleService.getRoleStatistics();
 
-    res.json({ success: true, data: { statistics } });
+    await this.responseHelper.success(res, 'success.role.statisticsRetrieved', { statistics }, 200, req);
   };
 }

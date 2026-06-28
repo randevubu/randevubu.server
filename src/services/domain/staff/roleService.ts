@@ -9,13 +9,8 @@ import {
   UpdateRoleRequest,
   UserPermissionSummary,
 } from "../../../types/auth";
-import {
-  ErrorContext,
-  ForbiddenError,
-  ResourceConflictError,
-  UserNotFoundError,
-  ValidationError,
-} from "../../../types/errors";
+import { ErrorContext } from "../../../utils/errors/baseError";
+import { AppError } from "../../../types/responseTypes";
 import { RBACService } from "../rbac/rbacService";
 import logger from "../../../utils/Logger/logger";
 export class RoleService {
@@ -34,11 +29,7 @@ export class RoleService {
       // Validate role name uniqueness
       const existingRole = await this.roleRepository.getRoleByName(data.name);
       if (existingRole) {
-        throw new ResourceConflictError(
-          "role",
-          `Role '${data.name}' already exists`,
-          context
-        );
+        throw new AppError('RESOURCE_CONFLICT', { message: 'Role already exists' });
       }
 
       // Validate permissions if provided
@@ -72,7 +63,7 @@ export class RoleService {
   async getRoleById(id: string, includePermissions = false): Promise<RoleData> {
     const role = await this.roleRepository.getRoleById(id, includePermissions);
     if (!role) {
-      throw new UserNotFoundError(`Role with ID '${id}' not found`);
+      throw new AppError('ROLE_NOT_FOUND', { message: 'Role with ID not found' });
     }
     return role;
   }
@@ -86,7 +77,7 @@ export class RoleService {
       includePermissions
     );
     if (!role) {
-      throw new UserNotFoundError(`Role '${name}' not found`);
+      throw new AppError('ROLE_NOT_FOUND', { message: 'Role not found' });
     }
     return role;
   }
@@ -107,7 +98,7 @@ export class RoleService {
 
       // Prevent updating system roles
       if (existingRole.isSystem) {
-        throw new ForbiddenError("Cannot modify system role", context);
+        throw new AppError('OPERATION_NOT_ALLOWED', { message: 'Cannot modify system role' });
       }
 
       // Validate level changes
@@ -152,17 +143,13 @@ export class RoleService {
       const role = await this.getRoleById(id);
 
       if (role.isSystem) {
-        throw new ForbiddenError("Cannot delete system role", context);
+        throw new AppError('SYSTEM_ROLE_PROTECTED', { message: 'Cannot delete system role' });
       }
 
       // Check if role is assigned to any users
       const usersWithRole = await this.roleRepository.getUsersByRole(id);
       if (usersWithRole.length > 0) {
-        throw new ResourceConflictError(
-          "role",
-          `Cannot delete role. It is assigned to ${usersWithRole.length} user(s)`,
-          context
-        );
+        throw new AppError('ROLE_IN_USE', { message: 'Cannot delete role - assigned to users' });
       }
 
       await this.roleRepository.deleteRole(id, deletedBy);
@@ -192,10 +179,7 @@ export class RoleService {
         data.name
       );
       if (existingPermission) {
-        throw new ResourceConflictError(
-          "permission",
-          `Permission '${data.name}' already exists`
-        );
+        throw new AppError('ROLE_ALREADY_EXISTS', { message: 'Permission already exists' });
       }
 
       // Validate resource and action combination
@@ -205,10 +189,7 @@ export class RoleService {
         (p) => p.action === data.action
       );
       if (duplicate) {
-        throw new ResourceConflictError(
-          "permission",
-          `Permission for ${data.resource}:${data.action} already exists`
-        );
+        throw new AppError('ROLE_ALREADY_EXISTS', { message: 'Permission already exists' });
       }
 
       const permission = await this.roleRepository.createPermission(data);
@@ -233,7 +214,7 @@ export class RoleService {
   async getPermissionById(id: string): Promise<PermissionData> {
     const permission = await this.roleRepository.getPermissionById(id);
     if (!permission) {
-      throw new UserNotFoundError(`Permission with ID '${id}' not found`);
+      throw new AppError('PERMISSION_NOT_FOUND', { message: 'Permission not found' });
     }
     return permission;
   }
@@ -256,7 +237,7 @@ export class RoleService {
 
       // Prevent updating system permissions
       if (existingPermission.isSystem) {
-        throw new ForbiddenError("Cannot modify system permission");
+        throw new AppError('SYSTEM_PERMISSION_PROTECTED', { message: 'Cannot modify system permission' });
       }
 
       const updatedPermission = await this.roleRepository.updatePermission(
@@ -294,10 +275,7 @@ export class RoleService {
       // Validate role exists and is not system role
       const role = await this.getRoleById(roleId);
       if (role.isSystem) {
-        throw new ForbiddenError(
-          "Cannot modify system role permissions",
-          context
-        );
+        throw new AppError('SYSTEM_ROLE_PROTECTED', { message: 'Cannot modify system role permissions' });
       }
 
       // Validate all permissions exist
@@ -337,10 +315,7 @@ export class RoleService {
       // Validate role exists and is not system role
       const role = await this.getRoleById(roleId);
       if (role.isSystem) {
-        throw new ForbiddenError(
-          "Cannot modify system role permissions",
-          context
-        );
+        throw new AppError('SYSTEM_ROLE_PROTECTED', { message: 'Cannot modify system role permissions' });
       }
 
       await this.roleRepository.revokePermissionFromRole(roleId, permissionId);
@@ -382,18 +357,14 @@ export class RoleService {
       // Validate role exists and is active
       const role = await this.getRoleById(request.roleId);
       if (!role.isActive) {
-        throw new ValidationError("Cannot assign inactive role");
+        throw new AppError('INACTIVE_ROLE_ASSIGNMENT', { message: 'Cannot assign inactive role' });
       }
 
       // Check if user already has this role
       const userRoles = await this.roleRepository.getUserRoles(request.userId);
       const hasRole = userRoles.some((r) => r.id === request.roleId);
       if (hasRole) {
-        throw new ResourceConflictError(
-          "user_role",
-          "User already has this role",
-          context
-        );
+        throw new AppError('ROLE_ALREADY_ASSIGNED', { message: 'User already has this role' });
       }
 
       // Validate expiration date if provided
@@ -401,7 +372,7 @@ export class RoleService {
         ? new Date(request.expiresAt)
         : undefined;
       if (expiresAt && expiresAt <= new Date()) {
-        throw new ValidationError("Expiration date must be in the future");
+        throw new AppError('INVALID_DATE_FORMAT', { message: 'Expiration date must be in the future' });
       }
 
       await this.roleRepository.assignRoleToUser(
@@ -446,7 +417,7 @@ export class RoleService {
       const userRoles = await this.roleRepository.getUserRoles(userId);
       const hasRole = userRoles.some((r) => r.id === roleId);
       if (!hasRole) {
-        throw new UserNotFoundError("User does not have this role");
+        throw new AppError('ROLE_NOT_ASSIGNED', { message: 'User does not have this role' });
       }
 
       await this.roleRepository.revokeRoleFromUser(userId, roleId);
@@ -510,9 +481,7 @@ export class RoleService {
         permissionId
       );
       if (!permission) {
-        throw new UserNotFoundError(
-          `Permission with ID '${permissionId}' not found`
-        );
+        throw new AppError('PERMISSION_NOT_FOUND', { message: 'Permission not found' });
       }
     }
   }
@@ -529,10 +498,7 @@ export class RoleService {
 
     // Ensure requester can only create/modify roles at or below their level
     if (level >= requesterPermissions.effectiveLevel) {
-      throw new ForbiddenError(
-        `Cannot create/modify role with level ${level}. Your maximum level is ${requesterPermissions.effectiveLevel}`,
-        context
-      );
+      throw new AppError('ROLE_LEVEL_EXCEEDED', { message: 'Cannot create/modify role with higher level' });
     }
   }
 

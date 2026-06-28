@@ -17,13 +17,15 @@ import {
   RescheduleOptionsRequest
 } from '../types/business';
 import { AppError } from '../types/responseTypes';
+import { ResponseHelper } from '../utils/responseHelper';
 
 export class BusinessClosureController {
   constructor(
     private businessClosureService: BusinessClosureService,
     private notificationService: NotificationService,
     private closureAnalyticsService: ClosureAnalyticsService,
-    private appointmentRescheduleService: AppointmentRescheduleService
+    private appointmentRescheduleService: AppointmentRescheduleService,
+    private responseHelper: ResponseHelper
   ) {}
 
   async createClosure(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -37,11 +39,7 @@ export class BusinessClosureController {
       validatedData
     );
 
-    res.status(201).json({
-      success: true,
-      data: closure,
-      message: 'Business closure created successfully'
-    });
+    await this.responseHelper.success(res, 'success.closure.created', closure, 201, req);
   }
 
   async getClosureById(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -54,7 +52,7 @@ export class BusinessClosureController {
       throw new AppError('CLOSURE_NOT_FOUND', { message: `Closure ${id} not found` });
     }
 
-    res.json({ success: true, data: closure });
+    await this.responseHelper.success(res, 'success.closure.retrieved', closure, 200, req);
   }
 
   async getBusinessClosures(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -71,11 +69,7 @@ export class BusinessClosureController {
       closures = await this.businessClosureService.getBusinessClosures(userId, businessId);
     }
 
-    res.json({
-      success: true,
-      data: closures,
-      meta: { total: closures.length, businessId, filter: active || 'all' }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.listRetrieved', closures, { total: closures.length, businessId, filter: active || 'all' }, 200, req);
   }
 
   async updateClosure(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -85,7 +79,7 @@ export class BusinessClosureController {
 
     const closure = await this.businessClosureService.updateClosure(userId, id, validatedData);
 
-    res.json({ success: true, data: closure, message: 'Closure updated successfully' });
+    await this.responseHelper.success(res, 'success.closure.updated', closure, 200, req);
   }
 
   async deleteClosure(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -94,7 +88,7 @@ export class BusinessClosureController {
 
     await this.businessClosureService.deleteClosure(userId, id);
 
-    res.json({ success: true, message: 'Closure deleted successfully' });
+    await this.responseHelper.success(res, 'success.closure.deleted', undefined, 200, req);
   }
 
   async isBusinessClosed(req: Request, res: Response): Promise<void> {
@@ -111,10 +105,7 @@ export class BusinessClosureController {
 
     const result = await this.businessClosureService.isBusinessClosed(businessId, checkDate);
 
-    res.json({
-      success: true,
-      data: { businessId, date: checkDate.toISOString(), isClosed: result.isClosed, closure: result.closure }
-    });
+    await this.responseHelper.success(res, 'success.closure.statusChecked', { businessId, date: checkDate.toISOString(), isClosed: result.isClosed, closure: result.closure }, 200, req);
   }
 
   async extendClosure(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -133,7 +124,7 @@ export class BusinessClosureController {
 
     const closure = await this.businessClosureService.extendClosure(userId, id, endDate);
 
-    res.json({ success: true, data: closure, message: 'Closure extended successfully' });
+    await this.responseHelper.success(res, 'success.closure.extended', closure, 200, req);
   }
 
   async endClosureEarly(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -151,7 +142,7 @@ export class BusinessClosureController {
 
     const closure = await this.businessClosureService.endClosureEarly(userId, id, closureEndDate);
 
-    res.json({ success: true, data: closure, message: 'Closure ended successfully' });
+    await this.responseHelper.success(res, 'success.closure.endedEarly', closure, 200, req);
   }
 
   async getClosuresByDateRange(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -176,11 +167,7 @@ export class BusinessClosureController {
 
     const closures = await this.businessClosureService.getClosuresByDateRange(userId, businessId, start, end);
 
-    res.json({
-      success: true,
-      data: closures,
-      meta: { total: closures.length, businessId, startDate: startDate as string, endDate: endDate as string }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.listRetrieved', closures, { total: closures.length, businessId, startDate: startDate as string, endDate: endDate as string }, 200, req);
   }
 
   async getClosuresByType(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -193,11 +180,7 @@ export class BusinessClosureController {
 
     const closures = await this.businessClosureService.getClosuresByType(userId, businessId, type as ClosureType);
 
-    res.json({
-      success: true,
-      data: closures,
-      meta: { total: closures.length, businessId, type }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.listRetrieved', closures, { total: closures.length, businessId, type }, 200, req);
   }
 
   async getClosureStats(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -215,11 +198,7 @@ export class BusinessClosureController {
 
     const stats = await this.businessClosureService.getClosureStats(userId, businessId, statsYear);
 
-    res.json({
-      success: true,
-      data: stats,
-      meta: { businessId, year: statsYear || 'all-time' }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.statsRetrieved', stats, { businessId, year: statsYear || 'all-time' }, 200, req);
   }
 
   async createRecurringHoliday(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -253,7 +232,7 @@ export class BusinessClosureController {
 
     const closure = await this.businessClosureService.createRecurringHoliday(userId, businessId, name.trim(), start, end);
 
-    res.status(201).json({ success: true, data: closure, message: 'Holiday closure created successfully' });
+    await this.responseHelper.success(res, 'success.closure.holidayCreated', closure, 201, req);
   }
 
   async getRecurringHolidays(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -262,11 +241,7 @@ export class BusinessClosureController {
 
     const holidays = await this.businessClosureService.getRecurringHolidays(userId, businessId);
 
-    res.json({
-      success: true,
-      data: holidays,
-      meta: { total: holidays.length, businessId }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.holidaysRetrieved', holidays, { total: holidays.length, businessId }, 200, req);
   }
 
   async getAffectedAppointments(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -293,11 +268,7 @@ export class BusinessClosureController {
 
     const appointments = await this.businessClosureService.getAffectedAppointments(userId, businessId, start, end);
 
-    res.json({
-      success: true,
-      data: appointments,
-      meta: { total: appointments.length, businessId, startDate: startDate as string, endDate: endDate as string }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.affectedAppointmentsRetrieved', appointments, { total: appointments.length, businessId, startDate: startDate as string, endDate: endDate as string }, 200, req);
   }
 
   async createEmergencyClosure(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -327,7 +298,7 @@ export class BusinessClosureController {
 
     const closure = await this.businessClosureService.createEmergencyClosure(userId, businessId, reason.trim(), start, duration);
 
-    res.status(201).json({ success: true, data: closure, message: 'Emergency closure created successfully' });
+    await this.responseHelper.success(res, 'success.closure.emergencyCreated', closure, 201, req);
   }
 
   async createMaintenanceClosure(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -354,7 +325,7 @@ export class BusinessClosureController {
 
     const closure = await this.businessClosureService.createMaintenanceClosure(userId, businessId, description.trim(), start, estimatedHours);
 
-    res.status(201).json({ success: true, data: closure, message: 'Maintenance closure created successfully' });
+    await this.responseHelper.success(res, 'success.closure.maintenanceCreated', closure, 201, req);
   }
 
   async getClosuresCalendar(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -381,21 +352,13 @@ export class BusinessClosureController {
 
     const calendar = await this.businessClosureService.getClosuresCalendar(userId, businessId, calendarYear, calendarMonth);
 
-    res.json({
-      success: true,
-      data: calendar,
-      meta: { businessId, year: calendarYear, month: calendarMonth }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.calendarRetrieved', calendar, { businessId, year: calendarYear, month: calendarMonth }, 200, req);
   }
 
-  async autoExpireClosures(_req: AuthenticatedRequest, res: Response): Promise<void> {
+  async autoExpireClosures(req: AuthenticatedRequest, res: Response): Promise<void> {
     const count = await this.businessClosureService.autoExpireClosures();
 
-    res.json({
-      success: true,
-      data: { expiredCount: count },
-      message: `Expired ${count} past closures`
-    });
+    await this.responseHelper.success(res, 'success.closure.autoExpired', { expiredCount: count }, 200, req);
   }
 
   // Context-aware methods
@@ -406,7 +369,7 @@ export class BusinessClosureController {
 
     const closure = await this.businessClosureService.createClosure(userId, businessId, validatedData);
 
-    res.status(201).json({ success: true, data: closure, message: 'Business closure created successfully' });
+    await this.responseHelper.success(res, 'success.closure.created', closure, 201, req);
   }
 
   async getMyBusinessClosures(req: BusinessContextRequest, res: Response): Promise<void> {
@@ -423,11 +386,7 @@ export class BusinessClosureController {
       closures = await this.businessClosureService.getBusinessClosures(userId, businessId);
     }
 
-    res.json({
-      success: true,
-      data: closures,
-      meta: { total: closures.length, businessId, filter: active || 'all' }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.listRetrieved', closures, { total: closures.length, businessId, filter: active || 'all' }, 200, req);
   }
 
   async createMyEmergencyClosure(req: BusinessContextRequest, res: Response): Promise<void> {
@@ -456,7 +415,7 @@ export class BusinessClosureController {
       type: ClosureType.EMERGENCY
     });
 
-    res.status(201).json({ success: true, data: closure, message: 'Emergency closure created successfully' });
+    await this.responseHelper.success(res, 'success.closure.emergencyCreated', closure, 201, req);
   }
 
   async createMyMaintenanceClosure(req: BusinessContextRequest, res: Response): Promise<void> {
@@ -475,7 +434,7 @@ export class BusinessClosureController {
       type: ClosureType.MAINTENANCE
     });
 
-    res.status(201).json({ success: true, data: closure, message: 'Maintenance closure created successfully' });
+    await this.responseHelper.success(res, 'success.closure.maintenanceCreated', closure, 201, req);
   }
 
   // Enhanced Closure System Endpoints
@@ -521,7 +480,7 @@ export class BusinessClosureController {
       }
     }
 
-    res.status(201).json({ success: true, data: closure, message: 'Enhanced closure created successfully' });
+    await this.responseHelper.success(res, 'success.closure.created', closure, 201, req);
   }
 
   async sendClosureNotifications(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -557,11 +516,7 @@ export class BusinessClosureController {
       results.push(result);
     }
 
-    res.json({
-      success: true,
-      data: { notificationsSent: results.length, results },
-      message: 'Notifications sent successfully'
-    });
+    await this.responseHelper.success(res, 'success.closure.notificationsSent', { notificationsSent: results.length, results }, 200, req);
   }
 
   async getAffectedAppointmentsForClosure(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -569,11 +524,7 @@ export class BusinessClosureController {
 
     const appointments = await this.appointmentRescheduleService.getAffectedAppointments(closureId);
 
-    res.json({
-      success: true,
-      data: appointments,
-      meta: { total: appointments.length, closureId }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.affectedAppointmentsRetrieved', appointments, { total: appointments.length, closureId }, 200, req);
   }
 
   async generateRescheduleSuggestions(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -605,11 +556,7 @@ export class BusinessClosureController {
       suggestions.push(...appointmentSuggestions);
     }
 
-    res.json({
-      success: true,
-      data: suggestions,
-      meta: { total: suggestions.length, closureId }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.rescheduleSuggestionsRetrieved', suggestions, { total: suggestions.length, closureId }, 200, req);
   }
 
   async autoRescheduleAppointments(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -633,11 +580,7 @@ export class BusinessClosureController {
       failed: results.filter(r => r.status === 'FAILED').length
     };
 
-    res.json({
-      success: true,
-      data: { results, statistics: stats },
-      message: 'Auto-reschedule process completed'
-    });
+    await this.responseHelper.success(res, 'success.closure.autoRescheduled', { results, statistics: stats }, 200, req);
   }
 
   async getClosureAnalytics(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -655,11 +598,7 @@ export class BusinessClosureController {
 
     const analytics = await this.closureAnalyticsService.getClosureImpactAnalytics(businessId, period);
 
-    res.json({
-      success: true,
-      data: analytics,
-      meta: { businessId, period }
-    });
+    await this.responseHelper.successWithMeta(res, 'success.closure.analyticsRetrieved', analytics, { businessId, period }, 200, req);
   }
 
   async getCustomerImpactReport(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -667,7 +606,7 @@ export class BusinessClosureController {
 
     const report = await this.closureAnalyticsService.getCustomerImpactReport(closureId);
 
-    res.json({ success: true, data: report });
+    await this.responseHelper.success(res, 'success.closure.customerImpactRetrieved', report, 200, req);
   }
 
   async getRevenueImpactAnalysis(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -695,7 +634,7 @@ export class BusinessClosureController {
 
     const impact = await this.closureAnalyticsService.getRevenueImpactAnalysis(businessId, closureData);
 
-    res.json({ success: true, data: impact });
+    await this.responseHelper.success(res, 'success.closure.revenueImpactRetrieved', impact, 200, req);
   }
 
   async createAvailabilityAlert(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -719,7 +658,7 @@ export class BusinessClosureController {
       alertRequest.notificationChannels
     );
 
-    res.status(201).json({ success: true, data: { alertId }, message: 'Availability alert created successfully' });
+    await this.responseHelper.success(res, 'success.closure.availabilityAlertCreated', { alertId }, 201, req);
   }
 
   async deactivateAvailabilityAlert(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -728,7 +667,7 @@ export class BusinessClosureController {
 
     await this.notificationService.deactivateAvailabilityAlert(alertId, userId);
 
-    res.json({ success: true, message: 'Availability alert deactivated successfully' });
+    await this.responseHelper.success(res, 'success.closure.availabilityAlertDeactivated', undefined, 200, req);
   }
 
   async getNotificationDeliveryStats(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -736,7 +675,7 @@ export class BusinessClosureController {
 
     const stats = await this.notificationService.getNotificationDeliveryStats(closureId);
 
-    res.json({ success: true, data: stats });
+    await this.responseHelper.success(res, 'success.closure.notificationStatsRetrieved', stats, 200, req);
   }
 
   async getRescheduleStatistics(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -744,7 +683,7 @@ export class BusinessClosureController {
 
     const stats = await this.appointmentRescheduleService.getRescheduleStatistics(closureId);
 
-    res.json({ success: true, data: stats });
+    await this.responseHelper.success(res, 'success.closure.rescheduleStatsRetrieved', stats, 200, req);
   }
 
   async getClosureImpactPreview(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -794,24 +733,20 @@ export class BusinessClosureController {
       };
     }
 
-    res.json({
-      success: true,
-      data: {
-        impactSummary: {
-          affectedAppointments: affectedAppointments.length,
-          uniqueCustomers: new Set(affectedAppointments.map(apt => apt.customerId)).size,
-          estimatedRevenueLoss: totalRevenue,
-          period: { startDate: start.toISOString(), endDate: end?.toISOString() }
-        },
-        affectedAppointments: affectedAppointments.slice(0, 10),
-        analytics,
-        recommendations: {
-          suggestNotifyCustomers: affectedAppointments.length > 0,
-          suggestReschedule: affectedAppointments.length > 0,
-          highImpact: affectedAppointments.length > 5 || totalRevenue > 1000
-        }
+    await this.responseHelper.success(res, 'success.closure.impactPreviewGenerated', {
+      impactSummary: {
+        affectedAppointments: affectedAppointments.length,
+        uniqueCustomers: new Set(affectedAppointments.map(apt => apt.customerId)).size,
+        estimatedRevenueLoss: totalRevenue,
+        period: { startDate: start.toISOString(), endDate: end?.toISOString() }
       },
-      message: 'Closure impact preview generated successfully'
-    });
+      affectedAppointments: affectedAppointments.slice(0, 10),
+      analytics,
+      recommendations: {
+        suggestNotifyCustomers: affectedAppointments.length > 0,
+        suggestReschedule: affectedAppointments.length > 0,
+        highImpact: affectedAppointments.length > 5 || totalRevenue > 1000
+      }
+    }, 200, req);
   }
 }

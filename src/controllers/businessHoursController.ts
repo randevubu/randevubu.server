@@ -103,7 +103,7 @@ export class BusinessHoursController {
       }
     );
 
-    res.json({ success: true, data: result });
+    await this.responseHelper.success(res, 'success.business.affectedAppointmentsRetrieved', result, 200, req);
   }
 
   async bulkCancelAppointments(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -116,7 +116,7 @@ export class BusinessHoursController {
     }
 
     const result = await this.businessService.bulkCancelForScheduleChange(userId, businessId, appointmentIds, reason);
-    res.json({ success: true, data: result });
+    await this.responseHelper.success(res, 'success.appointment.batchCancelled', result, 200, req);
   }
 
   async getBusinessHoursOverrides(req: AuthenticatedRequest, res: Response): Promise<void> {

@@ -1,12 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { RepositoryContainer } from '../repositories';
-import { 
-  ForbiddenError, 
-  NotFoundError,
+import {
   BusinessError,
-  ValidationError,
-  ErrorContext 
-} from '../types/errors';
+  ErrorContext
+} from '../utils/errors/baseError';
+import { AppError } from '../types/responseTypes';
 import { ERROR_CODES } from '../constants/errorCodes';
 import logger from "../utils/Logger/logger";
 /**
@@ -53,7 +51,7 @@ export class BusinessValidationMiddleware {
           userId,
           context
         });
-        throw new NotFoundError('Business not found', context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
+        throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
       }
 
       if (!business.isActive) {
@@ -74,10 +72,7 @@ export class BusinessValidationMiddleware {
           businessName: business.name,
           context
         });
-        throw new ForbiddenError(
-          'Unauthorized: You can only access your own business',
-          context
-        );
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'Unauthorized: You can only access your own business' });
       }
 
       // Log successful ownership validation
@@ -89,21 +84,19 @@ export class BusinessValidationMiddleware {
       });
 
     } catch (error) {
-      if (error instanceof NotFoundError || 
-          error instanceof BusinessError || 
-          error instanceof ValidationError || 
-          error instanceof ForbiddenError) {
+      if (error instanceof AppError ||
+          error instanceof BusinessError) {
         throw error;
       }
-      
+
       logger.error('Business ownership validation failed', {
         businessId,
         userId,
         error: error instanceof Error ? error.message : 'Unknown error',
         context
       });
-      
-        throw new ValidationError('Business validation failed', undefined, undefined, context);
+
+        throw new AppError('VALIDATION_ERROR', { message: 'Business validation failed' });
     }
   }
 
@@ -133,7 +126,7 @@ export class BusinessValidationMiddleware {
           userId,
           context
         });
-        throw new NotFoundError('Business not found', context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
+        throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
       }
 
       if (!business.isActive) {
@@ -148,7 +141,7 @@ export class BusinessValidationMiddleware {
 
       // Check if user is owner
       const isOwner = business.ownerId === userId;
-      
+
       // Check if user is staff member
       const isStaffMember = await this.repositories.staffRepository.checkUserExistsInBusiness(
         businessId,
@@ -163,10 +156,7 @@ export class BusinessValidationMiddleware {
           businessName: business.name,
           context
         });
-        throw new ForbiddenError(
-          'You do not have access to this business',
-          context
-        );
+        throw new AppError('NO_BUSINESS_ACCESS', { message: 'You do not have access to this business' });
       }
 
       // Log successful access validation
@@ -179,21 +169,19 @@ export class BusinessValidationMiddleware {
       });
 
     } catch (error) {
-      if (error instanceof NotFoundError || 
-          error instanceof BusinessError ||
-          error instanceof ValidationError || 
-          error instanceof ForbiddenError) {
+      if (error instanceof AppError ||
+          error instanceof BusinessError) {
         throw error;
       }
-      
+
       logger.error('Business access validation failed', {
         businessId,
         userId,
         error: error instanceof Error ? error.message : 'Unknown error',
         context
       });
-      
-        throw new ValidationError('Business access validation failed', undefined, undefined, context);
+
+        throw new AppError('VALIDATION_ERROR', { message: 'Business access validation failed' });
     }
   }
 
@@ -221,7 +209,7 @@ export class BusinessValidationMiddleware {
           businessId,
           context
         });
-        throw new NotFoundError('Business not found', context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
+        throw new AppError('BUSINESS_NOT_FOUND', { message: 'Business not found' });
       }
 
       if (!business.isActive) {
@@ -240,17 +228,17 @@ export class BusinessValidationMiddleware {
       };
 
     } catch (error) {
-      if (error instanceof NotFoundError || error instanceof BusinessError || error instanceof ValidationError) {
+      if (error instanceof AppError || error instanceof BusinessError) {
         throw error;
       }
-      
+
       logger.error('Business active validation failed', {
         businessId,
         error: error instanceof Error ? error.message : 'Unknown error',
         context
       });
-      
-        throw new ValidationError('Business validation failed', undefined, undefined, context);
+
+        throw new AppError('VALIDATION_ERROR', { message: 'Business validation failed' });
     }
   }
 
@@ -285,7 +273,7 @@ export class BusinessValidationMiddleware {
           userId,
           context
         });
-        throw new NotFoundError(`Businesses not found: ${notFoundIds.join(', ')}`, context, { additionalData: { errorCode: ERROR_CODES.BUSINESS_NOT_FOUND } });
+        throw new AppError('BUSINESS_NOT_FOUND', { message: `Businesses not found: ${notFoundIds.join(', ')}` });
       }
 
       const notOwnedBusinesses = businesses.filter(b => b.ownerId !== userId);
@@ -295,10 +283,7 @@ export class BusinessValidationMiddleware {
           userId,
           context
         });
-        throw new ForbiddenError(
-          `You do not own these businesses: ${notOwnedBusinesses.map(b => b.name).join(', ')}`,
-          context
-        );
+        throw new AppError('BUSINESS_ACCESS_DENIED', { message: `You do not own these businesses: ${notOwnedBusinesses.map(b => b.name).join(', ')}` });
       }
 
       // Log successful batch validation
@@ -310,18 +295,18 @@ export class BusinessValidationMiddleware {
       });
 
     } catch (error) {
-      if (error instanceof NotFoundError || error instanceof ForbiddenError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      
+
       logger.error('Multiple business ownership validation failed', {
         businessIds,
         userId,
         error: error instanceof Error ? error.message : 'Unknown error',
         context
       });
-      
-        throw new ValidationError('Multiple business validation failed', undefined, undefined, context);
+
+        throw new AppError('VALIDATION_ERROR', { message: 'Multiple business validation failed' });
     }
   }
 

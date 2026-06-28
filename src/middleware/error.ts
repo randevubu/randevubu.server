@@ -4,10 +4,9 @@ import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
 
 import { config } from '../config/environment';
-import { BaseError, ErrorContext } from '../types/errors';
+import { BaseError, ErrorContext } from '../utils/errors/baseError';
 import { AppError, ErrorResponse } from '../types/responseTypes';
 import { getCatalogEntry, CatalogEntry } from '../constants/errorCodes';
-import { CustomError } from '../utils/errors/customError';
 import { convertZodError } from '../utils/errors/zodError';
 import { convertPrismaError } from '../utils/errors/prismaError';
 import { TranslationService } from '../services/core/translationService';
@@ -67,12 +66,12 @@ function toAppError(err: unknown): AppError {
   }
 
   // Legacy CustomError family
-  if (err instanceof CustomError) {
+/*   if (err instanceof CustomError) {
     return new AppError(err.name, {
       message: err.message,
       statusCode: err.statusCode,
     });
-  }
+  } */
 
   // Unknown / plain Error
   const message = err instanceof Error ? err.message : String(err);
@@ -103,26 +102,40 @@ export const errorHandler = async (
   const logSeverity = appError.severity === 'error' ? 'error' : 'warn';
 
   // ── Log ──────────────────────────────────────────────────────────────────
+  const authReq = req as AuthenticatedRequest;
   const logPayload: Record<string, unknown> = {
     requestId,
     statusCode: appError.statusCode,
     code: appError.code,
-    url: req.url,
+    isOperational: appError.isOperational,
+    url: req.originalUrl || req.url,
     method: req.method,
-    ip: req.ip,
+    ip: req.ip || req.socket?.remoteAddress,
     userAgent: req.get('user-agent'),
-    userId: (req as AuthenticatedRequest).user?.id,
+    userId: authReq.user?.id,
+    businessId: (req as any).businessId || req.params?.businessId,
+    internalMessage: appError.message,
+    params: appError.params,
+    details: appError.details,
+    errorType: err.constructor.name,
+    timestamp: new Date().toISOString(),
   };
 
-  if (config.NODE_ENV === 'development') {
-    logPayload.internalMessage = appError.message;
-    if (appError.details) logPayload.details = appError.details;
-    if (appError.statusCode >= 500) logPayload.stack = err.stack;
-  } else if (appError.statusCode >= 500) {
-    logPayload.errorType = err.constructor.name;
+  if (req.body && Object.keys(req.body).length > 0) {
+    const { password, token, secret, cardNumber, cvv, ...safeBody } = req.body;
+    logPayload.requestBody = safeBody;
   }
 
-  logger[logSeverity](`[${requestId}] ${appError.message}`, logPayload);
+  if (req.query && Object.keys(req.query).length > 0) {
+    logPayload.requestQuery = req.query;
+  }
+
+  if (appError.statusCode >= 500) {
+    logPayload.stack = err.stack;
+    logPayload.originalError = err !== appError ? err.message : undefined;
+  }
+
+  logger[logSeverity](`[${requestId}] ${appError.code}: ${appError.message}`, logPayload);
 
   // ── Translate ────────────────────────────────────────────────────────────
   let language = getLanguageFromRequest(req);

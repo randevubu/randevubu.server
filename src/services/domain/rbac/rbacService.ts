@@ -1,10 +1,5 @@
 import { RepositoryContainer } from "../../../repositories";
-import {
-  ErrorContext,
-  ForbiddenError,
-  UserNotFoundError,
-  ValidationError,
-} from "../../../types/errors";
+import { ErrorContext } from "../../../utils/errors/baseError";
 import { AppError } from "../../../types/responseTypes";
 
 import { Permission, Role, UserPermissions } from '../../../types/rbac';
@@ -59,7 +54,7 @@ export class RBACService {
   // Enhanced input validation with security checks
   private validateUserId(userId: string): void {
     if (!userId || typeof userId !== "string") {
-      throw new ValidationError("Invalid userId provided");
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid userId provided' });
     }
 
     const trimmedUserId = userId.trim();
@@ -67,17 +62,17 @@ export class RBACService {
       trimmedUserId.length === 0 ||
       trimmedUserId.length > SECURITY_CONSTANTS.MAX_USER_ID_LENGTH
     ) {
-      throw new ValidationError("Invalid userId length");
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid userId length' });
     }
 
     if (SECURITY_CONSTANTS.INVALID_INPUT_PATTERNS.test(trimmedUserId)) {
-      throw new ValidationError("Invalid characters in userId");
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid characters in userId' });
     }
   }
 
   private validateRoleName(roleName: string): void {
     if (!roleName || typeof roleName !== "string") {
-      throw new ValidationError("Invalid role name provided");
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid role name provided' });
     }
 
     const trimmedRoleName = roleName.trim();
@@ -85,11 +80,11 @@ export class RBACService {
       trimmedRoleName.length === 0 ||
       trimmedRoleName.length > SECURITY_CONSTANTS.MAX_ROLE_NAME_LENGTH
     ) {
-      throw new ValidationError("Invalid role name length");
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid role name length' });
     }
 
     if (SECURITY_CONSTANTS.INVALID_INPUT_PATTERNS.test(trimmedRoleName)) {
-      throw new ValidationError("Invalid characters in role name");
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid characters in role name' });
     }
   }
 
@@ -100,21 +95,21 @@ export class RBACService {
       typeof resource !== "string" ||
       typeof action !== "string"
     ) {
-      throw new ValidationError("Invalid resource or action provided");
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid resource or action' });
     }
 
     if (
       resource.length > SECURITY_CONSTANTS.MAX_RESOURCE_LENGTH ||
       action.length > SECURITY_CONSTANTS.MAX_ACTION_LENGTH
     ) {
-      throw new ValidationError("Resource or action too long");
+      throw new AppError('VALIDATION_ERROR', { message: 'Resource or action too long' });
     }
 
     if (
       SECURITY_CONSTANTS.INVALID_INPUT_PATTERNS.test(resource) ||
       SECURITY_CONSTANTS.INVALID_INPUT_PATTERNS.test(action)
     ) {
-      throw new ValidationError("Invalid characters in resource or action");
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid characters' });
     }
   }
 
@@ -477,7 +472,7 @@ export class RBACService {
       });
 
       // For validation errors, return false (expected behavior)
-      if (error instanceof ValidationError) {
+      if (error instanceof AppError && error.code === 'VALIDATION_ERROR') {
         return false;
       }
 
@@ -497,9 +492,9 @@ export class RBACService {
       typeof permission !== "string" ||
       !permission.includes(":")
     ) {
-      throw new ValidationError(
-        "Invalid permission format. Expected 'resource:action'"
-      );
+      throw new AppError('VALIDATION_ERROR', {
+        message: "Invalid permission format. Expected 'resource:action'",
+      });
     }
 
     const [resource, action] = permission.split(":", 2);
@@ -511,10 +506,7 @@ export class RBACService {
     );
 
     if (!hasPermission) {
-      throw new ForbiddenError(
-        "Permission denied",
-        errorContext || { userId, timestamp: new Date() }
-      );
+      throw new AppError('INSUFFICIENT_PERMISSIONS', { message: 'Permission denied' });
     }
   }
 
@@ -536,7 +528,7 @@ export class RBACService {
       });
 
       // For validation errors, return false (expected behavior)
-      if (error instanceof ValidationError) {
+      if (error instanceof AppError && error.code === 'VALIDATION_ERROR') {
         return false;
       }
 
@@ -555,10 +547,7 @@ export class RBACService {
 
     const hasRole = await this.hasRole(userId, roleName);
     if (!hasRole) {
-      throw new ForbiddenError(
-        "Role required",
-        errorContext || { userId, timestamp: new Date() }
-      );
+      throw new AppError('INSUFFICIENT_PERMISSIONS', { message: 'Role required' });
     }
   }
 
@@ -574,29 +563,23 @@ export class RBACService {
       minLevel < 0 ||
       !Number.isInteger(minLevel)
     ) {
-      throw new ValidationError("Invalid minimum level provided");
+      throw new AppError('VALIDATION_ERROR', { message: 'Invalid minimum level provided' });
     }
 
     try {
       const userPermissions = await this.getUserPermissions(userId);
       if (userPermissions.effectiveLevel < minLevel) {
-        throw new ForbiddenError(
-          "Insufficient role level",
-          errorContext || { userId, timestamp: new Date() }
-        );
+        throw new AppError('INSUFFICIENT_PERMISSIONS', { message: 'Insufficient role level' });
       }
     } catch (error) {
-      if (error instanceof ForbiddenError) throw error;
+      if (error instanceof AppError) throw error;
       logger.error("Level check failed", {
         userId,
         minLevel,
         error: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString(),
       });
-      throw new ForbiddenError(
-        "Access denied",
-        errorContext || { userId, timestamp: new Date() }
-      );
+      throw new AppError('ACCESS_DENIED', { message: 'Access denied' });
     }
   }
 
@@ -618,7 +601,7 @@ export class RBACService {
         isNaN(expiresAt.getTime()) ||
         expiresAt <= new Date())
     ) {
-      throw new ValidationError("Invalid expiration date");
+      throw new AppError('INVALID_DATE_FORMAT', { message: 'Invalid expiration date' });
     }
 
     try {
@@ -633,7 +616,7 @@ export class RBACService {
 
       if (grantorPermissions !== null) {
         if (grantorPermissions.effectiveLevel < SECURITY_CONSTANTS.MIN_LEVEL_THRESHOLD) {
-          throw new ForbiddenError("Insufficient permissions to assign roles");
+          throw new AppError('INSUFFICIENT_PERMISSIONS', { message: 'Insufficient permissions to assign roles' });
         }
       }
 
@@ -645,14 +628,12 @@ export class RBACService {
       }
 
       if (!role || !role.isActive) {
-        throw new UserNotFoundError("Role not found or inactive");
+        throw new AppError('ROLE_NOT_FOUND', { message: 'Role not found or inactive' });
       }
 
       // Prevent privilege escalation: grantor cannot assign a role with higher level than their own
       if (grantorPermissions !== null && role.level > grantorPermissions.effectiveLevel) {
-        throw new ForbiddenError(
-          "Cannot assign a role with a higher permission level than your own"
-        );
+        throw new AppError('ROLE_LEVEL_EXCEEDED', { message: 'Cannot assign role with higher level' });
       }
 
       // Check if user already has this role
@@ -660,7 +641,7 @@ export class RBACService {
         userId
       );
       if (userRoles.some((ur) => ur.id === role.id)) {
-        throw new ValidationError("User already has this role");
+        throw new AppError('ROLE_ALREADY_ASSIGNED', { message: 'User already has this role' });
       }
 
       await this.repositories.roleRepository.assignRoleToUser(
@@ -710,14 +691,14 @@ export class RBACService {
         SECURITY_CONSTANTS.MIN_LEVEL_THRESHOLD
       ) {
         // Minimum level for role revocation
-        throw new ForbiddenError("Insufficient permissions to revoke roles");
+        throw new AppError('INSUFFICIENT_PERMISSIONS', { message: 'Insufficient permissions to revoke roles' });
       }
 
       const userRoles = await this.repositories.roleRepository.getUserRoles(
         userId
       );
       if (!userRoles.some((ur) => ur.id === roleId)) {
-        throw new UserNotFoundError("User role assignment not found");
+        throw new AppError('ROLE_NOT_ASSIGNED', { message: 'User role assignment not found' });
       }
 
       await this.repositories.roleRepository.revokeRoleFromUser(userId, roleId);

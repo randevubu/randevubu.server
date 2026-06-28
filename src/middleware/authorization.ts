@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { RBACService } from "../services/domain/rbac";
-import { ErrorContext, ForbiddenError } from "../types/errors";
+import { ErrorContext } from "../utils/errors/baseError";
+import { AppError } from '../types/responseTypes';
 import { AuthenticatedRequest } from "../types/request";
 import logger from "../utils/Logger/logger";
 export interface AuthorizationOptions {
@@ -48,7 +49,7 @@ export class AuthorizationMiddleware {
           if (options.skipIfNoUser) {
             return next();
           }
-          throw new ForbiddenError("Authentication required", context);
+          throw new AppError('UNAUTHORIZED', { message: 'Authentication required' });
         }
 
         // Get context for permission evaluation
@@ -100,7 +101,7 @@ export class AuthorizationMiddleware {
         const context = this.createErrorContext(req, req.user?.id);
 
         if (!req.user) {
-          throw new ForbiddenError("Authentication required", context);
+          throw new AppError('UNAUTHORIZED', { message: 'Authentication required' });
         }
 
         const userRoles = await this.rbacService.getUserRoles(req.user.id);
@@ -115,10 +116,7 @@ export class AuthorizationMiddleware {
             ? requirement.roles.join(" AND ")
             : requirement.roles.join(" OR ");
 
-          throw new ForbiddenError(
-            `Required role(s): ${requiredRolesStr}`,
-            context
-          );
+          throw new AppError('INSUFFICIENT_PERMISSIONS', { message: `Required role(s): ${requiredRolesStr}` });
         }
 
         logger.debug("Role authorization passed", {
@@ -151,7 +149,7 @@ export class AuthorizationMiddleware {
         const context = this.createErrorContext(req, req.user?.id);
 
         if (!req.user) {
-          throw new ForbiddenError("Authentication required", context);
+          throw new AppError('UNAUTHORIZED', { message: 'Authentication required' });
         }
 
         await this.rbacService.requireMinLevel(
@@ -194,7 +192,7 @@ export class AuthorizationMiddleware {
         const context = this.createErrorContext(req, req.user?.id);
 
         if (!req.user) {
-          throw new ForbiddenError("Authentication required", context);
+          throw new AppError('UNAUTHORIZED', { message: 'Authentication required' });
         }
 
         let isOwner = false;
@@ -215,10 +213,7 @@ export class AuthorizationMiddleware {
         }
 
         if (!isOwner) {
-          throw new ForbiddenError(
-            "Resource access denied - ownership required",
-            context
-          );
+          throw new AppError('ACCESS_DENIED', { message: 'Resource access denied - ownership required' });
         }
 
         next();
@@ -276,7 +271,7 @@ export class AuthorizationMiddleware {
         errorCount: errors.length,
       });
 
-      next(new ForbiddenError("Access denied", context));
+      next(new AppError('ACCESS_DENIED', { message: 'Access denied' }));
     };
   }
 
@@ -313,10 +308,7 @@ export class AuthorizationMiddleware {
     const hasAny = await this.rbacService.requireAny(userId, permissions, context);
 
     if (!hasAny) {
-      throw new ForbiddenError(
-        `One of these permissions is required: ${permissions.join(', ')}`,
-        errorContext || { userId, timestamp: new Date() }
-      );
+      throw new AppError('INSUFFICIENT_PERMISSIONS', { message: `One of these permissions is required: ${permissions.join(', ')}` });
     }
   }
 
@@ -402,10 +394,7 @@ export class AuthorizationMiddleware {
     );
 
     if (!hasBusinessPermission) {
-      throw new ForbiddenError(
-        'You do not have permission to perform this action on this business',
-        errorContext || { userId, timestamp: new Date() }
-      );
+      throw new AppError('BUSINESS_ACCESS_DENIED', { message: 'You do not have permission to perform this action on this business' });
     }
   }
 
@@ -443,10 +432,7 @@ export class AuthorizationMiddleware {
     );
 
     if (!hasStaffPermission) {
-      throw new ForbiddenError(
-        'You do not have staff permission to perform this action',
-        errorContext || { userId, timestamp: new Date() }
-      );
+      throw new AppError('STAFF_ACCESS_DENIED', { message: 'You do not have staff permission to perform this action' });
     }
   }
 
@@ -476,10 +462,7 @@ export class AuthorizationMiddleware {
     );
 
     if (!hasBusinessAccess) {
-      throw new ForbiddenError(
-        'You do not have permission to perform this action for this customer',
-        errorContext || { userId, timestamp: new Date() }
-      );
+      throw new AppError('CUSTOMER_ACCESS_DENIED', { message: 'You do not have permission to perform this action for this customer' });
     }
   }
 }

@@ -4,7 +4,7 @@ import {
   ForbiddenError, 
   ValidationError,
   ErrorContext 
-} from '../types/errors';
+} from '../utils/errors/baseError';
 import logger from "../utils/Logger/logger";
 /**
  * PermissionMiddleware

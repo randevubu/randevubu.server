@@ -1,4 +1,4 @@
-export class CustomError extends Error {
+/* export class CustomError extends Error {
   constructor(message: string, public statusCode: number, public data?: any) {
       super(message);
       this.name = this.constructor.name;
@@ -413,7 +413,7 @@ export class PasswordIsRequiredError extends CustomError {
 
 
 export class CategoryWithSelectedSubcategoriesNotFoundError extends CustomError {
-  constructor(message: string = "Category with selected subcategory not found", data?: any, statusCode: number = 404) {
+  constructor(message: string = "Category with selected subcategory not found", data?: any, statusCode: number = 405) {
     super(message, statusCode, data);
     this.name = 'CategoryWithSelectedSubcategoriesNotFoundError';
   }
@@ -421,8 +421,9 @@ export class CategoryWithSelectedSubcategoriesNotFoundError extends CustomError 
 
 
 export class FailedToSendVerificationEmailError extends CustomError {
-  constructor(message: string = "Failed to send verification email", data?: any, statusCode: number = 500) {
+  constructor(message: string = "Failed to send verification email", data?: any, statusCode: number = 501) {
     super(message, statusCode, data);
     this.name = 'FailedToSendVerificationEmailError';
   }
 }
+ */

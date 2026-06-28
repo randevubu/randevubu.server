@@ -10,7 +10,7 @@ import {
   VerificationCodeExpiredError,
   VerificationCodeInvalidError,
   VerificationMaxAttemptsError,
-} from "../../../types/errors";
+} from "../../../utils/errors/baseError";
 
 import { SMSMessageTemplates } from "../../../utils/smsMessageTemplates";
 import { SMSService } from "./smsService";

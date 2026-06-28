@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
-import { CustomError } from "../errors/customError";
+import { BaseError } from "../errors/baseError";
 import Logger from "./logger";
 
 interface RequestDetails {
@@ -50,7 +50,7 @@ export function logError(
   const isExpectedError =
     error instanceof z.ZodError ||
     error instanceof Prisma.PrismaClientKnownRequestError ||
-    error instanceof CustomError;
+    error instanceof BaseError;
 
   const errorLog = {
     requestId: meta.requestId,
