@@ -520,6 +520,10 @@ export class TranslationService {
         'errors.business.photoNotFound': 'Fotoğraf bulunamadı',
         'errors.business.ruleViolation': 'İş kuralı ihlali',
         'errors.business.storageLimitExceeded': 'Depolama limiti aşıldı',
+        'errors.business.googlePlaceNotFound': 'Bu işletme için Google Place ID bulunamadı',
+        'errors.business.googlePlacesApiError': 'Google Haritalar servisine ulaşılamadı',
+        'errors.business.googleSyncRateLimited': 'Google senkronizasyon limitine ulaştınız. {{daysRemaining}} gün sonra tekrar deneyiniz.',
+        'errors.business.googlePlaceAlreadyLinked': 'Bu Google Haritalar konumu zaten başka bir işletmeye bağlı.',
         'errors.businessType.notFound': 'İş yeri türü bulunamadı',
 
         // User Errors
@@ -1049,6 +1053,10 @@ export class TranslationService {
         'errors.business.photoNotFound': 'Photo not found',
         'errors.business.ruleViolation': 'Business rule violation',
         'errors.business.storageLimitExceeded': 'Storage limit exceeded',
+        'errors.business.googlePlaceNotFound': 'No Google Place ID found for this business',
+        'errors.business.googlePlacesApiError': 'Could not reach Google Maps service',
+        'errors.business.googleSyncRateLimited': 'You have reached the Google sync limit. Please try again in {{daysRemaining}} days.',
+        'errors.business.googlePlaceAlreadyLinked': 'This Google Maps location is already linked to another business.',
         'errors.businessType.notFound': 'Business type not found',
 
         // User Errors

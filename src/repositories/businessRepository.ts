@@ -1954,6 +1954,7 @@ export class BusinessRepository {
     googleAverageRating: number | null;
     googleTotalRatings: number | null;
     reviewsHidden: boolean;
+    googleSyncCooldownUntil: Date | null;
   } | null> {
     const business = await (this.prisma.business.findUnique as any)({
       where: { id: businessId },
@@ -1972,6 +1973,7 @@ export class BusinessRepository {
         googleAverageRating: true,
         googleTotalRatings: true,
         reviewsHidden: true,
+        googleSyncCooldownUntil: true,
       }
     });
 
@@ -1994,6 +1996,7 @@ export class BusinessRepository {
       googleAverageRating: business.googleAverageRating ?? null,
       googleTotalRatings: business.googleTotalRatings ?? null,
       reviewsHidden: business.reviewsHidden ?? false,
+      googleSyncCooldownUntil: business.googleSyncCooldownUntil ?? null,
     };
   }
 

@@ -24,7 +24,7 @@ export async function seedSubscriptionPlans() {
       name: 'basic_tier1',
       displayName: 'Basic Plan - Tier 1',
       description: 'Perfect for small businesses in major cities',
-      price: 949.00,
+      price: 999.00,
       currency: 'TRY',
       billingInterval: 'MONTHLY',
       maxBusinesses: 1,

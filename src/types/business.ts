@@ -552,6 +552,8 @@ export interface UpdateAppointmentRequest {
   customerNotes?: string;
   internalNotes?: string;
   cancelReason?: string;
+  /** Business-only override: who actually initiated the cancellation (defaults to BUSINESS when a staff/owner cancels) */
+  cancelledByOverride?: 'CUSTOMER' | 'BUSINESS';
 }
 
 export interface AddStaffRequest {

@@ -104,7 +104,7 @@ export class StartupService {
             name: 'basic_tier1',
             displayName: 'Basic Plan',
             description: 'Perfect for small businesses in major cities',
-            price: 949.00,
+            price: 999.00,
             currency: 'TRY',
             billingInterval: 'MONTHLY',
             maxBusinesses: 1,

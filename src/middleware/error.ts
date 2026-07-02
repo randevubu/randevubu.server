@@ -172,7 +172,7 @@ export const errorHandler = async (
   }
 
   // ── Build whitelisted params for client ──────────────────────────────────
-  const ALLOWED_PARAMS = ['field', 'retryAfter', 'cooldownSeconds', 'attemptCount', 'maxAttempts'];
+  const ALLOWED_PARAMS = ['field', 'retryAfter', 'cooldownSeconds', 'attemptCount', 'maxAttempts', 'daysRemaining', 'retryAt'];
   let clientParams: Record<string, unknown> | undefined;
   if (appError.params) {
     const filtered: Record<string, unknown> = {};

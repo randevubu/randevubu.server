@@ -32,6 +32,8 @@ interface GoogleIntegrationResponse {
   };
   googleAverageRating?: number | null;
   googleTotalRatings?: number | null;
+  googleSyncCooldownUntil?: Date | null;
+  googleSyncDaysRemaining?: number | null;
   googleReviews: GoogleReviewItem[];
   urls: {
     maps?: string;
@@ -157,6 +159,13 @@ export class GoogleIntegrationController {
 
     const googleReviews = await this.businessService.getGoogleReviews(id);
 
+    const cooldownUntil = (settings as any).googleSyncCooldownUntil ?? null;
+    const now = new Date();
+    const isCooldownActive = cooldownUntil && new Date(cooldownUntil) > now;
+    const daysRemaining = isCooldownActive
+      ? Math.ceil((new Date(cooldownUntil).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+
     const responseData: GoogleIntegrationResponse = {
       googlePlaceId: settings.googlePlaceId,
       googleOriginalUrl: settings.googleOriginalUrl,
@@ -174,6 +183,8 @@ export class GoogleIntegrationController {
       },
       googleAverageRating: settings.googleAverageRating,
       googleTotalRatings: settings.googleTotalRatings,
+      googleSyncCooldownUntil: isCooldownActive ? cooldownUntil : null,
+      googleSyncDaysRemaining: daysRemaining,
       googleReviews,
       urls,
     };

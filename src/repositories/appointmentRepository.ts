@@ -469,6 +469,15 @@ export class AppointmentRepository {
         gte: startOfDay,
         lte: endOfDay
       };
+    } else if (filters?.startDate || filters?.endDate) {
+      const dateFilter: Record<string, Date> = {};
+      if (filters.startDate) {
+        dateFilter.gte = createDateTimeInIstanbul(filters.startDate, '00:00');
+      }
+      if (filters.endDate) {
+        dateFilter.lte = createDateTimeInIstanbul(filters.endDate, '23:59');
+      }
+      whereClause.date = dateFilter;
     }
     if (filters?.businessId) {
       whereClause.businessId = filters.businessId;
@@ -749,7 +758,8 @@ export class AppointmentRepository {
   }
 
   async update(id: string, data: UpdateAppointmentRequest): Promise<AppointmentData> {
-    const updateData: Record<string, unknown> = { ...data };
+    const { cancelledByOverride: _cancelledByOverride, ...rest } = data;
+    const updateData: Record<string, unknown> = { ...rest };
 
     // Whenever the start time changes, startTime, endTime and the denormalized
     // `date` column MUST be recalculated together. `startTime` can arrive as:
@@ -1789,6 +1799,24 @@ export class AppointmentRepository {
       data: {
         status: AppointmentStatus.COMPLETED,
         completedAt: now,
+        updatedAt: now,
+      },
+    });
+
+    // Also promote CONFIRMED → IN_PROGRESS for appointments that have started but not ended
+    const promoteWhere: Prisma.AppointmentWhereInput = {
+      status: AppointmentStatus.CONFIRMED,
+      startTime: { lte: now },
+      endTime: { gt: now },
+    };
+    if (filter.appointmentId) promoteWhere.id = filter.appointmentId;
+    if (filter.customerId) promoteWhere.customerId = filter.customerId;
+    if (filter.businessId) promoteWhere.businessId = filter.businessId;
+
+    await this.prisma.appointment.updateMany({
+      where: promoteWhere,
+      data: {
+        status: AppointmentStatus.IN_PROGRESS,
         updatedAt: now,
       },
     });

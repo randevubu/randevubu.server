@@ -332,7 +332,7 @@ export class AppointmentController {
 
   async updateAppointmentStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
       const { id } = req.params;
-      const { status } = req.body;
+      const { status, cancelledBy } = req.body;
       const userId = req.user!.id;
 
       // Validate appointment ID
@@ -351,7 +351,13 @@ export class AppointmentController {
         throw new AppError('VALIDATION_ERROR', { message: `Invalid status. Must be one of: ${Object.values(AppointmentStatus).join(', ')}` });
       }
 
-      const appointment = await this.appointmentService.updateAppointment(userId, id, { status });
+      // Optional override: lets a business user record that the CUSTOMER asked to cancel
+      // (vs. the business cancelling on its own initiative). Only meaningful for CANCELED.
+      if (cancelledBy !== undefined && !['CUSTOMER', 'BUSINESS'].includes(cancelledBy)) {
+        throw new AppError('VALIDATION_ERROR', { message: 'cancelledBy must be CUSTOMER or BUSINESS' });
+      }
+
+      const appointment = await this.appointmentService.updateAppointment(userId, id, { status, cancelledByOverride: cancelledBy });
 
       await this.responseHelper.success(
         res,

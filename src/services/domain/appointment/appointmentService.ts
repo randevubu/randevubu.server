@@ -125,7 +125,8 @@ export class AppointmentService {
     appointmentDateTime: Date,
     customerId?: string,
     serviceDuration?: number,
-    serviceMinAdvanceBooking?: number
+    serviceMinAdvanceBooking?: number,
+    isBusinessUser?: boolean
   ): Promise<void> {
     const business = await this.businessRepository.findById(businessId);
     if (!business) {
@@ -144,8 +145,8 @@ export class AppointmentService {
 
     const now = new Date();
 
-    // 0. Check if appointment is in the past
-    if (appointmentDateTime <= now) {
+    // 0. Check if appointment is in the past (business users can fill same-day past slots)
+    if (!isBusinessUser && appointmentDateTime <= now) {
       throw new AppError(
         'Cannot book appointment in the past',
         400,
@@ -153,12 +154,23 @@ export class AppointmentService {
       );
     }
 
-    // 1. Check maximum advance booking days (calendar days: today = 0, tomorrow = 1, …)
+    if (isBusinessUser && appointmentDateTime <= now) {
+      const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+      if (appointmentDateTime < todayStart) {
+        throw new AppError(
+          'Cannot book appointment on past days',
+          400,
+          ERROR_CODES.APPOINTMENT_PAST_DATE
+        );
+      }
+    }
+
+    // 1. Check maximum advance booking days (skip for business users)
     const todayMidnight = new Date(now); todayMidnight.setHours(0, 0, 0, 0);
     const apptMidnight = new Date(appointmentDateTime); apptMidnight.setHours(0, 0, 0, 0);
     const daysDifference = Math.round((apptMidnight.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (daysDifference > rules.maxAdvanceBookingDays) {
+    if (!isBusinessUser && daysDifference > rules.maxAdvanceBookingDays) {
       throw new AppError(
         `Cannot book more than ${rules.maxAdvanceBookingDays} days in advance`,
         400,
@@ -168,11 +180,11 @@ export class AppointmentService {
       );
     }
 
-    // 2. Check minimum advance booking - use service setting if provided, otherwise business setting
+    // 2. Check minimum advance booking (skip for business users)
     const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     const minAdvanceHours = serviceMinAdvanceBooking !== undefined ? serviceMinAdvanceBooking : rules.minNotificationHours;
 
-    if (hoursDifference < minAdvanceHours) {
+    if (!isBusinessUser && hoursDifference < minAdvanceHours) {
       throw new AppError(
         `Appointment must be booked at least ${minAdvanceHours} hours in advance`,
         400,
@@ -244,7 +256,8 @@ export class AppointmentService {
     businessId: string,
     appointmentDateTime: Date,
     customerId?: string,
-    serviceDuration?: number
+    serviceDuration?: number,
+    isBusinessUser?: boolean
   ): Promise<void> {
     const business = await tx.business.findUnique({
       where: { id: businessId },
@@ -267,8 +280,8 @@ export class AppointmentService {
 
     const now = new Date();
 
-    // 0. Check if appointment is in the past
-    if (appointmentDateTime <= now) {
+    // 0. Check if appointment is in the past (business users can fill same-day past slots)
+    if (!isBusinessUser && appointmentDateTime <= now) {
       throw new AppError(
         'Cannot book appointment in the past',
         400,
@@ -276,12 +289,23 @@ export class AppointmentService {
       );
     }
 
-    // 1. Check maximum advance booking days (calendar days: today = 0, tomorrow = 1, …)
+    if (isBusinessUser && appointmentDateTime <= now) {
+      const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+      if (appointmentDateTime < todayStart) {
+        throw new AppError(
+          'Cannot book appointment on past days',
+          400,
+          ERROR_CODES.APPOINTMENT_PAST_DATE
+        );
+      }
+    }
+
+    // 1. Check maximum advance booking days (skip for business users)
     const todayMidnight = new Date(now); todayMidnight.setHours(0, 0, 0, 0);
     const apptMidnight = new Date(appointmentDateTime); apptMidnight.setHours(0, 0, 0, 0);
     const daysDifference = Math.round((apptMidnight.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (daysDifference > rules.maxAdvanceBookingDays) {
+    if (!isBusinessUser && daysDifference > rules.maxAdvanceBookingDays) {
       throw new AppError(
         `Cannot book more than ${rules.maxAdvanceBookingDays} days in advance`,
         400,
@@ -291,10 +315,10 @@ export class AppointmentService {
       );
     }
 
-    // 2. Check minimum notification period (transaction path: business rule only; service min applied in outer validate)
+    // 2. Check minimum notification period (skip for business users)
     const hoursDifference = (appointmentDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    if (hoursDifference < rules.minNotificationHours) {
+    if (!isBusinessUser && hoursDifference < rules.minNotificationHours) {
       throw new AppError(
         `Appointment must be booked at least ${rules.minNotificationHours} hours in advance`,
         400,
@@ -568,7 +592,7 @@ export class AppointmentService {
     }
 
     // Validate business-level reservation rules (includes service-level validation)
-    await this.validateBusinessReservationRules(data.businessId, appointmentDateTime, customerId, service.duration, service.minAdvanceBooking);
+    await this.validateBusinessReservationRules(data.businessId, appointmentDateTime, customerId, service.duration, service.minAdvanceBooking, !!isBookingForOther);
 
     // Check service-level maximum advance booking (calendar days, today = 0)
     const svcTodayMidnight = new Date(now); svcTodayMidnight.setHours(0, 0, 0, 0);
@@ -621,7 +645,7 @@ export class AppointmentService {
         }
 
         // CRITICAL: Re-validate business rules within transaction using transaction client
-        await this.validateBusinessReservationRulesInTransaction(tx, data.businessId, appointmentDateTime, customerId, service.duration);
+        await this.validateBusinessReservationRulesInTransaction(tx, data.businessId, appointmentDateTime, customerId, service.duration, !!isBookingForOther);
 
         const startDateTime = createDateTimeInIstanbul(data.date, data.startTime);
         const endDateTime = new Date(startDateTime.getTime() + service.duration * 60000);
@@ -661,6 +685,7 @@ export class AppointmentService {
             endTime: endDateTime,
             duration: service.duration,
             status: await (async () => {
+              if (isBookingForOther) return AppointmentStatus.CONFIRMED;
               const biz = await tx.business.findUnique({ where: { id: data.businessId }, select: { requireApproval: true } });
               return biz?.requireApproval ? AppointmentStatus.PENDING_APPROVAL : AppointmentStatus.CONFIRMED;
             })(),
@@ -802,6 +827,8 @@ export class AppointmentService {
     filters?: {
       status?: AppointmentStatus;
       date?: string;
+      startDate?: string;
+      endDate?: string;
       businessId?: string;
       page?: number;
       limit?: number;
@@ -1059,17 +1086,28 @@ export class AppointmentService {
     }
 
     let updatedAppointment: AppointmentData;
-    try {
-      updatedAppointment = await this.appointmentRepository.update(appointmentId, data);
-    } catch (e: unknown) {
-      // Pre-check above can miss a staff-specific or racing booking; the DB
-      // exclusion constraint is the last line of defense. Surface it as a clean 409.
-      rethrowOnOverlapConflict(e);
+    if (data.status === AppointmentStatus.CANCELED) {
+      // Route through cancel() so cancelledBy is recorded correctly (used by UI + notifications).
+      // Real customers cancelling their own booking are always CUSTOMER. Business users default to
+      // recording it as CUSTOMER-initiated (e.g. "customer called to cancel") unless they explicitly
+      // use the "Randevuyu İptal Etmek İstiyorum" action, which passes cancelledByOverride='BUSINESS'.
+      const cancelledBy = isCustomer
+        ? 'CUSTOMER' as const
+        : (data.cancelledByOverride === 'BUSINESS' ? 'BUSINESS' as const : 'CUSTOMER' as const);
+      updatedAppointment = await this.appointmentRepository.cancel(appointmentId, data.cancelReason, cancelledBy);
+    } else {
+      try {
+        updatedAppointment = await this.appointmentRepository.update(appointmentId, data);
+      } catch (e: unknown) {
+        // Pre-check above can miss a staff-specific or racing booking; the DB
+        // exclusion constraint is the last line of defense. Surface it as a clean 409.
+        rethrowOnOverlapConflict(e);
+      }
     }
 
     // Handle status changes
     if (data.status) {
-      await this.handleStatusChange(userId, appointment, data.status);
+      await this.handleStatusChange(userId, appointment, data.status, data.cancelledByOverride);
     }
 
     return updatedAppointment;
@@ -1161,7 +1199,102 @@ export class AppointmentService {
       await this.handleCustomerCancellation(userId, appointment);
     }
 
+    await this.sendCancellationNotifications(appointment, appointmentId, cancelledBy);
+
     return cancelledAppointment;
+  }
+
+  /**
+   * Shared by cancelAppointment() and the /:id/status (CANCELED) path in updateAppointment(),
+   * since the dashboard's cancel button goes through the generic status-update endpoint.
+   */
+  private async sendCancellationNotifications(
+    appointment: AppointmentData,
+    appointmentId: string,
+    cancelledBy: 'CUSTOMER' | 'BUSINESS',
+    /** True only when the real customer self-cancelled (not a business user recording it as such) */
+    isActualCustomerCancel: boolean = cancelledBy === 'CUSTOMER'
+  ): Promise<void> {
+    try {
+      const customer = await this.repositories?.userRepository?.findById(appointment.customerId);
+      const business = await this.businessRepository.findById(appointment.businessId);
+      const service = await this.serviceRepository.findById(appointment.serviceId);
+
+      // Only notify customer when BUSINESS cancels (customer already knows if they cancelled themselves)
+      if (cancelledBy === 'BUSINESS' && customer && business && service) {
+        const startTime = appointment.startTime instanceof Date ? appointment.startTime : new Date(appointment.startTime);
+        const dateStr = startTime.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Istanbul' });
+        const timeStr = startTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
+
+        if (customer.phoneNumber) {
+          const { AppointmentMessages } = await import('../../../utils/smsMessageTemplates');
+          const message = AppointmentMessages.businessScheduleChange({
+            businessName: business.name,
+            customerName: customer.firstName || '',
+            serviceName: service.name,
+            appointmentDate: dateStr,
+            appointmentTime: timeStr,
+            reason: 'HOURS_CHANGE'
+          });
+
+          await this.notificationGateway.sendCriticalSMS(
+            customer.phoneNumber,
+            message,
+            { requestId: `cancel-${appointmentId}` }
+          );
+        }
+      }
+
+      // Notify business owner (and staff) only when the real customer self-cancelled
+      if (isActualCustomerCancel && business && customer && service) {
+        const startTime = appointment.startTime instanceof Date ? appointment.startTime : new Date(appointment.startTime);
+        const appointmentDate = startTime.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Istanbul' });
+        const appointmentTime = startTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
+        const customerName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
+
+        const cancelNotification = {
+          businessId: business.id,
+          title: 'Randevu İptal Edildi',
+          body: `${customerName} ${appointmentDate} ${appointmentTime} tarihli ${service.name} randevusunu iptal etti.`,
+          smsMessage: `Randevu iptali: ${customerName} - ${service.name} (${appointmentDate} ${appointmentTime}) randevusunu iptal etti.`,
+          appointmentId,
+          data: {
+            type: 'appointment_cancelled_by_customer',
+            appointmentId,
+            customerId: customer.id,
+            customerName,
+            serviceName: service.name,
+            appointmentDate,
+            appointmentTime,
+          },
+          url: `/appointments/${appointmentId}`
+        };
+
+        await this.notificationGateway.sendSystemAlert({
+          ...cancelNotification,
+          userId: business.ownerId,
+        });
+
+        if (appointment.staffId && this.repositories?.staffRepository) {
+          const staffMember = await this.repositories.staffRepository.findById(appointment.staffId);
+          if (staffMember?.userId && staffMember.userId !== business.ownerId) {
+            await this.notificationGateway.sendSystemAlert({
+              ...cancelNotification,
+              userId: staffMember.userId,
+            });
+          }
+        }
+
+        logger.info({
+          msg: 'Cancellation notification sent to business',
+          appointmentId,
+          ownerId: business.ownerId,
+          customerName,
+        });
+      }
+    } catch (error) {
+      logger.error('Error sending cancellation notification:', error);
+    }
   }
 
   async approveAppointment(
@@ -1554,14 +1687,22 @@ export class AppointmentService {
   private async handleStatusChange(
     userId: string,
     appointment: AppointmentData,
-    newStatus: AppointmentStatus
+    newStatus: AppointmentStatus,
+    cancelledByOverride?: 'CUSTOMER' | 'BUSINESS'
   ): Promise<void> {
     switch (newStatus) {
-      case AppointmentStatus.CANCELED:
-        if (appointment.customerId === userId) {
+      case AppointmentStatus.CANCELED: {
+        const isActualCustomer = appointment.customerId === userId;
+        // Strikes only apply when the real customer cancels their own booking.
+        if (isActualCustomer) {
           await this.handleCustomerCancellation(userId, appointment);
         }
+        const cancelledBy = isActualCustomer
+          ? 'CUSTOMER' as const
+          : (cancelledByOverride === 'BUSINESS' ? 'BUSINESS' as const : 'CUSTOMER' as const);
+        await this.sendCancellationNotifications(appointment, appointment.id, cancelledBy, isActualCustomer);
         break;
+      }
       case AppointmentStatus.NO_SHOW:
         await this.userBehaviorRepository.addStrike(
           appointment.customerId,

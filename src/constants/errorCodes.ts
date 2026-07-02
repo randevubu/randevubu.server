@@ -444,6 +444,10 @@ export const ERROR_CATALOG: Record<string, CatalogEntry> = {
   CLOSURE_END_BEFORE_START:    { status: 422, key: 'errors.business.closureEndBeforeStart',  severity: 'warn'  },
   CLOSURE_CONFLICT:            { status: 409, key: 'errors.business.closureConflict',        severity: 'warn'  },
   CLOSURE_NOT_FOUND:           { status: 404, key: 'errors.business.closureNotFound',       severity: 'warn'  },
+  GOOGLE_PLACE_NOT_FOUND:      { status: 404, key: 'errors.business.googlePlaceNotFound',   severity: 'warn'  },
+  GOOGLE_PLACES_API_ERROR:     { status: 502, key: 'errors.business.googlePlacesApiError',  severity: 'error' },
+  GOOGLE_SYNC_RATE_LIMITED:    { status: 429, key: 'errors.business.googleSyncRateLimited', severity: 'warn'  },
+  GOOGLE_PLACE_ALREADY_LINKED: { status: 409, key: 'errors.business.googlePlaceAlreadyLinked', severity: 'warn' },
 
   // ── Appointment ─────────────────────────────────────────────────────────
   APPOINTMENT_NOT_FOUND:       { status: 404, key: 'errors.appointment.notFound',           severity: 'warn'  },

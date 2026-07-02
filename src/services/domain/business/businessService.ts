@@ -2584,7 +2584,7 @@ export class BusinessService {
     const prisma = (this.businessRepository as any).prisma;
     const business = await prisma.business.findUnique({
       where: { id: businessId },
-      select: { id: true, ownerId: true, googlePlaceId: true, googleIntegrationEnabled: true, googleOriginalUrl: true, latitude: true, longitude: true },
+      select: { id: true, ownerId: true, googlePlaceId: true, googleIntegrationEnabled: true, googleOriginalUrl: true, latitude: true, longitude: true, googleSyncCount: true, googleSyncCooldownUntil: true },
     });
     if (!business || business.ownerId !== userId) {
       throw new AppError('ACCESS_DENIED', { message: 'No permission to edit business' });
@@ -2593,6 +2593,41 @@ export class BusinessService {
     const placeId = business.googlePlaceId as string | null;
     if (!placeId) {
       throw new AppError('GOOGLE_PLACE_NOT_FOUND', { message: 'No Google Place ID found for this business' });
+    }
+
+    // Rate limit: max 3 syncs, then a 30-day cooldown starting from the blocked (4th) attempt
+    const SYNC_LIMIT = 3;
+    const COOLDOWN_DAYS = 30;
+    const now = new Date();
+    let syncCount = business.googleSyncCount ?? 0;
+    let cooldownUntil = business.googleSyncCooldownUntil as Date | null;
+
+    if (cooldownUntil && cooldownUntil > now) {
+      const daysRemaining = Math.ceil((cooldownUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      throw new AppError('GOOGLE_SYNC_RATE_LIMITED', {
+        statusCode: 429,
+        message: `Google senkronizasyon limitine ulaştınız. ${daysRemaining} gün sonra tekrar deneyiniz.`,
+        params: { daysRemaining, retryAt: cooldownUntil.toISOString() },
+      });
+    }
+
+    if (cooldownUntil && cooldownUntil <= now) {
+      // Cooldown expired naturally — reset the window
+      syncCount = 0;
+      cooldownUntil = null;
+    }
+
+    if (syncCount >= SYNC_LIMIT) {
+      const newCooldownUntil = new Date(now.getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+      await prisma.business.update({
+        where: { id: businessId },
+        data: { googleSyncCooldownUntil: newCooldownUntil },
+      });
+      throw new AppError('GOOGLE_SYNC_RATE_LIMITED', {
+        statusCode: 429,
+        message: `Google senkronizasyon limitine ulaştınız. ${COOLDOWN_DAYS} gün sonra tekrar deneyiniz.`,
+        params: { daysRemaining: COOLDOWN_DAYS, retryAt: newCooldownUntil.toISOString() },
+      });
     }
 
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -2669,6 +2704,12 @@ export class BusinessService {
       googleTotalRatings,
     });
 
+    // Persist the sync attempt count (and clear any expired cooldown) now that the sync succeeded
+    await prisma.business.update({
+      where: { id: businessId },
+      data: { googleSyncCount: syncCount + 1, googleSyncCooldownUntil: null },
+    });
+
     // Delete all existing reviews before inserting fresh ones from the current Place ID.
     // This prevents stale reviews from old Place IDs from appearing after a URL change.
     await prisma.googleReview.deleteMany({ where: { businessId } });
@@ -2716,6 +2757,7 @@ export class BusinessService {
     googleAverageRating: number | null;
     googleTotalRatings: number | null;
     reviewsHidden: boolean;
+    googleSyncCooldownUntil: Date | null;
   }> {
     // Public method - no ownership check needed
     // Google integration info is public data (anyone can see Google Maps/reviews)
